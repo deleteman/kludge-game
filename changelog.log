@@ -10,3 +10,58 @@ Nota: npm audit reporta 2 vulnerabilidades moderadas heredadas de phaser3-rex-pl
 (path traversal en carga de traducciones vía HTTP, GHSA-q89c-q3h5-w34g). No corregible sin que el paquete
 upstream actualice su dependencia; riesgo bajo en este contexto (juego standalone sin fetch de traducciones
 remotas, localización propia por sistema de claves). Revisar en próximas actualizaciones del paquete.
+
+2026-07-13 — Fase 1: modelo de datos del motor (/engine, sin renderizado ni lógica de reacción).
+Detalle: creados los módulos engine/src/shared (Brand<T,B> para IDs nominales), geometry (GridPosition/
+Footprint/PlacedFootprint, agnóstico de tamaño en píxeles), properties (functional.types.ts: EM/REC/ACT/RES/
+COND/EST — GDD 5.1; material.types.ts: CE/CT/MAG/RE/ES con niveles exactos por propiedad — GDD 5.2;
+chemical-tag.types.ts: OXI/COMB/ACID/BASE/INERTE/VOLAT/TOX/CORR con nivel opcional discriminado por tag —
+GDD 5.3), composition (Recipe, ComposableEntity como unión recursiva AtomicEntity|CompositeEntity,
+EntityRegistry, CompositionFactory genérica — kernel compartido que implementa el principio de diseño #3 de
+CLAUDE.md: átomo→compuesto→ensamblaje físico y elemento→compuesto químico usan la MISMA lógica, el Nivel 2 del
+GDD 7.1 emerge sin tipo nuevo), components (PhysicalComponentDefinition + factory con validación de footprint
+positivo — GDD 7.1-7.2), chemistry (ChemicalSubstanceDefinition + factory con validación de 1-3 tags — GDD
+5.4.1-5.4.2), signals (SignalNode con posición de grid, SignalEdge, SignalGraph, chequeos de integridad
+estructural sin lógica AND/OR/NOT) y blueprint (schema JSON completo — metadata, componentes colocados,
+contenido de reservorios, grafo de señales, y un placeholder aislado y marcado PROVISIONAL para dependencias
+de tareas de tripulación de Fase 6 — más serializador con guards manuales de runtime, sin librerías nuevas).
+42 tests unitarios (uno por archivo de lógica, fixtures sintéticas, ninguna coincide con el catálogo real de
+GDD 7.2-7.6 o 5.4.1-5.4.2). Build/test/lint en verde.
+Razón: base de datos del motor sobre la que se construirá Fase 2 (motor de reglas) y Fase 4 (catálogos de
+contenido real) sin rediseñar el modelo. Alcance ampliado respecto al mínimo de ORDEN_DE_TRABAJO.md por
+decisión explícita del operador: posición de grid en los nodos de señal desde ya, y diseño del schema completo
+de blueprint (antes marcado "pendiente" en GDD sección 17) con nota explícita de revisión pendiente contra
+Fases 5/6/7.
+
+2026-07-13 — Fase 2: motor de reglas (/engine).
+Detalle: implementados los cuatro subsistemas de reglas sobre el modelo de datos de Fase 1, todos guiados por
+un loop de tick discreto (tick(dtSeconds)) — decisión confirmada con el operador porque casi toda regla del
+motor es temporal (difusión, corrosión, umbrales tóxicos, osciladores, delay). Bloque 0 (simulation/):
+TickContext, unión de eventos de dominio y EventEmitter tipado genérico — el único seam Observer motor→/game
+(principio de CLAUDE.md; /engine no importa Phaser). Bloque 1 (signals/): comportamiento lógico explícito y
+data-driven por nodo (gate AND/OR/NOT, latch con reset de prioridad, oscilador/reloj, delay de propagación,
+passthrough), cada uno como Strategy en signals/rules/; SignalEvaluator de circuito síncrono (entradas del
+tick anterior → resuelve grafos cíclicos sin orden topológico, un hop por tick); extendidos SignalNode
+(behavior?) y SignalEdge (toPort?) de forma retrocompatible; emite signal-latched. Bloque 2
+(chemistry/reaction/): resolución de identidad en 3 pasos (receta nombrada > regla de tags con nombre genérico
+fijo > "Mezcla sin identificar") y prioridad/stacking de Espec. §2 (consume con la regla de mayor prioridad,
+re-evalúa sobre el resultado); reglas Strategy (neutralización, combustión modulada por O2, corrosivo+
+sustancia, ignición espontánea), NamedRecipeIndex (reverse-lookup reutilizando el EntityRegistry de Fase 1),
+factory de mezcla sin identificar (unión de tags), parámetros Espec. §1 data-driven. Bloque 3 (atmosphere/):
+difusión híbrida por tick (equilibrio ponderado por volumen, conserva masa, ~10%/s a válvula 100% abierta,
+sin regeneración pasiva de O2), acople combustión↔O2 (buckets GDD 5.5), y acumuladores de peligro por tiempo
+(incapacitación tóxica >30%/>5s, letal >60%; daño corrosivo a tripulante ~10s). Section marcada PROVISIONAL
+(revisión contra plano real de Fase 5). Bloque 4 (failure/): regla de sobrecarga (carga>capacidad → evento de
+fallo por tipo de recurso) y degradación estructural corrosiva (A→M→B→fallo por acumulación; daño permanente
+que no se recupera al cesar la exposición, principio 5). index.ts ampliado con la API pública de Fase 2 y la
+unión agregada DomainEvent. 49 tests nuevos (unitario por regla + integración temporal y de acople entre
+bloques), fixtures sintéticas (no el catálogo real, que es Fase 4). Build, lint, prettier y los 91 tests en
+verde.
+Razón: núcleo del motor sobre el que se validarán los 16 casos del GDD sección 9 (Fase 3) y se construirá todo
+el contenido posterior. Reorganización consciente respecto al listado del plan: las reglas de GDD 5.3 basadas
+en tiempo (incapacitación tóxica, degradación estructural, daño corrosivo a tripulante) se implementan en los
+subsistemas por tick (Bloques 3/4), no en el resolver instantáneo, porque su parámetro definitorio es el
+tiempo; la lista de prioridad (reaction-priority.ts) las documenta en el orden de Espec. §2 y el acoplamiento
+con la prioridad se mantiene por identidad de sustancia. Principio 6: cada regla nueva define su evento de
+dominio como contrato para las partículas de Fase 8; no se escribe código de partículas todavía (vive en /game,
+que aún no renderiza) — registrado como decisión, no omisión.
