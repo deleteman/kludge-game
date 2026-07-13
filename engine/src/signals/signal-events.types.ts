@@ -19,4 +19,15 @@ export interface SignalLatchedEvent extends DomainEventBase {
   readonly engaged: boolean;
 }
 
-export type SignalDomainEvent = SignalLatchedEvent;
+/**
+ * Un contador (GDD 5.6, caso de validación 5) alcanzó su umbral — otro
+ * fenómeno discreto puntual, misma justificación que `SignalLatchedEvent`
+ * (principio 6): merece su propio feedback visual, no ruido continuo.
+ */
+export interface CounterThresholdReachedEvent extends DomainEventBase {
+  readonly kind: "counter-threshold-reached";
+  readonly nodeId: SignalNodeId;
+  readonly count: number;
+}
+
+export type SignalDomainEvent = SignalLatchedEvent | CounterThresholdReachedEvent;

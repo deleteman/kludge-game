@@ -4,6 +4,7 @@ import { LatchRule } from "./latch-rule.js";
 import { OscillatorRule } from "./oscillator-rule.js";
 import { DelayRule } from "./delay-rule.js";
 import { PassthroughRule } from "./passthrough-rule.js";
+import { CounterRule } from "./counter-rule.js";
 import { createSignalNodeState } from "../signal-state.types.js";
 import type { SignalInput, SignalRuleContext } from "../signal-rule.js";
 import type { SignalBehavior } from "../signal-behavior.types.js";
@@ -121,6 +122,38 @@ describe("signals: DelayRule (GDD 5.6 delay de propagación)", () => {
     delay.evaluate(ctx([off], behavior, { state, tick: step })); // input reverts to output(false)
     expect(state.delayTarget).toBeNull();
     expect(state.output).toBe(false);
+  });
+});
+
+describe("signals: CounterRule (GDD 5.6 memoria incremental, caso 5 'El Cañón que Aprende')", () => {
+  const counter = new CounterRule();
+  const behavior: SignalBehavior = { kind: "counter", threshold: 3 };
+
+  it("activates only after `threshold` rising edges of its count input", () => {
+    const state = createSignalNodeState();
+    expect(counter.evaluate(ctx([on], behavior, { state }))).toBe(false); // edge 1/3
+    expect(counter.evaluate(ctx([on], behavior, { state }))).toBe(false); // held high, no new edge
+    expect(counter.evaluate(ctx([off], behavior, { state }))).toBe(false); // falling edge
+    expect(counter.evaluate(ctx([on], behavior, { state }))).toBe(false); // edge 2/3
+    expect(counter.evaluate(ctx([off], behavior, { state }))).toBe(false);
+    expect(counter.evaluate(ctx([on], behavior, { state }))).toBe(true); // edge 3/3, threshold reached
+  });
+
+  it("resets the count with absolute priority, mirroring LatchRule's reset", () => {
+    const state = createSignalNodeState();
+    state.counterValue = 2;
+    const result = counter.evaluate(
+      ctx(
+        [
+          { value: true, port: "count" },
+          { value: true, port: "reset" },
+        ],
+        behavior,
+        { state },
+      ),
+    );
+    expect(result).toBe(false);
+    expect(state.counterValue).toBe(0);
   });
 });
 

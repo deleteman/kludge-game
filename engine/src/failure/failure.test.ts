@@ -5,6 +5,10 @@ import {
   reservoirOverloadSubject,
 } from "./overload-rule.js";
 import { StructuralIntegrity } from "./structural-failure.js";
+import {
+  THERMAL_CONDUCTIVITY_PARAMETERS,
+  thermallyAdjustedConductorOverloadSubject,
+} from "./thermal-conductivity-rule.js";
 import { EventEmitter } from "../simulation/event-emitter.js";
 import type { FailureDomainEvent } from "./failure-events.types.js";
 import type { ConductorProperty, ReservoirProperty } from "../properties/functional.types.js";
@@ -44,6 +48,34 @@ describe("failure: OverloadRule (GDD 5.6 sobrecarga)", () => {
     expect(onOverload).toHaveBeenCalledWith(
       expect.objectContaining({ failureMode: "explosion", load: 120 }),
     );
+  });
+});
+
+describe("failure: thermallyAdjustedConductorOverloadSubject (GDD 5.2 conductividad vs. temperatura, caso 2)", () => {
+  const rule = new OverloadRule();
+  const conductor: ConductorProperty = { tag: "COND", resourceType: "E", maxCapacity: 10 };
+
+  it("keeps nominal capacity above the cooling trigger threshold", () => {
+    const subject = thermallyAdjustedConductorOverloadSubject("cable-1", conductor, 8, 20);
+    expect(rule.evaluate(subject, tickOf(0))).toBeNull();
+  });
+
+  it("shrinks effective capacity and triggers overload once cooled past the trigger threshold", () => {
+    const subject = thermallyAdjustedConductorOverloadSubject(
+      "cable-1",
+      conductor,
+      8,
+      THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius - 10,
+    );
+    const event = rule.evaluate(subject, tickOf(0));
+    expect(event).toMatchObject({
+      kind: "overload",
+      failureMode: "cut",
+      capacity:
+        conductor.maxCapacity *
+        THERMAL_CONDUCTIVITY_PARAMETERS.effectiveCapacityFractionBelowTrigger,
+      load: 8,
+    });
   });
 });
 

@@ -1,0 +1,1514 @@
+{
+  "compressionlevel": -1,
+  "height": 22,
+  "infinite": false,
+  "layers": [
+    {
+      "draworder": "topdown",
+      "id": 1,
+      "name": "secciones",
+      "objects": [
+        {
+          "id": 1,
+          "name": "puente",
+          "type": "",
+          "x": 0,
+          "y": 224,
+          "width": 192,
+          "height": 160,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "puente"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.puente"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "pasillo-central",
+          "type": "",
+          "x": 192,
+          "y": 288,
+          "width": 832,
+          "height": 64,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.pasillo-central"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "soporte-vital",
+          "type": "",
+          "x": 192,
+          "y": 160,
+          "width": 160,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "soporte-vital"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.soporte-vital"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "camarotes",
+          "type": "",
+          "x": 352,
+          "y": 160,
+          "width": 192,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "camarotes"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.camarotes"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "esclusa",
+          "type": "",
+          "x": 192,
+          "y": 352,
+          "width": 96,
+          "height": 64,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "esclusa"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.esclusa"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "sala-servidores",
+          "type": "",
+          "x": 544,
+          "y": 160,
+          "width": 160,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "sala-servidores"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.sala-servidores"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "observatorio-sensores",
+          "type": "",
+          "x": 704,
+          "y": 160,
+          "width": 192,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "observatorio-sensores"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.observatorio-sensores"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "laboratorio-principal",
+          "type": "",
+          "x": 288,
+          "y": 352,
+          "width": 256,
+          "height": 192,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.laboratorio-principal"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "name": "laboratorio-quimico",
+          "type": "",
+          "x": 288,
+          "y": 544,
+          "width": 192,
+          "height": 160,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.laboratorio-quimico"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "name": "hangar-drones",
+          "type": "",
+          "x": 544,
+          "y": 352,
+          "width": 160,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "hangar-drones"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.hangar-drones"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "name": "ingenieria",
+          "type": "",
+          "x": 704,
+          "y": 352,
+          "width": 192,
+          "height": 128,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria"
+            },
+            {
+              "name": "nameKey",
+              "type": "string",
+              "value": "section.ingenieria"
+            }
+          ]
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 2,
+      "name": "conductos",
+      "objects": [
+        {
+          "id": 12,
+          "name": "ventilacion:puente-pasillo-central",
+          "type": "",
+          "x": 192,
+          "y": 304,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "puente"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "name": "ventilacion:soporte-vital-pasillo-central",
+          "type": "",
+          "x": 208,
+          "y": 288,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "soporte-vital"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "name": "ventilacion:camarotes-pasillo-central",
+          "type": "",
+          "x": 400,
+          "y": 288,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "camarotes"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "name": "ventilacion:esclusa-pasillo-central",
+          "type": "",
+          "x": 208,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "esclusa"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "name": "ventilacion:sala-servidores-pasillo-central",
+          "type": "",
+          "x": 560,
+          "y": 288,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "sala-servidores"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "name": "ventilacion:observatorio-sensores-pasillo-central",
+          "type": "",
+          "x": 752,
+          "y": 288,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "observatorio-sensores"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "name": "ventilacion:laboratorio-principal-pasillo-central",
+          "type": "",
+          "x": 336,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "laboratorio-principal"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "name": "ventilacion:laboratorio-quimico-laboratorio-principal",
+          "type": "",
+          "x": 336,
+          "y": 544,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "laboratorio-quimico"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "laboratorio-principal"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "name": "ventilacion:hangar-drones-pasillo-central",
+          "type": "",
+          "x": 560,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "hangar-drones"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "name": "ventilacion:ingenieria-pasillo-central",
+          "type": "",
+          "x": 752,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "ingenieria"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "ventilacion"
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "name": "electrico:ingenieria-pasillo-central",
+          "type": "",
+          "x": 816,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "ingenieria"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "electrico"
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "name": "electrico:pasillo-central-puente",
+          "type": "",
+          "x": 192,
+          "y": 336,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "puente"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "electrico"
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "name": "electrico:pasillo-central-soporte-vital",
+          "type": "",
+          "x": 272,
+          "y": 288,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "soporte-vital"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "electrico"
+            }
+          ]
+        },
+        {
+          "id": 25,
+          "name": "electrico:pasillo-central-laboratorio-principal",
+          "type": "",
+          "x": 432,
+          "y": 352,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "a",
+              "type": "string",
+              "value": "pasillo-central"
+            },
+            {
+              "name": "b",
+              "type": "string",
+              "value": "laboratorio-principal"
+            },
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "electrico"
+            }
+          ]
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 3,
+      "name": "anclajes",
+      "objects": [
+        {
+          "id": 26,
+          "name": "puente-a1",
+          "type": "",
+          "x": 112,
+          "y": 240,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "puente-a1"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "name": "puente-a2",
+          "type": "",
+          "x": 176,
+          "y": 272,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "puente-a2"
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "name": "puente-a3",
+          "type": "",
+          "x": 16,
+          "y": 336,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "puente-a3"
+            }
+          ]
+        },
+        {
+          "id": 29,
+          "name": "puente-a4",
+          "type": "",
+          "x": 80,
+          "y": 368,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "puente-a4"
+            }
+          ]
+        },
+        {
+          "id": 30,
+          "name": "pasillo-central-a1",
+          "type": "",
+          "x": 624,
+          "y": 304,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "pasillo-central-a1"
+            }
+          ]
+        },
+        {
+          "id": 31,
+          "name": "pasillo-central-a2",
+          "type": "",
+          "x": 624,
+          "y": 336,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "pasillo-central-a2"
+            }
+          ]
+        },
+        {
+          "id": 32,
+          "name": "soporte-vital-a1",
+          "type": "",
+          "x": 304,
+          "y": 176,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "soporte-vital-a1"
+            }
+          ]
+        },
+        {
+          "id": 33,
+          "name": "soporte-vital-a2",
+          "type": "",
+          "x": 208,
+          "y": 240,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "soporte-vital-a2"
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "name": "soporte-vital-a3",
+          "type": "",
+          "x": 240,
+          "y": 272,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "soporte-vital-a3"
+            }
+          ]
+        },
+        {
+          "id": 35,
+          "name": "camarotes-a1",
+          "type": "",
+          "x": 496,
+          "y": 176,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "camarotes-a1"
+            }
+          ]
+        },
+        {
+          "id": 36,
+          "name": "camarotes-a2",
+          "type": "",
+          "x": 368,
+          "y": 240,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "camarotes-a2"
+            }
+          ]
+        },
+        {
+          "id": 37,
+          "name": "camarotes-a3",
+          "type": "",
+          "x": 432,
+          "y": 272,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "camarotes-a3"
+            }
+          ]
+        },
+        {
+          "id": 38,
+          "name": "esclusa-a1",
+          "type": "",
+          "x": 240,
+          "y": 368,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "esclusa-a1"
+            }
+          ]
+        },
+        {
+          "id": 39,
+          "name": "esclusa-a2",
+          "type": "",
+          "x": 240,
+          "y": 400,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "esclusa-a2"
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "name": "sala-servidores-a1",
+          "type": "",
+          "x": 624,
+          "y": 176,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "sala-servidores-a1"
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "name": "sala-servidores-a2",
+          "type": "",
+          "x": 624,
+          "y": 208,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "sala-servidores-a2"
+            }
+          ]
+        },
+        {
+          "id": 42,
+          "name": "sala-servidores-a3",
+          "type": "",
+          "x": 624,
+          "y": 240,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "sala-servidores-a3"
+            }
+          ]
+        },
+        {
+          "id": 43,
+          "name": "sala-servidores-a4",
+          "type": "",
+          "x": 624,
+          "y": 272,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "sala-servidores-a4"
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "name": "observatorio-sensores-a1",
+          "type": "",
+          "x": 816,
+          "y": 176,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "observatorio-sensores-a1"
+            }
+          ]
+        },
+        {
+          "id": 45,
+          "name": "observatorio-sensores-a2",
+          "type": "",
+          "x": 816,
+          "y": 208,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "observatorio-sensores-a2"
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "name": "observatorio-sensores-a3",
+          "type": "",
+          "x": 816,
+          "y": 240,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "observatorio-sensores-a3"
+            }
+          ]
+        },
+        {
+          "id": 47,
+          "name": "observatorio-sensores-a4",
+          "type": "",
+          "x": 816,
+          "y": 272,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "observatorio-sensores-a4"
+            }
+          ]
+        },
+        {
+          "id": 48,
+          "name": "laboratorio-principal-a1",
+          "type": "",
+          "x": 432,
+          "y": 368,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a1"
+            }
+          ]
+        },
+        {
+          "id": 49,
+          "name": "laboratorio-principal-a2",
+          "type": "",
+          "x": 432,
+          "y": 400,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a2"
+            }
+          ]
+        },
+        {
+          "id": 50,
+          "name": "laboratorio-principal-a3",
+          "type": "",
+          "x": 432,
+          "y": 432,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a3"
+            }
+          ]
+        },
+        {
+          "id": 51,
+          "name": "laboratorio-principal-a4",
+          "type": "",
+          "x": 432,
+          "y": 464,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a4"
+            }
+          ]
+        },
+        {
+          "id": 52,
+          "name": "laboratorio-principal-a5",
+          "type": "",
+          "x": 432,
+          "y": 496,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a5"
+            }
+          ]
+        },
+        {
+          "id": 53,
+          "name": "laboratorio-principal-a6",
+          "type": "",
+          "x": 432,
+          "y": 528,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-principal-a6"
+            }
+          ]
+        },
+        {
+          "id": 54,
+          "name": "laboratorio-quimico-a1",
+          "type": "",
+          "x": 400,
+          "y": 560,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico-a1"
+            }
+          ]
+        },
+        {
+          "id": 55,
+          "name": "laboratorio-quimico-a2",
+          "type": "",
+          "x": 400,
+          "y": 592,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico-a2"
+            }
+          ]
+        },
+        {
+          "id": 56,
+          "name": "laboratorio-quimico-a3",
+          "type": "",
+          "x": 400,
+          "y": 624,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico-a3"
+            }
+          ]
+        },
+        {
+          "id": 57,
+          "name": "laboratorio-quimico-a4",
+          "type": "",
+          "x": 400,
+          "y": 656,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico-a4"
+            }
+          ]
+        },
+        {
+          "id": 58,
+          "name": "laboratorio-quimico-a5",
+          "type": "",
+          "x": 400,
+          "y": 688,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "laboratorio-quimico-a5"
+            }
+          ]
+        },
+        {
+          "id": 59,
+          "name": "hangar-drones-a1",
+          "type": "",
+          "x": 656,
+          "y": 368,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "hangar-drones-a1"
+            }
+          ]
+        },
+        {
+          "id": 60,
+          "name": "hangar-drones-a2",
+          "type": "",
+          "x": 560,
+          "y": 432,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "hangar-drones-a2"
+            }
+          ]
+        },
+        {
+          "id": 61,
+          "name": "hangar-drones-a3",
+          "type": "",
+          "x": 592,
+          "y": 464,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "hangar-drones-a3"
+            }
+          ]
+        },
+        {
+          "id": 62,
+          "name": "ingenieria-a1",
+          "type": "",
+          "x": 784,
+          "y": 368,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria-a1"
+            }
+          ]
+        },
+        {
+          "id": 63,
+          "name": "ingenieria-a2",
+          "type": "",
+          "x": 752,
+          "y": 400,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria-a2"
+            }
+          ]
+        },
+        {
+          "id": 64,
+          "name": "ingenieria-a3",
+          "type": "",
+          "x": 720,
+          "y": 432,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria-a3"
+            }
+          ]
+        },
+        {
+          "id": 65,
+          "name": "ingenieria-a4",
+          "type": "",
+          "x": 848,
+          "y": 432,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria-a4"
+            }
+          ]
+        },
+        {
+          "id": 66,
+          "name": "ingenieria-a5",
+          "type": "",
+          "x": 816,
+          "y": 464,
+          "width": 0,
+          "height": 0,
+          "point": true,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "ingenieria-a5"
+            }
+          ]
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 4,
+  "nextobjectid": 67,
+  "orientation": "orthogonal",
+  "properties": [
+    {
+      "name": "archetype",
+      "type": "string",
+      "value": "investigacion"
+    },
+    {
+      "name": "nameKey",
+      "type": "string",
+      "value": "ship.investigacion.name"
+    },
+    {
+      "name": "schemaVersion",
+      "type": "int",
+      "value": 1
+    },
+    {
+      "name": "shipId",
+      "type": "string",
+      "value": "nave-investigacion"
+    }
+  ],
+  "renderorder": "right-down",
+  "tiledversion": "1.10.2",
+  "tileheight": 32,
+  "tilesets": [],
+  "tilewidth": 32,
+  "type": "map",
+  "version": "1.10",
+  "width": 40
+}

@@ -1,4 +1,8 @@
-import type { CombustionIntensity } from "./reaction-events.types.js";
+import type {
+  CombustionIntensity,
+  CombustionRadius,
+  CrewDamageSeverity,
+} from "./reaction-events.types.js";
 import type { CombustionAtmosphere } from "./reaction-context.types.js";
 
 /**
@@ -42,4 +46,34 @@ export const COMBUSTION_INTENSITY_BY_OXYGEN: Record<
   low: "weak",
   normal: "standard",
   high: "violent",
+};
+
+/**
+ * Radio de propagación de la combustión/explosión según el bucket de O2
+ * (Espec. §1, caso de validación 11): "1 sección completa si O2 alto; media
+ * sección si normal; sin efecto si O2 < 5%". El bucket `low` no aparece
+ * literal en la tabla (que solo cubre alto/normal/<5%) — se extiende con el
+ * mismo criterio de "sin efecto" que el extremo bajo de la tabla.
+ */
+export const COMBUSTION_RADIUS_BY_OXYGEN: Record<
+  Exclude<CombustionAtmosphere, "none">,
+  CombustionRadius
+> = {
+  low: "none",
+  normal: "half-section",
+  high: "full-section",
+};
+
+/**
+ * Daño a tripulante en el radio de la explosión según el bucket de O2 (Espec.
+ * §1, caso 11): "alto (letal posible) en atmósfera enriquecida; medio en
+ * normal; nulo en baja/vacío". Mismo criterio de extensión que el radio.
+ */
+export const COMBUSTION_CREW_DAMAGE_BY_OXYGEN: Record<
+  Exclude<CombustionAtmosphere, "none">,
+  CrewDamageSeverity
+> = {
+  low: "none",
+  normal: "medium",
+  high: "high",
 };

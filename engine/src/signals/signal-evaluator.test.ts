@@ -97,6 +97,32 @@ describe("signals: SignalEvaluator (integración temporal, GDD 5.6)", () => {
     );
   });
 
+  it("emits counter-threshold-reached exactly once when the count is reached (Cañón, caso 5)", () => {
+    const graph: SignalGraph = {
+      nodes: [
+        node("trigger", "emitter"),
+        node("counter", "receptor", { kind: "counter", threshold: 3 }),
+      ],
+      edges: [edge("trigger", "counter")],
+    };
+    const emitter = new EventEmitter<SignalDomainEvent>();
+    const reached = vi.fn();
+    emitter.on("counter-threshold-reached", reached);
+    const evaluator = new SignalEvaluator(graph, emitter);
+    const state = evaluator.createState();
+
+    // Cada nivel lógico se sostiene dos ticks para superar el hop de propagación
+    // (mismo patrón que el gate AND arriba): 3 flancos de subida -> 1 evento.
+    const triggerSequence = [true, true, false, false, true, true, false, false, true, true];
+    triggerSequence.forEach((value, t) => run(evaluator, state, { trigger: value }, t));
+
+    expect(state.get(id("counter"))?.output).toBe(true);
+    expect(reached).toHaveBeenCalledTimes(1);
+    expect(reached).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "counter-threshold-reached", count: 3 }),
+    );
+  });
+
   it("runs a free oscillator as a clock (temporización, caso 6)", () => {
     // El oscilador va en un nodo no-emisor para que el evaluador lo procese por
     // su regla (los emisores toman su valor del mundo, no de un behavior).

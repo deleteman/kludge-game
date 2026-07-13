@@ -65,3 +65,160 @@ tiempo; la lista de prioridad (reaction-priority.ts) las documenta en el orden d
 con la prioridad se mantiene por identidad de sustancia. Principio 6: cada regla nueva define su evento de
 dominio como contrato para las partículas de Fase 8; no se escribe código de partículas todavía (vive en /game,
 que aún no renderiza) — registrado como decisión, no omisión.
+
+2026-07-13 — Fase 3: suite de validación (/engine).
+Detalle: 16 tests de validación en engine/src/validation/case-XX-slug.test.ts, uno por caso de
+GDD sección 9, cada uno importando solo desde la API pública del motor (index.ts). 13 casos
+activos verdes contra el motor de Fase 2 sin cambios; 3 casos con it.todo documentado (14, 16,
+parte del 15) que dependen de fases futuras aún inexistentes (Fase 6 core loop, Fase 9
+tripulación) — it.todo no cuenta como fallo del run, confirmado antes de usarlo. Tres reglas
+nuevas y mínimas, cada una con su test unitario en su propio dominio (no en validation/), que el
+motor de Fase 2 no cubría: (1) failure/thermal-conductivity-rule.ts — sobrecarga de conductor por
+enfriamiento extremo (GDD 5.2 "conductividad eléctrica variable con temperatura"), reutiliza
+OverloadRule sin duplicar el mecanismo de fallo, parámetros data-driven sin tabla numérica exacta
+en la Especificación (documentados como ajustables, mismo criterio que REACTION_PARAMETERS); (2)
+signals/rules/counter-rule.ts — comportamiento de señal `counter` (memoria incremental, misma
+familia Strategy que latch/oscillator), con extensión de signal-evaluator.ts para detectar la
+transición de umbral y emitir counter-threshold-reached, análogo al hook ya existente de
+signal-latched; (3) extensión de CombustionRule/CombustionEvent con radio de propagación y daño a
+tripulante según el bucket de O2 (Espec. §1), constantes nuevas en reaction-parameters.ts con el
+mismo shape que COMBUSTION_INTENSITY_BY_OXYGEN. index.ts ampliado con la API de las tres reglas
+nuevas. Build, lint, prettier y toda la suite (113 tests + 3 it.todo, incluyendo los 97 de
+Fase 1-2) en verde.
+Razón: hito de cierre del motor de reglas antes de invertir en contenido (Fase 4) — la suite de
+16 casos es la garantía de que el sistema de propiedades funciona como se diseñó en el documento
+de referencia, no una formalidad. Las 3 reglas nuevas se mantuvieron deliberadamente mínimas y
+aisladas (ningún archivo compartido tocado salvo signal-evaluator.ts, imprescindible para el
+comportamiento counter) para no reabrir decisiones de arquitectura ya cerradas en Fase 2.
+
+2026-07-13 — Extensión de Fase 3: aceleración magnética y daño por impacto cinético (/engine).
+Detalle: el operador escribió docs/Extension_aceleracion_magnetica.md (documento independiente,
+deliberadamente no fusionado al GDD todavía) proponiendo dos reglas de motor nuevas — aceleración
+de un objeto ferromagnético dentro de un campo magnético activo (decaimiento por distancia +
+inercia acumulada, extiende GDD 5.2/5.6) y daño por impacto cinético al colisionar — más un caso
+de validación nuevo, numerado 17 ("El Cañón de Riel Improvisado"). Antes de implementar se
+resolvieron dos ambigüedades de diseño con el operador: (1) el documento proponía que MAG dejara
+de ser booleano y pasara a ser una escala de intensidad, pero GDD 7.0 define MAG como
+"ferromagnético Sí/No" — propiedad ESTÁTICA de material — mientras que la "intensidad de campo"
+del documento es una cantidad DINÁMICA del electroimán ensamblado y activo en runtime; se mantuvo
+properties/material.types.ts::MAG booleano sin cambios (no rompe GDD 7.0 ni los tests de Fase 3
+que ya usan MAG:true, casos 9 y 15), y la intensidad de campo se modeló como concepto nuevo y
+separado, misma naturaleza que CombustionIntensity; (2) el motor no modelaba "nivel de corriente"
+en ningún lado — nuevo tipo CurrentLevel ("B"|"M"|"A"), misma familia cualitativa que CE/CT/RE.
+Dominio nuevo engine/src/kinetics/ (aislado, mismo patrón Strategy/data-driven que atmosphere/ y
+failure/): magnetic-field.ts (activeCoilFieldIntensity — tabla de bobinas+corriente del documento
+§1, con extrapolaciones monótonas documentadas para las combinaciones no cubiertas literalmente,
+mismo criterio que el caso 11; intensityAtDistance — decaimiento con la distancia, documento §2);
+magnetic-acceleration.ts (MagneticAccelerationAccumulator — clase con estado y tick(), mismo
+patrón que HazardAccumulator/StructuralIntegrity; detecta flanco de subida del campo para contar
+"un pulso" por bobina, no un pulso por tick sostenido; el peso acumulado nunca decrece entre
+pulsos — inercia, principio 5 CLAUDE.md); kinetic-impact.ts (resolveKineticImpact — función pura,
+tabla de resolución velocidad×footprint del documento §3). Simplificación deliberada respecto al
+plan original: la posición del proyectil NO se modela como estado interno (ni riel escalar ni
+GridPosition 2D) — el decaimiento por distancia es una función pura que el llamador aplica antes
+de pasar la intensidad ya decaída al acumulador, evitando construir física espacial antes de que
+exista geometría real (Fase 5). Caso 17 en engine/src/validation/case-17-canon-de-riel-improvisado.test.ts:
+temporización de 3 bobinas en secuencia vía nodos delay ya validados (signals/), acumulación sin
+resetear entre bobinas, contraste con una bobina mal espaciada cuyo pulso decae a "sin efecto" y
+debilita el impacto final de "high" a "medium"; it.todo para daño cinético a tripulante (Fase 9,
+mismo criterio que casos 14/16). index.ts ampliado con la API del dominio kinetics y
+DomainEvent extendido con KineticDomainEvent. ORDEN_DE_TRABAJO.md actualizado: nota de cierre de
+Fase 3 ampliada a 17 casos (14 activos + 3 con alguna parte diferida), y notas nuevas bajo Fase 4
+(confirmar catálogo real de cable de cobre/núcleo ferromagnético), Fase 5 (revisar posición 2D
+cuando exista plano físico) y Fase 8/9 (partículas de los 2 fenómenos nuevos; resolver los it.todo
+de tripulante). Build, lint, prettier y toda la suite (129 tests + 4 it.todo) en verde.
+Razón: el operador identificó una mecánica emergente (aceleradores/coilguns) que el motor de
+señales+material ya permite ensamblar por composición pura pero no podía simular causalmente
+(campo magnético -> movimiento -> daño). Se implementó ahora, reabriendo el cierre de Fase 3, en
+vez de diferirse como backlog, por ser motor de reglas (GDD 5.2/5.6) del mismo tipo de trabajo que
+Fase 2/3 — no una feature de contenido que deba esperar a Fase 4+.
+
+2026-07-13 — Fase 4: catálogo de contenido (datos de GDD/Especificación).
+Detalle: transcripción de catálogos del GDD (7.2 componentes atómicos, 7.3-7.6 compuestos por arquetipo) y Especificacion de datos tecnico (5.4.1-5.4.3 elementos/compuestos quimicos) a tipos TypeScript inyectables en el motor. Estructura: 6 archivos de datos (.ts) + 2 builders + refactor de 3 tests Fase 3 (casos 7, 9, 12) para usar ids reales en lugar de fixtures locales. Engine/src/chemistry/catalog/ (element-catalog.ts 28 elementos, compound-catalog.ts 22 compuestos), engine/src/components/catalog/ (atomic-component-catalog.ts 20 atomicos, composite/{investigacion,guerra,exploracion,medica}.ts 69 compuestos totales), builders con orden de dependencia explícito (atómicos→compuestos-de-átomos→ensamblajes-complejos para evitar referencias colgantes). Decisiones de reconciliación: elementos sin tag químico existente usan INERTE + comentario narrativo (sodio, potasio, hierro, cobre, etc. — no se extiende ChemicalTag, criterio de Fase 2); sustancias sin definición GDD crean placeholders INERTE/Líquido (fluido-biologico, sustancia-medica-generica); compuestos sin receta se instancian como atómicos, no compuestos (elementos reutilizados como puros o placeholders); regeneración pasiva O2 diferida fuera de Fase 4 (comentario futuro en catálogo, requiere integración tick). Todos los 129 tests unitarios/integración en verde (17 casos validación, 114 unitarios repartidos entre dominios). Verificación cruzada: muestreo de 6 filas/catalogo contra GDD líneas citadas sin hallazgos.
+Razón: cerrar Fase 2 y Fase 3 del motor de reglas — las 16 validaciones ya pasan pero con fixtures sintéticas de prueba. Fase 4 materializa esos datos en estructuras reales tipadas (GDD 7.2, 5.4, Especif §1-3) que Fase 5+ (plano físico, mesa creación) consumirán vía inyección de dependencia (EntityRegistry). Dato reutilizable por contenido narrativo/crisis (Fase 10) sin ser acoplado a la lógica del motor.
+
+2026-07-13 — Fase 5: plano físico y renderizado mínimo (Tiled → engine → Phaser).
+Detalle: nuevo dominio engine/src/floorplan/ — tiled.types.ts (tipos mínimos del JSON de Tiled;
+el parser tolera capas extra para poder añadir tile layers visuales sin tocar código),
+floorplan.types.ts (ShipFloorplan/FloorplanSection/ConduitConnection/AnchorPoint; reutiliza
+SectionId de atmósfera y GridPosition/Footprint de geometry/ — principio 7, un solo sistema de
+posicionamiento), floorplan-parser.ts (guards a mano, espejo de blueprint-serializer.ts; px→celda
+validando alineación a 32px; la sección propietaria de un anclaje se deriva de su posición),
+floorplan-integrity.ts (solape de celdas, conductos entre secciones existentes y adyacentes por
+arista, apertura ∈ [0,1], anclajes dentro de sección, ids únicos), atmosphere-projection.ts
+(deriveAtmosphereModel: Section con volume = área en celdas + VentilationConnection desde los
+conductos kind=ventilacion — resuelve la nota PROVISIONAL de section.types.ts sin cambiar el tipo)
+y canonical-ships.ts (CANONICAL_SHIP_FLOORPLANS, parseo en carga de módulo). Los 4 mapas en
+floorplan/maps/nave-{investigacion,guerra,exploracion,medica}.json: formato JSON de Tiled
+(abribles/editables en Tiled), 40×22 celdas, 11 secciones por nave con espina común
+(puente/pasillo-central/soporte-vital/camarotes/esclusa/ingeniería) + 5-6 secciones de arquetipo
+(GDD 7.3-7.6); solo object layers (secciones/conductos/anclajes), sin tilesets — no existe pack de
+arte todavía. Riesgos autorados: polvorín de Guerra ventila solo vía armería; sala de aislamiento
+de la Médica sellada de fábrica (initialAperture 0). En Exploración, sala-hibernacion sustituye a
+camarotes (mismo rol, coherente con el arquetipo). 41 tests nuevos (parser, integridad,
+proyección con smoke de integración diffuse() de Fase 2 sobre secciones derivadas de un mapa real,
+y los 4 mapas como fixtures: 11 secciones, grafo de ventilación conexo, ≥2 anclajes/sección).
+/game: primer código real — Vite (dev/build/preview, alias engine→../engine/src para hot reload
+cross-workspace), index.html, main.ts (Phaser 1280×720 pixelArt), scenes/floorplan-scene.ts
+(visor estático, teclas 1-4 cambian de nave, leyenda de marcadores), render/floorplan-renderer.ts
+(Graphics: relleno por sección, paredes por arista no compartida, marcadores de conducto por tipo,
+válvula sellada visualmente distinta — principio 6, anclajes, etiquetas), render/palette.ts
+(colores placeholder data-driven) e i18n/{i18n,es,en}.ts (claves de traducción desde el principio,
+CLAUDE.md; fallback es→en→clave visible). Verificado con screenshots headless de las 4 naves.
+Decisiones con el operador: mapas generados por Claude (editables en Tiled después); grid 32×32 px
+(cierra GDD §17, constante GRID_CELL_SIZE_PX en geometry/); extensión .json (mismo formato .tmj,
+import directo); volumen = área en celdas; pipeline Vite (Electron queda para Fase 11); kinetics
+sin código nuevo — el helper de distancia 2D se difiere hasta el primer llamador (Fase 8/10),
+comentario actualizado en magnetic-field.ts. Arreglos colaterales preexistentes de Fase 4 que
+bloqueaban `npm run build`/`npm run lint` (nunca habían pasado por tsc, solo por Vitest):
+exports duplicados en index.ts, tipos rotos en los builders de catálogo (ReturnType de la factory
+en lugar de anotación manual incompleta), Recipe<ComponentId|ChemicalSubstanceId> estrechado a
+Recipe<ComponentId> en investigacion.ts (ninguna receta usa refs químicas), y casts `as any` /
+imports sin uso en tests de validación 7/9/12. Suite completa: 170 tests + 4 it.todo en verde;
+build y lint de los 3 workspaces en verde.
+SPRITES FALTANTES (aviso CLAUDE.md): no existe ningún asset. Se esperan en game/assets/sprites/
+tiles/ (suelo por sección, paredes) y ui/ (iconos de conducto/válvula/anclaje). Hasta elegir pack
+(GDD §17), todo el render usa placeholders Graphics generados por código.
+Razón: aterrizar la geometría real de las naves (GDD 15.1) que las notas PROVISIONAL de Fase 1/2
+esperaban, y establecer el primer punto de contacto motor→render (Vite+Phaser) sin romper la
+separación /engine sin Phaser (el render consume CANONICAL_SHIP_FLOORPLANS ya parseado).
+
+2026-07-13 — Fase 6: core loop (modo planificación/ejecución + colas de tareas con dependencias).
+Detalle: dos dominios nuevos en /engine. crew/ (actor mínimo: CrewActorId + sección + estado
+idle/busy/waiting — SIN tiers/afinidad/HP, que son Fase 9). tasks/: task.types.ts (CrewTask + máquina
+de estados explícita pending/in-progress/blocked/completed/cancelled/failed, TERMINAL_TASK_STATES,
+hook TaskEffect); task-factory.ts (createCrewTask, patrón Factory, valida duración>0 y resuelve
+duración por defecto); task-parameters.ts (TASK_BASE_DURATION_SECONDS data-driven por tipo, mismo
+criterio que REACTION_PARAMETERS, pendiente de modulación por tier en Fase 9); task-dependency-graph.ts
+(validateTaskDependencies con self/missing/circular + graphHasCycle DFS blanco/gris/negro, funciones
+puras espejo de signal-graph-integrity.ts); task-events.types.ts (CoreLoopDomainEvent: task-started/
+completed/blocked/cancelled/failed + core-loop-mode-changed, ganchos Observer para Fase 8);
+core-loop-mode.ts (CoreLoopModeMachine — máquina de modo explícita + driver genérico con registro de
+Tickable; en planning tick()=no-op reloj congelado GDD §4.2, en execution acumula elapsedSeconds y
+propaga TickContext; re-pausable GDD §4.5); task-scheduler.ts (TaskScheduler implements Tickable,
+clase con estado mismo patrón que HazardAccumulator/StructuralIntegrity — colas por actor + índice;
+enqueue valida grafo; linkDependency para "vincular" GDD §4.3 con revalidación de ciclos y rollback;
+tick en dos fases —A avanza/completa in-progress, B arranca/bloquea la siguiente— para que una
+dependencia completada libere a su dependiente en el mismo tick de forma determinista; cancel a mitad
+de tarea con cascada blocked+PlayerNotification para el jugador al repausar; efecto físico delegado al
+hook TaskEffect, diferido a Fases 7/9/10). index.ts: sección Fase 6 exportando la API de crew/ y
+tasks/, y DomainEvent extendido con CoreLoopDomainEvent (mismo patrón que KineticDomainEvent).
+Placeholder resuelto: eliminado crew-task-dependency.placeholder.types.ts y el campo
+crewTaskDependencies del schema de Blueprint (blueprint.types.ts, blueprint-serializer.ts destructuring
++ guard, export en index.ts, fixture de blueprint.test.ts, schemaVersion 1→2) — las colas/dependencias
+son estado de sesión runtime, no estado estático de la nave; serializar partidas en curso es
+save-system de Fase 11. Tests: 3 unitarios por archivo de lógica (core-loop-mode.test.ts,
+task-dependency-graph.test.ts, task-scheduler.test.ts) + caso de validación 14
+(case-14-cadena-montaje-presion.test.ts) reactivado de it.todo a integración real vía API pública:
+el Médico espera bloqueado a que el Ingeniero complete y arranca en el mismo tick, ciclo rechazado al
+vincular, y cancelación de dependencia → bloqueo + notificación al repausar. Suite: 193 tests + 3
+it.todo (bajó de 4; quedan 15 parcial/16/17-tripulante, todos Fase 9); build, lint y prettier de los
+3 workspaces en verde.
+Razón: implementar el core loop de campaña (GDD §4) — el modo planificación/ejecución y las colas de
+tareas con dependencias entre tripulantes que el motor de reglas (Fases 2-5) todavía no orquestaba, y
+que el caso 14 esperaba como it.todo desde Fase 3. Decisiones de alcance confirmadas con el operador:
+actor mínimo (tripulación completa = Fase 9), tareas abstractas + hook (efecto físico = Fases 7/9/10),
+driver genérico (cableado de subsistemas = Fase 10 integración end-to-end) y colas como estado runtime
+fuera del blueprint (corrige el placeholder PROVISIONAL_FASE_6 de Fase 1). El grafo de dependencias se
+construye como DAG por enqueue (deps preexistentes) y el ciclo solo es alcanzable vía linkDependency,
+la acción "vincular" del GDD §4.3 — ahí se rechaza con rollback sin efecto.

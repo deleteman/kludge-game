@@ -52,9 +52,20 @@ describe("chemistry: CombustionRule (GDD 5.3 + 5.5 modulada por O2)", () => {
 
   it("scales intensity with section O2", () => {
     const low = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "low" }));
+    const normal = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "normal" }));
     const high = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "high" }));
     expect(low.events[0]).toMatchObject({ kind: "combustion", intensity: "weak" });
+    expect(normal.events[0]).toMatchObject({ kind: "combustion", intensity: "standard" });
     expect(high.events[0]).toMatchObject({ kind: "combustion", intensity: "violent" });
+  });
+
+  it("scales blast radius and crew damage with section O2 (Espec. §1, caso 11)", () => {
+    const low = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "low" }));
+    const normal = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "normal" }));
+    const high = rule.apply(context([fuel], { ignitionPresent: true, oxygen: "high" }));
+    expect(low.events[0]).toMatchObject({ radius: "none", crewDamage: "none" });
+    expect(normal.events[0]).toMatchObject({ radius: "half-section", crewDamage: "medium" });
+    expect(high.events[0]).toMatchObject({ radius: "full-section", crewDamage: "high" });
   });
 
   it("an OXI substance enables violent combustion even in vacuum (caso 11)", () => {
@@ -63,7 +74,11 @@ describe("chemistry: CombustionRule (GDD 5.3 + 5.5 modulada por O2)", () => {
       oxygen: "none",
     });
     expect(rule.appliesTo(ctx)).toBe(true);
-    expect(rule.apply(ctx).events[0]).toMatchObject({ intensity: "violent" });
+    expect(rule.apply(ctx).events[0]).toMatchObject({
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "high",
+    });
   });
 });
 

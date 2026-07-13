@@ -22,6 +22,10 @@ export interface SignalNodeState {
   delayTarget: boolean | null;
   /** Segundos restantes hasta que el nodo delay adopte `delayTarget`. */
   delayRemainingSeconds: number;
+  /** Cuenta acumulada del contador (GDD 5.6, caso 5). Sin decremento automático. */
+  counterValue: number;
+  /** Último valor de la entrada de conteo, para detectar flanco de subida. */
+  counterPreviousInput: boolean;
 }
 
 export function createSignalNodeState(): SignalNodeState {
@@ -31,6 +35,8 @@ export function createSignalNodeState(): SignalNodeState {
     oscillatorPhaseSeconds: 0,
     delayTarget: null,
     delayRemainingSeconds: 0,
+    counterValue: 0,
+    counterPreviousInput: false,
   };
 }
 

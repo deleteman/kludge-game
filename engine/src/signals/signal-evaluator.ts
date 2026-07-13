@@ -58,6 +58,7 @@ export class SignalEvaluator<TOwnerRef = string> {
 
     const nextOutputs = new Map<SignalNodeId, boolean>();
     const latchTransitions: Array<{ nodeId: SignalNodeId; engaged: boolean }> = [];
+    const counterTransitions: Array<{ nodeId: SignalNodeId; count: number }> = [];
 
     for (const node of this.graph.nodes) {
       const nodeState = state.get(node.id);
@@ -78,9 +79,13 @@ export class SignalEvaluator<TOwnerRef = string> {
           port: edge.toPort,
         }));
         const latchBefore = nodeState.latchMemory;
+        const wasActive = previousOutputs.get(node.id) ?? false;
         output = rule.evaluate({ inputs, state: nodeState, tick, behavior });
         if (behavior.kind === "latch" && nodeState.latchMemory !== latchBefore) {
           latchTransitions.push({ nodeId: node.id, engaged: nodeState.latchMemory });
+        }
+        if (behavior.kind === "counter" && !wasActive && output) {
+          counterTransitions.push({ nodeId: node.id, count: nodeState.counterValue });
         }
       }
       nextOutputs.set(node.id, output);
@@ -99,6 +104,14 @@ export class SignalEvaluator<TOwnerRef = string> {
           kind: "signal-latched",
           nodeId: transition.nodeId,
           engaged: transition.engaged,
+          elapsedSeconds: tick.elapsedSeconds,
+        });
+      }
+      for (const transition of counterTransitions) {
+        this.emitter.emit({
+          kind: "counter-threshold-reached",
+          nodeId: transition.nodeId,
+          count: transition.count,
           elapsedSeconds: tick.elapsedSeconds,
         });
       }

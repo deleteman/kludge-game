@@ -1,0 +1,326 @@
+/**
+ * Catálogo de componentes compuestos — Nave de Guerra (GDD 7.4, líneas 413-430).
+ * 17 componentes funcionales (nivel 1 compuesto) + 1 ensamblaje complejo (Torreta automatizada, nivel 2).
+ */
+
+import type { ComponentId } from "../../physical-component.types.js";
+import type { FunctionalProperties } from "../../../properties/functional.types.js";
+import type { MaterialProperties } from "../../../properties/material.types.js";
+import type { Recipe } from "../../../composition/recipe.types.js";
+
+export interface CompositeComponentSpec {
+  readonly id: ComponentId;
+  readonly name: string;
+  readonly data: {
+    readonly functional?: FunctionalProperties;
+    readonly material?: MaterialProperties;
+  };
+  readonly recipe: Recipe<ComponentId>;
+}
+
+export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
+  {
+    id: "canon-laser" as ComponentId,
+    name: "Cañón láser",
+    data: {
+      functional: [{ tag: "ACT", power: 80, cadence: 5, directional: true }],
+      material: { CE: "A", RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "emisor-laser-baja-potencia" as ComponentId, quantity: 2 },
+        { ref: "lente-optica" as ComponentId, quantity: 2 },
+        { ref: "cable-cobre" as ComponentId, quantity: 3 },
+        { ref: "placa-disipadora" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "generador-escudo" as ComponentId,
+    name: "Generador de escudo",
+    data: {
+      functional: [
+        { tag: "ACT", power: 100, cadence: 2, directional: false },
+        { tag: "REC", threshold: 0.3, responseDelayMs: 50 },
+      ],
+      material: { CE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "cable-cobre" as ComponentId, quantity: 4 },
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 3 },
+        { ref: "bateria-celda-simple" as ComponentId, quantity: 2 },
+        { ref: "placa-disipadora" as ComponentId, quantity: 2 },
+      ],
+    },
+  },
+  {
+    id: "blindaje-reactivo" as ComponentId,
+    name: "Blindaje reactivo",
+    data: {
+      functional: [{ tag: "EST", damageResistance: 90, articulatedRange: undefined }],
+      material: { RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "plancha-metalica" as ComponentId, quantity: 3 },
+        { ref: "tornilleria-fijacion" as ComponentId, quantity: 6 },
+      ],
+    },
+  },
+  {
+    id: "torreta-automatizada" as ComponentId,
+    name: "Torreta automatizada",
+    data: {
+      functional: [
+        { tag: "EM", range: 18, triggerType: "motion", frequency: 2 },
+        { tag: "ACT", power: 80, cadence: 5, directional: true },
+      ],
+      material: { RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        // Ensamblaje complejo: se hace de compuestos, no átomos.
+        { ref: "sensor-movimiento-laser" as ComponentId, quantity: 1 },
+        { ref: "canon-laser" as ComponentId, quantity: 1 },
+        { ref: "motor-pequeno" as ComponentId, quantity: 2 },
+      ],
+    },
+    // Nota: nivel 2 (ensamblaje complejo), montaje de compuestos (sensor + láser + soporte articulado).
+  },
+  {
+    id: "reactor-alto-amperaje" as ComponentId,
+    name: "Reactor de alto amperaje",
+    data: {
+      functional: [{ tag: "RES", resourceType: "E", capacity: 300, dischargeRate: 50 }],
+      material: { CE: "A", CT: "B" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "bobina-cobre" as ComponentId, quantity: 4 },
+        { ref: "resistencia-electrica" as ComponentId, quantity: 3 },
+        { ref: "placa-disipadora" as ComponentId, quantity: 2 },
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 2 },
+      ],
+    },
+  },
+  {
+    id: "compuerta-blindada" as ComponentId,
+    name: "Compuerta blindada",
+    data: {
+      functional: [
+        { tag: "ACT", power: 70, cadence: 3, directional: false },
+        { tag: "EST", damageResistance: 80, articulatedRange: undefined },
+      ],
+      material: { RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "plancha-metalica" as ComponentId, quantity: 2 },
+        { ref: "motor-pequeno" as ComponentId, quantity: 1 },
+        { ref: "tornilleria-fijacion" as ComponentId, quantity: 4 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 2 },
+      ],
+    },
+  },
+  {
+    id: "sistema-comunicacion-cifrada" as ComponentId,
+    name: "Sistema de comunicación cifrada",
+    data: {
+      functional: [
+        { tag: "EM", range: 100, triggerType: "signal", frequency: 1 },
+        { tag: "REC", threshold: 0.3, responseDelayMs: 50 },
+      ],
+      material: { CE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 3 },
+        { ref: "cable-cobre" as ComponentId, quantity: 2 },
+        { ref: "cable-fibra-optica" as ComponentId, quantity: 1 },
+        { ref: "bateria-celda-simple" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "celda-energia-municion" as ComponentId,
+    name: "Celda de energía de munición",
+    data: {
+      functional: [{ tag: "RES", resourceType: "E", capacity: 120, dischargeRate: 20 }],
+      material: { CE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "bateria-celda-simple" as ComponentId, quantity: 3 },
+        { ref: "cable-cobre" as ComponentId, quantity: 2 },
+        { ref: "resistencia-electrica" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "panel-estructural-reforzado" as ComponentId,
+    name: "Panel estructural reforzado",
+    data: {
+      functional: [{ tag: "EST", damageResistance: 70, articulatedRange: undefined }],
+      material: { RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "plancha-metalica" as ComponentId, quantity: 2 },
+        { ref: "tornilleria-fijacion" as ComponentId, quantity: 4 },
+        { ref: "cable-cobre" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "extintor-militar" as ComponentId,
+    name: "Extintor militar",
+    data: {
+      functional: [{ tag: "RES", resourceType: "G", capacity: 100, dischargeRate: 15 }],
+      material: { RE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "tubo-rigido" as ComponentId, quantity: 1 },
+        { ref: "valvula-simple" as ComponentId, quantity: 1 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 2 },
+      ],
+    },
+    // Nota: contiene Nitrógeno (catálogo químico: nitrogeno).
+  },
+  {
+    id: "consola-mando-central" as ComponentId,
+    name: "Consola de mando central",
+    data: {
+      functional: [
+        { tag: "REC", threshold: 0.2, responseDelayMs: 30 },
+        { tag: "EM", range: 0, triggerType: "manual", frequency: 10 },
+      ],
+      material: { CE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 4 },
+        { ref: "cable-cobre" as ComponentId, quantity: 3 },
+        { ref: "plancha-metalica" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "radar-largo-alcance" as ComponentId,
+    name: "Radar de largo alcance",
+    data: {
+      functional: [
+        { tag: "EM", range: 50, triggerType: "radar", frequency: 2 },
+        { tag: "REC", threshold: 0.3, responseDelayMs: 100 },
+      ],
+      material: { CE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 2 },
+        { ref: "cable-cobre" as ComponentId, quantity: 2 },
+        { ref: "bateria-celda-simple" as ComponentId, quantity: 1 },
+        { ref: "placa-disipadora" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "motor-propulsion-combate" as ComponentId,
+    name: "Motor de propulsión de combate",
+    data: {
+      functional: [{ tag: "ACT", power: 150, cadence: 8, directional: true }],
+      material: { CE: "A", CT: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "motor-pequeno" as ComponentId, quantity: 3 },
+        { ref: "cable-cobre" as ComponentId, quantity: 4 },
+        { ref: "placa-disipadora" as ComponentId, quantity: 2 },
+        { ref: "chip-circuito-generico" as ComponentId, quantity: 1 },
+      ],
+    },
+  },
+  {
+    id: "reservorio-combustible-motor" as ComponentId,
+    name: "Reservorio de combustible de motor",
+    data: {
+      functional: [{ tag: "RES", resourceType: "L", capacity: 200, dischargeRate: 30 }],
+      material: { RE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "tubo-rigido" as ComponentId, quantity: 2 },
+        { ref: "valvula-simple" as ComponentId, quantity: 1 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 2 },
+      ],
+    },
+    // Nota: contiene Combustible de motor (catálogo químico: combustible-de-motor).
+  },
+  {
+    id: "kit-medico-basico" as ComponentId,
+    name: "Kit médico básico",
+    data: {
+      functional: [
+        { tag: "RES", resourceType: "L", capacity: 40, dischargeRate: 2 },
+        { tag: "REC", threshold: 0.5, responseDelayMs: 100 },
+      ],
+      material: { CE: "N" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "carcasa-plastica" as ComponentId, quantity: 1 },
+        { ref: "tubo-flexible" as ComponentId, quantity: 1 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 1 },
+      ],
+    },
+    // Nota: contiene Anestésico médico dosis baja (catálogo químico: anestesico-medico).
+  },
+  {
+    id: "cable-blindado-alto-amperaje" as ComponentId,
+    name: "Cable blindado de alto amperaje",
+    data: {
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 150 }],
+      material: { CE: "A", RE: "A" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "cable-cobre" as ComponentId, quantity: 2 },
+        { ref: "plancha-metalica" as ComponentId, quantity: 1 },
+        { ref: "tornilleria-fijacion" as ComponentId, quantity: 2 },
+      ],
+    },
+  },
+  {
+    id: "reservorio-propelente-municion" as ComponentId,
+    name: "Reservorio de propelente de munición",
+    data: {
+      functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 10 }],
+      material: { CE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "tubo-rigido" as ComponentId, quantity: 1 },
+        { ref: "valvula-simple" as ComponentId, quantity: 1 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 2 },
+      ],
+    },
+    // Nota: contiene Propelente/oxidante de munición (catálogo químico: propelente-oxidante-municion).
+  },
+  {
+    id: "reservorio-acido-bateria" as ComponentId,
+    name: "Reservorio de ácido de batería",
+    data: {
+      functional: [{ tag: "RES", resourceType: "L", capacity: 80, dischargeRate: 5 }],
+      material: { CE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "tubo-rigido" as ComponentId, quantity: 1 },
+        { ref: "valvula-simple" as ComponentId, quantity: 1 },
+        { ref: "junta-hermetica" as ComponentId, quantity: 2 },
+      ],
+    },
+    // Nota: contiene Ácido de batería (catálogo químico: acido-de-bateria).
+  },
+];

@@ -20,9 +20,17 @@ export interface NeutralizationEvent extends DomainEventBase {
 /** Intensidad de combustión según el O2 de la sección (GDD 5.5). */
 export type CombustionIntensity = "weak" | "standard" | "violent";
 
+/** Radio de propagación de la combustión/explosión según el O2 de la sección (Espec. §1, caso 11). */
+export type CombustionRadius = "none" | "half-section" | "full-section";
+
+/** Severidad de daño a tripulante dentro del radio de la explosión (Espec. §1, caso 11). */
+export type CrewDamageSeverity = "none" | "medium" | "high";
+
 export interface CombustionEvent extends DomainEventBase {
   readonly kind: "combustion";
   readonly intensity: CombustionIntensity;
+  readonly radius: CombustionRadius;
+  readonly crewDamage: CrewDamageSeverity;
 }
 
 export interface SpontaneousIgnitionEvent extends DomainEventBase {

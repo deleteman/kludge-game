@@ -4,12 +4,12 @@ import type { GasKey } from "./atmosphere-composition.types.js";
 /**
  * Sección de la nave a efectos de atmósfera (GDD 5.5).
  *
- * PROVISIONAL — mismo criterio que el schema de blueprint en Fase 1: la
- * geometría real de secciones y su adyacencia se autoran en Tiled y se exportan
- * en la Fase 5 (plano físico). Aquí solo modelamos lo que el motor de atmósfera
- * necesita ahora: identidad y volumen. Debe revisarse contra el plano real de
- * Fase 5 (una sección de Tiled tendrá además forma, celdas y puntos de anclaje
- * de ventilación); no asumir que esta forma es definitiva.
+ * Resuelto en Fase 5 (antes PROVISIONAL): la geometría real (forma, celdas,
+ * anclajes) vive en `floorplan/` autorada en Tiled, y esta `Section` es su
+ * PROYECCIÓN — `floorplan/atmosphere-projection.ts` la deriva del plano con
+ * `volume` = área en celdas (1 celda = 1 unidad, decisión del operador). El
+ * tipo se mantiene mínimo a propósito: el motor de difusión solo necesita
+ * identidad y volumen.
  */
 export type SectionId = Brand<string, "SectionId">;
 

@@ -61,7 +61,25 @@ export interface PassthroughBehavior {
   readonly kind: "passthrough";
 }
 
+/**
+ * Contador incremental con memoria (GDD 5.6, misma familia que latch/
+ * oscillator — caso de validación 5, "El Cañón que Aprende"). Cuenta flancos
+ * de subida de sus entradas de conteo (puerto "count", o sin puerto); activa
+ * su salida al alcanzar `threshold`. Un puerto "reset" explícito vuelve la
+ * cuenta a 0 — sin decremento automático, mismo criterio que `LatchRule`
+ * (sin regeneración gratuita de estado).
+ */
+export interface CounterBehavior {
+  readonly kind: "counter";
+  readonly threshold: number;
+}
+
 export type SignalBehavior =
-  GateBehavior | LatchBehavior | OscillatorBehavior | DelayBehavior | PassthroughBehavior;
+  | GateBehavior
+  | LatchBehavior
+  | OscillatorBehavior
+  | DelayBehavior
+  | PassthroughBehavior
+  | CounterBehavior;
 
 export const DEFAULT_SIGNAL_BEHAVIOR: PassthroughBehavior = { kind: "passthrough" };

@@ -2,7 +2,11 @@ import type { ChemicalSubstanceId } from "../../chemical-substance.types.js";
 import type { CombustionAtmosphere, ReactionContext } from "../reaction-context.types.js";
 import type { ReactionResult, ReactionRule } from "../reaction-rule.js";
 import { hasTag, anyReactantWithTag } from "../tag-predicates.js";
-import { COMBUSTION_INTENSITY_BY_OXYGEN } from "../reaction-parameters.js";
+import {
+  COMBUSTION_CREW_DAMAGE_BY_OXYGEN,
+  COMBUSTION_INTENSITY_BY_OXYGEN,
+  COMBUSTION_RADIUS_BY_OXYGEN,
+} from "../reaction-parameters.js";
 
 const COMBUSTION_RESIDUE_ID = "reaction:combustion-residue" as ChemicalSubstanceId;
 
@@ -55,6 +59,8 @@ export class CombustionRule implements ReactionRule {
         {
           kind: "combustion",
           intensity: COMBUSTION_INTENSITY_BY_OXYGEN[oxygen],
+          radius: COMBUSTION_RADIUS_BY_OXYGEN[oxygen],
+          crewDamage: COMBUSTION_CREW_DAMAGE_BY_OXYGEN[oxygen],
           elapsedSeconds: ctx.elapsedSeconds,
         },
       ],

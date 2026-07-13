@@ -5,6 +5,7 @@ import { LatchRule } from "./latch-rule.js";
 import { OscillatorRule } from "./oscillator-rule.js";
 import { DelayRule } from "./delay-rule.js";
 import { PassthroughRule } from "./passthrough-rule.js";
+import { CounterRule } from "./counter-rule.js";
 
 /**
  * Registro de reglas de señal por `kind` de behavior. El evaluador resuelve
@@ -18,6 +19,7 @@ export function createDefaultSignalRuleRegistry(): ReadonlyMap<SignalBehavior["k
     new OscillatorRule(),
     new DelayRule(),
     new PassthroughRule(),
+    new CounterRule(),
   ];
   return new Map(rules.map((rule) => [rule.kind, rule]));
 }
