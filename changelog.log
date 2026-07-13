@@ -1,0 +1,12 @@
+2026-07-13 — Fase 0: andamiaje del proyecto.
+Detalle: inicializado repo git; creados workspaces npm /engine, /game, /electron con package.json propios;
+tsconfig.base.json compartido (strict:true); ESLint (typescript-eslint) + Prettier en la raíz; Vitest configurado
+en /engine con un test de humo. /engine sin dependencias de runtime (sin Phaser ni Electron). /game depende de
+phaser@^3.90.0 y phaser3-rex-plugins@^1.80.20 (Phaser 3, no 4, según CLAUDE.md). /electron depende de
+electron@^43.1.0. Build/test/lint verificados en verde sobre los tres workspaces.
+Razón: punto de partida limpio para Fase 1 (modelo de datos del motor), respetando el principio de motor
+desacoplado del renderizado (CLAUDE.md, Observer/eventos entre /engine y /game).
+Nota: npm audit reporta 2 vulnerabilidades moderadas heredadas de phaser3-rex-plugins -> i18next-http-backend
+(path traversal en carga de traducciones vía HTTP, GHSA-q89c-q3h5-w34g). No corregible sin que el paquete
+upstream actualice su dependencia; riesgo bajo en este contexto (juego standalone sin fetch de traducciones
+remotas, localización propia por sistema de claves). Revisar en próximas actualizaciones del paquete.
