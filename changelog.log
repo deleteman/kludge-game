@@ -222,3 +222,2137 @@ driver genérico (cableado de subsistemas = Fase 10 integración end-to-end) y c
 fuera del blueprint (corrige el placeholder PROVISIONAL_FASE_6 de Fase 1). El grafo de dependencias se
 construye como DAG por enqueue (deps preexistentes) y el ciclo solo es alcanzable vía linkDependency,
 la acción "vincular" del GDD §4.3 — ahí se rechaza con rollback sin efecto.
+
+2026-07-13 — Actualización de plan: integración de arte y tile layers añadida como punto 1 de Fase 8.
+Detalle: se detectó (pregunta del operador) que el render de tile layers y la integración del pack
+de pixel art no estaban adjudicados a ninguna fase — Fase 5 los dejó explícitamente fuera y GDD §17
+los tenía como pendiente sin dueño. Añadido a ORDEN_DE_TRABAJO.md Fase 8 con las decisiones de
+pipeline tomadas con el operador: (1) tileset atlas único (un solo PNG, tiles por índice + tint
+sobre escala de grises) — NO un PNG por elemento; (2) los gráficos del mapa se autoran en Tiled y
+se cargan desde el propio JSON del mapa, con tileset embebido ("Embed in map"), consumido por el
+loader de tilemaps de Phaser en /game — el parser de /engine no cambia (solo object layers);
+(3) iconos de UI sí como archivos propios en game/assets/sprites/ui/ (o spritesheet si el pack lo
+trae); (4) la elección del pack y su licencia es decisión del operador. Sin cambios de código.
+Razón: evitar deuda silenciosa — el comportamiento actual (Tiled no renderiza tiles pintados por
+el usuario) es esperado en Fase 5, pero necesitaba una fase dueña y una decisión explícita de
+pipeline de assets antes de que alguien autoare arte con una convención incompatible.
+
+2026-07-13 — Fase 7: mesa de creación (GDD 10.1).
+Detalle: dominio nuevo engine/src/workbench/ (10 archivos + 10 tests), extensión de lo ya validado
+en Fases 1-6, sin diseño nuevo. Punto 1 (grid de composición espacial): workbench-state.types.ts
+(WorkbenchState/WorkbenchPiece, solape de piezas con el mismo criterio de
+floorplan-integrity.ts::overlapping-section-cells) + workbench-signal-adapter.ts (addSignalNode/
+connectNodes sobre SignalGraph<WorkbenchPieceId> — mismo tipo genérico que Blueprint.signalGraph,
+sin nodo/arista nuevos, mismo lenguaje "nodo A → nodo B" que el plano). Punto 2 (footprint, nombrado,
+validación de instalación): footprint-calculator.ts calcula el bounding box real considerando
+rotación por pieza (nunca un valor fijo de receta, lanza WorkbenchError en vez de devolver un
+resultado indefinido si la mesa está vacía); creation-recipe-builder.ts arma la Recipe agregando
+piezas repetidas por quantity (mismo criterio que el catálogo de Fase 4); creation-naming.ts
+reutiliza la CompositionFactory genérica ya usada por buildComponentCatalog para registrar la
+creación como PhysicalComponentDefinition compuesto nuevo. CompositeComponentData
+(components/physical-component.types.ts) gana un campo opcional footprint? (retrocompatible) para
+guardar ese resultado. installation-validation.ts valida contra la forma REAL de la sección (no solo
+su bounding box — secciones en L) y contra otros componentes ya instalados; installation.ts orquesta
+rotación (solo del rectángulo exterior) → validación → Blueprint inmutable con la instancia agregada.
+Punto 3 (conexión externa de puertos): port-wiring.ts traduce los nodos locales de la mesa a nodos
+globales del plano (misma instancia instalada = misma "caja negra", sin re-derivar posiciones
+internas por rotación), los incorpora al signalGraph del blueprint (mergeInstalledSignalGraph,
+primera implementación de "editar el signalGraph de un Blueprint ya instanciado" — Fase 5 solo hizo
+render estático), y expone/cablea puertos externos como paso aparte y explícito (wireExternalPort) —
+instalar nunca conecta automáticamente, verificado con un chequeo negativo en el test de integración.
+Housekeeping: comentarios actualizados en geometry/grid-position.types.ts y blueprint/blueprint.types.ts
+que decían "pendiente de Fase 7"; exports nuevos en index.ts. Tests: workbench.integration.test.ts
+cierra el caso end-to-end colocar → nombrar → instalar → cablear puerto externo. Suite: 44 tests
+nuevos (237 tests + 3 it.todo totales, sin cambios en los diferidos); build, lint y test de los 3
+workspaces en verde.
+Razón: dar el mecanismo de mesa de creación (GDD 10.1) que Fase 6 dejó como hueco explícito en el
+hook TaskEffect (combine/install/connect). Decisiones de alcance confirmadas con el operador antes
+de implementar: sin bump de schemaVersion de blueprint (PlacedFootprint alcanza tal cual); el
+footprint de un compuesto nacido en la mesa vive en el nuevo campo opcional
+CompositeComponentData.footprint, no en una estructura paralela; el hook TaskEffect de Fase 6 se
+difiere a Fase 10 (Fase 7 entrega el dominio de la mesa, independiente de tasks/); la rotación al
+instalar afecta solo el rectángulo exterior (se difiere a Fase 8 si hiciera falta visualizar el
+interior rotado); piezas repetidas se agregan en un solo RecipeIngredient con quantity sumada; la
+mesa es una estructura de datos nueva (WorkbenchState), no un Blueprint en miniatura; las piezas
+siempre entran intactas a la mesa (desarmar es la tarea dismantle, previa y separada).
+
+2026-07-14 — Fase 8: feedback visual (partículas, flujo en conductos, salto de tripulantes; parcial).
+Detalle: primer consumidor real de los DomainEvent del motor en /game. Dominio nuevo
+game/src/particles/ (Strategy, mismo criterio que signals/rules/ y chemistry/reaction/ en /engine):
+particle-effect.types.ts distingue dos categorías de fenómeno — EventDrivenEffect (burst puntual,
+enganchado a EventEmitter<DomainEvent> por kind) y StateDrivenEffect (continuo, leído por frame, sin
+evento dedicado). Fenómeno de referencia: combustion-effect.ts (llamas + humo + luz parpadeante vía
+Phaser Point Light, intensidad/color según CombustionEvent.intensity/radius) — fija el patrón
+(particle-utils.ts: toPixel/spawnBurst/spreadRange) que replican 8 efectos event-driven más:
+overload-effect.ts (3 failureMode = 3 fenómenos distintos: chispas/llamarada/explosión),
+spontaneous-ignition-effect.ts, neutralization-effect.ts, structural-degraded-effect.ts (corrosión
+activa vs. fallo estructural completo, distintos a propósito), hazard-effect.ts (nube tóxica vs.
+vapor ácido, mismo HazardEvent con kind distinto), kinetics-effect.ts (estela magnética + impacto
+cinético direccional, extensión docs/Extension_aceleracion_magnetica.md §4). effect-registry.ts:
+único mapa DomainEvent["kind"]→efecto (Factory). Efectos state-driven con gancho real de motor:
+conduit-flow-effect.ts (intensidad/dirección se las calcula quien conoce el estado real — Fase 10,
+no se inventa aquí) y atmosphere-state-effects.ts (fuga de gas/congelación/vapor por calor, leyendo
+SectionAtmosphere.gases/temperatureCelsius). "Derrame de líquido" (fila de GDD 11.1) queda sin
+implementar y señalado explícitamente: /engine no modela ningún estado de líquido-en-piso — no se
+inventó uno para no decidir por el operador un cambio de motor fuera de alcance de /game.
+game/src/crew/hop-movement.ts: salto parabólico real (offset = 4·h·p·(1−p) sobre el tiempo, no
+senoidal), 3 cadencias (normal/urgente/herido) + "firma de salto" reutilizable para enemigos
+(blindado/ágil), squash&stretch. game/src/scenes/particle-gallery-scene.ts: escena solo-dev (tecla G
+desde FloorplanScene, ESC para volver) que dispara manualmente cada DomainEvent + los 4 fenómenos
+state-driven + el demo de salto sobre un plano ya renderizado — sustituye al driver real de Fase 10,
+que todavía no existe. game/assets/sprites/{tiles,ui,components,crew}/ creadas (con .gitkeep) para
+cuando el operador entregue el pack de pixel art elegido — la integración de tile layers en los 4
+mapas de Tiled queda pendiente de ese asset, sin código adicional posible mientras no exista.
+Verificación: build de los 3 workspaces + lint global + 237 tests de /engine en verde; game/dev
+levantado sin errores de runtime. Sin smoke tests automatizados en /game (decisión del operador): no
+había ningún test runner instalado en ese workspace y la verificación "headless" de Fase 5 resultó
+ser manual/no reproducible al auditarla — se optó por no agregar una dependencia nueva y verificar
+con npm run dev -w game + la galería dev.
+Razón: cerrar el hueco que Fase 2-3 dejaron señalado a propósito (cada regla del motor emite su
+evento pero /game nunca se suscribió) y dar el primer "game feel" real antes del capítulo de campaña
+de punta a punta (Fase 10). Alcance cerrado en esta sesión: fenómenos con DomainEvent o estado de
+motor confirmado (10 de 11 filas de GDD 11.1 + las 2 de la extensión cinética) y el sistema de salto.
+Pendiente explícito, no fase cerrada del todo: integración de tile layers (bloqueada por decisión de
+pack del operador) y el gancho de "derrame de líquido" (requiere extender /engine, fuera de este
+cambio).
+
+2026-07-14 — Fase 8 (cont.): carga real de tile layers.
+Detalle: el operador colocó game/assets/sprites/tiles/tileset-nave.png y pintó tile layers
+(background/objects/walls) + tileset embebido ("interior") en engine/src/floorplan/maps/nave-
+exploracion.json vía Tiled, pero nada en /game los cargaba todavía (FloorplanScene no tenía
+preload(); floorplan-renderer.ts seguía siendo 100% Graphics procedural) — los tiles no se veían
+por eso, no por un problema del JSON. Implementado: alias `engine-maps` nuevo (vite.config.ts +
+tsconfig.json paths) apuntando a engine/src/floorplan/maps/, separado a propósito del alias
+`engine` existente — mismos 4 JSON, dos lectores distintos (el parser lógico de /engine, que solo
+lee object layers, y el parser de tilemaps de Phaser, que lee las tile layers). game/src/render/
+tile-layer-registry.ts importa los 4 JSON con `?url` (Vite) para pasárselos a
+`scene.load.tilemapTiledJSON`; game/src/render/tile-layers.ts (createTileLayers) construye el
+Tilemap de Phaser y sus capas solo si el mapa del arquetipo trae tileset (map.tilesets.length > 0)
+— si no, devuelve [] y floorplan-renderer.ts cae al fallback de Graphics de Fase 5, sin dejar un
+hueco en blanco; si el tileset existe pero no matchea el nombre esperado ("interior"), un
+console.warn señala la desincronización en vez de fallar en silencio. FloorplanScene.preload()
+carga los 4 mapas + el PNG del tileset una sola vez; game/src/vite-env.d.ts nuevo (referencia a
+vite/client) para que TS tipe los imports `?url`/PNG. Verificación: build+lint de los 3 workspaces
+en verde, npm run dev -w game confirmado sirviendo tileset PNG y los 4 JSON con HTTP 200 (vía curl,
+sin browser tool disponible para captura de píxeles — verificación visual final queda en manos del
+operador, mismo criterio ya acordado para toda la Fase 8).
+Razón: cerrar el punto 1 de Fase 8 en cuanto el operador entregó el asset, sin esperar a que las
+otras 3 naves tuvieran tile layers — el mismo código sirve para las 4 apenas se pinten, por eso no
+se marca la fase como completamente cerrada todavía (solo Exploración tiene arte real hoy).
+
+2026-07-14 — Fase 9: Tripulación (completa).
+Detalle: modelo completo de tripulante en engine/src/crew/ — CrewSpecialty/CrewTier/
+PersonalityTrait nuevos, CrewActor (Fase 6) extendido con name/specialty/tier/trait/hp/maxHp sin
+romper CrewActorId/CrewActorStatus (TaskScheduler.getActor pasa a devolver el tipo más angosto
+SchedulerActorSnapshot en vez de un CrewActor completo, para no acoplar el scheduler al perfil
+completo del tripulante). crew-affinity.ts (GDD 6.6: multiplicador de duración por tier dentro de
+la afinidad propia vs. penalización general +20% fija fuera de ella) y atomic-recovery.ts (GDD 6.5:
+recuperación atómica por tier + bonus del Ingeniero + penalización por RE baja) como tablas
+data-driven, mismo criterio que REACTION_PARAMETERS. crew-roster.ts modela selección pre-misión
+(GDD 6.2) solo como datos (roster + capacidad por arquetipo) — la UI queda para Fase 10, decisión
+tomada con el operador. hp-resolution.ts unifica las dos fuentes de daño a tripulante que ya
+emitían severidad sin resolver HP (CrewDamageSeverity de combustión y KineticDamageSeverity de
+impacto cinético) contra un CrewActor.hp real, decidiendo permadeath (GDD 6.1) y emitiendo
+CrewDomainEvent (crew-damaged/crew-death, nuevo, sumado al union DomainEvent de index.ts). Banco de
+frases de personalidad (GDD 6.7.1): los 5 rasgos completos (no 1-2 como sugería el plan original,
+decisión tomada con el operador porque el contenido ES ya estaba escrito en el GDD) transcritos
+como namespace crew.bark.<trait>.<eventType>.<n> en game/src/i18n/es.ts/en.ts; bark-bank.ts en el
+motor solo resuelve la clave/rotación (barkKey/pickBarkIndex), sin disparador real todavía (se
+cablea en Fase 10). Muertes gráficas: game/src/particles/effects/crew-death-effect.ts, registrado
+en effect-registry.ts como "crew-death"/"crew-damaged", reutiliza la infraestructura de partículas
+de Fase 8 pero con una variante visual propia por causa sobre el cuerpo del tripulante —ajuste
+pedido explícitamente por el operador sobre la redacción literal de GDD 6.8—: fuego/explosión/
+impacto cinético letal con salpicado de sangre, frío extremo con cristalización+fragmentación,
+corrosión con disolución progresiva del sprite completo (distinta de las picaduras superficiales de
+structural-degraded-effect.ts), electrocución con arco+colapso rígido. crew-hp-to-cadence.ts
+conecta el HP real a la cadencia "herido" de hop-movement.ts (Fase 8), que esperaba este gancho.
+Cerrados los 3 it.todo pendientes: caso 15 (coste de tiempo + recuperación por tier del Ingeniero al
+desmontar), caso 16 (afinidad de Piloto vs. penalización +20%, el archivo era un placeholder vacío)
+y caso 17 (daño cinético a tripulante con permadeath). 253 tests en verde, 0 it.todo restantes;
+build y lint de los 3 workspaces en verde.
+Razón: cerrar el círculo que Fases 6/7/8 dejaron deliberadamente abierto (comentarios "ancla" en
+crew-actor.types.ts, task-parameters.ts, task-factory.ts y hop-movement.ts apuntaban exactamente a
+este punto de enganche) y dar cuerpo real al tripulante antes de la primera crisis jugable de punta
+a punta (Fase 10), que es donde se cablean los disparadores reales de barks y la UI de selección
+pre-misión que Fase 9 dejó como modelo de datos puro.
+
+2026-07-14 — Fase 8 (reapertura puntual): manchas de sangre persistentes + arte real de partículas.
+Detalle: el operador pidió que las muertes con sangre (fuego/explosión/impacto cinético) dejen
+rastro visual sobre el suelo — gotas que se desvanecen con el tiempo + un charco grande y más
+duradero donde murió el tripulante — y, al colocar un pack real de texturas de partículas en
+game/assets/sprites/particles/*.png (dirt/scorch/spark/flame/fire/smoke/circle/trace/flare,
+imágenes de un solo color con alpha para tintar en runtime, mismo principio que __WHITE con formas
+reales), pidió integrar el pack completo en el resto de efectos existentes, no solo en sangre.
+Confirmado que esto es distinto del "derrame de líquido" de GDD 11.1 que Fase 8 dejó señalado como
+fuera de alcance (ese requiere estado de líquido-en-piso nuevo en /engine); esto es 100% cosmético,
+disparado por eventos que ya existen. Nuevo game/src/render/render-depths.ts (RENDER_DEPTH) ancla
+la profundidad de render por NOMBRE de tile layer de Tiled (background/objects/walls, confirmado
+contra engine/src/floorplan/maps/*.json) en vez de depender del orden de inserción implícito que
+tenían floorplan-renderer.ts/tile-layers.ts — con aviso si aparece una tile layer sin depth
+conocido; "secciones" (capa de objetos de Tiled) se descartó como ancla porque solo la lee el
+parser lógico de /engine, nunca se renderiza como objeto de Phaser. Nuevo game/src/particles/
+particle-texture-registry.ts (mismo patrón que tile-layer-registry.ts, precargado en
+FloorplanScene.preload()) con 2-3 variantes por familia de textura (no las ~10 de cada carpeta).
+particle-utils.ts gana spawnDecal (mancha estática con ciclo aparición→sostenido→desvanecimiento→
+destrucción — distinta de spawnBurst, que es un emisor efímero sub-segundo y no servía para un
+decal persistente), textureScale (conversión px→scale, la fuente real es ~512px vs. los 4px de
+__WHITE) y pickTexture (Phaser no soporta múltiples texturas standalone por emisor, solo múltiples
+frame de una misma textura/atlas — la variedad se resuelve eligiendo una variante al azar por
+burst/instancia, no por partícula individual). Los 10 efectos existentes migrados a texturas reales
+sin tocar su lógica (combustion, overload —+ nuevo decal de quemadura persistente con scorch_01
+para fire/explosion—, hazard, neutralization, spontaneous-ignition, kinetics, structural-degraded,
+atmosphere-state-effects, conduit-flow, crew-death). crew-death-effect.ts gana bloodDecals (charco
+con dirt-03 + 5 gotas con dirt-01/02, solo para fuego/explosión/impacto cinético) y goreSplatter/
+crewDamageFlash/frozenShatter/fullBodyDissolve/rigidCollapse migrados a texturas reales (círculo
+para hielo, humo para disolución por corrosión, spark para el arco de electrocución). Sin cambios
+en /engine ni en effect-registry.ts (el enganche por DomainEvent.kind ya existía). 253 tests en
+verde sin regresión, build y lint de los 3 workspaces en verde.
+Razón: dar legibilidad visual real (principio 6 CLAUDE.md) a un sistema que hasta ahora comunicaba
+todos los fenómenos con la misma forma (un cuadrado blanco tintado) — el pack de arte ya existía
+en el proyecto sin usar, y el pedido puntual de sangre fue la oportunidad para dejar de postergar
+la integración completa en vez de tocar un solo efecto y dejar el resto desactualizado.
+
+2026-07-14 — Fase 9.5: menú principal y flujo de meta-juego.
+Detalle: nuevo dominio engine/src/save/ — CampaignSaveState (reutiliza Blueprint tal cual como
+shipState, GDD 15.4; chapterProgress marcado PROVISIONAL sin catálogo de capítulos todavía) y
+CustomCreation (tercer formato serializable para creaciones nombradas de la mesa), ambos con
+serializer de guards a mano (mismo patrón que blueprint-serializer.ts) + tests de round-trip e
+integridad; engine/src/floorplan/initial-ship-state.ts (INITIAL_SHIP_STATE_BY_ARCHETYPE, kit
+mínimo hardcodeado, placeholder documentado hasta que exista modo dev real en Fase 11). /electron
+reescrito desde el shell vacío: BrowserWindow con contextIsolation, preload.ts con contextBridge
+(kludgeSave/kludgeSettings), IPC handlers sobre SaveFileStore (namespaces saves/campaigns y
+saves/creations + settings.json en app.getPath('userData')); scripts dev/start nuevos. /game gana
+game/src/meta/ (MetaGameStateMachine con tabla de transiciones explícita, SceneFlowManager —
+opera sobre un ScenePlugin real porque SceneManager no expone start/launch/pause en los typings de
+esta versión de Phaser—, CampaignSession, save-adapter con fallback en memoria si no hay Electron),
+rexUI registrado por primera vez en main.ts (plugin + scale.FIT) con capa de widgets Kenney
+(kenney-button/panel/list, fuente TTF vía FontFace API), BootScene nueva (arranca el flujo) y 9
+escenas nuevas: title/credits/archetype-select/crew-select/pause-menu/options/crisis-result/
+creative-hub/creative-workbench. Mesa de creación visual completa (workbench-renderer.ts, hermano
+de floorplan-renderer.ts) con colocar (click-catálogo→click-grid), cablear (nodo por defecto por
+pieza, simplificación documentada frente al GDD 10.1), nombrar/guardar e instalar en el plano,
+reutilizando el dominio workbench/ ya existente sin duplicar lógica. 265 tests en verde (12 nuevos
+de /engine/save/), build y lint de los 3 workspaces en verde. Verificado con tsc + vite build +
+dev server (todos los módulos nuevos transforman sin error) — sin browser headless disponible en
+este entorno para probar la interacción real del canvas, mismo caveat que Fases 5/8.
+Razón: decisión explícita del operador de adelantar el sistema de guardado real (originalmente
+previsto para Fase 11) a esta fase, porque sin persistencia real el flujo de meta-juego no se
+puede probar de punta a punta; sin Fase 9.5 completa, la Fase 10 (primer capítulo jugable)
+quedaría sin la envoltura de meta-juego que un jugador real experimentaría.
+
+2026-07-14 — Fase 10a: dominio de Crisis en el motor + contenido del capítulo 1 ("Primer Aviso").
+Detalle: Fase 10 completa (docs/Primeras_8_crisis.md capítulo 1 jugable de punta a punta) se parte
+en sub-fases formales (10a-10f) por decisión explícita del operador, dado que integra casi todo lo
+diferido desde Fase 2 (driver de tick real, TaskEffect real, barks, UI de juego real) — cada
+sub-fase se cierra, documenta y revisa antes de la siguiente. Esta entrega es solo 10a: el dominio
+de Crisis como tal, sin el driver que lo conecta al TaskScheduler (10b) ni el estado inicial de
+nave real (10c) ni la UI (10d-10f).
+Nuevo campo `PlacedComponentInstance.condition` ("ok"|"jammed"|"destroyed", blueprint/
+blueprint.types.ts) — schemaVersion 2→3 de Blueprint, migración automática a "ok" en el
+deserializador para saves pre-existentes. Campo genérico y reutilizable por decisión explícita del
+operador (no estado oculto local a una crisis), consumido primero por el capítulo 1 pero
+disponible para cualquier crisis futura con un componente roto/atascado sin volver a tocar el
+schema. `ChapterProgressState.currentChapterId`/`completedChapterIds` (save/campaign-save.types.ts)
+pasan de string libre a `CrisisDefinitionId` tipado — schemaVersion 1→2 de CampaignSaveMetadata —
+resuelto por engine/src/crisis/campaign/chapter-registry.ts.
+Nuevo dominio engine/src/crisis/: máquina de estados explícita (not-triggered→active→
+resolved-success|resolved-failure|resolved-partial, crisis-state.types.ts, mismo criterio que
+TaskState); CrisisDefinition data-driven (GDD §15.3 — trigger/timer/resolución/consecuencia como
+datos, no lógica) con evaluateCrisis() puro (crisis-machine.ts, no conoce TaskScheduler ni
+Tickable, eso es 10b); Strategy de reglas de trigger/resolución (crisis-rule.ts, mismo patrón
+"¿aplica? → aplica" que ReactionRule/SignalRule) con registro por kind (rules/
+crisis-rule-registry.ts); dos reglas concretas del capítulo 1: jammed-actuator-blocks-section
+(trigger) y replacement-installed-connected (resolución, identidad por posición de anclaje — cubre
+tanto reparar in-situ como sustituir por una pieza nueva con la misma regla). Contenido del
+capítulo 1 en crisis/campaign/chapter-01-primer-aviso.ts: válvula simple (valvula-simple, GDD 7.2)
+atascada bloqueando bodega-carga, sin timer (sin amenaza real, "temporizador suave" del diseño),
+resoluble reinstalando valvula-simple o motor-pequeno (pieza equivalente citada en el diseño) en
+la misma posición. 21 tests nuevos (crisis-machine.test.ts, rules/crisis-rules.test.ts,
+campaign/chapter-01.test.ts) — 286 tests en verde (sin regresión), build y lint de los 3
+workspaces en verde.
+Razón: GDD §15.3 pide que cada crisis sea contenido declarativo (trigger, temporización,
+condiciones de resolución) y ese dominio no existía en /engine todavía; Fase 9/9.5 dejaron el seam
+explícitamente marcado PROVISIONAL a la espera de este momento. Empezar por el dominio puro (sin
+UI ni driver) permite fijar el contrato (campo `condition` compartido) que las sub-fases 10b-10d
+van a consumir, antes de construir sobre un diseño que podría cambiar.
+Nota: `condition`/anchorPosition del capítulo 1 son un contrato con 10c — el estado inicial de
+nave de Exploración debe colocar una instancia de valvula-simple con `condition: "jammed"`, el
+instanceId `capitulo-1-valvula-atascada` y posición {x:6,y:4} exactamente, o el trigger/resolución
+de este capítulo nunca se satisfacen; documentado como comentario en el propio archivo de
+contenido, no solo aquí.
+
+2026-07-14 — Fase 10b: driver de simulación real (TaskEffect) + CrisisRuntime.
+Detalle: alcance acotado por decisión explícita del operador respecto al roadmap original de Fase
+10 — solo lo que el capítulo 1 ejercita, no los 5 dominios del motor. Química/atmósfera/fallo/
+cinética/señales NO se adaptan a Tickable en esta sub-fase; se agregan recién en la sub-fase que
+implemente el capítulo que las necesite (2 señales, 4 atmósfera/material, 5 fallo, 8 cinética),
+mismo criterio ya aplicado a las cicatrices persistentes en 10a.
+`CrewTask` (tasks/task.types.ts) gana `payload?: TaskPayload` — unión discriminada
+DismantleTaskPayload/InstallTaskPayload/ConnectTaskPayload, los tres tipos que el capítulo 1
+ejercita; `transport`/`combine` quedan sin payload hasta que la mesa de creación entre al core
+loop. `task-factory.ts` lo propaga sin tocarlo. Nuevo dominio engine/src/mission/:
+`MutableShipState` (mutable-ship-state.ts, caja mutable sobre el `Blueprint` vivo de la misión —
+única fuente de verdad compartida entre el efecto de tareas y el runtime de crisis, que no se
+conocen entre sí, ninguno importa al otro); `createShipTaskEffect` (ship-task-effect.ts, el
+`TaskEffect` real que Fase 6 dejó como no-op: `dismantle` limpia la instancia y todo lo que la
+referenciaba —nodos de señal propios, edges colgantes de esos nodos, contenido de reservorio— para
+no dejar referencias colgantes que `assertBlueprintIntegrity` rechazaría en el primer guardado;
+`install` agrega la instancia nueva con `condition: "ok"` sin cablear, mismo criterio que
+`workbench/installation.ts` —GDD 10.1 párrafo 7, instalar no conecta automáticamente—; `connect`
+reutiliza `workbench/port-wiring.ts::wireExternalPort` tal cual, sin duplicar lógica); `CrisisRuntime`
+(crisis-runtime.ts, adaptador `Tickable` que envuelve `evaluateCrisis` de 10a sobre el `Blueprint`
+vivo cada tick y emite sus eventos, se registra en `CoreLoopModeMachine.registerTickable` junto al
+`TaskScheduler` — la pausa congela ambos con la misma palanca). 14 tests nuevos: task-factory.test.ts
+(duración/payload passthrough, sin test dedicado hasta ahora), mission/ship-task-effect.test.ts,
+mission/crisis-runtime.test.ts, y mission/chapter-01-mission.integration.test.ts — el capítulo 1
+resuelto de punta a punta a través del pipeline real (CoreLoopModeMachine→TaskScheduler→
+TaskEffect→CrisisRuntime), no invocando evaluateCrisis a mano como en el test de 10a. 55/55 tests
+en verde en los dominios que toca esta sub-fase (crisis/, mission/, tasks/); build y lint de los 3
+workspaces en verde.
+Hallazgo durante la verificación: el operador ya había empezado a autorar el capítulo 1 en Tiled en
+paralelo (nave-exploracion.json, capa anclajes, objeto "valvula-simple-1" con propiedades custom
+condition=jammed/instanceId=capitulo-1-valvula-atascada, en la celda (6,6)) — se corrigió
+`CHAPTER_01_ANCHOR_POSITION` de (6,4) a (6,6) para coincidir con el WIP real. Ese anclaje no tiene
+todavía la propiedad `id` que `floorplan-parser.ts::parseAnchors` exige, lo que rompe el parseo de
+las 4 naves canónicas y, en cadena, toda la suite que importa `index.ts` (validation/*,
+canonical-ships, installation.test, index.test — no relacionado a 10b). Por decisión explícita del
+operador se dejó sin tocar (lo completa él en Tiled); la suite completa (`npm test -w engine`) no
+corre en verde hoy por ese motivo ajeno a esta sub-fase. Nota adicional para 10c: la capa
+`anclajes` de Fase 5 solo captura `id`/posición/sección — las propiedades custom `condition`/
+`instanceId` que el operador ya agregó no las lee ningún parser todavía; conectar "anclaje
+autorado en Tiled" → `PlacedComponentInstance` real con esas propiedades es trabajo de 10c.
+Razón: Fase 6 dejó `TaskEffect` deliberadamente vacío y el driver de `CoreLoopModeMachine` sin más
+registro que el propio `TaskScheduler`, a la espera de este momento; sin esta sub-fase, el
+capítulo 1 quedaba resuelto solo "a mano" en los tests de 10a, no a través del loop real que un
+jugador experimentaría (planificar tareas → jugar → ver la crisis resolverse).
+
+2026-07-14 — Fase 10c: estado inicial de nave para el capítulo 1, por arquetipo.
+Detalle: mientras se cerraba 10b, el operador ya había empezado a autorar el capítulo 1 en Tiled en
+paralelo (nave-exploracion.json, capa anclajes, objeto "valvula-simple-1" con propiedades custom
+condition=jammed/instanceId=capitulo-1-valvula-atascada) y terminó de completarlo agregando la
+propiedad `id` que faltaba (confirmado: los 300 tests que dependían del parseo de las 4 naves
+canónicas, antes bloqueados, pasan en verde). Antes de escribir 10c se resolvió con el operador una
+bifurcación real: ¿el anclaje de Tiled pasa a ser la fuente de datos del estado inicial (extender
+floorplan-parser.ts para leer condition/instanceId), o queda como referencia visual y el estado
+inicial se autora aparte en TS? Decisión: queda como referencia visual solamente — mezclar "punto
+de anclaje" (GDD 15.1) con "componente instalado" (GDD 15.2) es trabajo del modo dev real, previsto
+recién para Fase 11; extenderlo ahora hubiera sido construir una segunda herramienta de autoría
+encubierta, contra el principio explícito de CLAUDE.md de reutilizar la UI de juego en modo dev en
+vez de un editor aparte.
+crisis/campaign/chapter-01-primer-aviso.ts pasó de una única CrisisDefinition fija (solo
+Exploración) a CHAPTER_01_BY_ARCHETYPE: Record<ShipArchetype, CrisisDefinition> — mismo patrón
+(válvula simple/motor pequeño universales del catálogo, GDD 7.2), distinta posición/sección
+bloqueada por arquetipo vía una tabla data-driven interna (CHAPTER_01_PARAMS_BY_ARCHETYPE).
+Posición de Exploración corregida de (6,4) a (6,6) para coincidir con el anclaje real que el
+operador colocó en Tiled — cae en el borde de la sección "soporte-vital", no "bodega-carga" como
+se había autorado a ciegas en 10a antes de que existiera el mapa real; ambos valores se corrigieron
+para reflejar el WIP del operador en vez de forzarlo a coincidir con un valor inventado sin mapa
+delante. Las otras 3 variantes (Guerra: enfermeria-basica; Investigación: hangar-drones; Médica:
+laboratorio-muestras) son posiciones de referencia dentro de una sección secundaria real de cada
+plano, sin verificación visual (decisión ya tomada en el plan de Fase 10: solo Exploración se juega
+de punta a punta por ahora). Nuevo CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE arma el
+PlacedComponentInstance (condition: "jammed") listo para anexar, por arquetipo — single source of
+truth compartida entre el contenido de la crisis y el componente físico que la dispara, en vez de
+duplicar la posición en dos archivos.
+chapter-registry.ts registra las 4 variantes (antes solo Exploración).
+save/campaign-save-factory.ts::createNewCampaignSave anexa la instancia semilla del arquetipo
+elegido a INITIAL_SHIP_STATE_BY_ARCHETYPE (que queda sin cambios, sigue siendo el kit genérico de
+Fase 9.5 — no se le mezcló contenido de capítulo 1) y fija chapterProgress.currentChapterId al id
+de capítulo 1 de ESE arquetipo: toda campaña nueva arranca con el disparador del capítulo 1 ya
+colocado en el plano, sin paso manual adicional.
+15 tests nuevos: chapter-01-primer-aviso.test.ts (incluye un test que dispara y resuelve
+mecánicamente vía evaluateCrisis en los 4 arquetipos, no solo Exploración — la única verificación
+que los otros 3 arquetipos reciben por ahora, dado que no se juegan de punta a punta),
+chapter-registry.test.ts, y 2 casos nuevos en save/campaign-save.test.ts (seed correcto +
+chapterProgress correcto por arquetipo). 312 tests en verde (0 regresiones respecto a los 300 que
+ya pasaban tras el fix del operador en Tiled), build y lint de los 3 workspaces en verde.
+Razón: sin esta sub-fase, una campaña nueva en cualquier arquetipo que no fuera Exploración no
+tenía ningún capítulo 1 real que jugar (CHAPTER_REGISTRY solo conocía la variante de Exploración) —
+la decisión de Fase 9.5 de que una campaña se liga a un único arquetipo elegido al inicio exige que
+el contenido de cada capítulo exista para los 4, aunque la verificación jugable siga acotada a uno.
+
+2026-07-14 — Fase 10d: UI de juego real (interacción de plano, cola de tareas, core loop).
+Detalle: nuevo engine/src/floorplan/floorplan.types.ts::sectionContainingCell (celda → sección, con
+test) — lo necesita /game para resolver a qué sección pertenece una celda clickeada, no existía
+ningún consumidor de esto antes de que el plano fuera interactivo.
+Nuevo dominio game/src/mission/: MissionRuntime construye y posee, a partir de una
+CampaignSaveState real, MutableShipState + TaskScheduler (con el TaskEffect real de 10b) +
+CrisisRuntime (del capítulo activo, resuelto vía CHAPTER_REGISTRY) + CoreLoopModeMachine, con
+queueDismantle/queueInstall/queueConnect que auto-insertan un go-to implícito cuando la sección
+destino no coincide con la ya planificada del actor (implementa el propio ejemplo del GDD §4.2 "ir
+a la sección X → desmontar Y" sin que el jugador tenga que encolar el desplazamiento a mano) y
+aplican la duración modulada por afinidad de especialidad/tier (GDD 6.6, crew-affinity.ts de Fase
+9, sin disparador real hasta ahora). MissionInteractionController separa la lógica de "qué gesto de
+click significa qué" (selección de tripulante activo, inspeccionar/desmontar/instalar, modo
+cableado) de FloorplanScene, que quedaría muy por encima del umbral de ~200-300 líneas de CLAUDE.md
+si la absorbiera toda.
+game/src/render/mission-overlay-renderer.ts pinta los componentes colocados teñidos por
+`condition` (ámbar=atascado, gris=destruido, principio 6 de CLAUDE.md) y el grafo de señales real
+del Blueprint — primera vez que el plano REAL, no la mesa de creación, muestra sus nodos/edges. Dos
+widgets nuevos en game/src/ui/widgets/ (crew-queue-panel.ts, component-inspector-panel.ts), mismo
+patrón redraw() que creative-workbench-scene.ts. palette.ts ganó SIGNAL_NODE_COLORS/
+COMPONENT_CONDITION_TINT/CREW_TOKEN_COLORS (SIGNAL_NODE_COLORS factorizado desde
+workbench-renderer.ts, que ahora lo reutiliza en vez de mantener su propia tabla local).
+floorplan-renderer.ts expone sectionCentroidPx (antes lógica interna de sectionLabel).
+floorplan-scene.ts reescrita para modo in-mission real: siempre parte de
+campaignSession.requireActive() (se retiran las teclas 1-4 de cambio de nave — código muerto una
+vez que la nave la fija la campaña, no una elección libre en esta pantalla); header con nombre de
+crisis + estado localizado + botón play/pausa que maneja CoreLoopModeMachine; update(time, delta)
+tickea el core loop en modo ejecución; panel de cola de tripulación con cancelar tarea; tokens de
+tripulación persistentes (círculo + nombre) que saltan (hop-movement.ts, Fase 8) al completarse un
+go-to. Se mantienen G (galería, dev) y C (disparador dev de crisis-result-scene, retiro es tarea de
+10e).
+Bug encontrado y corregido durante la implementación: el click en el plano originalmente exigía que
+la celda perteneciera a una sección para poder inspeccionar lo que hay en ella — pero el anclaje
+real del capítulo 1 en Exploración cae en el BORDE de "soporte-vital" (10c), lo que hubiera
+bloqueado inspeccionar/desmontar la propia válvula que el capítulo pide resolver. Corregido: un
+componente ya colocado siempre es inspeccionable; la pertenencia a sección solo se exige para
+decidir si se puede instalar algo NUEVO en una celda vacía (ahí sí la valida validateInstallation
+con la sección real).
+Simplificaciones explícitas, no TODOs silenciosos: sin rotación en el picker de instalación (mismo
+criterio que la mesa de creación de Fase 9.5); el salto de tripulación se anima solo al completarse
+el go-to, no interpola durante toda la duración simulada (no hay pathfinding de corredores en el
+motor); catálogo de instalación es el atómico completo (20 piezas), sin filtrar por lo que el
+capítulo 1 acepta — la UI no decide "qué gana", solo deja actuar (principio 1 de CLAUDE.md aplicado
+también a la UI, no solo al motor). UI de vinculación de dependencias cruzadas entre tripulantes
+(GDD §4.3) diferida por decisión del operador — el motor ya la soporta y está testeada
+(TaskScheduler.linkDependency), pero el capítulo 1 se resuelve con un solo tripulante.
+Falta el sprite de tripulante (GDD §17): el token en el plano es un placeholder de código (círculo
+de color + nombre) — ruta esperada game/assets/sprites/crew/, señalado explícitamente como pide
+CLAUDE.md en vez de dejarlo como un TODO silencioso.
+315 tests en verde (0 regresiones), build y lint de los 3 workspaces en verde. Sin test
+automatizado nuevo en /game (no hay test runner ahí desde Fase 8) más allá del nuevo test de
+sectionContainingCell en /engine. Verificación jugable manual (npm run dev -w game) queda a cargo
+del operador — sin herramienta de captura de navegador disponible en este entorno (misma
+limitación ya documentada en Fases 8/9).
+Razón: 10a-10c dejaron el motor completo y testeado (crisis + TaskEffect real + estado inicial del
+capítulo 1) pero sin ninguna forma de que un jugador real lo tocara — FloorplanScene seguía siendo
+el visor estático de Fase 5/8. Esta sub-fase es la que hace que el capítulo 1 sea, por primera vez,
+jugable de principio a fin (a falta del pulido de 10e/10f: barks reales, crisis-result-scene con
+datos reales, guardado de progreso).
+
+2026-07-14 — Fase 10d (bugfix post-playtest del operador): z-order de HUD y botones superpuestos.
+Detalle: el operador reportó 3 síntomas jugando la build de 10d: (1) la tripulación no parecía
+moverse nunca, (2) el panel de selección de tripulante se veía "opacado" y casi no se leían los
+botones, (3) el botón "Modo cableado" aparecía encima de "Ejecutar" y todos los botones se veían
+apagados debajo de una capa negra. Causa raíz única para (2) y (3): los rectángulos semitranspar-
+entes de fondo del header y del panel de cola se agregaron con `.setDepth(RENDER_DEPTH.crewEntity
++ 1/+2)` explícito, pero los widgets de `ui/widgets/` (`createKenneyButton` y el contenedor que
+arma `renderCrewQueuePanel`) no fijan ningún depth propio — quedan en el depth por defecto (0), por
+debajo de esos fondos. Además, los botones "Ejecutar" y "Modo cableado" se posicionaban derivados
+de la misma constante (`QUEUE_PANEL_X`) y terminaban solapados en un rango de ~40px, por lo que un
+click ahí probablemente activaba el botón equivocado (o ninguno) — explica también (1): si
+"Ejecutar" nunca se registraba de verdad, el core loop nunca entraba en modo ejecución y nada podía
+progresar ni animarse. Fix: `render-depths.ts` gana una franja dedicada de HUD
+(`hudBackground`/`hudContent`, muy por encima de la franja 0-4 ya usada para plano/overlay/
+tripulación), aplicada consistentemente a fondo del header, texto de header/status, ambos botones
+del header, el panel de cola completo (`queuePanelContainer.setDepth(...)`) y el popup de
+inspección (`inspectorContainer.setDepth(...)` en `MissionInteractionController`). Botones del
+header reposicionados a coordenadas fijas sin solape (`WIRE_MODE_BUTTON_X=980`,
+`PLAY_PAUSE_BUTTON_X=1190`, separados por 50px). Build/lint/315 tests en verde tras el fix.
+Caveat conocido, no bloqueante para el capítulo 1: como el mapa de Exploración ocupa el canvas
+completo (40×22 celdas = 1280×704px, mismo tamaño que la ventana de juego), el panel de cola sigue
+ocupando el mismo espacio de pantalla que la mitad derecha del plano — un tripulante en una sección
+que caiga bajo esa columna (ej. propulsión/tanques de combustible, no relevante para el capítulo 1,
+que ocurre en soporte-vital) puede seguir viéndose tapado por el fondo del panel. Señalado, no
+corregido en este pase — no afecta el camino de victoria del capítulo 1.
+
+2026-07-14 — Fase 10d: ajuste de UI post-playtest #2 (cámara con paneo + panel docked + briefing).
+Detalle: un segundo playtest del operador mostró que el caveat señalado en el bugfix anterior era en
+realidad el síntoma de un problema más de fondo, no algo menor: (1) el mapa de Exploración ocupa
+prácticamente el canvas completo y no había forma de panear para ver lo que los paneles de UI
+tapaban; (2) el panel de selección de tripulante se veía opacado; (3) después de seleccionar un
+tripulante, solo era posible hacer click en 3 componentes (plancha-metalica/bateria-celda-simple/
+cable-cobre, el kit inicial de starterKit() en (0,0)/(3,0)/(4,0)), no en el resto del plano —
+incluida la propia válvula atascada del capítulo 1.
+Diagnóstico de (3): el popup de inspección (`component-inspector-panel.ts`, posición FIJA de
+pantalla 280×220px en `INSPECTOR_X/Y`) tenía un guard `pointerInsideInspector` que absorbía TODO
+click dentro de ese rectángulo mientras estaba abierto, sin re-targetear ni cerrar. Los 3
+componentes del kit inicial caían fuera de ese rectángulo (arriba a la izquierda) — por eso seguían
+respondiendo, mientras que el resto del mapa, una vez abierto cualquier popup, quedaba bloqueado.
+Rediseño (operador eligió explícitamente "reservar panel fijo + cámara con pan" sobre la alternativa
+más liviana de paneles ocultables):
+- `FloorplanScene` pasa a usar DOS cámaras Phaser: `worldCamera` (`this.cameras.add(...)`, recortada
+  al área de mapa — ancho = canvas menos la franja lateral fija, alto = canvas menos el header —,
+  `setBounds()` al tamaño real de la nave, paneable arrastrando con distinción click/arrastre por
+  distancia recorrida, umbral 6px) y `cameras.main` (canvas completo, nunca se scrollea, dueña de
+  TODO el chrome de HUD). Cada cámara ignora los objetos de la otra vía `camera.ignore(...)` —
+  patrón estándar de Phaser para "mundo recortado/paneable + HUD de pantalla completa" con una sola
+  escena. Insight clave documentado en el código: si el viewport del mapa fuera tan ancho como el
+  canvas completo (como en el primer intento, que solo usaba `cameras.main` con `setBounds` pero sin
+  recortar el viewport), panear no revela nada nuevo — el mundo entero ya cabría en el viewport y el
+  scroll queda clampeado a (0,0) siempre.
+- El popup de inspección flotante se reemplaza por un panel de acciones DOCKED, dentro de la misma
+  franja lateral fija que ya usaba la cola de tripulación — nunca se superpone al mapa, así que el
+  bug de clicks "comidos" desaparece por construcción, no por parchear el guard.
+  `component-inspector-panel.ts` renombrado a `mission-action-panel.ts`
+  (`renderComponentInspectorPanel` → `renderMissionActionPanel`), gana una variante `{kind:"idle"}`
+  para cuando no hay nada seleccionado (antes no renderizaba nada) y pierde el botón "Cerrar" (ya no
+  hace falta: seleccionar una celda nueva reemplaza el contenido in place).
+  `MissionInteractionController.handlePointerDown(pointer)` pasa a `handleMapClick(position)` — ya
+  no conoce coordenadas de pantalla ni cámaras, solo recibe la `GridPosition` ya resuelta por la
+  escena en coordenadas de mundo (`worldCamera.getWorldPoint(...)`).
+- Nuevo campo opcional `briefingKey` en `CrisisDefinition` (`engine/src/crisis/`) — contenido
+  MECÁNICO para el capítulo 1 (disparador/solución esperada de `docs/Primeras_8_crisis.md`), no
+  narrativo: ese documento marca explícitamente la narrativa de cada capítulo como "pendiente de
+  definir", así que no se inventó lore. Nuevo widget `ui/widgets/mission-briefing-modal.ts`: al
+  entrar a la misión se muestra un resumen de la crisis (nombre + `t(briefingKey)`) con botón
+  "Entendido". Para que el briefing tuviera sentido hizo falta otro fix: `MissionRuntime` ahora
+  evalúa la crisis una vez de forma SÍNCRONA en el constructor
+  (`crisisRuntime.tick({dtSeconds:0.001, elapsedSeconds:0})`, fuera de `CoreLoopModeMachine`, que
+  arranca en `planning` y no tickea nada) — el GDD §4 ordena "1. Crisis se dispara. 2. Modo
+  planificación...", la crisis ya está disparada CUANDO arranca la planificación, no recién cuando
+  el jugador aprieta Play por primera vez. Sin este fix el briefing nunca se hubiera mostrado (el
+  estado seguía en `not-triggered` hasta el primer tick de ejecución real).
+- Marcador visual pulsante sobre el componente que originó la crisis
+  (`mission.problemMarkerPosition`, nuevo getter en `MissionRuntime` que resuelve el `instanceId`
+  del trigger `jammed-actuator-blocks-section` contra el `Blueprint` vivo — generalización a otros
+  `kind` de trigger diferida hasta que un capítulo futuro lo necesite). Círculo con borde +
+  `scene.tweens` (alpha/escala en loop), no partícula nueva — mismo criterio de costo/beneficio que
+  el resto de placeholders de la fase. La cámara centra ahí al entrar a la misión.
+- Header ahora también muestra el modo del core loop ("Planificación"/"Ejecución") explícito,
+  delante de crisis+estado — antes solo se inferían del label del botón Play/Pausa.
+- `render-depths.ts` gana `problemMarker` (banda de mundo) y `hudModal` (por encima de
+  `hudBackground`/`hudContent`, para el briefing).
+- `chapter-01-primer-aviso.test.ts` gana una aserción de `briefingKey` no vacío en los 4 arquetipos
+  (mismo test ya existente). 315 tests en verde (sin regresiones), build y lint de los 3 workspaces
+  en verde.
+Razón: el primer bugfix (z-order/botones superpuestos) era necesario pero no suficiente — el
+problema real era de layout: un mapa del tamaño del canvas más paneles de UI superpuestos sin cámara
+propia no puede funcionar sin comerse clicks o tapar contenido, sin importar cuánto se ajuste el
+depth. Cámara dedicada + panel docked resuelve la causa, no el síntoma.
+
+2026-07-14 — Fase 10d, ajuste de UI post-playtest #3 (z-order de cámaras, selector de instalación
+como modal con ficha de propiedades, feedback visual de tripulación)
+- Fix de raíz del bug "el briefing se pinta atrás del mapa": Phaser compone cámaras en el orden en
+  que se AGREGAN a la escena (no por `depth` de los objetos — `depth` solo ordena dentro de la
+  pasada de una misma cámara). Desde el ajuste #2, `worldCamera` se creaba DESPUÉS de `cameras.main`
+  y por lo tanto pintaba siempre encima; el header/panel lateral se salvaban por coincidencia
+  geométrica (fuera del rectángulo de `worldCamera`), pero el modal de briefing, centrado en
+  pantalla, caía dentro de ese rectángulo y quedaba tapado. Se invierten los roles en
+  `floorplan-scene.ts`: `cameras.main` (siempre la primera en pintarse) pasa a ser la cámara de
+  MUNDO, recortada vía `setViewport(...)` en vez de crearle una cámara aparte; `hudCamera` es la
+  cámara nueva, agregada DESPUÉS, canvas completo — el HUD gana la composición por construcción.
+- Evaluación de jugabilidad pedida por el operador (simulación paso a paso de cómo resolvería un
+  jugador el capítulo 1 con la UI tal como estaba): el selector de instalación mostraba los 20
+  componentes atómicos solo por nombre, sin ninguna propiedad visible — no había forma de razonar
+  cuál pieza era compatible sin conocimiento externo del GDD. El diagnóstico: esto invertía la
+  intención real del principio 1 de CLAUDE.md — "emergencia sobre recetas" es una restricción sobre
+  el MOTOR (no hardcodear combinaciones válidas), no una instrucción para ocultarle al jugador las
+  propiedades por las que debe razonar (el GDD §5.1/7.0 define esas propiedades justamente para
+  que el jugador compare y decida). Fix: nuevo `ui/widgets/install-picker-modal.ts`, modal de dos
+  columnas — lista seleccionable a la izquierda (click = previsualizar, no confirma), ficha de
+  detalle a la derecha (imagen placeholder + nombre + huella + una línea por propiedad funcional y,
+  si aplica, resistencia estructural — texto copiado literalmente de GDD §5.1/5.2, no inventado).
+  `InstallOption` (`mission-action-panel.ts`, reutilizado por el modal) gana `functional`/`material`,
+  datos que ya existían en `ATOMIC_COMPONENT_CATALOG` — sin cambios de motor, solo faltaba que
+  llegaran a la UI. 8 claves i18n nuevas (`component.functional.*`, `component.material.re.*`) +
+  labels del modal. `MissionInteractionController` gana `installPickerState`/`installPickerOpen`,
+  estado separado del panel docked — este último usado por `FloorplanScene` para bloquear
+  paneo/click de mapa mientras el modal (bloqueante) está abierto. El panel docked, en su estado
+  `empty`, gana un texto de contexto fijo que explica que instalar un reemplazo se hace clickeando
+  otra vez la misma celda vacía — antes nada en pantalla lo sugería.
+- Tripulación: tokens más grandes (radio 7→11px) con borde oscuro de contraste fijo (visibles contra
+  cualquier color de tile), más un anillo pulsante de "trabajando" (mismo patrón de tween que el
+  marcador de problema, agregado una vez y solo se alterna su visibilidad) mientras
+  `scheduler.getActor(id)?.status === "busy"` — antes solo `go-to` daba algún feedback visual al
+  completarse (un salto); desmontar/instalar/conectar no animaban nada durante toda su duración.
+- Falta el sprite de cada una de las 20 piezas del catálogo atómico para la ficha del selector (GDD
+  §17) — ruta esperada `game/assets/sprites/components/<id>.png`, como ya señala CLAUDE.md; mientras
+  tanto la ficha usa un rectángulo de color + id como texto.
+- 315 tests en verde (sin regresiones — sin cambios de motor más allá de exponer datos ya
+  existentes), build y lint de los 3 workspaces en verde. Verificación jugable manual queda a cargo
+  del operador (misma limitación de entorno sin captura de navegador, documentada desde Fases 8/9).
+Razón: tercer playtest del operador — el ajuste #2 resolvió el layout general pero dejó un bug de
+z-order sin diagnosticar hasta ahora (afecta a cualquier objeto de HUD centrado en pantalla, no solo
+al briefing) y no atendió el pedido explícito de evaluar si el loop "tengo un problema → ¿qué hago?"
+era resoluble por un jugador real con la información visible en el juego — no lo era, por falta de
+propiedades en el selector de instalación.
+
+2026-07-14 — Fase 10d, ajuste de UI post-playtest #4 (afordancia de click, listas con scroll,
+pathing de tripulación, indicador de pausa)
+- Afordancia de click: `MissionInteractionController` expone `isCellInteractable(position)` (misma
+  regla que `handleMapClick` — componente colocado O celda perteneciente a una sección, sin duplicar
+  la lógica). `FloorplanScene` dibuja un rectángulo de resaltado único reutilizable que sigue al
+  cursor en `pointermove` (objeto de mundo, panea con el mapa; nuevo `RENDER_DEPTH.hoverHighlight`
+  entre `walls` y `crewEntity`), visible solo sobre celdas interactuables, oculto sobre el HUD o con
+  un modal abierto. Antes nada distinguía una celda clickeable de una que no lo era.
+- Listas con scroll: el operador aclaró que el overflow era VERTICAL (no horizontal, como supuse en
+  un borrador). Causa raíz confirmada leyendo el código de rexUI: el recorte es una geometry mask
+  (`MaskChildren.js`) que asume que el contenido scrolleable vive directo en la display list de la
+  escena; `install-picker-modal.ts` anidaba la lista dentro de un `Phaser.Container` nativo, lo que
+  rompe el recorte y deja los ítems salirse por debajo del panel. Las listas ya existentes
+  (`creative-hub-scene.ts`, `creative-workbench-scene.ts`) agregan la lista directo a la escena, por
+  eso nunca tuvieron el bug — apareció al introducir el modal. Fix: la lista se crea como hijo
+  directo de la escena (no `container.add`), con depth `hudModal`, registrada en la cámara de HUD
+  por separado (`markAsHudObject`) y atada a `container.once("destroy", ...)` para no cambiar el
+  contrato de "el llamador destruye un solo handle". Aparte, `kenney-list.ts` cambia
+  `mouseWheelScroller` de `focus:true` a `focus:2`: con `focus:true` rexUI llama `setInteractive`
+  sobre el bloque scrolleable ANTES de `.layout()`, dejando el hit-area congelado en ~1×1px y la
+  rueda casi sin disparar; `focus:2` usa un listener de escena con chequeo de bounds en vivo.
+  Beneficia a las 3 listas.
+- Pathing de tripulación: los tokens saltaban en línea recta atravesando paredes. Nuevo
+  `game/src/render/walkable-grid.ts` extrae una grilla booleana transitable leyendo las tile layers
+  `background`/`walls` del Tiled (`map.getLayer(name).data[y][x].index`, -1 = vacío) — transitable =
+  tiene piso y no tiene pared; `objects` es decorativo y no bloquea (decisión confirmada con el
+  operador: el mapa no fue pintado pensando en pathing). Nuevo `game/src/crew/floorplan-pathfinding.ts`:
+  BFS 4-direccional (grilla ≤880 celdas, coste uniforme → BFS da el camino más corto sin A* ni
+  librería nueva) + reubicación por flood-fill a la celda transitable más cercana si el centroide de
+  una sección cae en pared + simplificación de tramos rectos colineales. `hopCrewToken` deja de hacer
+  un `hopMove` directo y encadena un salto por waypoint (patrón ya documentado en `hop-movement.ts`);
+  la etiqueta y el anillo de "trabajando" siguen al dot cada frame en `update()` (con caminos largos,
+  fijarlos solo al destino los dejaba adelantados). Todo en la capa `/game` — el motor sigue tratando
+  el `go-to` como una duración abstracta (`TASK_BASE_DURATION_SECONDS["go-to"] = 4`), sin celdas
+  intermedias; sin cambios en `/engine` ni sus tests. Degradación explícita al salto único si la nave
+  no tiene tile layers todavía (GDD §17) o no se encuentra ruta.
+- Indicador de pausa/ejecución: nueva tabla `CORE_LOOP_MODE_COLORS` en `palette.ts` (verde =
+  ejecución, ámbar = planificación, principio 6 de CLAUDE.md). `FloorplanScene` muestra un badge/pill
+  de color sólido + icono (▶/⏸) en el header, con pulso sutil en ejecución (mismo patrón de tween que
+  el marcador de problema y el anillo de trabajo), y colorea el borde del viewport del mapa según el
+  modo — el estado se nota de un vistazo, no solo por el label chico del botón Play/Pausa. El modo se
+  saca del texto del header (ahora solo crisis + estado) y pasa al badge.
+- 315 tests en verde (sin cambios de motor), build y lint de los 3 workspaces en verde. Verificación
+  jugable manual a cargo del operador (limitación de entorno sin captura de navegador, ya documentada
+  desde Fases 8/9).
+Razón: cuarto playtest del operador — cuatro pedidos de feedback visual/interacción. El de las listas
+corrigió además un diagnóstico previo equivocado (overflow horizontal vs. el real, vertical, por
+anidar la lista de rexUI en un Container nativo de Phaser).
+
+2026-07-14 — Fase 10d, ajuste de UI post-playtest #5 (saltos más cortos, tiempo por tarea, solvencia
+del capítulo 1, overflow real de listas/modal)
+- Saltos de tripulación más cortos: la simplificación de tramos rectos del ajuste #4 colapsaba un
+  pasillo entero en un solo waypoint, produciendo un salto largo que cruzaba medio corredor.
+  `floorplan-pathfinding.ts::findPath` ahora devuelve el path COMPLETO (una celda por paso; se
+  elimina la función `simplify`, sin consumidor), y `hop-movement.ts` afina la cadencia `normal` a un
+  salto corto y rápido (170ms, 6px de altura) para que la secuencia por celda lea como caminar a
+  saltitos y no como brincos.
+- Indicador de tiempo por tarea: `CrewQueueTaskRow` (`crew-queue-panel.ts`) gana
+  `estimatedDurationSeconds`/`elapsedSeconds` (ya expuestos por `CrewTask` en el motor, sin cambios
+  en `/engine`); cada fila de tarea muestra su duración estimada (`~4s`) y, si está `in-progress`,
+  una barra de progreso (ancho = elapsed/estimated) más la cuenta regresiva. `floorplan-scene.ts`
+  mapea esos campos en `redrawQueuePanel` y, en `update()`, redibuja el panel con throttle (~200ms)
+  mientras el core loop está en ejecución, para que el progreso avance en vivo (antes el panel solo
+  se redibujaba por evento de dominio).
+- Solvencia del capítulo 1: el capítulo SÍ se resolvía (desmontar la `valvula-simple` atascada en
+  (6,6) e instalar otra `valvula-simple` o un `motor-pequeno` ahí — ambas en el selector, ambas
+  aceptadas por `ReplacementInstalledConnectedRule`). No hay inventario; el bloqueo real era que esas
+  dos piezas están cerca del fondo de la lista de 20 y el overflow (ver abajo) impedía scrollear
+  hasta ellas. Se reescribe el briefing del capítulo 1 (es/en) para nombrar la solución aceptable
+  (otra válvula simple o un motor pequeño equivalente), y el estado `instance` de
+  `mission-action-panel.ts` ahora muestra las propiedades funcional/material de la pieza
+  inspeccionada (mismas claves i18n `component.functional.*`/`component.material.re.*` y presentación
+  que la ficha del selector), resueltas en `mission-interaction-controller.ts` desde
+  `ATOMIC_COMPONENT_CATALOG` — así el jugador ve que la válvula rota es un "actuador" y entiende qué
+  es un reemplazo equivalente. Decisión del operador: ayudar nombrando en el briefing, NO marcar
+  piezas ganadoras en el selector (no acercar la UI a "decidir qué gana", principio 1 de CLAUDE.md).
+  Sin recetas hardcodeadas en la UI.
+- Overflow de listas/modal — causa raíz real (posicionamiento, no máscara): corrige un diagnóstico
+  equivocado del ajuste #4. `scene.rexUI.add.scrollablePanel({x,y})` posiciona el panel por su CENTRO
+  (origin 0.5 por defecto), pero `install-picker-modal.ts` pasaba una `y` calculada como si fuera el
+  borde superior (`centerY - MODAL_HEIGHT/2 + 96`), así que el panel quedaba centrado demasiado
+  arriba y su mitad superior sobresalía del modal. El "anidar en Container" del ajuste anterior era
+  un red herring — el bug siempre fue de posición. Se define una caja de contenido explícita dentro
+  del modal (tope bajo el título, base sobre los botones) y la lista se ubica por su centro
+  `(top+bottom)/2` con `height = bottom - top` → queda contenida y recorta dentro del modal. La
+  columna de descripción se reubica (`DESCRIPTION_X`/`DESCRIPTION_WIDTH` derivados de los bordes del
+  modal) para que su texto no se salga por la derecha (antes llegaba a x=1070 con el modal terminando
+  en 1000). Mismo error latente corregido en `creative-workbench-scene.ts` (y de la lista = centro
+  alineado con el tope del grid). `kenney-list.ts` gana un comentario dejando EXPLÍCITO que `(x,y)`
+  es el centro del panel, no el borde, para no repetir el error.
+- 315 tests en verde (sin cambios de motor), build y lint de los 3 workspaces en verde. Verificación
+  jugable manual a cargo del operador (limitación de entorno sin captura de navegador, ya documentada
+  desde Fases 8/9).
+Razón: quinto playtest del operador — dos pedidos de pulido (saltos, tiempo por tarea), uno de
+solvencia/claridad del tutorial, y la corrección definitiva del overflow de listas/modal (era
+posicionamiento, no la máscara de rexUI que se sospechó en el ajuste #4).
+
+2026-07-15 — Fase 10d, sprites de componente + aclaración del desarmado (post-playtest #6)
+- Aclaración (sin cambio de código): pregunta del operador sobre por qué "la pieza no desaparece" al
+  desarmarla. Verificado: la pieza SÍ desaparece — `dismantleInstance` (ship-task-effect.ts) la borra
+  de `placedComponents`, `MissionRuntime.blueprint` devuelve el estado vivo, y al completar la tarea
+  `handleCoreLoopEvent` llama `redrawOverlay()`, que reconstruye la capa sin la instancia. Lo que
+  permanece es el marcador pulsante de la crisis (visible mientras `crisisState === "active"`): es
+  intencional, porque desarmar no resuelve la crisis — hay que instalar un reemplazo válido
+  (`valvula-simple`/`motor-pequeno`) en esa celda para que `ReplacementInstalledConnectedRule` la dé
+  por resuelta y el marcador se apague. Queda señalando "instalá el reemplazo acá".
+- Sprites de componente: nuevo `game/src/render/component-sprite-registry.ts`. En vez de imports
+  estáticos (romperían el build por cada PNG inexistente), descubre los sprites que EXISTEN con
+  `import.meta.glob("../../assets/sprites/components/*.png", { eager, query:"?url", import:"default" })`
+  (Vite 6) y expone `COMPONENT_SPRITE_URLS` (id→url), `componentTextureKey(id)` ("component:<id>"),
+  `preloadComponentSprites(scene)` y `hasComponentSprite(scene, id)`. `FloorplanScene.preload` precarga
+  los que haya. El overlay del plano (`mission-overlay-renderer.ts`) dibuja el sprite del componente si
+  existe (tinte por `condition` — ámbar jammed / gris destroyed, principio 6), con fallback al
+  rectángulo de color placeholder; conserva borde y etiqueta. La ficha del selector de instalación
+  (`install-picker-modal.ts::renderSelectedComponentSheet`) muestra el sprite en el recuadro de preview
+  si existe, con fallback al placeholder (rectángulo + id). Convención de nombres: un PNG por id del
+  catálogo atómico en `game/assets/sprites/components/<id>.png` (20 piezas: plancha-metalica,
+  tornilleria-fijacion, cable-cobre, bobina-cobre, resistencia-electrica, celula-fotovoltaica,
+  bateria-celda-simple, chip-circuito-generico, lente-optica, emisor-laser-baja-potencia,
+  fotorreceptor, iman-permanente, tubo-rigido, tubo-flexible, junta-hermetica, valvula-simple,
+  placa-disipadora, placa-aislante-termica, motor-pequeno, carcasa-plastica). Carpeta vacía hoy → sin
+  cambio visual hasta que el operador agregue los PNGs (y recargue la página). Sin cambios de motor.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: sexto playtest del operador — una pregunta de comportamiento (respondida: es correcto) y el
+pedido de la convención de sprites de componente, cableada con fallback para no bloquear el desarrollo
+mientras falte el arte.
+
+2026-07-15 — Fase 10d, profundidad de tripulación/objetos vs. paredes (post-playtest #7)
+- Corrección pedida por el operador: los tripulantes y los componentes que colocan deben renderizar
+  por encima del suelo (background) pero por debajo de las paredes (walls). Antes quedaban ENCIMA de
+  las paredes.
+- Causa raíz: `renderFloorplan` (floorplan-renderer.ts) agregaba las 3 tile layers de Tiled
+  (background/objects/walls) como hijos de UN solo `Container` a depth `background` (0). Un Container
+  de Phaser aplana la profundidad de sus hijos: el `setDepth` individual de cada tile layer solo
+  ordena DENTRO del container, no frente a objetos externos. Así todo el plano —paredes incluidas—
+  renderizaba a depth 0, y el overlay de componentes colocados (depth 2) y los tokens de tripulación
+  (depth 4), que son objetos top-level, quedaban por encima de las paredes.
+- Fix: `render-depths.ts` reordena para que las paredes queden por encima de tripulación y objetos
+  colocados — `objects: 2` (overlay de componentes), `hoverHighlight: 3`, `crewEntity: 4`, `walls: 5`,
+  `problemMarker: 6` (antes walls=3 estaba debajo de crew=4). Para que el nuevo orden tenga efecto,
+  `renderFloorplan` ahora devuelve `{ base, walls }`: la capa de paredes (la tile layer "walls", o el
+  `Graphics` de paredes del fallback sin arte de Fase 5) se deja como objeto TOP-LEVEL a
+  `RENDER_DEPTH.walls`, fuera del container base — así su profundidad real interleave con la
+  tripulación y los componentes. El resto del plano (suelo, tile "objects" decorativa, anclajes,
+  conductos, etiquetas de sección) sigue en el container `base` a depth background. Los dos callers
+  de `renderFloorplan` (`floorplan-scene.ts` registra ambos en la cámara de mundo;
+  `particle-gallery-scene.ts` desplaza ambos en Y) se actualizan.
+- Sin cambios de motor. 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: séptimo playtest — las paredes deben ocluir parcialmente a la tripulación y a los objetos para
+que el plano se lea con profundidad correcta (un tripulante detrás de una pared queda tapado).
+
+2026-07-15 — Fase 10d, 7 bugs de playtest #8 (movimiento, navegación a celda, selección, overlay, kit, resultado)
+- Movimiento de tripulación durante el go-to (bugs 1/5/7, solo /game): el salto se disparaba en
+  `task-completed` del `go-to` (el token quedaba quieto toda la duración y saltaba al final) y apuntaba
+  al CENTROIDE de la sección, que a veces cae en una celda no transitable y hacía fallar `findPath`
+  (fallback de un único deslizamiento en línea recta entre zonas lejanas). Reescrito en
+  `floorplan-scene.ts`: el viaje se anima al ARRANCAR el `go-to` (`task-started`) y se reparte en su
+  `estimatedDurationSeconds` (nuevo `travelCrewToken`; `hop-movement.ts::hopMove` gana un
+  `durationMsOverride` opcional; `chainHops` pasa `perHopMs = duración/nºsaltos`). El destino ahora es
+  la CELDA real de la acción siguiente en la cola (`nextActionCellFor` + `taskTargetCell` derivan la
+  celda del payload install/dismantle/connect), no el centroide — la tripulación va a la celda donde se
+  instala/desmonta (o a la adyacente transitable vía `nearestWalkable`). El fallback sin ruta ahora
+  parte la línea recta en pasos de ~1 celda (`straightLineWaypoints`) para que siempre salte por pasos.
+- Overlay sin desfase (bug 2, motor): `TaskScheduler.completeTask` emitía `task-completed` ANTES de
+  correr `this.effect(task)` (la mutación que instala el componente en el Blueprint). El `redrawOverlay`
+  de `/game` leía el estado sin el objeto recién instalado, que aparecía en el redibujo de la tarea
+  siguiente (desfase de uno). Ahora el efecto corre ANTES del emit — orden correcto del patrón Observer
+  (aplicar el efecto de dominio y después notificar). Ningún test del motor dependía del orden previo.
+- Kit fantasma (bug 3, motor): `engine/src/floorplan/initial-ship-state.ts::starterKit` devuelve `[]`.
+  Las 3 piezas placeholder de Fase 9.5 (plancha/batería/cable en (0,0)/(3,0)/(4,0)) aparecían como
+  objetos fantasma en la esquina del plano, sin función en el cap. 1 (el selector ofrece las 20 piezas
+  igual). Una partida nueva arranca solo con el actuador atascado del cap. 1. Se conserva la estructura
+  `INITIAL_SHIP_STATE_BY_ARCHETYPE` por si un capítulo futuro siembra componentes reales.
+- Celda seleccionada persistente (bug 6): `MissionInteractionController` trackea `selectedCell` (seteada
+  al clickear una instancia o celda vacía, limpiada al volver a idle) + callback `onSelectionChanged`.
+  `FloorplanScene` dibuja un rectángulo de resaltado PERSISTENTE con color distinto del hover
+  (`SELECTED_CELL_COLOR`) sobre la celda sobre la que se va a actuar — antes solo había hover (seguía el
+  mouse), y era fácil instalar en la celda equivocada.
+- Pop-up de resultado de crisis (bug 4): al resolverse la crisis (evento `crisis-resolved` con
+  `outcome`), `FloorplanScene` guarda el outcome real (`buildCrisisOutcome` + holder
+  `setPendingCrisisOutcome`/`takePendingCrisisOutcome` en `crisis-outcome.ts`) y transiciona a
+  `CrisisResultScene` — antes solo cambiaba el texto del header a "resuelta". La escena muestra el
+  desenlace real (fallback a `buildDevCrisisOutcome` para la tecla dev `C`) + botón "Siguiente capítulo"
+  deshabilitado con aviso (no hay capítulo 2 registrado todavía) + "Volver al menú". La persistencia de
+  progreso (avanzar/guardar capítulo) queda para 10e/10f.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: octavo playtest del operador — 4 bugs focalizados + 3 de navegación/selección de tripulación.
+
+2026-07-15 — Fase 10d: paso al costado al terminar una acción (playtest #9)
+- Feedback de visibilidad (game): al terminar una acción (install/dismantle/connect) sin más trabajo
+  encolado, el tripulante quedaba PARADO justo sobre la celda que acaba de tocar, tapando el objeto
+  instalado/desmontado. `FloorplanScene` ahora, en `task-completed` de una tarea que no es `go-to` y si
+  `hasPendingWork(actor)` es falso, dispara `stepAsideCrewToken`: un salto corto (misma cadencia
+  `normal`) a la primera celda adyacente ortogonal transitable (`adjacentWalkableCell` sobre la
+  `WalkableGrid`), dejando el objeto visible. Sin grilla (nave sin tile art) o sin vecino transitable,
+  no se mueve. La etiqueta y el anillo del token siguen a `dot` en el update loop, sin cambios.
+- Consulta del operador (sin código): la pieza que falla en el cap. 1 es una `valvula-simple` (actuador
+  de apertura atascado, `condition: "jammed"`, celda (6,6), sección `soporte-vital`; instanceId
+  `capitulo-1-valvula-atascada`). El sprite se nombra por el id de definición, no la instancia:
+  `game/assets/sprites/components/valvula-simple.png` (y `motor-pequeno.png` para el reemplazo alterno).
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: noveno playtest — pedido de que el tripulante deje visible lo que hizo, + consulta de nombre/id
+del sprite de la pieza fallante.
+
+2026-07-15 — Fase 10d: error explícito "sin ruta" en vez de deslizamiento por paredes (playtest #10)
+- Pathfinding (game): antes, cuando había grilla pero `findPath` no encontraba ruta al destino, el token
+  caía a `straightLineWaypoints` y "cruzaba" las paredes en línea recta — ocultaba problemas reales de
+  conectividad del plano (ej. bodega de carga → propulsión). Ahora `travelWaypoints` devuelve `undefined`
+  en ese caso (solo mantiene la línea recta para naves SIN grilla/tile art, donde no hay paredes que
+  respetar) y `travelCrewToken` llama a `reportNoPath`: texto flotante rojo "Sin ruta al destino" sobre
+  el tripulante que se desvanece (2.2s) + `console.warn` con la celda origen para diagnosticar. El token
+  NO se mueve. El motor sigue corriendo el `go-to` (no modela paredes) — limitación conocida que el aviso
+  ahora hace visible en lugar de mentir con un deslizamiento recto.
+- i18n: `ui.floorplan.mission.no-path` (es/en).
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: décimo playtest — el operador quiere un error explícito cuando no hay camino, no un atajo visual
+que atraviese paredes (le sirve para detectar zonas desconectadas del plano).
+
+2026-07-15 — Fase 10d: destino inalcanzable ABORTA la tarea (corrección del fix anterior, playtest #10)
+- Bug real señalado por el operador: con el aviso "sin ruta" anterior, el token no se movía pero la
+  tarea de acción se EJECUTABA IGUAL en el lugar equivocado. Causa: el motor modela el `go-to` como un
+  puro temporizador (no conoce paredes) y en `mission-runtime.ts` el `go-to` y su acción NO están
+  vinculados por `dependsOn` — van secuenciales en la cola del actor, así que al vencer el timer del
+  `go-to` la acción arrancaba sola. (No se toca el mapa; la conectividad del plano la corrige el
+  operador en Tiled.)
+- Fix (game): `abortUnreachable` (reemplaza a `reportNoPath`) cancela vía `scheduler.cancel` el `go-to`
+  Y el tramo contiguo de acciones que iban a ese destino (todo lo que sigue en la cola hasta el próximo
+  `go-to`). El token no se mueve, la acción no se ejecuta. Se conserva el aviso: texto flotante rojo
+  "Sin ruta al destino" (fade 2.2s) + `console.warn` con la celda origen para diagnosticar. Las
+  emisiones reentrantes de `task-cancelled` (desde dentro del `task-started`) las maneja el switch de
+  `handleCoreLoopEvent` sin efectos colaterales.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: el fix anterior solo evitaba el deslizamiento visual; el operador pidió que la tarea directamente
+NO se ejecute si no hay camino válido.
+
+2026-07-16 — Fase 10d: partículas de instalar/desmontar + selección visual del tripulante (playtest #11)
+- Partículas de acción (game): instalar y desmontar no daban ningún feedback de partículas (solo el
+  anillo de "trabajando"), la acción ocurría sin verse. Nuevo `particles/effects/fabrication-effect.ts`
+  con dos bursts visualmente distintos (principio 6 CLAUDE.md): `installEffect` = chispas cian/blancas
+  en arco hacia arriba + destello (flare) que se expande y apaga (energético, ascendente, frío);
+  `dismantleEffect` = escombros marrones radiales que caen + nube de polvo gris que sube (sucio, disperso,
+  cálido apagado). No son `DomainEvent` del motor (son eventos de core loop `task-completed`), así que no
+  van en `effect-registry.ts`: la escena los dispara directo en `fireFabricationEffect` sobre la celda de
+  la acción (payload; fallback a la celda del token para el desmontaje, cuya instancia ya fue removida del
+  blueprint). Los efectos devuelven sus emisores para que la escena los marque como objetos de mundo y les
+  fije `RENDER_DEPTH.effect` (nuevo, 7 — por encima del plano, doble cámara). El burst se dispara ANTES
+  del paso al costado, con el token todavía en el sitio.
+- Selección visual del tripulante (game): al elegir un tripulante en el panel de cola, su token en el
+  mapa ahora muestra un anillo de selección estático verde (mismo color que la celda seleccionada),
+  distinto del `workingRing` pulsante del color del token. `updateSelectedActorHighlight` (llamado desde
+  `redrawQueuePanel`) muestra el anillo solo en `interaction.selectedActorId`; el anillo sigue al token
+  cada frame como la etiqueta/anillo de trabajo.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: playtest #11 — instalar/desmontar eran invisibles y no se distinguía a qué tripulante de la lista
+correspondía cada token del mapa.
+
+2026-07-16 — Fase 10d: partículas de instalar/desmontar DURANTE la acción (playtest #12)
+- Corrección (game): las partículas de instalar/desmontar se disparaban como un burst puntual al
+  COMPLETAR la tarea; deben verse MIENTRAS la acción se lleva a cabo. `fabrication-effect.ts` ahora
+  recibe `durationMs` y emite de forma continua (frequency + quantity) a lo largo de la duración
+  estimada de la tarea; `spawnBurst` detiene el emisor al vencer ese tiempo. El disparo se movió de
+  `task-completed` a `task-started` (`fireFabricationEffect`, con `task.estimatedDurationSeconds*1000`,
+  mínimo 300ms). En `task-started` la instancia a desmontar todavía existe en el blueprint, así que la
+  celda sale del payload sin depender del fallback al token.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: playtest #12 — el feedback debe acompañar la acción en curso, no aparecer recién al terminar.
+
+2026-07-16 — Fase 10d: zoom del mapa con la rueda del mouse (playtest #13)
+- Nuevo (game): `FloorplanScene` engancha la rueda del mouse a `cameras.main.zoom`. Listener
+  `input.on("wheel")` restringido a la zona de mapa (ignora si hay briefing/picker abierto o el puntero
+  está sobre header/franja lateral vía `isOverFixedUi`), así no choca con el `mouseWheelScroller` del
+  panel de cola. Zoom anclado al cursor (patrón estándar: `getWorldPoint` antes/después de cambiar el
+  zoom y corregir el scroll con la diferencia). Factor `ZOOM_STEP` (1.12) por paso; clamp entre
+  `minZoom` (calculado en `create()` como "encajar todo el plano", `min(1, viewportW/worldW,
+  viewportH/worldH)`) y `MAP_MAX_ZOOM` (3).
+- Corrección relacionada: el paneo por arrastre dividía mal a zoom ≠ 1 (scroll en unidades de mundo, dx
+  en píxeles de pantalla); ahora divide el delta por `camera.zoom` para seguir al cursor 1:1 (a zoom 1,
+  idéntico al comportamiento previo). Hover/click de celdas ya usaban `getWorldPoint`, sin cambios.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: playtest #13 — el operador pidió poder acercar/alejar el mapa con la rueda mientras juega.
+
+2026-07-16 — Fase 10d: nombres de zona/componente como tooltip al pasar el mouse (playtest #14)
+- Cambio (game): se removieron las etiquetas fijas de nombre sobre el plano — nombre de sección
+  (`floorplan-renderer.ts::sectionLabel`, eliminado) y nombre de componente colocado
+  (`mission-overlay-renderer.ts`, texto eliminado; el parámetro `nameByComponentId` ya no se usa y se
+  quitó de la firma). Ahora el nombre se muestra como TOOLTIP al pasar el mouse.
+- Tooltip (game): `FloorplanScene.updateTooltip` (llamado en `pointermove`, oculto durante arrastre)
+  consulta `MissionInteractionController.tooltipLabelAt(cell)` — nuevo método público que resuelve el
+  nombre con PRIORIDAD del componente bajo el cursor sobre el de la zona (si el cursor está sobre una
+  pieza, muestra la pieza, no la sección; reusa `findInstanceAtCell` + `sectionContainingCell`, sin
+  duplicar la regla). El tooltip es objeto de HUD (coords de pantalla, no escala con el zoom), se
+  posiciona junto al cursor y se voltea para no invadir la franja lateral ni salirse por abajo. Se
+  oculta sobre header/franja/briefing/picker o celdas sin pieza ni sección.
+- 315 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: playtest #14 — el operador pidió sacar los nombres fijos del plano y verlos como tooltip al
+hacer hover, priorizando el componente sobre la zona que lo contiene.
+
+2026-07-16 — Cap. 1 más interesante: introducir la señal simple (sensor → compuerta)
+- Motivación: el "Modo cableado" no hacía nada visible porque el cap. 1 arrancaba con el grafo de
+  señales vacío; además el doc (docs/Primeras_8_crisis.md) marca que el cap. 1 debía introducir la
+  señal simple (EM+ACT), omitida en la implementación previa. Ahora la crisis tiene resolución en DOS
+  pasos (AND): (1) reparar/sustituir la válvula atascada, (2) cablear el sensor de proximidad al panel
+  de la compuerta con el modo cableado.
+- Engine — regla nueva: `SignalNodesWiredResolutionSpec` (crisis-definition.types.ts) +
+  `SignalNodesWiredRule` (crisis/rules/signal-nodes-wired.ts, BFS no dirigido sobre el grafo de
+  señales, tolera el orden de clicks) registrada en crisis-rule-registry.ts. Con su unit test
+  (crisis-rules.test.ts: sin cable→no, edge directo en cualquier sentido→sí, por nodo intermedio→sí,
+  edge que no toca ambos→no).
+- Engine — contenido: chapter-01-primer-aviso.ts agrega la 2ª resolución y siembra dos componentes
+  fijos (fotorreceptor=sensor/emisor, chip-circuito-generico=panel/receptor) con sus nodos de señal
+  SIN cable, por arquetipo (exploración: sensor (7,9) en pasillo, panel (7,6) en soporte-vital —
+  celdas walkable verificadas; otros 3 arquetipos: posiciones de referencia). Los nodos son
+  infraestructura fija (ownerRef a los componentes sembrados, no a la válvula) para sobrevivir al
+  desmontaje — `installInstance` no crea nodos y `dismantleInstance` borra los del ownerRef desmontado.
+  campaign-save-factory.ts siembra ambos componentes + los dos nodos en el estado inicial.
+- Tests actualizados: chapter-01.test.ts (reemplazo solo → sigue activa; reemplazo + cable → resuelve),
+  chapter-01-primer-aviso.test.ts (los 4 arquetipos requieren el cable), chapter-01-mission.integration
+  (siembra nodos + tarea `connect` tras el install; asserts: válvula fuera, motor "ok", edge tendido).
+- i18n: briefing del cap. 1 reescrito nombrando la solución en dos pasos (válvula + cableado), es/en.
+- 319 tests en verde (antes 315: +4 del split de la regla nueva), build y lint de los 3 workspaces.
+Razón: el operador pidió una crisis de cap. 1 un pelín más compleja que muestre más mecánicas —
+concretamente la de señales/cableado, alineado con el diseño original del capítulo.
+
+2026-07-16 — UX del cableado + nodos centrados + checklist de objetivos (playtest #15)
+- Diagnóstico: el operador no lograba cablear. No era bug: el flujo es activar cableado → click nodo A →
+  click nodo B, con tripulante seleccionado; su secuencia registró un solo nodo. Pero la UX era pobre.
+- (A) Nodos/aristas centrados (game, mission-overlay-renderer): los nodos de señal y las aristas se
+  dibujan en el CENTRO de la celda (antes en la esquina) y el punto es más grande (r=7), para que quede
+  sobre el sprite y el cable conecte de centro a centro. Solo cambia el render; el hit-test usa la celda.
+- (B) UX del modo cableado (game): al activar, `FloorplanScene` resalta con anillos ámbar TODOS los nodos
+  clickeables (objetos de mundo, sobre las paredes) y marca distinto el nodo origen elegido
+  (`updateWireHighlights`, vía `onWireModeChanged`/`onWireSelectionChanged`). Feedback paso a paso por el
+  status ("elegí el primer nodo" → "ahora el segundo"). Si falta tripulante, ya NO se pierde el primer
+  nodo: se pide seleccionar uno y reintentar el destino. Controller: getter `wireFirstNode`,
+  `setWireFirstNode` con callback, no-reset sin actor. Nuevo color `WIRE_HIGHLIGHT_COLOR`.
+- (C) Checklist de objetivos (engine + game): las metas GENERALES son las resoluciones de la crisis.
+  Engine: `objectiveKey?` en las specs de resolución + set en las 2 del cap. 1; `CrisisRuntime.objectiveStatuses()`
+  evalúa cada resolución con su regla contra el estado vivo (unit test). Game: `MissionRuntime` reexpone
+  el método; botón HUD "Objetivos" abre un panel modal (createKenneyPanel) con el briefing (recordar el
+  objetivo) + checklist con ✓/○ por objetivo, refrescado en `task-completed` si está abierto. Guard
+  `objectivesOpen` para no filtrar clicks al mapa. i18n es/en (cableado, objetivos, metas del cap. 1).
+- 320 tests en verde (+1 de objectiveStatuses), build y lint de los 3 workspaces en verde.
+Razón: playtest #15 — el cableado era indescubrible; el operador pidió mejor UX, nodos desde el centro
+del tile y un botón/checklist de objetivos generales que marque el progreso.
+
+2026-07-16 — Paneles de misión: cajas acotadas con wrap + scroll (playtest #16)
+- Problema: el texto se salía de sus contenedores. El pop-up de briefing (y el panel de Objetivos) tenían
+  altura fija y el texto centrado verticalmente se desbordaba con el briefing largo del cap. 1. El panel
+  derecho (acciones) no tenía caja visible y la COLA de tareas (crew-queue-panel) era un Container que
+  crecía con el contenido e invadía el panel de acciones de abajo.
+- Nuevo `ui/widgets/scrollable-text.ts::createScrollableText`: caja de alto fijo con Text (wrap) dentro de
+  un scrollablePanel de rexUI (rueda + slider), reusando el patrón ya depurado de kenney-list.ts.
+- Briefing modal (mission-briefing-modal.ts): el cuerpo pasa a createScrollableText entre título y botón;
+  MODAL_HEIGHT 260→360. Cualquier largo se lee scrolleando sin desbordar.
+- Panel de Objetivos (floorplan-scene.renderObjectivesPanel): briefing en createScrollableText (alto fijo)
+  + checklist debajo en área fija dentro del panel.
+- Cola de tripulación (crew-queue-panel.ts): reescrita como scrollablePanel de rexUI ACOTADO a
+  QUEUE_PANEL_HEIGHT con caja de fondo visible (rect con borde) — deja de crecer e invadir el panel de
+  acciones; el exceso scrollea. Filas interactivas (seleccionar tripulante, cancelar "×", cuenta regresiva)
+  se mantienen; la barra de progreso gráfica se simplificó a la cuenta regresiva textual (menos riesgo con
+  rexUI — se puede reponer si el operador la quiere).
+- Panel de acciones (mission-action-panel.ts): caja de fondo delimitada (nuevo param `height`, geometría
+  `actionPanelHeight`) alineada con la caja de la cola; el contenido ya hacía wordWrap. Se quitó el
+  rectángulo de fondo único del strip (cada panel trae su caja, con separación visible y sin solapes:
+  cola [40,260], gap, acciones [276,704]).
+- 320 tests en verde, build y lint de los 3 workspaces en verde.
+Razón: playtest #16 — el operador reportó texto saliéndose del pop-up de misión y del panel derecho (sin
+caja + superponiéndose con la cola).
+
+2026-07-16 — Fix: nombres de tripulantes no clickeables tras el rework de la cola (playtest #16b)
+- Regresión introducida al pasar la cola a un scrollablePanel: las filas de actor usaban
+  `createKenneyButton` (fondo de imagen + setInteractive interno) dentro del sizer, combinación con la
+  que el pointerdown no llegaba a la fila. Reescritas como `label` plano de rexUI con Rectangle de fondo
+  y `setInteractive` DESPUÉS del `.layout()` — el patrón de clickeo ya probado de `kenney-list.ts` / el
+  selector de instalación (que sí funciona con la doble cámara). Seleccionado = borde verde
+  (`SELECTED_CELL_COLOR`). Nota: las filas de actor pasan a verse como labels de color plano en vez del
+  botón gráfico Kenney (tradeoff por la fiabilidad del click dentro del scroll).
+- Build y lint de los 3 workspaces en verde (sin cambios de motor).
+Razón: el operador reportó que los nombres de tripulantes dejaron de ser clickeables tras el playtest #16.
+
+2026-07-16 — Fix: nombres de tripulantes ilegibles/detrás del fondo (playtest #16b, 2º intento)
+  Qué: en crew-queue-panel.ts el `background` del scrollablePanel se creaba DESPUÉS de las
+  filas. Como rexUI (ContainerLite) deja los hijos en la display list de la escena y comparten
+  profundidad, el orden de render lo decide la inserción → el fondo tapaba los nombres. Se mueve
+  la creación del `background`/`track`/`thumb` ANTES de construir las filas. Además, la selección
+  ahora es evidente: fila seleccionada con relleno verde brillante (SELECTED_CELL_COLOR @0.85),
+  borde grueso (3px) y texto oscuro en negrita, en vez de un stroke fino de 2px.
+  Por qué: el primer intento arregló la clickeabilidad pero introdujo el z-order al agregar la
+  caja de fondo; los nombres quedaban ilegibles y la selección no se notaba.
+
+2026-07-16 — Fix: tras seleccionar un tripulante no se podía clickear otro (playtest #16b)
+  Qué: onSelectActor/onCancelTask llamaban redrawQueuePanel() de forma sincrónica dentro del
+  pointerdown de la propia fila. Al destruir el panel (y la fila) durante su propio evento, Phaser
+  dejaba la fila destruida en `currentlyOver` con input=null y el hit-test del frame siguiente se
+  rompía → ninguna otra fila clickeable. Se difiere el redibujado con time.delayedCall(0, ...) para
+  que el evento actual termine antes del teardown; la selección visual se refleja al instante con
+  updateSelectedActorHighlight().
+  Por qué: el primer click funcionaba pero corrompía la lista de input, matando los siguientes.
+
+2026-07-16 — Fix (real): panel de cola inerte tras el primer refresco (playtest #16b)
+  Qué: redrawQueuePanel destruía y recreaba el scrollablePanel entero en cada cambio. Tras el primer
+  refresco el panel dejaba de recibir clicks Y rueda, y no mostraba tareas: el scrollablePanel es dueño
+  de un listener de `wheel` a nivel de escena (mouseWheelScroller) y su teardown dejaba la interacción
+  rota (por eso funcionaba solo antes del primer click, cuando aún no había panel viejo que destruir).
+  Fix: el panel se crea UNA vez (renderCrewQueuePanel) y luego se refresca EN SITIO (refreshCrewQueuePanel)
+  limpiando y reconstruyendo solo el sizer interno — el panel y su scroller sobreviven. Se mantiene el
+  defer con delayedCall(0) en select/cancel para no destruir la fila que despacha el pointerdown.
+  Nota: el intento previo con delayedCall(0) no bastaba porque el problema era el destroy del panel, no
+  el timing del evento.
+
+2026-07-16 — Rediseño UI tripulación: tira horizontal abajo + cola unificada (fin bug selección, playtest #16b)
+  Qué: se reemplazó el panel-lista de tripulación (basado en rexUI scrollablePanel) por dos widgets
+  nuevos con objetos planos de Phaser e input a nivel de escena:
+   - crew-strip.ts: tira horizontal de tripulantes BAJO EL MAPA (solo columna del mapa). Cada carta =
+     retrato + nombre + rol; retrato en color (CREW_TOKEN_COLORS[i]) si está seleccionado, gris si no.
+     Placeholder de color (falta sprite game/assets/sprites/crew/portrait-base.png).
+   - crew-queue-panel.ts (reescrito): cola UNIFICADA plana con todas las tareas de todos, cada fila con
+     chip del color del tripulante + nombre + tarea + cuenta regresiva + "×"; máscara de geometría para
+     recortar + scroll con rueda.
+  Layout: MAP_VIEWPORT_HEIGHT se acorta en CREW_STRIP_HEIGHT (118px) para dejar la tira abajo; el panel
+  derecho mantiene la cola arriba y las acciones abajo.
+  Input: selección de tripulante, cancelar tarea y scroll de la cola se resuelven con HIT-TESTING a nivel
+  de escena en los handlers pointerup/wheel existentes (mismo mecanismo determinista del click de mapa),
+  no con setInteractive por fila. Esto elimina de raíz el bug de #16b (no se podía seleccionar un segundo
+  tripulante): reconstruir objetos interactivos dentro de un scrollablePanel de rexUI en esta escena de
+  doble cámara no era fiable para input; con hit-test a nivel de escena reconstruir los paneles es seguro.
+  Por qué: 4 intentos previos con rexUI cambiaban un modo de falla por otro; el operador aprovechó para
+  rediseñar la UI de tripulación (tira horizontal, gris/color, cola única con indicador).
+  Sprite faltante: game/assets/sprites/crew/portrait-base.png (retrato genérico tintable; placeholder activo).
+
+2026-07-16 — Retratos por tripulante (carga por nombre) + rediseño de tarjeta de la tira (playtest #16b)
+  Qué:
+   - crew-portrait-registry.ts (nuevo): descubre retratos por nombre-slug con import.meta.glob (mismo
+     patrón que component-sprite-registry). crewPortraitSlug(name) = minúsculas sin acentos ("Ríos"→"rios");
+     preloadCrewPortraits/hasCrewPortrait/crewPortraitTextureKey. floorplan-scene::preload lo llama.
+     Archivos esperados: game/assets/sprites/crew/<slug>.png (rios, vance, osei, kade, solis, petra).
+   - crew-strip.ts: tarjeta rediseñada a layout horizontal — retrato a la IZQUIERDA, nombre a la derecha
+     y rol debajo; cada tarjeta con caja/borde y CARD_GAP mayor (se acabó el solape del rol). Si existe el
+     retrato → Image con grayscale FX (ColorMatrix) cuando NO está seleccionado, color cuando sí; si no,
+     placeholder gris/color como antes.
+   - i18n es.ts/en.ts: crew.<slug>.name/sex/description para los 6 tripulantes (ES+EN), para mostrarlos en
+     un futuro panel de ficha.
+  Por qué: el operador va a generar un retrato por tripulante y necesitaba las descripciones+sexo, la lógica
+  de carga por nombre, y arreglar el solape del rol entre tarjetas.
+  Sprites faltantes: game/assets/sprites/crew/{rios,vance,osei,kade,solis,petra}.png (placeholder activo).
+  320 tests en verde, build y lint en verde.
+
+2026-07-16 — Fase 10e: barks reales (crisis-start) + retiro del andamiaje dev del resultado de crisis
+  Qué:
+   - bark-bubble.ts (nuevo): burbuja de diálogo sobre el token (caja + texto con wrap, sube y se
+     desvanece), objeto de mundo. Mismo patrón que el texto flotante de abortUnreachable.
+   - bark-controller.ts (nuevo): BarkController.fire(actor, eventType, x, y) elige la línea con
+     barkKey/pickBarkIndex del motor (ya testeados) y rota entre las 2 líneas del banco; muestra la burbuja.
+   - floorplan-scene.ts: instancia BarkController; dispara barks de crisis-start al arrancar la misión,
+     uno por tripulante activo, escalonados ~1s, tras cerrar el briefing (o de inmediato si no hay).
+     No depende del evento crisis-triggered (se emite en el constructor de MissionRuntime antes de la
+     suscripción y el EventEmitter no hace replay) → se lee crisisState === "active". Se quitó la tecla
+     dev C que forzaba la pantalla de resultado.
+   - Resultado de crisis: ya estaba cableado a la resolución REAL (crisis-resolved → buildCrisisOutcome →
+     setPendingCrisisOutcome → crisis-result-scene). Se retiró el fallback dev: crisis-result-scene ahora
+     usa solo takePendingCrisisOutcome() y, si no hay outcome, vuelve al título; se borró
+     buildDevCrisisOutcome de crisis-outcome.ts y la clave i18n huérfana ui.menu.crisis-result.dev-trigger-hint.
+  Por qué: cerrar 10e (barks reales mínimo crisis-start + resultado real sin andamiaje de dev). Avanzar de
+  capítulo/guardar y el flujo end-to-end desde crew-select quedan para 10f.
+  Otros BarkEventType (success/failure/crew-death/…) se dejan para cuando una crisis los produzca (criterio
+  de no construir antes del caso de uso); fire() los admite sin cambios.
+  320 tests en verde, build y lint en verde.
+
+2026-07-16 — Barks reactivos: por tarea (empezar/terminar) + un solo bark al inicio (feedback playtest)
+  Qué: los barks dejan de dispararse todos al inicio (poco útil) y pasan a reaccionar al juego.
+   - floorplan-scene handleCoreLoopEvent: al EMPEZAR una acción asignada (task-started, type != go-to) →
+     bark "dangerous-task"; al TERMINARLA (task-completed, type != go-to) → "success"; si una tarea falla
+     (task-failed) → "failure". Caminar (go-to), bloqueo y cancelación no barkean. Helper barkForActor
+     resuelve actor + posición del token.
+   - crisis-start: de lote (uno por tripulante) a UNO solo (tripulante al azar) al cerrar el briefing.
+     Método renombrado fireCrisisStartBarks → fireCrisisStartBark.
+   - bark-controller: cooldown de 600ms por actor para que start/complete de acciones cortas no se solapen.
+  Por qué: el operador señaló que disparar todos los barks al inicio era poco útil; la gracia es que
+  reaccionen cuando se les manda a hacer cosas (tareas). Los barks de daño (severe-injury/crew-death)
+  siguen pendientes: nadie produce esos eventos en una misión todavía (HP no se tickea, cap. 1 sin peligro).
+  320 tests en verde, build y lint en verde.
+
+2026-07-17 — 10f: cierre end-to-end del meta-juego (avance de capítulo + write-back + guardado)
+  Qué: al resolver una crisis, ahora el progreso avanza y persiste (antes se mostraba el resultado pero
+  chapterProgress no avanzaba ni el estado post-misión se escribía al save).
+   - engine crisis/campaign/chapter-sequence.ts (nuevo, data-driven): ORDERED_CHAPTERS fija el orden
+     global; CHAPTER_SEQUENCE_BY_ARCHETYPE deriva la secuencia de ids por arquetipo; nextChapterAfter(id,
+     archetype) resuelve el siguiente. Único lugar que define el ORDEN (CHAPTER_REGISTRY solo mapea
+     id→definición). Con test.
+   - engine save/chapter-progression.ts (nuevo): advanceChapterProgress(save, resolvedChapterId) puro —
+     dedup en completedChapterIds, fija currentChapterId al siguiente (o lo deja igual si no hay), y siembra
+     los componentes/nodos iniciales del próximo capítulo vía la tabla CHAPTER_SEED_BY_ID. campaign-save-
+     factory.ts se refactorizó para sembrar el capítulo 1 desde esa MISMA tabla (no duplicar el estado
+     inicial en dos sitios). Con tests.
+   - game mission/mission-runtime.ts: toUpdatedSave(base) — write-back del estado vivo (nave modificada +
+     HP/status/sección de la tripulación activa) al formato persistente. Único punto de write-back.
+   - game scenes/floorplan-scene.ts goToCrisisResult: en orden → toUpdatedSave → (si éxito)
+     advanceChapterProgress → campaignSession.load + autosave saveCampaignSave (en éxito Y fallo) →
+     buildCrisisOutcome → transición.
+   - game meta/crisis-outcome.ts buildCrisisOutcome: gana resolvedChapterId y calcula nextChapterId vía
+     nextChapterAfter (ya no undefined hardcodeado); el resumen lee el save ya actualizado. El botón
+     "Siguiente capítulo" de crisis-result-scene se habilita cuando hay siguiente.
+  Por qué: cerrar 10f — el bucle de meta-juego no estaba cerrado (no avanzaba capítulo ni persistía el
+  estado post-misión). Decisión: autosave siempre al terminar la crisis; en fallo persiste sin avanzar.
+  327 tests en verde, build y lint de los 3 workspaces en verde.
+  Housekeeping (arrastrado desde 10e): se registra el ajuste de duración de barks — burbuja fija 4s
+  (BUBBLE_HOLD_MS) + salida sube/desvanece 900ms (BUBBLE_FADEOUT_MS) en crew/bark-bubble.ts — que había
+  quedado sin loguear.
+
+2026-07-17 — Hito demo, Paquete 2: capítulo 2 "Ecos en el Pasillo" (combinación de señales + daño real)
+  Qué: segundo capítulo jugable — el primero que muestra combinación de señales (la promesa "como
+  redstone") — con timer medio y consecuencia de daño real a un tripulante si se automatiza mal.
+   - engine reglas nuevas (Strategy + registro): crisis/rules/motion-sensors-active.ts (trigger: la crisis
+     está activa mientras los 2 sensores sembrados existen) y crisis/rules/signal-output-matches.ts
+     (resolución por TABLA DE VERDAD: reutiliza signals/signal-evaluator.ts de Fase 2 para correr el grafo
+     y verificar que el nodo de salida produce el valor esperado en cada caso — así solo el cableado que
+     reproduce la lógica AND resuelve, sin hardcodear el gate; principio 1). Ambas con unit test.
+   - engine consecuencia aplicada (no existía): crisis-definition.types.ts gana el spec crew-damage
+     (severity + cause). Como evaluateCrisis es puro, la aplicación vive en mission/crisis-runtime.ts: al
+     transicionar a resolved-failure aplica el daño a un tripulante vivo (nuevo MutableCrewState) y emite
+     CrewDomainEvent. Reutiliza hp-resolution.ts (nuevo applyCrewDamage público sobre el applyHpLoss
+     interno). El daño se aplica ANTES de emitir crisis-resolved para que el write-back de HP lo vea. Test.
+   - engine contenido: crisis/campaign/chapter-02-ecos-en-el-pasillo.ts — CrisisDefinition por arquetipo
+     (timer 90s + onExpire resolved-failure + consequence crew-damage/electrocution), siembra 2
+     fotorreceptores (sensores, emisores) + 1 chip-circuito-generico (panel combinador, nodo receptor con
+     gate AND) SIN cable. Registrado en CHAPTER_REGISTRY, en la secuencia (cap.1 → cap.2) y en
+     CHAPTER_SEED_BY_ID (se siembra al avanzar desde el cap. 1). Posiciones Exploración (pasillo-central
+     y=9) verificadas walkable contra la grilla; otros arquetipos de referencia. Con tests.
+   - game floorplan-scene.ts: se suscribe a mission.crewEvents → efecto de partículas de daño/muerte por
+     causa (crew-death-effect.ts, ya existía) sobre la celda del token + bark severe-injury/crew-death
+     (cierra el pendiente de 10e). i18n es/en del briefing/objetivo del cap. 2.
+  Por qué: alcance mínimo del hito de demo (cap. 1 y 2). El cap. 2 comunica la combinación de señales y da
+  el primer disparador real de los eventos de daño (pendientes desde 10e). Reutiliza fotorreceptor/
+  chip-circuito-generico (mismos del cap. 1) — no se introducen componentes nuevos ni sprites nuevos.
+  Decisión: la compuerta se siembra pre-configurada como AND para que el puzzle sea resoluble con la
+  herramienta de cableado existente (crear aristas), sin editor de comportamiento de nodo.
+  338 tests en verde, build y lint de los 3 workspaces en verde.
+
+2026-07-17 — Hito demo, Paquete 3: export/import de creaciones del modo creativo (.kludge)
+  Qué: compartir creaciones del modo creativo como archivo .kludge vía diálogo nativo de Electron
+  (viralidad de la demo).
+   - electron: canales IPC nuevos (blueprint:export/import, ipc-channels.ts); main.ts usa
+     dialog.showSaveDialog/showOpenDialog con filtro .kludge + fs writeFile/readFile (contenido opaco,
+     mismo criterio que SaveFileStore); preload.ts expone window.kludgeBlueprint.export(json)/import().
+   - game meta/save-adapter.ts: exportCreationToFile(creation)/importCreationFromFile() serializan con
+     serializeCustomCreation/deserializeCustomCreation (motor, ya validan versión) y hablan con
+     window.kludgeBlueprint, con fallback con aviso fuera de Electron (nunca localStorage).
+     meta/electron-api.d.ts declara KludgeBlueprintApi.
+   - game scenes/creative-hub-scene.ts: botones Exportar (creación seleccionada de la lista) / Importar
+     (suma a la lista vía saveCustomCreation) + línea de estado. i18n es/en.
+  Por qué: mecanismo de viralidad orgánica del hito de demo — compartir lo que el jugador construyó.
+  Decisión del operador: archivo .kludge vía diálogo nativo, no clipboard. Empaquetado (electron-builder)
+  queda diferido a un plan aparte.
+  338 tests en verde, build y lint de los 3 workspaces en verde.
+
+2026-07-17 — Cap. 2 post-playtest: fix del pop-up de resultado + temporizador visible + peligro progresivo
+  Qué: tres arreglos sobre el capítulo 2 tras el playtest del operador.
+   1. **Pop-up de fin de misión (bug)**: la escena `FloorplanScene` es una instancia PERSISTENTE de
+      Phaser; al pasar del cap. 1 al 2 (`crisis-result → in-mission` hace `p.start(floorplan)`) se
+      re-ejecuta `create()` pero los inicializadores de campo de clase NO se reinician. `crisisResultShown`
+      quedaba en `true` del cap. 1 → `goToCrisisResult` del cap. 2 cortaba y no mostraba el pop-up (el
+      jugador quedaba atrapado). Fix: reiniciar el estado por-misión al inicio de `create()`
+      (`crisisResultShown`/`barksCrisisStartFired`/`briefingOpen`/`objectivesOpen`/`queueRedrawAccumulatorMs`
+      + `crewTokens.clear()`).
+   2. **Temporizador visible**: nuevo `timerText` en el header (derecha del área de mapa), actualizado por
+      frame en `update()` desde `mission.crisisDefinition.timer` + `coreLoop.elapsed`. Color por urgencia
+      (`TIMER_TEXT_COLORS` en palette): calmo → ámbar al entrar en la ventana de castigo (`hazard.startFraction`)
+      → rojo + parpadeo con ≤10s. Oculto si la crisis no tiene timer (cap. 1). i18n `ui.floorplan.mission.time-left`.
+   3. **Peligro progresivo (decisión del operador: castigo por dilación, solo herida)**: motor —
+      `CrisisHazardSchedule` (`periodic-crew-damage`, data-driven) en `crisis-definition.types.ts` +
+      `hazard?` en `CrisisDefinition`; `CrewDamageConsequenceSpec` y el hazard ganan `lethal?`. `CrisisRuntime`
+      aplica descargas cada `intervalSeconds` a partir de `startFraction`, al tripulante con más HP, no
+      letales (piso de HP vía `applyCrewDamage(..., { minHp })` nuevo en `hp-resolution.ts`). Cap. 2:
+      `startFraction 0.6`, `intervalSeconds 15`, `severity low`, `electrocution`, `lethal false`; la
+      consecuencia de fallo también `lethal false`. Game — `handleCrewEvent` ya pinta partícula + bark;
+      ahora la cadencia de salto usa el HP vivo (`cadenceForActor`/`crew-hp-to-cadence.ts`) para que el
+      herido se mueva entrecortado. Briefing (es/en) reescrito para explicar el castigo progresivo.
+  Además (hallazgo de paso): `queueConnect` (`mission-runtime.ts`) ahora orienta SIEMPRE emisor → receptor
+  sin importar el orden de click — la resolución de señal del cap. 2 (`signal-output-matches`) es sensible
+  a la dirección, a diferencia del cap. 1; sin esto, cablear la compuerta antes que el sensor dejaba el
+  puzzle sin resolver.
+  Tests: `applyCrewDamage` con `minHp` (no letal); `crisis-runtime.test.ts` descargas periódicas no
+  letales; `chapter-02...test.ts` hazard definido/no letal. 50/50 tests en verde en los archivos tocados;
+  build y lint de los 3 workspaces en verde.
+  NOTA: `npm test -w engine` completo NO corre en verde por un WIP del operador en
+  `engine/src/floorplan/maps/nave-exploracion.json` (sección `esclusa-eva` en x≈160.6px, no alineada al
+  grid de 32px — en HEAD estaba en 192). No relacionado a este cambio (CLAUDE.md: los JSON de mapa son del
+  operador, autorados en Tiled). Se resuelve snapeando esa sección a un múltiplo de 32 en Tiled.
+
+2026-07-17 — Cap. 2 legibilidad del peligro: timer prominente + HP en la tarjeta + daño ambiental (arco)
+  Qué: el motor ya aplicaba el castigo progresivo, pero no se LEÍA. Tres arreglos de presentación (100% /game).
+   1. **Timer prominente**: `timerText` pasa del costado derecho del header (tapado por los botones) al
+      CENTRO SUPERIOR del mapa, fuente 26px bold + píldora de fondo semitransparente (`timerPill`) para
+      legibilidad. Mantiene color por urgencia + parpadeo. Ya no lo tapan los botones (viven en otra franja).
+   2. **HP en la tarjeta + feedback de golpe**: `crew-strip.ts` dibuja una barra de HP por tarjeta (verde→
+      ámbar→rojo por fracción) + cifra `hp/maxHp`. `redrawCrewStrip` pasa HP VIVO (`crewState.get(id)`), no
+      el snapshot estático. Al recibir `crew-damaged`: flash rojo en la tarjeta (`flashCrewCard`) + flash/
+      pulso en el token (`flashCrewToken`) + redibujo de la tira para que la barra baje en vivo.
+   3. **Daño ambiental (arco eléctrico)**: nuevo `particles/effects/environmental-damage-effect.ts` —
+      `electricArcEffect` dibuja un rayo quebrado (Graphics, 3 golpes rápidos re-randomizados, halo+núcleo)
+      desde una PARED cercana AL tripulante + chispas/destello en el impacto; DEVUELVE sus objetos.
+      Dispatcher `fireEnvironmentalDamage(scene, cause, target, {origin})` por causa (hoy `electrocution`,
+      punto de extensión documentado para gas tóxico/corrosión). Origen de pared: `nearestWallPx` escanea
+      anillos crecientes sobre `walkableGrid` (celda no transitable = pared), con fallback "desde arriba".
+  Fix de raíz de las "explosiones aleatorias": el `fireEventEffect` genérico de crew NO devolvía sus
+  emisores, así que la escena no podía asignarlos a la cámara de mundo → renderizaban en las dos cámaras
+  (mundo+HUD) en coords distintas. En la ruta de misión el daño de crew pasa ahora por el efecto ambiental,
+  cuyos objetos SÍ se marcan `markAsWorldObject` + depth `effect`. El registro (crewDamaged/crewDeath) se
+  conserva para la galería de partículas de dev.
+  Build y lint de los 3 workspaces en verde. (El `npm test -w engine` completo sigue dependiendo del WIP del
+  mapa `nave-exploracion.json` alineado al grid, no tocado por este cambio.)
+
+[2026-07-17] Cap. 2 ajustes de playtest: arco eléctrico más azul + deadline 60s.
+- environmental-damage-effect.ts: paleta del arco a azul eléctrico (ARC_COLOR 0x3d8bff, núcleo celeste 0xcfe6ff), triple trazo halo/medio/núcleo para brillo, chispas azules (0x6fb4ff) en vez de amarillas. Razón: el operador pidió que el arco "haga pensar en electricidad".
+- chapter-02: CHAPTER_02_SOFT_DEADLINE_SECONDS 90 -> 60. Razón: 90s se sentía largo en playtest.
+
+[2026-07-17] Fase 11a.0 — Proyectil posicionado y simulado (prerrequisito de ASA 2 y ASA 3).
+- Razón de la subfase: `nuevo-orden.md` describía la 11a como tres retoques sobre sistemas existentes,
+  pero `engine/src/kinetics/` no tenía ningún llamador de producción ni noción de posición — el caso 17
+  simulaba el avance del proyectil a mano con un contador. ASA 2 (drag por celdas) y ASA 3 (trayectoria
+  fantasma) no eran implementables sin esta entidad. Se partió la 11a en 4 subfases.
+- geometry/grid-distance.ts (nuevo): `manhattanDistance`. Razón: cierra la decisión que
+  `magnetic-field.ts` había pospuesto explícitamente hasta tener un proyectil sobre el plano. Manhattan
+  sobre euclídea (decisión del operador) para que la distancia sea contable a ojo por el jugador y el
+  espaciado de bobinas sea una decisión informada, no ensayo y error.
+- kinetics/projectile.types.ts + projectile-simulation.ts (nuevos): `ProjectileSimulation implements
+  Tickable`, avance fraccionario resuelto celda a celda (no atraviesa obstáculos intermedios con dt
+  grande). Compone las reglas ya existentes en vez de reimplementarlas. Puerto `ProjectileWorld`
+  inyectado (decisión del operador) para que `kinetics/` no importe `blueprint/` ni `floorplan/`.
+- Dirección derivada del pulso y conservada por inercia (decisión del operador). Razón: el doc §2 dice
+  que el objeto "se mueve hacia la fuente"; un campo `direction` autorado habría hecho del riel una
+  decisión de autoría en vez del jugador (principio 1).
+- magnetic-acceleration.ts: nuevo getter `pulsedOnLastTick`. Razón: `tick` solo devuelve evento en
+  transición de nivel, así que el llamador no podía distinguir "no hubo pulso" de "hubo pulso sin
+  cambio de nivel". Se expone en vez de duplicar la detección de flanco en el simulador — qué cuenta
+  como pulso se define en un solo lugar.
+- mission/mission-signal-runtime.ts (nuevo): estado de señales VIVO como Tickable del core loop.
+  Razón: el motor solo evaluaba señales en ráfagas desechables (la resolución del cap. 2 tira el estado
+  tras cada tabla de verdad), así que no había forma de saber qué bobinas están energizadas ahora.
+  Ampliación de alcance decidida por el operador. Preserva la memoria de latch/contador de los nodos que
+  sobreviven a un re-cableado: tirar el estado entero haría que tender un cable reseteara todos los
+  latches de la nave.
+- mission/mission-projectile-world.ts (nuevo): adaptador del puerto sobre el blueprint vivo. Bobina
+  identificada por propiedades (MAG + COND eléctrico + energizada — el criterio del caso 9), nunca por
+  id de catálogo (principio 1). Corriente derivada del reservorio eléctrico más fuerte aguas arriba
+  (decisión del operador); deroga el comentario de `current-level.types.ts` que afirmaba que la
+  corriente "se declara explícitamente, no se deriva" — nunca existió un campo donde declararla y
+  fijarla por pieza habría matado la palanca central del caso 17.
+- game/src/mission/mission-runtime.ts: registra `signalRuntime` y `projectiles` en el core loop, en ese
+  orden (señales antes que proyectiles para que una bobina energizada en el tick pulse en el tick).
+  Nuevos emisores `signalEvents` y `kineticEvents` para que /game pinte estela e impacto (doc §4, Fase 12).
+- case-17 reescrito: pilota la simulación real en vez del contador manual. El pulso temporizado de cada
+  bobina se construye con `delay(on) AND NOT delay(off)` (GDD 5.6), sin semántica nueva.
+- 370 tests en verde (eran 327), build y lint de los 3 workspaces en verde.
+- PENDIENTES_OBSERVACIONES.md: anotados 3 hallazgos fuera de alcance (código muerto de
+  `multipleCoilsThreshold`; emisores siempre activos por falta de simulación de sensores; tripulación
+  sin posición por celda, que impide el impacto a tripulantes en misión).
+
+===============================================================================
+2026-07-17 — Fase 11a.1: ASA 1, masa virtual (footprint × RE)
+===============================================================================
+RAZÓN: `nuevo-orden.md` ASA Flaw 1 — el daño cinético se resolvía con velocidad × footprint, así
+que una carcasa de plástico vacía hacía exactamente el mismo daño estructural que una plancha de
+metal reforzada del mismo tamaño. `RE`, la propiedad que ya las distingue en el catálogo, no
+participaba del cálculo. La 11a.0 dejó el enchufe listo: `ProjectileBody.re` existía sin lector.
+
+- engine/src/kinetics/virtual-mass.ts (nuevo): `virtualMass(footprint, re?)` → B/M/A cruzando el
+  bucket de tamaño con `RE`. `RE` ausente = ligera (la mayoría del catálogo no la declara: el
+  defecto por ausencia no debe regalar daño). Archivo propio, una regla = un archivo.
+  `largeFootprintArea` migró desde `KINETIC_IMPACT_PARAMETERS` (era el proxy de masa entero
+  cuando la masa era solo tamaño), acompañado de `mediumFootprintArea`.
+- engine/src/kinetics/kinetic-impact.ts: `resolveKineticImpact` recibe el `ProjectileBody` entero
+  en vez de solo el footprint (un único llamador de producción) y resuelve la matriz velocidad ×
+  masa. DEROGA el doc §3 "daño alto si la velocidad es alta" (decisión del operador): la masa
+  modula en ambos sentidos, un proyectil ligero a velocidad alta hace daño medio. Sin degradación,
+  el defecto que ASA 1 corrige sobrevivía en la fila que más importa.
+- docs/Extension_aceleracion_magnetica.md §3: tabla nueva + enmienda con la derogación y su razón.
+  El doc es la autoridad de diseño — si el código deroga un literal, lo dice el doc, no el código.
+- engine/src/components/catalog/atomic-component-catalog.ts: `iman-permanente` declara `RE: "M"`
+  (1×1 → masa baja) y se añade `pieza-hierro` (`MAG` + `RE: "A"` → masa media). RAZÓN: la única
+  pieza `MAG` del catálogo no tenía `RE`, así que bajo la matriz nueva el único proyectil jugable
+  real quedaba capado a daño medio para siempre; y el caso 17 volaba una `pieza-hierro` que no
+  existía como pieza. El doc §5 ya nombraba ambas ("un imán permanente o pieza de hierro").
+  Fix data-driven (decisión del operador), no un parche a las expectativas del test.
+- engine/src/kinetics/magnetic-field.ts: pendiente #3 resuelto — `multipleCoilsThreshold` era
+  código muerto (las dos ramas finales devolvían ambas "A" con corriente alta, así que 3 y 40
+  bobinas daban lo mismo). 2-3 bobinas + alta → "M", dejando ≥4 + alta como único camino a
+  intensidad Alta, que es lo que pide la tabla del doc §1. Sin efecto sobre el caso 17: su riel
+  energiza las bobinas de a una, y esa rama nunca se evalúa allí.
+- case-17: `IRON_SLUG` se construye desde el catálogo real en vez de ser una ficción del test. Los
+  3 tests existentes conservan su desenlace; test nuevo con proyectil ligero (imán) → mismo riel,
+  misma velocidad alta, el tripulante sobrevive. ASA 1 validado en crisis real: la elección de
+  proyectil decide el desenlace.
+- 375 tests en verde (eran 370), build y lint de los 3 workspaces en verde.
+- SPRITE FALTANTE: game/assets/sprites/components/pieza-hierro.png (anotado en
+  docs/listado-piezas-imagenes.md). Mientras no exista, la pieza cae en el placeholder por código.
+
+2026-07-17 — Fase 11a.2: ASA 2, drag por celdas recorridas
+Detalle: `MagneticAccelerationAccumulator.applyDrag` (engine/src/kinetics/magnetic-acceleration.ts)
+consume `cellsSinceLastPulse` (contabilizado desde 11a.0, sin consumidor hasta ahora): fuera de la
+influencia de toda bobina activa, la velocidad decae un nivel cada `dragThresholdCells` celdas
+recorridas sin pulso nuevo. El peso acumulado también decae junto con la velocidad (decisión del
+operador) — un pulso posterior tiene que volver a ganarse el nivel perdido, no restaurarlo de un
+pico histórico que nunca bajó. Se reescribió el comentario de la clase que afirmaba que el peso
+"NUNCA decrece" — ASA 2 lo contradice a propósito fuera de pulsos; dentro de un pulso sostenido
+(campo activo sin flanco nuevo) la inercia sigue sin decrecer.
+`ProjectileSimulation.accelerate()` llama `applyDrag` solo cuando la celda del proyectil no tiene
+influencia de ninguna bobina (`intensity === "N"`) y no hubo pulso ese tick.
+Umbral conservador (decisión del operador): `dragThresholdCells = 25`. El valor 10 probado primero
+(por encima del hueco más grande del riel bien calculado del caso 17, ~7 celdas) rompía el 2° test
+de ese caso — una bobina fuera de rango produce una deriva de ~14-16 celdas sin pulso hasta la
+siguiente bobina, y con umbral 10 el proyectil se frenaba del todo antes de llegar, dejando la
+bobina 3 sin nada que pulsar y el caso sin impacto. Se subió a 25, por encima de ambos huecos,
+verificado corriendo la suite completa (no a mano) — los 4 tests existentes de caso 17 dan
+exactamente los mismos resultados sin tocarlos.
+Disparador solo por celdas recorridas, no por segundos de reloj (decisión del operador): coherente
+con la dependencia declarada en ORDEN_DE_TRABAJO y con que el resto de la simulación resuelve todo
+por celda.
+docs/Extension_aceleracion_magnetica.md §2: enmienda documentando la regla de drag, el ajuste del
+peso acumulado y el criterio del umbral conservador; §5 (caso 17) actualizado para mencionar que
+ahora también valida el drag.
+case-17: los 4 tests existentes intactos (sin modificar expectativas). Test nuevo (5°): una bobina
+bien ubicada pero encendida demasiado tarde deja al proyectil derivando más de `dragThresholdCells`
+celdas sin pulso — el impulso decae a "N" antes de que la siguiente bobina lo alcance, así que esa
+bobina reconstruye el impulso desde cero (impacto "B"/"low") en vez de reforzarlo (frente al
+"A"/"high" del riel bien calculado).
+385 tests en verde (eran 375), build y lint de /engine en verde.
+PENDIENTES_OBSERVACIONES.md revisado contra esta subfase: ninguno de los 4 puntos registrados
+aplica (no tocan `kinetics/`); no se modificó ese archivo.
+Razón: `nuevo-orden.md` (ASA Flaw 2) señalaba que la inercia acumulada nunca decrecía fuera de
+pulsos, dejando un proyectil que alcanza velocidad alta en una sala vacía rebotando sin control para
+siempre. Sin este freno, ASA 3 (trayectoria fantasma) hubiera predicho una trayectoria que miente
+apenas el proyectil saliera del alcance de toda bobina.
+
+2026-07-17 — Fase 11a.3: ASA 3, trayectoria fantasma en pausa táctica (vertical slice completo)
+Detalle: la exploración de esta subfase encontró que ningún proyectil se coloca ni se renderiza
+nunca en una misión real — `ProjectileSimulation.register()` solo lo llamaba código de test, y
+`/game` no suscribía `kineticEvents`/`signalEvents` en ningún lado (los efectos de partículas de
+estela/impacto ya estaban completos pero eran código muerto en misión, solo demostrados en la
+galería). Consultado el operador, se decidió el vertical slice completo en vez de solo la función
+de predicción, con una decisión explícita adicional: "cargar un proyectil" no es un verbo nuevo de
+jugador — es un efecto EMERGENTE de las mecánicas que ya existen.
+`isElectromagnetDefinition`/`isLooseFerromagneticCandidate` (engine/src/mission/mission-projectile-
+world.ts, extraídas del predicado privado que ya usaba el caso 9): una pieza `MAG` sin conducción
+eléctrica es candidata a proyectil, la negación exacta de una bobina activa. `LooseFerromagnetic-
+Promoter` (nuevo, Tickable) promueve esa pieza de `placedComponents` a `ProjectileSimulation` en
+cuanto aparece instalada con el flujo normal (`queueInstall`, sin cambios) — registrado en el core
+loop entre `signalRuntime` y `projectiles`. Una vez promovida nunca vuelve al Blueprint (principio 5).
+Snapshot/restore (antes imposible): `MagneticAccelerationAccumulator` ganó `snapshot()` y un
+segundo parámetro opcional de constructor para restaurar peso acumulado/intensidad previa/pasos de
+drag — sin esto no había forma de continuar una predicción desde un proyectil ya en vuelo, solo de
+simular desde reposo. `ProjectileSimulation.registerFrom`/`bodyOf`/`accumulatorSnapshotOf` siembran
+un dry-run desde el estado vivo.
+`engine/src/kinetics/trajectory-preview.ts` (nuevo, función pura): dry-run de N ticks sobre una
+`ProjectileSimulation` desechable, trunca en el primer impacto predicho, reutiliza el MISMO código
+que la simulación real (nunca una segunda implementación aproximada — es lo que garantiza que el
+fantasma no mienta). `engine/src/mission/mission-trajectory-preview.ts` (nuevo): orquestador
+concreto que clona el `SignalGraphState` vivo y el `Blueprint` (congelado para la ventana de
+predicción — válido porque el reloj real está totalmente parado en pausa), arma un
+`SignalEvaluator` y un `MissionProjectileWorld` descartables sin emitter (ningún evento de dry-run
+llega a los buses reales). `MissionProjectileWorld` pasó a depender de la interfaz mínima
+`SignalOutputReader` en vez de la clase concreta `MissionSignalRuntime` (refactor pequeño,
+estructuralmente compatible, cero cambios en el cableado de producción) — es lo que permite un
+lector de señales de mentira sobre el estado clonado.
+Juego: `projectile-renderer.ts` (token real, redibujado cada frame en ejecución — el proyectil no
+necesita animación de salto, su posición ya es continua) y `projectile-trajectory-renderer.ts`
+(polilínea fantasma con marcadores de tick, color `TRAJECTORY_GHOST_COLOR` = mismo cian que la
+estela de aceleración magnética). El fantasma se calcula UNA vez al entrar en pausa
+(`core-loop-mode-changed`), no por frame — nada de lo que alimenta la predicción puede cambiar con
+el reloj congelado. `floorplan-scene.ts` ahora suscribe `kineticEvents`/`signalEvents` a
+`fireEventEffect` (cableado que faltaba desde 11a.0). Dos depths nuevos (`projectileEntity`,
+`trajectoryGhost`) en `render-depths.ts`, por encima de paredes para que siempre se vean.
+Test central (case-17): predicción a mitad de vuelo (4s de 8, antes de la 3ª bobina) coincide con
+el impacto real final corriendo la simulación completa después — misma posición, misma severidad.
+Prueba de punta a punta de "si predice sin drag, miente", no solo por reglas sueltas.
+docs/Extension_aceleracion_magnetica.md §6 (nuevo): documenta la regla emergente y la trayectoria
+fantasma, incluida la limitación heredada de emisores/sensores y de impacto contra tripulación
+(PENDIENTES_OBSERVACIONES.md puntos 3 y 4 — el fantasma es tan (in)exacto en esos dos puntos como
+el juego en vivo, no un defecto nuevo). Puntos 1 y 2 no aplican (sin relación con conexiones
+estáticas ni listas).
+401 tests en verde (eran 385), build y lint de los 3 workspaces en verde.
+Razón: cerrar la Fase 11a completa (11a.0 → 11a.3) con el feedback predictivo que el diseño pedía,
+sin inventar una mecánica de jugador que ningún documento especificaba — la física ya existente
+decide cuándo una pieza suelta se vuelve proyectil, no una UI nueva.
+
+2026-07-17 — Fase 11b: sistema de guardado dinámico y cicatrices persistentes
+`engine/src/save/` ya existía completo (persistencia real a disco vía Electron desde la Fase 9.5) y
+`reservoirContents` ya viajaba en el `Blueprint` desde el schema v3 — el trabajo real de esta fase
+era otro: `StructuralIntegrity` (`failure/structural-failure.ts`) llevaba desde antes de la Fase 10
+sin un solo llamador de producción (isla, como `kinetics/` antes de 11a.0), y ninguna misión real
+instanciaba una atmósfera de sección viva (`diffuse()`/`SectionRuntime` solo corrían en tests
+unitarios aislados) — `core-loop-mode.ts` ya anticipaba textualmente que "atmósfera" y "fallo" se
+cablearían al core loop, y quedaban como los dos pendientes de esa lista.
+Blueprint schema 3→4 (`blueprint.types.ts`, `blueprint-serializer.ts`): 3 campos nuevos, los 3 con
+default si faltan (mismo criterio que `condition` en el bump 2→3, sin migración formal) — un save
+v3 carga sin romperse. `Blueprint.sectionAtmospheres` (snapshot serializable de `SectionAtmosphere`
+por sección — un `Map` no sobrevive JSON.stringify, de ahí `atmosphere-snapshot.types.ts` con
+`toSectionAtmosphereSnapshot`/`fromSectionAtmosphereSnapshot`), `Blueprint.unpoweredSectionIds`
+(cicatriz de energía) y `PlacedComponentInstance.structuralResistanceOverride` (cicatriz de RE, por
+componente instalado, mismo patrón que `condition`).
+Atmósfera viva: `engine/src/mission/mission-atmosphere-runtime.ts` (`MissionAtmosphereRuntime`,
+`Tickable` nuevo) siembra `SectionRuntime` por sección desde `deriveAtmosphereModel` + el snapshot
+guardado (o aire estándar si no hay uno), y tickea `diffuse()` real — primer llamador de producción
+de ese módulo. Es también el llamador que le faltaba a `atmosphere-state-effects.ts` (el propio
+archivo ya dejaba anotado "quien llama a `update()` queda pendiente"): `floorplan-scene.ts` alimenta
+sus 3 efectos state-driven (fuga de gas/congelación/vapor) por sección, cada frame en ejecución.
+Nuevo `engine/src/atmosphere/corrosive-atmosphere.ts` (`sectionCorrosiveLevel`, mismo patrón que
+`combustion-atmosphere.ts`): clasifica el `ChemicalTagLevel` corrosivo de una sección cruzando sus
+gases contra el catálogo químico — la pieza que le faltaba a `StructuralIntegrity.tick()` para
+recibir un nivel real en vez de uno tecleado a mano en el test.
+Cicatriz de RE: `engine/src/mission/mission-structural-runtime.ts` (`MissionStructuralRuntime`,
+`Tickable` nuevo) — un `StructuralIntegrity` por instancia con `material.RE`, alimentado por
+`sectionCorrosiveLevel` de la sección donde está anclada (`sectionContainingCell`); al degradar,
+escribe `structuralResistanceOverride` de vuelta en el Blueprint vía `MutableShipState.set` (mismo
+patrón inmutable de siempre). Wiring visual: `structural-degraded-effect.ts`/`structural-failure-
+effect.ts` ya existían completos pero sin llamador en misión real (solo demostrados en la galería)
+— `floorplan-scene.ts` ahora suscribe `failureEvents`, mismo criterio que 11a.3 con kinetics/señales.
+Cicatriz de energía: `MissionSignalRuntime.outputOf` (`mission-signal-runtime.ts`) gana una fuente
+opcional `PowerScarSource` (floorplan + `unpoweredSections()`) — si el nodo cae en una sección
+marcada sin energía, la salida se fuerza a `false` sin importar cableado/reservorio, decisión
+explícita del operador. Wiring visual (decisión del operador, tras observar que un tinte oscuro solo
+no alcanzaba: la paleta de secciones ya es oscura y sin sistema de iluminación con qué contrastar):
+tinte exclusivo `UNPOWERED_SECTION_TINT` + parpadeo sinusoidal continuo (`sectionScarFlickerAlpha`,
+`palette.ts`) en un nuevo depth `sectionScar` — sigue parpadeando en pausa táctica a propósito, es
+una marca de la nave, no un efecto de la simulación.
+Cicatriz de tripulante: `CrewActor.seriousInjurySurvivalCount` (opcional, default ausente) — SOLO el
+campo, sin la lógica de incremento ni el -15% de daño futuro del logro "Superviviente nato" (GDD
+6.8); esa regla se implementa junto al árbol de logros (decisión del operador, para no dejar un
+campo con una regla a medias).
+Alcance confirmado con el operador: guardado solo ENTRE misiones (mismos puntos de hoy, sin
+serializar `CrisisState`/timers/proyectiles en vuelo); la incapacitación tóxica/corrosiva a
+tripulación vía `HazardAccumulator` (caso 10) queda fuera — es contenido de capítulo (Fase 18), no
+infraestructura genérica de esta fase.
+Test central: `case-07-neutralizacion-emergencia.test.ts` reescrito para pilotar el flujo real
+(`MutableShipState` + `MissionAtmosphereRuntime` + `MissionStructuralRuntime`) en vez de alimentar
+`StructuralIntegrity` a mano — mismo criterio que 11a.0 con el caso 17. Confirma degradación bajo
+exposición corrosiva sostenida, que neutralizar (retirar el ácido de la atmósfera) detiene la
+cicatriz sin revertirla, y que la cicatriz sobrevive un round-trip real de serialización (schema v4).
+Refactor menor de paso: `sectionCentroidPx` (`floorplan-renderer.ts`) se descompuso en
+`sectionCentroidCell` + la conversión a píxel, para reutilizar el centro en celdas al posicionar los
+efectos de atmósfera por sección.
+417 tests en verde (eran 401), build y lint de los 3 workspaces en verde.
+`PENDIENTES_OBSERVACIONES.md` revisado: puntos 1, 2, 4 y 5 no aplican (sin relación con guardado ni
+cicatrices). Punto 3 (emisores no simulados) es ADYACENTE — esta fase también toca
+`mission-signal-runtime.ts`, pero para un mecanismo distinto (forzar `false` por cicatriz de
+energía, no simular qué dispara un sensor); el pendiente sigue abierto, sin resolver de paso.
+
+2026-07-17 — Fase 11c.0: nodos de señal para piezas instaladas en runtime (prerrequisito de 11c)
+Qué: una pieza instalada DURANTE una misión (`ship-task-effect.ts::installInstance`) se agregaba a
+`placedComponents` pero nunca a `signalGraph.nodes` — asimétrico con `dismantleInstance`, que sí
+limpia nodos por `ownerRef`. Consecuencia: el modo cableado (`mission-interaction-controller.ts::
+handleWireModeClick`, que busca nodos por posición) no encontraba nada y la pieza quedaba
+incableable. Hallazgo registrado desde la Fase 11a.3.
+Cambio: nueva regla pura `workbench/derive-signal-nodes.ts` (`deriveSignalNodes`) que deriva los
+nodos de las propiedades funcionales de la definición — `EM→emitter`, `REC→receptor`,
+`COND→conductor`; `ACT`/`RES`/`EST` no generan nodos. `installInstance` resuelve la definición desde
+un `componentRegistry` (nuevo parámetro de `createShipTaskEffect`) y fusiona los nodos derivados con
+`mergeInstalledSignalGraph` (ya existía, reutilizado). No cablea puertos externos: crear los nodos no
+los conecta (GDD 10.1 párrafo 7). `mission-runtime.ts` pasa su `componentRegistry` ya existente.
+Por qué: decisión del operador (2026-07-17) — los nodos emergen de las propiedades funcionales, no se
+declaran en el catálogo (principio 1, combinaciones por propiedades no por identidad). El archivo va
+en `workbench/` (no `signals/`) para evitar el ciclo `signals→workbench`, ya que `workbench/` importa
+`signals/`; es el análogo runtime de `translateWorkbenchNodesToBlueprint`. Reutiliza `occupiedCells`
+para posicionar cada nodo en una celda distinta y que el `find` por posición del cableado no colisione.
+Tests: unitario de `deriveSignalNodes` + integración del effect (instalar el `fotorreceptor` EM real
+deja un nodo `emitter` cableable). Suites de `ship-task-effect` y del pipeline del cap. 1 migradas a la
+nueva firma. 422 tests en verde (eran 417), build y lint de los 3 workspaces en verde.
+
+2026-07-17 — Fase 11c.1: creaciones custom instalables y cableables en misión
+Qué: el install picker de misión solo listaba `ATOMIC_COMPONENT_CATALOG`; las creaciones de la mesa
+nunca llegaban a la misión. Hallazgo bloqueante extra: `buildComposite` no agrega las propiedades
+funcionales de las piezas y `nameAndRegisterCreation` solo guardaba `{ footprint }`, así que una
+creación tenía `data.functional` vacío y, al instalarla, `deriveSignalNodes` (11c.0) no derivaba
+ningún nodo — era incableable pese a contener piezas EM/REC/COND.
+Cambio motor: `nameAndRegisterCreation` (`workbench/creation-naming.ts`) agrega al `data.functional`
+del compuesto la unión de las propiedades funcionales de sus ingredientes (`resolveIngredients`).
+Cambio game: `MissionRuntime.loadInstallableCreations()` (async) carga las creaciones vía
+`save-adapter`, las registra en el `componentRegistry` de la misión (retipado a `MapEntityRegistry`)
+y las expone (`installableCreations`/`definitionOf`); `FloorplanScene` la dispara al iniciar la misión
+y suma sus nombres al mapa. El picker (`buildInstallOptions`) lista átomos + creaciones; el inspector
+resuelve props vía `definitionOf` en vez de `ATOMIC_COMPONENT_CATALOG`.
+Por qué: los puertos externos de una creación deben emerger de las propiedades de sus partes
+(principios 1 y 3), no declararse aparte — coherente con la decisión de 11c.0 (nodos derivados de
+EM/REC/COND). Así la derivación vale igual para átomos y creaciones. Instalar sigue sin cablear
+(GDD 10.1): crear los nodos ≠ conectarlos.
+Tests: `creation-naming` (agrega funcionales) + integración del effect (compuesto con parte EM deja un
+nodo `emitter` cableable). 424 tests en verde (eran 422), build y lint de los 3 workspaces en verde.
+Pendiente: la agregación cubre `functional` pero no `material` (RE/MAG de una creación instalada);
+anotado en PENDIENTES_OBSERVACIONES.md.
+
+2026-07-17 — Fase 11c.1 post-playtest: nombre de creación en el hub + id de guardado consistente
+Qué: (1) el explorador de creaciones del modo creativo (`creative-hub-scene.ts`) listaba el id técnico
+(`creation-XXXX`) en vez del nombre que el jugador le dio; el nombre sí se guardaba, en `definition.name`.
+(2) `nameSaveAndInstall` (`creative-workbench-scene.ts`) usaba dos `Date.now()` distintos para el id del
+componente y el del archivo guardado, dejándolos desalineados.
+Cambio: `refreshCreationsList` ahora carga cada creación y muestra `definition.name` (fallback al id si
+falla la carga). El guardado usa un solo timestamp para ambos ids.
+Por qué: el jugador reconoce sus creaciones por nombre, no por id. Reportado en playtest de 11c.1.
+Diferidos a la Fase 12 / 11c.2 (anotados en PENDIENTES_OBSERVACIONES.md #7 y #8): la mesa dibuja
+rectángulos en vez de sprites de pieza, y una creación compuesta instalada cae al placeholder — ambos
+son trabajo de render/arte, no funcional. Build y lint de los 3 workspaces en verde.
+
+2026-07-17 — Fase 11c.2: mesa de creación en pausa táctica + tarea de fabricación
+Qué: la mesa de creación solo existía en el modo creativo standalone; en misión no había forma de
+improvisar una pieza, ni de que crearla costara tiempo de un tripulante (requisito GDD 10.1 / nuevo-orden).
+Cambio motor: `combine` sumado a `AffinityAction` (`crew-affinity.ts`), afín a `ingeniero` (GDD 6.6 /
+caso 15), con tabla de multiplicador por tier + test. `combine` ya tenía duración base y state machine en
+el scheduler; no muta el Blueprint, así que el efecto de motor sigue no-op (la fabricación es
+disponibilidad de registry, game-layer).
+Cambio game: `MissionRuntime.queueFabrication` registra la creación y encola una tarea `combine` modulada
+por afinidad/tier; la creación NO aparece en el picker hasta que la tarea se completa — una suscripción a
+`task-completed` (clavada por taskId) la mueve de `pendingFabrications` a `installableCreations`.
+`CreativeWorkbenchScene` gana modo misión vía `init({ missionContext })`: "Fabricar" entrega la definición
+y cierra (sin guardar en campaña ni auto-instalar), fondo opaco de modal. `FloorplanScene` la abre como
+overlay desde un botón "Mesa" del header (solo en planificación + tripulante seleccionado), pausa el plano
+y bloquea su input. i18n es/en.
+Sprites en la mesa (cierra pendiente #7): `creative-workbench-scene.ts` precarga `preloadComponentSprites`
+y `workbench-renderer.ts` dibuja el sprite real de cada pieza (fallback al rectángulo si falta); nodos/
+cables/contornos pasan a un `topGraphics` de depth superior para no quedar tapados por el sprite.
+Por qué: fabricar es trabajo de Ingeniero y debe costar tiempo real (principio 5); instalar es un paso
+aparte (GDD 10.1, decisión del operador: 2 pasos); reutilizar la escena creativa evita dos UIs de mesa
+(principio 7, decisión del operador).
+Tests: afinidad de `combine`. El resto es game-layer (sin suite, CLAUDE.md); validación por playtest bajo
+Electron. 425 tests en verde (eran 424), build y lint de los 3 workspaces en verde.
+
+2026-07-20 — Fase 11c.2 post-playtest (Electron): fixes de nombre, leak de contexto y tamaño de ventana
+Qué (reportado en playtest bajo Electron): (1) los botones "Fabricar" (misión) y "Nombrar y guardar"
+(creativo) no hacían nada; (2) tras usar la mesa en misión, entrar al modo creativo mostraba "Fabricar" y
+"Volver" dejaba la pantalla en negro; (3) la ventana de Electron cortaba las barras de vida de la tira de
+tripulación al pie.
+Causas y cambio: (1) `window.prompt` NO existe en Electron (devuelve vacío) — reemplazado por un diálogo
+de nombre in-scene que captura el teclado (Enter/Esc/Backspace), funciona igual en Electron y browser
+(`creative-workbench-scene.ts::promptCreationName`). (2) La escena es un singleton y `missionContext`
+quedaba pegado de un lanzamiento en misión; ahora se limpia en el evento SHUTDOWN de la escena, además de
+que `init` lo re-setea. (3) `BrowserWindow` con `useContentSize: true` (`electron/src/main.ts`): 1280×720
+pasa a ser el área de CONTENIDO (el canvas), no el tamaño exterior con marco.
+Nota DX: `npm run dev -w electron` requiere `npm run dev -w game` en paralelo (Electron carga la URL del
+dev server de Vite) — es el comportamiento esperado.
+Build y lint de los 3 workspaces en verde.
+
+2026-07-20 — Fase 11c.2 hardening (playtest Electron): preload, leak de contexto, borrar pieza, feedback
+Cinco arreglos sobre bugs de playtest bajo Electron:
+1. PRELOAD (crítico): `preload.js` se compilaba como ESM (`module: ESNext` + `type: module`) pero el
+   preload sandboxed de Electron exige CommonJS → fallaba a cargar ("Cannot use import statement outside
+   a module") → `window.kludgeSave`/`kludgeBlueprint`/`kludgeSettings` nunca se inyectaban → TODA la
+   persistencia caía al fallback en memoria, incluso bajo Electron. Fix: bundle CJS con esbuild
+   (`electron/package.json` build → `preload.cjs`), `main.ts` apunta a `preload.cjs`. Ahora persiste a
+   disco de verdad.
+2. LEAK DE missionContext (crítico): Phaser retiene `sys.settings.data` entre `scene.start` sin data
+   nueva, así que el contexto de misión (closures de `FloorplanScene`) reaparecía en el modo creativo →
+   "Fabricar" llamaba a una escena muerta → crash `drawImage` null / pantalla negra. Fix: handoff de un
+   solo uso por variable de módulo (`setPendingMissionWorkbenchContext`), consumida-y-limpiada en
+   `create()`; se eliminó el `init(data)` y el handler de SHUTDOWN previos.
+3. HARDENING: `FloorplanScene` ahora guarda los `Unsubscribe` de todos los emisores del motor
+   (coreLoop/crew/kinetic/signal/failure/crisis) y los libera en el SHUTDOWN de la escena — una
+   `MissionRuntime` que sobreviva a su escena ya no emite hacia objetos destruidos.
+4. BORRAR PIEZA: nuevo `removePiece` en `workbench-state.types.ts` (quita la pieza + sus nodos/edges,
+   mismo criterio que `dismantleInstance`) con test; botón "Modo borrar" en la mesa (junto a "Modo
+   cableado", ahora ambos vía i18n es/en). Mover = borrar y recolocar (MVP, sin arrastre).
+5. FEEDBACK: el botón "Mesa" se muestra atenuado (alpha 0.45) en ejecución, recreado en
+   `core-loop-mode-changed`; el `setStatus("pausá la misión")` queda de respaldo.
+Además: DevTools se abre automáticamente en dev de Electron (`main.ts`) para ver errores de runtime, y
+`BrowserWindow` usa `useContentSize: true` (1280×720 = área de contenido, arreglo del corte vertical).
+427 tests en verde (eran 425; +2 de `removePiece`), build y lint de los 3 workspaces en verde.
+
+2026-07-20 — Fase 11c.3: síntesis química elemento→compuesto.
+Detalle: cablea ReactionResolver + NamedRecipeIndex (ya construidos y probados aislados en fases previas)
+a un flujo de producción real, extendiendo el caso 12 (antes solo cubría el fallback "Mezcla sin
+identificar"). Motor: buildChemicalCatalog() ahora también devuelve namedRecipeIndex (construido desde el
+propio registry) y su registry se tipa como MapEntityRegistry concreto, igual que buildComponentCatalog, para
+poder registrar en él. Nuevo módulo engine/src/chemistry/production/synthesize-substance.ts
+(synthesizeSubstance): traduce una selección de sustancias a reactivos, delega la resolución en
+ReactionResolver.resolve (sin reimplementarla) y registra el resultado si no estaba ya en el catálogo (una
+receta nombrada como "agua" no se reinscribe; un fallback o el producto de una regla por tags sí, para quedar
+resoluble por id después). Caso 12 extendido con 4 casos nuevos contra el catálogo real: receta nombrada
+(hidrógeno×2+oxígeno→Agua), sensibilidad a proporción con los mismos elementos (hidrógeno×2+oxígeno×2→
+Peróxido, GDD 5.4.2), regla por tags (ácido+base de laboratorio→Solución neutralizada) y fallback registrado
+y resoluble por id — más un test dedicado a synthesizeSubstance (7 casos). Producción en misión
+(MissionRuntime.queueSynthesis): espeja queueFabrication (11c.2) — resuelve de una (determinístico) y encola
+una tarea combine modulada por la afinidad de Ingeniero (GDD 6.6), reutilizando el tipo de tarea combine y
+distinguiendo fabricación física de síntesis química por cuál de los dos mapas pendientes tiene el taskId al
+completarse. Mesa de creación: toggle Física/Química (solo en contexto de misión); en modo química la paleta
+lista ELEMENT_CATALOG y los elementos elegidos se acumulan por cantidad, sin grid espacial (un elemento
+químico no tiene footprint en el modelo de datos, a diferencia de una pieza física); botón de acción pasa a
+"Sintetizar". i18n es/en. Alcance acordado con el operador: motor + mesa de síntesis, dejando fuera
+(PENDIENTES_OBSERVACIONES.md, punto 9) el almacenamiento en reservorio con sustancia propia y la extracción
+por centrífuga — mismo criterio incremental que 11c.1 con la agregación de material.
+438 tests en verde (eran 431), build y lint de los 3 workspaces en verde.
+Razón: el motor de química quedaba completo pero aislado — nada en el juego permitía a un jugador sintetizar
+una sustancia desde elementos base (GDD 5.4.1/5.4.2, caso de validación 12, capítulo 7 de
+Primeras_8_crisis.md: "si no hay neutralizante preinstalado, sintetizarlo desde elementos base en la mesa de
+creación").
+Nota: el playtest manual bajo Electron no se pudo completar — npm run start -w electron (el comando propio
+del proyecto, no solo un intento de automatizarlo) falla en este entorno con
+"SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'";
+node_modules/electron se ejecuta como Node.js plano, no como runtime de Electron/Chromium, un problema de
+empaquetado/entorno preexistente y no relacionado con este cambio. Verificación de respaldo: 438 tests y
+tsc --noEmit limpio en los 3 workspaces. Pendiente un playtest visual humano cuando el entorno esté disponible.
+
+2026-07-20 — Fase 11c.3 (hardening post-playtest): 5 arreglos en el modo química de la mesa.
+Detalle: el operador probó el modo química recién agregado y reportó 5 problemas, los 5 con causa raíz
+identificada. (1) Crash al scrollear la lista de elementos: renderPalette() llamaba
+this.palettePanel?.destroy(true) al alternar de modo — en rexUI, destroy(true) en cualquier objeto de la
+familia ContainerLite (ScrollablePanel, Label, Sizer) significa "me destruye la Scene, no yo" y por eso
+SALTEA destruir a sus hijos reales; el MouseWheelScroller nunca desregistraba su listener de wheel a nivel
+de escena, y ese listener viejo crasheaba al scrollear un panel recreado. Fix: destroy() sin argumento,
+aplicado también al nuevo widget de tarjetas y a los botones del modal de confirmación. (2) Elementos
+mecánicos de fondo semitransparentes: mismo bug de (1) más que redraw() seguía dibujando el grid físico
+vacío incluso en modo química — ahora no se llama a renderWorkbench en ese modo, y esa área se reutiliza
+para selección/resultado. (3)/(4) Interfaz poco interesante y sin info química: nuevo widget
+ui/widgets/kenney-card-list.ts (misma base scrollablePanel/slider/mouseWheelScroller que kenney-list.ts,
+pero filas como Container con color+nombre+tags en vez de una línea de texto) — color curado por elemento
+específico (CHEMICAL_ELEMENT_COLORS, render/palette.ts, decisión del operador) y todos sus tags químicos
+(chemistry.tag.*, mismo criterio de bullets que component.functional.*); el área liberada del grid muestra
+chips de la selección y una tarjeta de "Resultado" en vivo vía nuevo MissionRuntime.previewSynthesis
+(consulta de solo lectura al ReactionResolver, sin registrar nada) coloreada por tag dominante
+(CHEMICAL_TAG_COLORS, decisión del operador: color por tag para el resultado, reutiliza CLOUD_TINT para
+TOX/CORR). (5) "Sintetizar" cerraba la mesa sin decir qué pasó: no era un bug de datos, era falta de
+feedback — nuevo modal de confirmación (mismo patrón que promptCreationName pero de solo confirmación, sin
+campo de texto, porque el nombre de una sustancia lo determina el motor, no el jugador) mostrando
+nombre+tags antes de cerrar; queueSynthesis ahora devuelve el nombre resuelto y el status del plano lo
+muestra explícito.
+438 tests en verde (sin cambios de motor en este hardening), build y lint de los 3 workspaces en verde.
+Razón: feedback directo de playtest del operador sobre la feature de síntesis química recién cerrada.
+Nota: el playtest visual completo (confirmar que las tarjetas/colores/modal se ven bien renderizados)
+sigue pendiente de un entorno de Electron funcional en esta máquina (ver nota de 11c.3 en
+ORDEN_DE_TRABAJO.md) — la verificación de este hardening es build/lint/tests, no un screenshot.
+
+2026-07-21 — Fase 11d: rework Capítulo 1 a "sin stock → inspeccionar → desarmar → reutilizar", más
+estándar nuevo de autoría en Tiled para objetos semilla compuestos.
+Detalle: el operador pidió reestructurar el flujo del capítulo 1 — el jugador ya no instala
+motor-pequeno/valvula-simple directo desde un catálogo sin límite; ahora arranca sin stock, tiene que
+inspeccionar un compuesto no crítico ya presente en la nave, desarmarlo y recién ahí instalar la pieza
+obtenida. Alcance ampliado en dos rondas de preguntas: sistema de stock GLOBAL (nuevo dominio
+engine/src/inventory/: AtomicPartsStock + ledger puro + MutableAtomicStock, CampaignSaveState.atomicStock
+nuevo con default retrocompatible), resolución de crisis generalizada a TAG FUNCIONAL en vez de lista
+cerrada de ids (FunctionalTagInstalledResolutionSpec/Rule, corrige el incumplimiento del principio 1 de
+CLAUDE.md — capítulo 1 migrado, la regla vieja queda registrada por compatibilidad), y un estándar nuevo
+de autoría en Tiled (capa opcional "semillas": componentId/condition/instanceId/chapterId) para sembrar
+objetos compuestos directo desde el mapa en vez de hardcodear posiciones en TS — pensado explícitamente
+para reutilizarse en capítulos futuros. ship-task-effect.ts: installInstance consume stock si la pieza es
+atómica (InsufficientStockError si no alcanza), dismantleInstance acredita los ingredientes de la receta
+si la pieza es compuesta. nave-exploracion.json (único mapa verificado de punta a punta) autorado con 3
+semillas: la solución (herramientas-reparacion-externa, contiene motor-pequeno) y dos señuelos
+(radio-largo-alcance, reservorio-agua-reciclada) que se pueden desarmar pero no resuelven la crisis —
+mostrar que el mecanismo es general, no un atajo de un solo objeto. UI: install-picker-modal.ts gana
+pestañas "Inventario"/"Catálogo" (Catálogo es informativo, sin instalar directo); mission-action-panel.ts
+e install-picker-modal.ts comparten un desglose "Composición" nuevo (composition-list.ts) que resalta en
+ámbar la pieza de un compuesto que tiene el tag funcional que la crisis activa necesita.
+Incidente durante la implementación: un `git checkout -- nave-exploracion.json` (para deshacer un rewrite
+propio) revirtió también cambios previos sin commitear que ya existían en ese archivo antes de esta
+tarea. Recuperado vía `git fsck --dangling` (blob huérfano de un `git add` previo, coincidía en tamaño y
+contenido con el archivo leído al inicio de la sesión) y reaplicando la inserción de la capa "semillas"
+sobre ese contenido recuperado — verificado con diff que el resultado final es el contenido pre-tarea más
+la inserción quirúrgica, nada más. Detalle completo en ORDEN_DE_TRABAJO.md, Fase 11d.
+470 tests en verde en /engine (eran 454), tsc --noEmit limpio en /engine y /game, vite build de /game
+exitoso. Playtest visual queda a cargo del operador (lo pidió hacer él mismo).
+Razón: pedido explícito del operador, con el estándar de Tiled agregado a mitad de sesión para que
+capítulos futuros no repitan el patrón de hardcodear posiciones de objetos semilla en TypeScript.
+
+2026-07-21 — Fase 11e: fixes de playtest manual sobre la Fase 11d
+Cambios: (1) tooltip enriquecido al hover (nombre, ícono de condición, propiedades, composición) en vez
+de solo al click — mission-tooltip.ts nuevo, MissionInteractionController.tooltipContentAt reemplaza
+tooltipLabelAt; el panel de acciones deja de repetir esa info. (2) resaltado de pieza requerida en la
+composición solo por color ámbar, sin texto de badge (renderCompositionLines pierde requiredTagBadge).
+(3) layout del modal de instalación: título con wordWrap + más separación de las pestañas, catalogHint
+movido para no solaparse con los botones, y wordWrap agregado al texto de fila de kenney-list.ts (causa
+real de la scrollbar desalineada en la pestaña Catálogo: nombres largos desbordaban el ancho declarado).
+(4) feedback visual "Obtuviste: x{qty} {nombre}" al desarmar un compuesto — TaskEffect del motor pasa a
+poder devolver un resultado (obtained), TaskScheduler lo reenvía en el evento task-completed, nuevo
+obtained-toast.ts en /game. (5) motor-pequeno (2×2) no entraba en el hueco de valvula-simple (1×1):
+causa raíz real era un panel fijo no desmontable pegado a la celda ancla, no el tamaño de la sección —
+nuevo findFittingInstallPlacement (installation-placement.ts) busca la celda libre más cercana dentro de
+la misma sección en vez de forzar el footprint exacto en la celda clickeada; fix general, no un parche
+del capítulo 1. (6) checklist de objetivos siempre visible en una franja compacta de la columna lateral
+(antes solo detrás del botón "Objetivos"), con flash verde al completar cada uno.
+Razón: 5 problemas de UX/gameplay reportados por el operador tras su propio playtest manual del capítulo 1
+reestructurado en la Fase 11d.
+473 tests en verde en /engine (+3 por findFittingInstallPlacement), tsc --noEmit limpio en /engine y
+/game, vite build de /game exitoso. Playtest visual queda a cargo del operador.
+
+2026-07-21 — Fase 11f: segunda ronda de playtest (tooltip y tabs)
+Cambios: (1) fuente de cuerpo (propiedades, composición) pasa de UI_FONT_FAMILY ("Kenney Future",
+mayúsculas por diseño) a "sans-serif" en mission-tooltip.ts y composition-list.ts — el nombre/título
+se queda en la fuente de display, el texto de cuerpo no. (2) nombres de componente: tooltipContentAt y
+buildComposition en mission-interaction-controller.ts ahora priorizan mission.definitionOf(id)?.name
+(el registry real de la misión) sobre el cache parcial nameByComponentId, que nunca incluía compuestos
+de catálogo ni semillas Tiled — eliminaba el síntoma de ver IDs crudos como "valvula-simple". (3) el
+prefijo confuso "H1"/"HX" resultó ser "x1" en mayúsculas pegado a un nombre crudo — resuelto por (1)+(2),
+más el separador cambiado de "x" a "×" en composition-list.ts como seguro. (4) nuevo tab-strip.ts: mide
+el ancho real de cada label de pestaña antes de crear el botón (createKenneyButton no recorta ni envuelve
+texto), dimensiona cada pestaña a su propio contenido y las centra en fila — reemplaza los dos botones de
+ancho fijo en install-picker-modal.ts que seguían solapándose con labels largos.
+Razón: 4 problemas reportados por el operador en su segundo playtest manual, sobre lo construido en la
+Fase 11e.
+tsc --noEmit limpio y vite build exitoso en /game. Sin cambios en /engine. Playtest visual queda a
+cargo del operador.
+
+2026-07-21 — Fase 11g: fuente legible en el briefing de misión
+Cambio: scrollable-text.ts (createScrollableText, usado por el cuerpo del modal de briefing de crisis
+y por el briefing del panel de objetivos) pasa de UI_FONT_FAMILY ("Kenney Future", mayúsculas por
+diseño) a "sans-serif" — mismo criterio ya aplicado al tooltip y la composición en la Fase 11f: títulos
+cortos se quedan en la fuente de display, texto de cuerpo largo no.
+Razón: pedido explícito del operador, extendiendo el fix de legibilidad de la Fase 11f a la descripción
+del escenario en el briefing.
+tsc --noEmit y vite build limpios en /game.
+
+2026-07-21 — Fase 11d.1: enemigos, motor puro (ruta scripteada + combate)
+Cambio: nuevo dominio engine/src/enemies/ — EnemyActor (posición por celda, arquetipo armored/agile,
+weaponComponentId referenciando el catálogo real, status advancing/attacking/defeated), ScriptedRoute +
+cellAtElapsedSeconds (avance determinista por tiempo transcurrido, snap discreto por celda), reglas
+Strategy de combate (melee: distancia 1 sin EM; ranged: distancia 2-3 con EM.range suficiente),
+weaponDamageSeverity (traduce ACT.power/cadence a severidad, no existía antes), enemy-attack-resolver
+(converge en applyCrewDamage con la nueva causa "enemy-attack", mismo punto único de daño que ya usa
+CrisisRuntime). CrewActor gana currentCell?: GridPosition (opcional, retrocompatible) — resuelve la
+mitad "dato" del punto 4 de PENDIENTES_OBSERVACIONES.md, compartido entre tripulación y enemigos. Nuevo
+componente de catálogo garra-de-abordaje (solo ACT, arma cuerpo a cuerpo) junto a torreta-automatizada
+(EM+ACT, a distancia) en components/catalog/composite/guerra.ts.
+Razón: "Fase 11d" en PENDIENTES_OBSERVACIONES.md (punto 4) — enemigos que se mueven con hop-movement,
+pendiente y sin implementar, distinta de la "Fase 11d" ya registrada más arriba en este mismo changelog
+(el rework del Capítulo 1, llamado "Fase 11c-adhoc" en ORDEN_DE_TRABAJO.md). Alcance acordado con el
+operador: ruta scripteada (no IA reactiva), daño cuerpo a cuerpo/a distancia con arma modelada por
+propiedades de componente físico ya existentes (para poder desarmarla a futuro), y resolver el punto 4
+en la misma fase. Primera de 4 sub-fases (11d.1-11d.4, ver ORDEN_DE_TRABAJO.md).
+28 tests nuevos, 501 en verde (npx vitest run en /engine), tsc --noEmit limpio. Sin cambios en /game
+(a propósito: el consumidor de los eventos de enemigo queda para 11d.3).
+
+2026-07-22 — Fase 11d.2: enemigos, integración en MissionRuntime + fix de occupantAt
+Cambio: MutableEnemyState (engine/src/mission/mutable-enemy-state.ts, espejo de MutableCrewState) +
+EnemyThreatRuntime (engine/src/mission/enemy-threat-runtime.ts, Tickable — mismo molde que
+CrisisRuntime sobre evaluateCrisis): cada tick avanza la ScriptedRoute de cada enemigo vivo
+(cellAtElapsedSeconds), emite enemy-advanced si cambió de celda, y resuelve el ataque contra la
+tripulación (resolveEnemyAttack) respetando un cooldown por arma que interpreta ActuatorProperty.cadence
+como segundos entre disparos (responsabilidad explícitamente diferida del resolver puro en 11d.1).
+onComplete: "vanish" de una ruta reutiliza el status "defeated" de la state machine (sin un cuarto valor
+para "removido sin combate"). Fix de MissionProjectileWorld.occupantAt: constructor acepta crew?/enemies?
+opcionales y cae a buscarlos por celda si no hay componente colocado ahí — resuelve la mitad "colisión"
+del punto 4 de PENDIENTES_OBSERVACIONES.md (la mitad "dato" ya se había resuelto en 11d.1). Cableado real
+en game/src/mission/mission-runtime.ts: EnemyThreatRuntime registrado en coreLoop justo después de
+crisisRuntime y antes de señales/proyectiles, enemyState/enemyEvents expuestos igual que crewState/
+crewEvents, MissionProjectileWorld recibe crewState/enemyState. Agregado weaponStrike (chispazo naranja +
+charco de sangre) para cause: "enemy-attack" en crew-death-effect.ts::DEATH_VARIANT_BY_CAUSE — placeholder
+mínimo necesario porque el Record exhaustivo rompía tsc de /game al tocar mission-runtime.ts (11d.1 había
+extendido CrewDamageCause sin tocar /game); distinción por arquetipo/arma queda para 11d.3. Nuevo caso de
+validación case-18-intruso-en-el-pasillo.test.ts: dos enemigos con ScriptedRoute real (torreta a
+distancia, garra cuerpo a cuerpo) contra el EnemyThreatRuntime real (no un runtime de test simplificado),
+verificando avance por waypoints, ataque a distancia letal (crew-death), ataque cuerpo a cuerpo no letal
+(crew-damaged), y respeto de cadencia.
+Razón: segunda de 4 sub-fases de "Fase 11d" (ver nota de desambiguación en la entrada anterior y en
+ORDEN_DE_TRABAJO.md) — cierra el punto 4 de PENDIENTES_OBSERVACIONES.md del todo (antes solo el dato
+existía, ahora la colisión real también). Sigue sin haber ningún enemigo visible/jugable: EnemyThreatRuntime
+corre con enemies/routes vacíos hasta que 11d.4 siembre contenido de capítulo real.
+502 tests en verde (npx vitest run en /engine, +1 sobre 11d.1 por el caso 18), tsc --noEmit limpio en
+/engine y /game, vite build limpio en /game.
+
+2026-07-22 — Fase 11d.3: enemigos, render/animación/partículas en /game
+Cambio: nuevo game/src/enemies/enemy-tokens.ts — token de enemigo (rectángulo de color sólido por
+archetype, distinto de los círculos de tripulación) con hopEnemyToken (reutiliza hopMove +
+ARMORED_ENEMY_SIGNATURE/AGILE_ENEMY_SIGNATURE), flashEnemyAttack (feedback de ataque) y
+destroyEnemyToken. Nueva capa RENDER_DEPTH.enemyEntity (4.2, junto a crewEntity). floorplan-scene.ts:
+enemyTokens map, initEnemyTokens() (un token por mission.enemyState.all(), en la celda real del
+enemigo), suscripción a mission.enemyEvents.onAny + handleEnemyEvent (enemy-advanced/enemy-attacked/
+enemy-defeated). El daño a tripulación por cause: "enemy-attack" ya se pintaba automáticamente desde
+11d.2 (handleCrewEvent despacha por causa sin cambios adicionales).
+Sprite real pendiente, avisado explícitamente (convención de CLAUDE.md): faltan
+game/assets/sprites/crew/enemy-armored.png y enemy-agile.png — placeholder de código mientras tanto.
+Razón: tercera de 4 sub-fases de "Fase 11d" — consumidor visual del EnemyThreatRuntime cableado en
+11d.2. Sin contenido de capítulo todavía (11d.4 pendiente), mission.enemyState/enemyEvents siguen
+vacíos en misión real: no hay nada visible en pantalla hoy, el consumidor queda listo para cuando
+11d.4 siembre un EnemyActor+ScriptedRoute real. Playtest manual de "enemigo visible" se difiere a ese
+cierre.
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine.
+
+2026-07-22 — Fase 11d.4: enemigos, contenido real (capítulo 2, arquetipo exploración) + fix de CrewActor.currentCell
+Cambio: nuevo engine/src/enemies/campaign/chapter-02-enemy-seed.ts — CHAPTER_02_INTRUSO (EnemyActor
+agile, arma garra-de-abordaje) + su ScriptedRoute (4 waypoints por pasillo-central, x=30→13, y=9,
+onComplete: "hold"), expuestos vía ENEMY_SEED_BY_CHAPTER_ID (análogo a CHAPTER_SEED_BY_ID). Decisión con
+el operador: capítulo 2 (encaja con case-18), solo arquetipo exploración (único verificado jugable de
+punta a punta), arma garra-de-abordaje (severidad "medium") y no torreta-automatizada (severidad "high",
+letal por sí sola) porque el capítulo 2 está diseñado explícitamente no letal y resolveEnemyAttack no
+tiene un flag de no-letalidad equivalente al minHp de applyCrewDamage — el operador optó por mitigar con
+contenido en vez de tocar el motor en esta sub-fase. game/src/mission/mission-runtime.ts resuelve el seed
+por chapterProgress.currentChapterId y alimenta enemyState/EnemyThreatRuntime.routes.
+Fix bloqueante encontrado antes de escribir el contenido: CrewActor.currentCell nunca se escribía en
+/game (solo se leía desde 11d.1/11d.2) — sin esto ningún enemigo podría atacar en partida real, y el
+punto 4 de PENDIENTES_OBSERVACIONES.md seguía sin resolverse de verdad pese a marcarse ✅ en 11d.2 (esa
+sub-fase resolvió la mitad motor, nunca la mitad game). Fix (confirmado con el operador):
+mission-runtime.ts ancla crewState.currentCell al centroide de sección al spawnear y lo persiste en
+toUpdatedSave; floorplan-scene.ts::syncCrewCell la mantiene al día en cada go-to completado.
+Razón: cuarta y última sub-fase de "Fase 11d" — cierra el ciclo completo (motor puro → integración →
+render → contenido real). Con esto hay, por primera vez, un enemigo sembrado y jugable en una misión
+real de la campaña.
+3 tests nuevos (chapter-02-enemy-seed.test.ts), 505 en verde (npx vitest run en /engine), tsc --noEmit
+limpio en /engine y /game, vite build limpio en /game. Pendiente: playtest manual del operador
+(Exploración, capítulo 2, confirmar visualmente al intruso y su ataque no letal).
+
+2026-07-22 — Fix Fase 11d.3/11d.4: el enemigo saltaba varias celdas de golpe en vez de caminar
+Cambio: reportado por el operador en playtest ("se mueve muy lento y salta varias casillas a la vez, no
+como los tripulantes"). Causa: `route-progression.ts::cellAtElapsedSeconds` resuelve la posición del
+enemigo por snap discreto entre waypoints (a propósito, la interpolación visual es responsabilidad de
+/game); pero `enemy-tokens.ts::hopEnemyToken` (11d.3) animaba ese salto con UN solo hopMove directo del
+punto A al B sin importar la distancia — con los waypoints de chapter-02-enemy-seed.ts (6 celdas cada
+8s) esto se veía como "quieto 8s, teletransporte de 6 celdas". Fix: game/src/scenes/floorplan-scene.ts
+gana travelEnemyToken()/enemySegmentDurationMs(), que calculan el camino transitable (travelWaypoints,
+mismo helper que ya usa la tripulación) y encadenan un hopMove POR CELDA (chainHops, ahora generalizado
+para aceptar cualquier HopTarget + una JumpSignature en vez de estar hardcodeado a tripulación) repartiendo
+la duración REAL del tramo (diferencia de arrivalSeconds entre waypoints, expuesta vía el nuevo
+MissionRuntime.enemyRoutes). hopEnemyToken pasa a ser fallback (sin grilla transitable). enemy-tokens.ts
+gana enemyJumpSignature() (exporta la firma de salto por arquetipo). La etiqueta del token de enemigo
+ahora sigue al shape cada frame en update() (mismo criterio ya usado para la tripulación con pathing
+multi-salto), en vez de fijarse solo al llegar.
+Razón: consumidor visual de 11d.3 no replicaba el mecanismo de "caminar celda a celda" que sí tiene la
+tripulación desde antes de la Fase 11d — bug de fidelidad de animación, no de lógica de combate/motor
+(sin cambios en /engine).
+tsc --noEmit y vite build limpios en /game. Pendiente: confirmación visual del operador.
+
+2026-07-22 — Fix Fase 11d (segunda ronda): ritmo del intruso + CrewActor.currentCell demasiado impreciso para combate
+Cambio: el operador confirmó que el movimiento celda-a-celda mejoró pero seguía "muy lento" y el enemigo
+"no ataca a nadie". Dos causas distintas:
+(1) Ritmo: engine/src/enemies/campaign/chapter-02-enemy-seed.ts::CHAPTER_02_INTRUSO_ROUTE tenía
+arrivalSeconds 0/8/16/24 sobre tramos de 6 celdas (~1.33s/celda) — comprimido a 0/2/4/6 (~0.33s/celda,
+comparable a la cadencia normal de salto de la tripulación). Cambio de datos, sin tocar motor.
+(2) Combate: `syncCrewCell` (fix anterior) anclaba `currentCell` al CENTROIDE de toda la sección — para
+`pasillo-central` (~27 celdas de ancho) eso da siempre la misma celda fija sin importar dónde esté
+parado el tripulante de verdad, así que la distancia contra el enemigo casi nunca caía en 1-3 celdas
+(rango de las reglas de combate) y el ataque nunca conectaba. Fix: game/src/scenes/floorplan-scene.ts
+elimina `syncCrewCell` (y su único call-site en `task-completed`) y en su lugar sincroniza
+`crewState.currentCell` CADA FRAME dentro de `update()`, derivándola de la posición VISUAL real del
+token (`Math.floor(dot.x/CELL)`, `Math.floor(dot.y/CELL)`) — mismo criterio que ya usa ese mismo loop
+para seguir la etiqueta/anillos del token durante un viaje largo, ahora también para la celda de combate.
+Razón: la aproximación por centroide de sección (11d.4) resolvía el caso trivial (tripulante quieto en
+una sección chica) pero no el real (pasillo largo, enemigo moviéndose, tripulante en cualquier punto o a
+mitad de viaje). La posición del token ya es la fuente de verdad más precisa que existe en /game — no
+hacía falta inventar una nueva, solo dejar de tirarla y usar el centroide en su lugar.
+tsc --noEmit y vite build limpios en /game; 31 tests de src/enemies siguen en verde (los 3 de
+chapter-02-enemy-seed.test.ts no verifican valores exactos de tiempo, solo orden creciente). Sin cambios
+en el resto de /engine. Pendiente: confirmación visual del operador.
+
+2026-07-23 — Fix Fase 11d (tercera ronda): el enemigo seguía sin atacar aunque un tripulante pasara al lado
+Cambio: el operador confirmó que el movimiento ya se ve bien pero "los tripulantes le pasan por al lado
+y nada". Causa: `resolveEnemyAttack` (engine/src/enemies/enemy-attack-resolver.ts:63) exige, además de
+distancia, `target.currentSectionId === enemy.sectionId` — y `CrewActor.currentSectionId` (fuente:
+`TaskScheduler::completeTask`, engine/src/tasks/task-scheduler.ts:265) solo se actualiza cuando un
+`go-to` COMPLETA, nunca mientras el tripulante atraviesa visualmente una sección de paso (ej.
+`pasillo-central`, el corredor principal de la nave) camino a otro destino. Mismo desajuste "modelo
+discreto por tarea vs. posición visual continua" que ya se había resuelto para `currentCell` en la ronda
+anterior, un nivel más arriba. Fix: en el mismo loop de `floorplan-scene.ts::update()` que sincroniza
+`currentCell` cada frame, se agrega el cálculo de `currentSectionId` real vía `sectionContainingCell`
+(ya exportada de `/engine`, ya usada en `mission-runtime.ts::sectionIdAt`) y se escribe en `crewState`
+junto a la celda — sin tocar el `currentSectionId` que persiste el scheduler (esa sigue siendo la fuente
+correcta para `toUpdatedSave`/guardado).
+Razón: `resolveEnemyAttack` y su test "no conecta en otra sección" no cambiaron ni tenían que cambiar —
+el chequeo de sección sigue siendo correcto, solo faltaba alimentarlo con un dato fiel a la posición
+real en vez del modelo de "tarea completada".
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine, no hizo falta re-correr vitest.
+Pendiente: confirmación visual del operador.
+
+2026-07-23 — Fase 11e: Identificación Médica de Mezclas
+Cambio: nueva tarea de motor "Analizar Sustancia" (engine/src/tasks/task.types.ts,
+engine/src/mission/ship-task-effect.ts) — al completarse sobre una "Mezcla sin identificar", revela sus
+valores exactos de riesgo (radio de combustión según el O2 de la sección, segundos por nivel de
+degradación estructural) en vez de solo sus tags genéricos. Cualquier tripulante puede ejecutarla;
+Médico solo la hace más rápido vía crew-affinity.ts (GDD línea 242: "identifica la composición más
+rápido"), sin gate duro por especialidad — confirmado con el operador antes de implementar, coherente
+con el resto de crew-affinity.ts ("cualquier tripulante puede intentar cualquier tarea").
+Bug bloqueante encontrado y arreglado primero: createUnidentifiedMixture
+(engine/src/chemistry/reaction/unidentified-mixture-factory.ts) le ponía a TODA mezcla sin identificar
+el mismo id fijo "reaction:unidentified" sin importar sus tags — una segunda mezcla distinta de la misma
+misión pisaba a la primera en el registro. Reemplazado por un id determinístico derivado de la unión
+ordenada de tags (incluye nivel para TOX/CORR); mezclas con el mismo conjunto de tags comparten id
+(misma sustancia, GDD 5.3), conjuntos distintos ya no colisionan. Confirmado con el operador que este
+fix va bundleado en 11e, no como prerrequisito aparte.
+Nueva función pura engine/src/chemistry/reaction/mixture-hazard-preview.ts::deriveMixtureHazardPreview:
+reutiliza COMBUSTION_RADIUS_BY_OXYGEN/REACTION_PARAMETERS.corrosion (nunca inventa números nuevos,
+coherente con "no simular química real" de CLAUDE.md) y replica el criterio de
+CombustionRule.effectiveOxygen (tag OXI propio de la mezcla fuerza O2 efectivo alto). El radio de
+combustión se recalcula EN VIVO contra la sección del tripulante que tiene la muestra (confirmado con el
+operador: no es un número fijo de peor caso).
+/game: MissionRuntime gana queueAnalyzeSubstance/isSubstanceAnalyzed/hazardPreviewFor (estado durable en
+un Set, re-consultado en cada render — distinto del patrón de toast de un solo uso de "obtained").
+Primer consumidor real de MissionRuntime.availableSubstances (punto 9 de PENDIENTES_OBSERVACIONES.md,
+sin consumidor desde la Fase 11c.3): mission-action-panel.ts gana una variante "substance" +  lista de
+sustancias sintetizadas en el estado idle (createKenneyList, mismo widget que el selector de
+instalación); mission-interaction-controller.ts resuelve la ficha (tags siempre, detalle numérico si ya
+analizada) y un refreshActionPanel público para que la lista se actualice sola al completarse una
+síntesis o un análisis. 6 claves i18n nuevas en es.ts/en.ts.
+518 tests en verde en /engine (npx vitest run, +19 sobre el conteo previo: unidentified-mixture-factory
+antes no tenía test file), tsc --noEmit limpio en /engine y /game, vite build de /game exitoso (2070
+módulos). Punto 9 de PENDIENTES_OBSERVACIONES.md marcado parcialmente resuelto (siguen abiertos
+reservorio con sustancia+cantidad y mecánica de extracción/inventario). Playtest visual queda a cargo
+del operador.
+Razón: Subfase 11e de nuevo-orden.md (roadmap no fusionado todavía a ORDEN_DE_TRABAJO.md), resolución
+del ítem "UX: Identificación de Mezclas" de su tabla de cobertura de gaps.
+
+2026-07-23 — Fix post-cierre Fase 11e: no había forma de deseleccionar una celda en el mapa
+El operador reportó que al hacer click (por error) en una celda vacía, el panel de acciones quedaba
+pegado en "Instalar aquí" para siempre, sin poder volver a ver la lista de sustancias del estado idle
+(bloqueaba probar 11e de punta a punta). Causa: mission-action-panel.ts nunca ofrecía una acción para
+volver a "idle" — el diseño original de la Fase 10d asumía que no hacía falta un cierre manual porque el
+panel docked "nunca tapa nada" (comentario explícito en el código), pero eso no contempló que sin una
+celda/sustancia real seleccionada el jugador quedaba sin acceso al contenido de idle. Ya existía una
+clave de traducción sin usar ("ui.floorplan.mission.inspector.close": "Cerrar"/"Close") de una fase
+anterior, nunca conectada a ningún botón.
+Fix: nuevo control "✕ Cerrar" en la esquina superior derecha del panel, visible en cualquier estado que
+no sea idle (instance/empty/substance) — mission-action-panel.ts gana ActionPanelCallbacks.onClose;
+mission-interaction-controller.ts lo resuelve a this.setActionPanelContent({kind:"idle"}) (que ya
+deseleccionaba la celda al volver a idle, solo faltaba una forma de dispararlo manualmente).
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine.
+Razón: bug de UX reportado por el operador durante el playtest manual de la Fase 11e.
+
+2026-07-25 — Fix post-cierre Fase 11e: timer de cola invisible y ficha de sustancia ilegible
+El operador reportó tres problemas de playtest, todos en /game:
+(1) El tiempo estimado de fabricación/síntesis en la cola a veces no se veía; (2) al encolar "Analizar
+Sustancia" el tiempo NUNCA se veía; (3) la ficha de sustancia en el panel de acciones se veía mal: el
+título se montaba sobre "✕ Cerrar" y los bullets de tags/riesgo, centrados y en gris apagado, "se leían
+muy poco".
+Causa de (1)+(2): crew-queue-panel.ts armaba cada fila como un único Text con wordWrap+maxLines:1
+(`${actorName} · ${label} · ${tiempo}`) — Phaser envuelve el texto a la línea 2+ cuando no entra, y
+maxLines:1 descarta esas líneas EN SILENCIO, incluido el sufijo de tiempo al final de la cadena.
+floorplan-scene.ts armaba el label con el TaskType crudo (`task.type`); "analyze-substance" es el más
+largo de todos, así que su fila siempre desbordaba y perdía el tiempo — para "combine" dependía del largo
+del nombre de actor/sección ("a veces sí, a veces no").
+Fix: el sufijo de tiempo pasa a su propio Text anclado a la derecha (mismo criterio que el "×" de
+cancelar, que ya estaba aparte) — nunca lo empuja un label largo. floorplan-scene.ts gana
+`taskTypeLabel()` con 7 claves i18n nuevas (una por TaskType) en vez de mostrar el TaskType en inglés
+crudo.
+Causa de (3): mission-action-panel.ts dibujaba "✕ Cerrar" casi en la misma banda vertical que el título
+(fix del bug anterior), y un título largo envuelto a 2 líneas se le montaba encima; las líneas de detalle
+se pintaban centradas en LABEL_COLOR sin distinguir tag genérico de valor de riesgo revelado.
+Fix: "✕ Cerrar" pasa a su propia fila arriba de todo, título y contenido se corren 16px hacia abajo en
+todo estado que no sea idle; las líneas de detalle (`SubstanceDetailLine`, nuevo tipo en
+mission-action-panel.ts: text+color+icon) se alinean a la izquierda con un glifo por tag (mismo criterio
+que CONDITION_ICON de mission-tooltip.ts, sin sprite nuevo) y el color curado de CHEMICAL_TAG_COLORS
+(palette.ts, ya existente); las líneas de riesgo ya revelado y el aviso "sin analizar" se resaltan en el
+mismo ámbar (WIRE_HIGHLIGHT_COLOR) que ya usa composition-list.ts para "esto es lo importante" —
+reutilizando convenciones de color ya establecidas, sin inventar ninguna nueva.
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine.
+Razón: feedback de playtest del operador sobre la Fase 11e.
+
+2026-07-25 — Fix post-cierre Fase 11e: fuente en mayúsculas en la lista de sustancias
+El operador reportó que el texto de fila en la lista "Sustancias sintetizadas" era difícil de leer (todo
+en mayúsculas). Causa: `kenney-list.ts` (widget compartido con el selector de instalación) usaba
+`UI_FONT_FAMILY` ("Kenney Future", fuente de display en mayúsculas por diseño) para el texto de cada fila
+— mismo problema de legibilidad ya corregido antes en `mission-tooltip.ts`/`composition-list.ts`/
+`scrollable-text.ts` (encabezados cortos sí, cuerpo de texto largo no), pendiente en este widget.
+Fix: el texto de fila pasa a `"sans-serif"`; el estado vacío ("—") se queda en `UI_FONT_FAMILY` (no es
+cuerpo de texto). Al ser un widget compartido, el fix beneficia también al selector de instalación
+(`install-picker-modal.ts`), no solo a la lista de sustancias de la Fase 11e.
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine.
+Razón: feedback de playtest del operador sobre la Fase 11e.
+
+2026-07-25 — Fase 11f: Legibilidad del plano — capas y flujo animado
+Toggle de capas del plano en el HUD (ventilación/eléctrico/fluido/señal + un 5º botón placeholder
+"estructural" sin dato real, ya que el texto de la fase mencionaba una capa que no corresponde a ningún
+ConduitKind del motor) + cableado de createConduitFlowEffect() (antes solo en la escena de debug) al
+plano real de misión. Alcance ampliado (confirmado con el operador) para incluir el trazado real de
+conductos como polilínea entre secciones evitando paredes, en vez de animar sobre el punto suelto que
+había — resuelve también la Observación #1 de PENDIENTES_OBSERVACIONES.md.
+Todo en /game, sin tocar /engine (solo consumo read-only de presión/unpoweredSectionIds/signalGraph ya
+expuestos). Nuevos: render/conduit-path.ts (computeConduitPaths, reusa el pathfinding de tripulación ya
+existente), mission/conduit-flow-heuristics.ts (intensidad derivada de datos reales, nunca inventada),
+ui/widgets/floorplan-layer-toggle-panel.ts. Modificados: floorplan-renderer.ts (conduitLayers/conduitPaths
+en FloorplanRender, drawConduit descompuesto en línea+marcador), conduit-flow-effect.ts (nueva
+createConduitPathFlowEffect, un emisor por segmento de la ruta, helpers compartidos con la factory
+original sin cambiarle comportamiento), palette.ts (CONDUIT_LAYER_INACTIVE_ALPHA), floorplan-scene.ts
+(botón "Capas" + panel flotante, toggle atenúa línea y flujo con el mismo factor — un solo sistema de
+visibilidad). 7 claves i18n nuevas.
+tsc --noEmit limpio en /engine y /game; vite build limpio en /game; eslint limpio sobre los archivos
+tocados. 518 tests en verde en /engine (sin cambios de motor). Sin tests nuevos en /game (consistente con
+el resto del código de render/HUD). Pendiente de validar por el operador: smoke test visual manual (no
+hay browser disponible en este entorno para correrlo end-to-end).
+3 entradas de deuda técnica agregadas a PENDIENTES_OBSERVACIONES.md.
+Razón: Subfase 11f de nuevo-orden.md (roadmap todavía no fusionado a ORDEN_DE_TRABAJO.md).
+
+2026-07-25 — Fix post-cierre Fase 11f: línea de conducto desconectada + botón desbordado
+El operador reportó tras playtest: puntos de ventilación/eléctrico sin línea visible uniéndolos, fluidos
+que no se mueven, y el botón "estructural (próximamente)" solapado con "señales".
+Causa (1): la polilínea se trazaba entre los centroides de las dos secciones, pero el marcador vive en
+conduit.position (la pared/frontera real autorada en Tiled) — no coincidían, así que la línea quedaba
+lejos del punto. Fix: la ruta ahora pasa por 2 tramos (centroide A -> conduit.position -> centroide B),
+verificado contra los 4 mapas reales con un script standalone que decodifica el tile layer de Tiled y
+replica findPath/computeConduitPaths. También se subió el grosor/opacidad del trazo (2px/0.8 -> 4px/1):
+a zoom "encajar toda la nave" era casi invisible.
+Causa (2): no es un bug — ningún mapa real (engine/src/floorplan/maps/*.json) tiene conductos kind=fluido
+ni kind=senal autorados, solo ventilacion y electrico. Documentado como deuda de contenido (punto 13 de
+PENDIENTES_OBSERVACIONES.md), no de motor/render.
+Fix (3): label "estructural" se acorta a secas (ya no desborda), el aviso "próximamente" pasa a un
+setStatus al togglear ese botón en particular en vez de vivir en el texto fijo.
+tsc --noEmit y vite build limpios en /game. Sin cambios en /engine.
+Razón: feedback de playtest del operador sobre la Fase 11f.
+
+2026-07-26 — Fase 11f.1: conductos como infraestructura funcional (cableado de señal restringido)
+Decisión del operador: los conductos dejan de ser capa visual y pasan a ser el ruteo cross-section real.
+Una conexión que cruza de una sección a otra va EXCLUSIVAMENTE por el conducto del tipo correspondiente;
+si no hay conducto, no se conectan en esa capa. Es restricción real (mecánica), no solo visual. Como el
+modo cableado solo cablea señales, aplica a la capa `senal` (el `electrico` no tiene cableado de jugador).
+Motor: conduit-connectivity.ts nuevo (sectionsConnectedByConduit/findConduitRoute, BFS multi-salto sobre
+el grafo de secciones, 8 tests); assertSignalWiringReachable + SignalWiringUnreachableError en
+port-wiring.ts (aparte de wireExternalPort, que queda como operación pura de grafo; 4 tests nuevos);
+ship-task-effect connect valida cuando se le inyecta el floorplan (4º parámetro opcional de
+createShipTaskEffect, opcional para no romper sus tests; el MissionRuntime real siempre lo pasa). 530 tests
+en verde (+12).
+Game: el preview de cableado (mission-interaction-controller) valida y muestra la clave i18n nueva
+wire-no-conduit ante un cruce sin conducto; computeSignalWireRoute + routeThroughWaypoints en
+conduit-path.ts; el cable de señal en mission-overlay-renderer pasa de recta a ruteado por conductos
+(drawSignalEdge) — cierra del todo la Observación #1. De paso se limpiaron 2 imports sin usar
+preexistentes (los únicos 2 errores de lint del repo).
+Dependencia de contenido: el operador autoró el conducto senal pasillo-central<->soporte-vital en
+nave-exploracion (necesario para que el Cap.1 siga soluble); verificado end-to-end contra datos reales.
+investigacion/guerra/medica todavía sin conductos senal (heads-up, solo exploracion se juega hoy).
+tsc/eslint/vite build limpios en engine y game.
+Razón: decisión de diseño del operador sobre el modelo de conductos (Fase 11f.1).
+
+2026-07-26 — Fix 11f.2: las líneas de conducto y el cable de señal no pasaban por el marcador
+El operador reportó tras playtest: los puntos de conducto coinciden con Tiled pero las líneas no pasan por
+ellos (desfasaje), y el cable sensor->panel sigue yendo directo por la puerta, no por el conducto.
+Causa raíz (verificada numéricamente contra nave-exploracion): conduit.position es un punto FRACCIONAL
+sobre la pared (ej. celda 8.94,8.95 = pixel 286,286.5). El código hacía roundCell(conduit.position) =
+(9,9): (a) el marcador se dibuja en pos*CELL=286 pero la línea en el centro de la celda redondeada (304)
+-> ~18px de desfasaje; (b) (9,9) cae en el corredor transitable, así que findPath la trataba como un
+waypoint más y cruzaba por la puerta real (x=7), ignorando el conducto (x≈9).
+Fix (todo en /game render, sin tocar engine): conduit-path.ts reescrito para rutear en espacio de PÍXELES
+con el marcador del conducto como vértice exacto. El cruce de pared se arma con celdas de aproximación
+transitables a cada lado del conducto (nearestSectionCell); findPath nunca recibe el punto de pared, así
+que no se desvía por otra puerta. Nuevo tipo PixelPoint; helpers cellCenterPx/conduitPx/nearestSectionCell;
+buildRoutedPath (soporta multi-salto reconstruyendo la secuencia de secciones desde findConduitRoute).
+computeConduitPaths y computeSignalWireRoute devuelven PixelPoint[]. Consumidores ajustados para dibujar
+píxeles directo (sin +0.5 ni toPixel): drawConduitLine (floorplan-renderer), buildSegments/
+createConduitPathFlowEffect (conduit-flow-effect), drawSignalEdge (mission-overlay-renderer). drawConduitMarker
+queda igual — ahora la línea llega justo al punto.
+Verificado con script de reproducción contra datos reales: el cable sensor(7,9)->panel(7,6) pasa EXACTO
+por el marcador (286,286.5) y cruza la pared en x≈8.7 (el conducto), no en x=7 (la puerta). tsc/eslint/vite
+build limpios en /game; 530 tests en verde en /engine (sin cambios de motor).
+Razón: feedback de playtest del operador sobre la Fase 11f (desfasaje de coordenadas en el ruteo).
+
+2026-07-26 — Fix 11f.3: color del cable, pertenencia a la capa señales, y partículas de flujo invisibles
+Tres reportes del operador tras el fix del ruteo:
+(1) el cable de modo-cableado era gris genérico -> ahora usa CONDUIT_COLORS.senal (verde), unificando
+cable/conducto/capa. (2) el cable no se atenuaba al desactivar la capa "señales" -> el grafo de señal
+(nodos + cables) se separó a su propio Graphics (signalGraphics) en renderMissionOverlay, y la escena lo
+atenúa junto a conduitLayers.senal en applyLayerAlpha("senal") + lo reaplica en cada redrawOverlay; los
+componentes físicos quedan siempre visibles. Alcance confirmado por el operador: cables + nodos se atenúan
+juntos. (3) no se veían partículas en ningún conducto -> BUG DE DOBLE-CÁMARA: los efectos state-driven
+(conduit-flow y atmósfera) crean sus emisores internamente con scene.add.particles y nunca se registraban
+con la cámara de mundo, así que la hudCamera los pintaba sin scroll y quedaban fuera de lugar/invisibles
+(mismo bug ya documentado para fireEventEffect). Fix: nuevo hook ParticleEmitterHook; las factories
+(createConduitPathFlowEffect + los 3 de atmosphere-state-effects) reciben un callback onEmitterCreated que
+la escena usa para setDepth(effect) + markAsWorldObject, idéntico al patrón ya probado de
+fireFabricationEffect. Corrige también el mismo bug latente en los efectos de atmósfera (gas/hielo/vapor).
+Archivos: particle-effect.types.ts (tipo ParticleEmitterHook), conduit-flow-effect.ts,
+atmosphere-state-effects.ts, mission-overlay-renderer.ts (signalGraphics + color senal), floorplan-scene.ts
+(registrar emisores, guardar/atenuar signalGraphics). Sin cambios en /engine.
+tsc/eslint/vite build limpios en /game; 530 tests en verde en /engine.
+Razón: feedback de playtest del operador sobre la Fase 11f (color, capa, y visibilidad de partículas).
+
+2026-07-26 — Fix 11f.4: partículas de flujo REALMENTE invisibles (setConfig borra ops del emisor)
+Tras 11f.3 (registro de emisores con la cámara de mundo) el operador confirmó que ni siquiera los conductos
+ELÉCTRICOS —los únicos activos al inicio del cap.1— mostraban flujo. Diagnóstico:
+(A) Condiciones de activación (por diseño): al arrancar el cap.1 de nave-exploración solo `electrico` cumple
+su condición (unpoweredSectionIds=[] -> activo, intensidad 0.7). `ventilacion` no fluye porque el runtime
+siembra 101 kPa en TODAS las secciones (MissionAtmosphereRuntime) -> ΔP=0; `senal` no fluye porque el cable
+sensor->panel aún no existe / el emisor no está disparado; no hay conductos `fluido` autorados. O sea, "nada
+fluye" es lo esperado para 3 de 4 tipos; solo eléctrico debía verse.
+(B) Bug real del emisor eléctrico: createFlowEmitter creaba el emisor con un config SIN frequency/quantity/
+angle y luego updateFlowEmitter llamaba emitter.setConfig({angle,frequency,quantity,tint}) cada frame.
+Phaser.ParticleEmitter.setConfig RECARGA todos los ops desde el config dado y los AUSENTES vuelven a su
+default (EmitterOp.loadConfig -> defaultValue): scale -> 1 (partículas de 512px), speed -> 0 (inmóviles),
+lifespan -> 1000. Por eso el flujo era invisible/degenerado. Los efectos que SÍ se ven (spawnBurst:
+combustión, fabricación, etc.) nunca llaman setConfig, por eso funcionaban.
+Fix: crear el emisor con su config de emisión COMPLETO (angle/frequency/quantity incluidos) para que emita por
+el default emitting=true, y actualizar en vivo con setters puntuales que no borran otros ops: setFrequency
+(intensidad) y setEmitterAngle (dirección, solo el demo de galería), aplicados SOLO cuando el valor cambia
+(ambos resetean flowCounter -> llamarlos cada frame impediría emitir). El toggle activo/inactivo usa
+stop()/start() (start es no-op si ya emite). Mismo defecto y mismo arreglo en createGasLeakEffect (usaba
+setConfig parcial); createFreezingEffect/createHeatVaporEffect ya eran correctos (config completo en la
+creación, solo start()), no se tocaron salvo confirmar el patrón. El radio de la nube de gas queda fijo al de
+creación (no hay setter tipado para los ops x/y; matiz menor de un efecto aún no visible).
+Sembrado explícito de atmósfera inicial (pedido en la ronda de preguntas): NO implementado — se verificó que
+MissionAtmosphereRuntime ya siembra standardSectionAtmosphere() (101 kPa) por sección, así que poblar
+sectionAtmospheres sería un no-op que no cambia el flujo; se documenta la decisión.
+Archivos: conduit-flow-effect.ts (createFlowEmitter con config completo, setFrequency/setEmitterAngle,
+eliminado updateFlowEmitter), atmosphere-state-effects.ts (createGasLeakEffect). Sin cambios en /engine.
+tsc/eslint/vite build limpios en /game; 530 tests en verde en /engine.
+Razón: el fix de doble-cámara de 11f.3 era necesario pero insuficiente; la causa raíz de la invisibilidad era
+que setConfig borraba scale/speed/lifespan del emisor de flujo.
+
+2026-07-26 — Fase 11f.5: partículas de flujo que RECORREN el conducto (tokens viajeros, no rocío)
+Tras 11f.4 (las partículas ya se veían) el operador pidió otro look: no rocío estacionario por segmento, sino
+partículas discretas que viajan de punta a punta del camino, arrancando en uno de los 2 extremos (secciones que
+conecta el conducto), cubriendo ambos extremos, reiniciándose una y otra vez (flujo constante). Confirmado con
+el operador: cobertura bidireccional con DOS streams independientes (no azar ni alternancia manual) y estilo
+"punto + estela corta".
+Reescrito `createConduitPathFlowEffect` (conduit-flow-effect.ts): reemplaza el emisor-por-segmento (`FlowSegment`
++ un `ParticleEmitter` estacionario por tramo, eliminados) por un sistema de "tokens viajeros" — `Image` sueltas
+(no `ParticleEmitter`: Phaser no sigue una polilínea con curvas de forma nativa sin `Curves.Path`/`PathFollower`,
+que el proyecto no usa en ningún lado; el único precedente es el lerp manual punto-a-punto de
+`crew/hop-movement.ts`, acá generalizado a N puntos). Por conducto se mantienen 2 `FlowStream` simultáneos (uno
+con el `path`, otro invertido) — cada uno con su propio acumulador de spawn y hasta 4 tokens concurrentes.
+Geometría: `cumulativeLengths`/`pointAtDistance` (nuevas, sobre `PixelPoint[]`) permiten ubicar un punto a N
+píxeles de recorrido desde el inicio, cruzando tramos y vértices duros (el marcador del conducto, Fase 11f.2)
+sin problema. Cada token tiene cabeza + 2 "fantasmas" de estela a distancia FIJA detrás (no por tiempo: sin
+drift de framerate, mismo efecto visual), con fade in/out suave en los extremos del camino. La velocidad de cada
+token se fija al spawnear (no seguía la intensidad en vivo): si el conducto se apaga a mitad de camino, el token
+ya en viaje completa su recorrido a velocidad constante y recién ahí se destruye — evita fantasmas congelados
+para siempre en el mapa si `intensity` cae a 0 mientras hay tokens en tránsito.
+`ConduitFlowState`/`createConduitFlowEffect` (punto fijo, usado solo por `particle-gallery-scene.ts`) intactos —
+caso de uso distinto, sin `path` que recorrer. Nuevo tipo `FlowTokenHook` (particle-effect.types.ts, hermano de
+`ParticleEmitterHook`) + `registerFlowToken` en floorplan-scene.ts (mismo criterio de cámara de mundo/depth que
+`registerParticleEmitter`, 11f.3), pasado a `createConduitPathFlowEffect` en `initConduitFlowEffects`.
+Archivos: conduit-flow-effect.ts, particle-effect.types.ts, floorplan-scene.ts. Sin cambios en /engine.
+tsc/eslint/vite build limpios en /game; 530 tests en verde en /engine.
+Razón: feedback visual del operador tras validar 11f.4 — el flujo ya era visible pero no transmitía "recorrido"
+de punta a punta del conducto.
+
+2026-07-26 — Fase 11f.6: tamaño/visibilidad del flujo, oculto real por capa, y flujo sobre cables de señal
+Tres reportes del operador tras validar 11f.5 (tokens viajeros):
+(1) se ven "muy poco" -> tamaño de la cabeza subido de 10 a 18px y de los fantasmas de 7 a 13/9px (constantes
+HEAD_SIZE_PX/GHOST_SIZES_PX en conduit-flow-effect.ts), con la separación de la estela ajustada a la nueva
+escala (16/30px en vez de 12/24).
+(2) al desactivar una capa, el flujo seguía viéndose (solo se atenuaba al 25%, igual que la línea estática) ->
+nuevo campo `ConduitPathFlowState.visible`: en vez de reducir la intensidad (lo que además ralentizaba/adelgazaba
+el flujo), ahora el alpha final de cabeza+fantasmas se multiplica por 0 cuando la capa está apagada, ocultando
+el flujo POR COMPLETO. El spawn/avance interno sigue corriendo oculto (no se pausa) para que al reactivar la
+capa el tráfico ya esté en curso, no arranque de cero. `updateConduitFlowEffects` calcula `visible` directo de
+`activeFloorplanLayers` (se eliminó el hack de `intensity * layerFactor`, que mezclaba dimming visual con
+intensidad real de flujo).
+(3) al cablear sensor->panel en el escenario 1, no se veía flujo de señal en ESA conexión (solo en el conducto
+físico que cruza la pared) -> el flujo animado solo existía para los conductos FÍSICOS (`floorplan.conduits`,
+fijos desde `create()`), nunca para los CABLES que arma el jugador (`signalGraph.edges`, dinámicos). Nuevo:
+`syncSignalWireFlowEffects` (floorplan-scene.ts) crea/destruye un `createConduitPathFlowEffect` POR CADA
+`SignalEdge` existente (clave `edge.id`, a diferencia del conducto físico que no tiene id propio), reutilizando
+el MISMO `computeSignalWireRoute` que ya dibuja el cable estático — la animación seguirá SIEMPRE el mismo camino
+exacto que ve el jugador. Sincronizado en `create()` y tras cada `redrawOverlay()` (task-completed, único punto
+donde el grafo de cables puede cambiar), preservando las instancias existentes (no se resetean tokens en
+tránsito por acciones no relacionadas). Nueva `signalWireFlowIntensity(edge, mission)` en
+conduit-flow-heuristics.ts: activo si `signalRuntime.outputOf(edge.from)` (el nodo emisor tiene salida ahora
+mismo) — distinto de `signalIntensity` (evalúa el conducto físico por SECCIÓN, no por nodo). `updateSignalWireFlowEffects`
+corre cada frame junto al resto de efectos de flujo, con `visible` ligado igual al toggle de la capa `señales`.
+Archivos: conduit-flow-effect.ts (tamaños, campo `visible`), conduit-flow-heuristics.ts (signalWireFlowIntensity),
+floorplan-scene.ts (signalWireFlowEffects, sync/update, visible en updateConduitFlowEffects). Sin cambios en /engine.
+tsc/eslint/vite build limpios en /game; 530 tests en verde en /engine.
+Razón: feedback de playtest del operador tras 11f.5 — tamaño, ocultamiento por capa, y cobertura del cable
+dinámico que arma el jugador (no solo el conducto físico de la pared).
+
+2026-07-26 — Fix post-cierre — Fase 11f.7: el flujo de conductos se congela en pausa
+Feedback del operador tras smoke-test de 11f.6: el flujo se veía perfecto, pero al apretar "Pausa" las
+partículas seguían viajando (mientras que proyectiles/atmósfera sí se congelan). El criterio previo (comentario
+en floorplan-scene.ts) trataba el flujo como "estado ya calculado, no simulación" -- igual que la cicatriz de
+sección sin energía (que solo parpadea, estática). Pero a diferencia de la cicatriz, los tokens de flujo
+SE MUEVEN: es una animación de simulación, y todo lo que se mueve debe detenerse en pausa (regla general del
+operador: "TODO debe detenerse con pausa"). Fix: `updateConduitFlowEffects`/`updateSignalWireFlowEffects` ahora
+solo se llaman dentro del `if (this.mission.coreLoop.mode === "execution")`, igual que proyectiles y atmósfera
+por sección. En pausa los tokens quedan congelados en su última posición (no se destruyen ni reinician: al
+reanudar retoman el viaje desde donde estaban).
+Archivos: floorplan-scene.ts (gate de modo en el update loop). Sin cambios en /engine ni en conduit-flow-effect.ts.
+tsc/eslint/vite build limpios en /game; 530 tests en verde en /engine.
+Razón: feedback de playtest del operador — coherencia del estado pausa/ejecución, el flujo eléctrico no
+respetaba la pausa.
+
+2026-07-27 — Fase 11g: HUD de Estado General de la Nave y Acciones Contextuales
+Reemplaza el panel de acciones DOCKED permanente (Fase 10d, `mission-action-panel.ts`) por un HUD de estado
+siempre visible (atmósfera/soporte vital/integridad de casco/energía, agregado a NIVEL DE NAVE, no por sección)
+y convierte las acciones (desmontar/instalar aquí/analizar sustancia) en un panel CONTEXTUAL que solo existe
+ante una selección/interacción válida. Motor: nuevo dominio `engine/src/ship-status/` — `ShipStatusQuery`
+(pull-based, mismos colaboradores que `MissionStructuralRuntime`) agrega atmósfera/soporte vital/integridad/
+energía con criterio "peor caso gana" (confirmado con el operador, el texto de la fase lo dejaba abierto).
+Energía MVP: `1 - (secciones sin energía/total)`, derivado del flag binario existente, sin simulación de
+producción/consumo/flujo (no existe ningún `PowerGrid` en el motor; fuera de alcance). Juego: nuevo widget
+`ship-status-hud.ts` (barra de color por fracción, extraída a `healthFractionColor` en `palette.ts` desde
+`crew-strip.ts` para no duplicar el corte de 3 niveles); `mission-action-panel.ts` reescrito para construirse
+en origen local (0,0) y flotar (reposicionado cada frame por `floorplan-scene.ts::updateActionPanelAnchor`,
+siguiendo la celda seleccionada — decisión de UX del operador sobre la opción más simple de panel docked-
+colapsable). Sustancias sintetizadas (antes embebidas en el estado `idle` del panel, Fase 11e): investigado
+contra GDD/código que la única acción real es "Analizar Sustancia" (no existe mecánica de verter en
+reservorio, PENDIENTES_OBSERVACIONES.md punto 9 sigue sin resolver, fuera de alcance) — la lista pasa a ser un
+contenido contextual propio, abierto desde el botón "Sustancias" del HUD.
+Fixes post-playtest del operador el mismo día: (1) la lista de sustancias no se veía pese al conteo correcto
+en el botón — `createKenneyList` no era hijo del `container` flotante, no heredaba su reposición; fix
+`container.add(list)`. (2) el panel de sustancias aparecía semi-tapado en la esquina inferior derecha del
+mapa — el anclaje sin celda reutilizaba el clamp pensado para seguir una celda; fix: posición fija propia
+(esquina superior derecha del viewport de mapa).
+Archivos nuevos: `engine/src/ship-status/*` + test, `game/src/ui/widgets/ship-status-hud.ts`. Modificados:
+`engine/src/index.ts`, `mission-runtime.ts`, `mission-interaction-controller.ts`, `mission-action-panel.ts`,
+`floorplan-scene.ts`, `palette.ts`, `crew-strip.ts`, `i18n/{en,es}.ts`.
+`tsc`/`eslint` limpios en `/engine` y `/game`; 543 tests en verde en `/engine` (13 nuevos).
+Razón: `nuevo-orden.md`, Subfase 11g — infraestructura fundacional para los capítulos 2-8, más feedback de
+playtest del operador sobre la ubicación del panel de sustancias.

@@ -86,6 +86,7 @@ export type { SignalGraphIntegrityIssue } from "./signals/signal-graph-integrity
 export type {
   Blueprint,
   BlueprintMetadata,
+  ComponentCondition,
   PlacedComponentInstance,
   PlacedComponentInstanceId,
   ReservoirContent,
@@ -186,6 +187,9 @@ export {
 } from "./chemistry/reaction/tag-predicates.js";
 export { NamedRecipeIndex } from "./chemistry/reaction/named-recipe-index.js";
 export { createUnidentifiedMixture } from "./chemistry/reaction/unidentified-mixture-factory.js";
+export { deriveMixtureHazardPreview } from "./chemistry/reaction/mixture-hazard-preview.js";
+export type { MixtureHazardPreview } from "./chemistry/reaction/mixture-hazard-preview.js";
+export { synthesizeSubstance, SynthesisError } from "./chemistry/production/synthesize-substance.js";
 export {
   createDefaultReactionRules,
   ReactionResolver,
@@ -202,7 +206,7 @@ export { SpontaneousIgnitionRule } from "./chemistry/reaction/rules/spontaneous-
 // Atmósfera (Bloque 3)
 export { GAS, STANDARD_OXYGEN_FRACTION } from "./atmosphere/atmosphere-composition.types.js";
 export type { AtmosphereComposition, GasKey } from "./atmosphere/atmosphere-composition.types.js";
-export { getGasFraction } from "./atmosphere/section.types.js";
+export { getGasFraction, standardSectionAtmosphere } from "./atmosphere/section.types.js";
 export type {
   Section,
   SectionAtmosphere,
@@ -216,6 +220,12 @@ export {
   oxygenToCombustionBucket,
   sectionCombustionAtmosphere,
 } from "./atmosphere/combustion-atmosphere.js";
+export { CORROSIVE_ONSET_CONCENTRATION, sectionCorrosiveLevel } from "./atmosphere/corrosive-atmosphere.js";
+export {
+  fromSectionAtmosphereSnapshot,
+  toSectionAtmosphereSnapshot,
+} from "./atmosphere/atmosphere-snapshot.types.js";
+export type { SectionAtmosphereSnapshot } from "./atmosphere/atmosphere-snapshot.types.js";
 export {
   createCorrosiveCrewHazardAccumulator,
   createToxicHazardAccumulator,
@@ -262,7 +272,10 @@ export {
   MagneticAccelerationAccumulator,
   VELOCITY_ACCUMULATION_PARAMETERS,
 } from "./kinetics/magnetic-acceleration.js";
-export { KINETIC_IMPACT_PARAMETERS, resolveKineticImpact } from "./kinetics/kinetic-impact.js";
+export type { AccumulatorSnapshot } from "./kinetics/magnetic-acceleration.js";
+export { resolveKineticImpact } from "./kinetics/kinetic-impact.js";
+export { virtualMass, VIRTUAL_MASS_PARAMETERS } from "./kinetics/virtual-mass.js";
+export type { VirtualMassLevel } from "./kinetics/virtual-mass.js";
 export type {
   KineticDamageSeverity,
   KineticDomainEvent,
@@ -270,16 +283,39 @@ export type {
   MagneticAccelerationEvent,
   VelocityLevel,
 } from "./kinetics/kinetic-events.types.js";
+export {
+  ProjectileSimulation,
+  PROJECTILE_PARAMETERS,
+} from "./kinetics/projectile-simulation.js";
+export { DIRECTION_AT_REST } from "./kinetics/projectile.types.js";
+export type {
+  ActiveCoil,
+  CellOccupant,
+  GridDirection,
+  ProjectileBody,
+  ProjectileState,
+  ProjectileWorld,
+} from "./kinetics/projectile.types.js";
+export { previewTrajectory, TRAJECTORY_PREVIEW_PARAMETERS } from "./kinetics/trajectory-preview.js";
+export type { TrajectoryPreviewStep } from "./kinetics/trajectory-preview.js";
 
 // ---------------------------------------------------------------------------
 // Fase 5 — Plano físico (Tiled → engine; render mínimo en /game)
 // ---------------------------------------------------------------------------
 
 export { GRID_CELL_SIZE_PX } from "./geometry/grid-position.types.js";
-export { CONDUIT_KINDS, sectionArea, SHIP_ARCHETYPES } from "./floorplan/floorplan.types.js";
+export { manhattanDistance } from "./geometry/grid-distance.js";
+export {
+  CONDUIT_KINDS,
+  sectionArea,
+  sectionContainingCell,
+  SHIP_ARCHETYPES,
+} from "./floorplan/floorplan.types.js";
 export type {
   AnchorId,
   AnchorPoint,
+  ComponentSeedId,
+  ComponentSeedPoint,
   ConduitConnection,
   ConduitKind,
   FloorplanSection,
@@ -296,17 +332,36 @@ export type { FloorplanIntegrityIssue } from "./floorplan/floorplan-integrity.js
 export { deriveAtmosphereModel } from "./floorplan/atmosphere-projection.js";
 export type { FloorplanAtmosphereModel } from "./floorplan/atmosphere-projection.js";
 export { CANONICAL_SHIP_FLOORPLANS } from "./floorplan/canonical-ships.js";
+export { findConduitRoute, sectionsConnectedByConduit } from "./floorplan/conduit-connectivity.js";
+export {
+  ComponentSeedError,
+  baseComponentSeeds,
+  componentSeedsForChapter,
+  instantiateComponentSeeds,
+} from "./floorplan/instantiate-component-seeds.js";
 
 // ---------------------------------------------------------------------------
 // Fase 6 — Core loop (modo planificación/ejecución + colas de tareas de
 // tripulación con dependencias entre tripulantes, GDD §4)
 // ---------------------------------------------------------------------------
 
-// Tripulante como actor (mínimo; tiers/afinidad/HP son Fase 9)
+// Tripulante como actor (identidad + campos de Fase 9: specialty/tier/hp/trait, ver más abajo)
 export type { CrewActor, CrewActorId, CrewActorStatus } from "./crew/crew-actor.types.js";
 
 // Modelo de tarea y su máquina de estados
-export type { CrewTask, CrewTaskId, TaskEffect, TaskState, TaskType } from "./tasks/task.types.js";
+export type {
+  AnalyzeSubstanceTaskPayload,
+  ConnectTaskPayload,
+  CrewTask,
+  CrewTaskId,
+  DismantleTaskPayload,
+  InstallTaskPayload,
+  TaskEffect,
+  TaskEffectResult,
+  TaskPayload,
+  TaskState,
+  TaskType,
+} from "./tasks/task.types.js";
 export { TERMINAL_TASK_STATES } from "./tasks/task.types.js";
 export { createCrewTask } from "./tasks/task-factory.js";
 export type { CreateCrewTaskInput } from "./tasks/task-factory.js";
@@ -323,6 +378,7 @@ export { TaskScheduler, TaskDependencyError } from "./tasks/task-scheduler.js";
 export type {
   BlockingReason,
   PlayerNotification,
+  SchedulerActorSnapshot,
   TaskSchedulerOptions,
 } from "./tasks/task-scheduler.js";
 
@@ -338,12 +394,269 @@ export type {
   TaskStartedEvent,
 } from "./tasks/task-events.types.js";
 
+// ---------------------------------------------------------------------------
+// Fase 9 — Tripulación (GDD 6.1-6.7): especialidad, tier, afinidad,
+// recuperación atómica al desmontar, HP/permadeath y personalidad.
+// ---------------------------------------------------------------------------
+
+export type { CrewSpecialty } from "./crew/crew-specialty.types.js";
+export type { CrewTier } from "./crew/crew-tier.types.js";
+export type { PersonalityTrait } from "./crew/personality-trait.types.js";
+export {
+  AFFINITY_ACTION_SPECIALTY,
+  AFFINITY_DURATION_MULTIPLIER,
+  OFF_AFFINITY_DURATION_PENALTY,
+  durationMultiplierFor,
+} from "./crew/crew-affinity.js";
+export type { AffinityAction } from "./crew/crew-affinity.js";
+export {
+  ATOMIC_RECOVERY_BASE_FRACTION,
+  ENGINEER_RECOVERY_BONUS,
+  LOW_STRUCTURAL_RESISTANCE_RECOVERY_PENALTY,
+  atomicRecoveryFraction,
+} from "./crew/atomic-recovery.js";
+export {
+  HP_LOSS_FRACTION,
+  applyCombustionDamage,
+  applyCrewDamage,
+  applyKineticDamage,
+} from "./crew/hp-resolution.js";
+export type { CrewHpResolution } from "./crew/hp-resolution.js";
+export type { CrewDamageCause, CrewDamagedEvent, CrewDeathEvent, CrewDomainEvent } from "./crew/crew-events.types.js";
+export { CREW_CAPACITY_BY_ARCHETYPE, selectActiveCrew } from "./crew/crew-roster.js";
+export type { CrewRoster } from "./crew/crew-roster.js";
+export { BARK_LINES_PER_EVENT, barkKey, pickBarkIndex } from "./crew/bark-bank.js";
+export type { BarkEventType } from "./crew/bark-bank.js";
+
+// ---------------------------------------------------------------------------
+// Fase 9.5 — Guardado/carga (GDD 15.4): estado dinámico de partida y
+// creaciones custom de la mesa persistidas a disco. Adelantado desde Fase 11
+// por decisión del operador.
+// ---------------------------------------------------------------------------
+
+export { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "./floorplan/initial-ship-state.js";
+export type {
+  CampaignSaveId,
+  CampaignSaveMetadata,
+  CampaignSaveState,
+  ChapterProgressState,
+} from "./save/campaign-save.types.js";
+export {
+  assertCampaignSaveIntegrity,
+  validateCampaignSaveIntegrity,
+} from "./save/campaign-save-integrity.js";
+export type { CampaignSaveIntegrityIssue } from "./save/campaign-save-integrity.js";
+export {
+  CampaignSaveParseError,
+  deserializeCampaignSave,
+  serializeCampaignSave,
+} from "./save/campaign-save-serializer.js";
+export { createNewCampaignSave } from "./save/campaign-save-factory.js";
+export type { CreateNewCampaignSaveInput } from "./save/campaign-save-factory.js";
+export { CHAPTER_SEED_BY_ID, advanceChapterProgress } from "./save/chapter-progression.js";
+export type { ChapterSeed } from "./save/chapter-progression.js";
+
+export type { CustomCreation, CustomCreationId, CustomCreationMetadata } from "./save/custom-creation.types.js";
+export {
+  CustomCreationParseError,
+  deserializeCustomCreation,
+  serializeCustomCreation,
+} from "./save/custom-creation-serializer.js";
+
+// ---------------------------------------------------------------------------
+// Fase 7 — Mesa de creación (GDD 10.1): grid de composición espacial
+// compartido con el plano, footprint dinámico, nombrado, validación de
+// instalación y conexión externa de puertos.
+// ---------------------------------------------------------------------------
+
+export {
+  addPiece,
+  removePiece,
+  createEmptyWorkbenchState,
+  effectiveFootprintExtent,
+  findOverlappingPieces,
+  occupiedCells,
+  WorkbenchError,
+} from "./workbench/workbench-state.types.js";
+export type { WorkbenchPiece, WorkbenchPieceId, WorkbenchState } from "./workbench/workbench-state.types.js";
+
+export { calculateFootprint, calculateOccupiedCells } from "./workbench/footprint-calculator.js";
+export { addSignalNode, connectNodes } from "./workbench/workbench-signal-adapter.js";
+export { buildRecipeFromPieces } from "./workbench/creation-recipe-builder.js";
+export { nameAndRegisterCreation } from "./workbench/creation-naming.js";
+export type { NameCreationParams } from "./workbench/creation-naming.js";
+
+export {
+  candidateCellsInSection,
+  findFittingInstallPlacement,
+  rotateExteriorFootprint,
+} from "./workbench/installation-placement.js";
+export { validateInstallation } from "./workbench/installation-validation.js";
+export type { InstallationIssue } from "./workbench/installation-validation.js";
+export { installCreationInFloorplan } from "./workbench/installation.js";
+export type { InstallationResult } from "./workbench/installation.js";
+
+export {
+  assertSignalWiringReachable,
+  exposeExternalPorts,
+  mergeInstalledSignalGraph,
+  SignalWiringUnreachableError,
+  translateWorkbenchNodesToBlueprint,
+  wireExternalPort,
+} from "./workbench/port-wiring.js";
+
+// ---------------------------------------------------------------------------
+// Fase 10a — Dominio de Crisis (GDD §15.3): contenido declarativo de crisis
+// de campaña (trigger/temporización/resolución), máquina de estados y el
+// capítulo 1 ("Primer Aviso", docs/Primeras_8_crisis.md).
+// ---------------------------------------------------------------------------
+
+export type { CrisisState } from "./crisis/crisis-state.types.js";
+export { TERMINAL_CRISIS_STATES } from "./crisis/crisis-state.types.js";
+export type {
+  CrewDamageConsequenceSpec,
+  CrewDamageSeveritySpec,
+  CrisisConsequenceSpec,
+  CrisisDefinition,
+  CrisisDefinitionId,
+  CrisisHazardSchedule,
+  CrisisResolutionSpec,
+  CrisisTimerConfig,
+  CrisisTriggerSpec,
+  FunctionalTagInstalledResolutionSpec,
+  JammedActuatorBlocksSectionTriggerSpec,
+  MotionSensorsActiveTriggerSpec,
+  ReplacementInstalledConnectedResolutionSpec,
+  SignalNodesWiredResolutionSpec,
+  SignalOutputCase,
+  SignalOutputMatchesResolutionSpec,
+  TimeLossConsequenceSpec,
+} from "./crisis/crisis-definition.types.js";
+export type {
+  CrisisDomainEvent,
+  CrisisResolvedEvent,
+  CrisisTriggeredEvent,
+} from "./crisis/crisis-events.types.js";
+export type { CrisisEvalContext, CrisisResolutionRule, CrisisTriggerRule } from "./crisis/crisis-rule.js";
+export { evaluateCrisis } from "./crisis/crisis-machine.js";
+export type { CrisisEvaluationResult, CrisisRuleRegistries } from "./crisis/crisis-machine.js";
+export {
+  createDefaultCrisisResolutionRegistry,
+  createDefaultCrisisTriggerRegistry,
+} from "./crisis/rules/crisis-rule-registry.js";
+export {
+  CHAPTER_01_ACTUATOR_INSTANCE_ID,
+  CHAPTER_01_ANCHOR_POSITION,
+  CHAPTER_01_BLOCKED_SECTION_ID,
+  CHAPTER_01_BY_ARCHETYPE,
+  CHAPTER_01_INITIAL_ATOMIC_STOCK,
+  CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE,
+  CHAPTER_01_PRIMER_AVISO,
+} from "./crisis/campaign/chapter-01-primer-aviso.js";
+export {
+  CHAPTER_02_BY_ARCHETYPE,
+  CHAPTER_02_GATE_NODE_ID,
+  CHAPTER_02_GATE_PANEL_INSTANCE_ID,
+  CHAPTER_02_SENSOR_A_INSTANCE_ID,
+  CHAPTER_02_SENSOR_A_NODE_ID,
+  CHAPTER_02_SENSOR_B_INSTANCE_ID,
+  CHAPTER_02_SENSOR_B_NODE_ID,
+  CHAPTER_02_SEEDED_COMPONENTS_BY_ARCHETYPE,
+  CHAPTER_02_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
+  CHAPTER_02_SOFT_DEADLINE_SECONDS,
+} from "./crisis/campaign/chapter-02-ecos-en-el-pasillo.js";
+export { CHAPTER_REGISTRY } from "./crisis/campaign/chapter-registry.js";
+export {
+  CHAPTER_SEQUENCE_BY_ARCHETYPE,
+  nextChapterAfter,
+} from "./crisis/campaign/chapter-sequence.js";
+
+// ---------------------------------------------------------------------------
+// Fase 10b — Runtime de misión: TaskEffect real (dismantle/install/connect)
+// y el adaptador Tickable que re-evalúa la crisis activa cada tick. Alcance
+// deliberadamente acotado a lo que el capítulo 1 ejercita — señales/química/
+// atmósfera/fallo/cinética NO se adaptan a Tickable todavía (decisión
+// explícita del operador), se agregan recién en la sub-fase que implemente el
+// capítulo que los necesite.
+// ---------------------------------------------------------------------------
+
+export { MutableShipState } from "./mission/mutable-ship-state.js";
+export { MutableCrewState } from "./mission/mutable-crew-state.js";
+export { MutableEnemyState } from "./mission/mutable-enemy-state.js";
+export { createShipTaskEffect, InsufficientStockError } from "./mission/ship-task-effect.js";
+export type { AtomicPartsStock } from "./inventory/inventory.types.js";
+export { hasStock, stockOf, consumeStock, creditStock } from "./inventory/inventory-ledger.js";
+export { MutableAtomicStock } from "./inventory/mutable-atomic-stock.js";
+export { CrisisRuntime } from "./mission/crisis-runtime.js";
+export type { CrisisRuntimeOptions } from "./mission/crisis-runtime.js";
+// Fase 11a — estado de señales vivo de la misión + adaptador del puerto de proyectiles.
+export {
+  MissionSignalRuntime,
+  allEmittersActive,
+} from "./mission/mission-signal-runtime.js";
+export type {
+  EmitterInputSource,
+  PowerScarSource,
+  SignalOutputReader,
+} from "./mission/mission-signal-runtime.js";
+// Fase 11b — atmósfera viva de la misión (wireado por primera vez).
+export { MissionAtmosphereRuntime } from "./mission/mission-atmosphere-runtime.js";
+// Fase 11b — cicatriz de RE por componente instalado (primer llamador de StructuralIntegrity).
+export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.js";
+// Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).
+export type { ShipStatusLevel, ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status/ship-status.types.js";
+export {
+  fractionToLevel,
+  aggregateAtmosphere,
+  aggregateLifeSupport,
+  aggregateHullIntegrity,
+  aggregateEnergy,
+} from "./ship-status/ship-status-aggregation.js";
+export { ShipStatusQuery } from "./ship-status/ship-status-runtime.js";
+export {
+  MissionProjectileWorld,
+  ELECTRIC_CURRENT_PARAMETERS,
+  isElectromagnetDefinition,
+  isLooseFerromagneticCandidate,
+} from "./mission/mission-projectile-world.js";
+export { LooseFerromagneticPromoter } from "./mission/loose-ferromagnetic-promoter.js";
+export { previewMissionTrajectory } from "./mission/mission-trajectory-preview.js";
+// Fase 11d.2 — runtime de amenaza enemiga (ruta + ataque) cableado al reloj de misión.
+export { EnemyThreatRuntime } from "./mission/enemy-threat-runtime.js";
+export type { EnemyThreatRuntimeOptions } from "./mission/enemy-threat-runtime.js";
+
+// Fase 11d — enemigos: ruta scripteada + combate cuerpo a cuerpo/a distancia.
+export type { EnemyActor, EnemyActorId, EnemyArchetype, EnemyActorStatus } from "./enemies/enemy-actor.types.js";
+export type { RouteWaypoint, RouteCompletion, ScriptedRoute } from "./enemies/enemy-route.types.js";
+export { cellAtElapsedSeconds } from "./enemies/route-progression.js";
+export type { RouteProgress } from "./enemies/route-progression.js";
+export { weaponDamageSeverity, WEAPON_DAMAGE_PARAMETERS } from "./enemies/weapon-damage.js";
+export type { WeaponDamageSeverity } from "./enemies/weapon-damage.js";
+export type { CombatEvalContext, CombatRangeRule } from "./enemies/combat-rule.js";
+export { MeleeAdjacencyRule } from "./enemies/rules/melee-adjacency-rule.js";
+export { RangedProximityRule, RANGED_PROXIMITY_PARAMETERS } from "./enemies/rules/ranged-proximity-rule.js";
+export { createDefaultCombatRuleRegistry } from "./enemies/rules/combat-rule-registry.js";
+export { resolveEnemyAttack } from "./enemies/enemy-attack-resolver.js";
+export type { EnemyAttackResolverOptions, EnemyAttackOutcome } from "./enemies/enemy-attack-resolver.js";
+export type {
+  EnemyAdvancedEvent,
+  EnemyAttackedEvent,
+  EnemyDefeatedEvent,
+  EnemyDomainEvent,
+} from "./enemies/enemy-events.types.js";
+// Fase 11d.4 — contenido de enemigo del capítulo 2 ("Ecos en el Pasillo", solo arquetipo exploración).
+export { ENEMY_SEED_BY_CHAPTER_ID } from "./enemies/campaign/chapter-02-enemy-seed.js";
+export type { EnemySeed } from "./enemies/campaign/chapter-02-enemy-seed.js";
+
 import type { SignalDomainEvent } from "./signals/signal-events.types.js";
 import type { ReactionDomainEvent } from "./chemistry/reaction/reaction-events.types.js";
 import type { AtmosphereDomainEvent } from "./atmosphere/atmosphere-events.types.js";
 import type { FailureDomainEvent } from "./failure/failure-events.types.js";
 import type { KineticDomainEvent } from "./kinetics/kinetic-events.types.js";
 import type { CoreLoopDomainEvent } from "./tasks/task-events.types.js";
+import type { CrewDomainEvent } from "./crew/crew-events.types.js";
+import type { CrisisDomainEvent } from "./crisis/crisis-events.types.js";
+import type { EnemyDomainEvent } from "./enemies/enemy-events.types.js";
 
 /**
  * Unión agregada de todos los eventos de dominio del motor (Observer). `/game`
@@ -356,4 +669,7 @@ export type DomainEvent =
   | AtmosphereDomainEvent
   | FailureDomainEvent
   | KineticDomainEvent
-  | CoreLoopDomainEvent;
+  | CoreLoopDomainEvent
+  | CrewDomainEvent
+  | CrisisDomainEvent
+  | EnemyDomainEvent;
