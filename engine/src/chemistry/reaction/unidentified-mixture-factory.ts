@@ -3,8 +3,6 @@ import type { ChemicalTag } from "../../properties/chemical-tag.types.js";
 import type { ReactantSubstance } from "./reaction-context.types.js";
 import { mergeTags } from "./tag-predicates.js";
 
-const UNIDENTIFIED_ID = "reaction:unidentified" as ChemicalSubstanceId;
-
 /** Adjetivo en español por tag, para la plantilla del nombre (GDD 5.3). */
 const TAG_ADJECTIVE: Record<ChemicalTag["name"], string> = {
   OXI: "Oxidante",
@@ -16,6 +14,21 @@ const TAG_ADJECTIVE: Record<ChemicalTag["name"], string> = {
   TOX: "Tóxica",
   CORR: "Corrosiva",
 };
+
+/**
+ * Id determinístico por contenido: dos mezclas con el mismo conjunto de tags
+ * (mismo nombre+nivel) son la misma sustancia (GDD 5.3), así que comparten id;
+ * conjuntos de tags distintos nunca colisionan en el registro. Antes de esta
+ * función, TODA mezcla sin identificar usaba el mismo id fijo, así que la
+ * segunda mezcla distinta de una misión pisaba a la primera al registrarse.
+ */
+function unidentifiedMixtureId(tags: ReadonlyArray<ChemicalTag>): ChemicalSubstanceId {
+  const sortedKey = tags
+    .map((tag) => ("level" in tag && tag.level ? `${tag.name}:${tag.level}` : tag.name))
+    .sort()
+    .join("+");
+  return `reaction:unidentified:${sortedKey}` as ChemicalSubstanceId;
+}
 
 /**
  * Paso 3 de la resolución de identidad (GDD 5.3, Factory): cuando no hay receta
@@ -31,7 +44,7 @@ export function createUnidentifiedMixture(
   const tags = mergeTags(reactants);
   const adjectives = tags.map((tag) => TAG_ADJECTIVE[tag.name]);
   return {
-    id: UNIDENTIFIED_ID,
+    id: unidentifiedMixtureId(tags),
     name: `Mezcla sin identificar (${adjectives.join(", ")})`,
     tags,
   };

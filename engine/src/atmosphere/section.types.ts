@@ -1,4 +1,5 @@
 import type { Brand } from "../shared/brand.types.js";
+import { GAS, STANDARD_OXYGEN_FRACTION } from "./atmosphere-composition.types.js";
 import type { GasKey } from "./atmosphere-composition.types.js";
 
 /**
@@ -38,4 +39,17 @@ export interface SectionRuntime {
 
 export function getGasFraction(atmosphere: SectionAtmosphere, gas: GasKey): number {
   return atmosphere.gases.get(gas) ?? 0;
+}
+
+/**
+ * Aire estándar respirable (Fase 11b): siembra de una sección sin snapshot
+ * guardado todavía — partida nueva, o `Blueprint` de un save previo a esta
+ * fase (sin `sectionAtmospheres`).
+ */
+export function standardSectionAtmosphere(): SectionAtmosphere {
+  return {
+    gases: new Map([[GAS.OXYGEN, STANDARD_OXYGEN_FRACTION]]),
+    temperatureCelsius: 21,
+    pressureKpa: 101,
+  };
 }

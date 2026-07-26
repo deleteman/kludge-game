@@ -4,7 +4,8 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM"],
     "paths": {
-      "engine": ["../engine/src/index.ts"]
+      "engine": ["../engine/src/index.ts"],
+      "engine-maps/*": ["../engine/src/floorplan/maps/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

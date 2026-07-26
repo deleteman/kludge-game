@@ -36,8 +36,12 @@ export const MAGNETIC_FIELD_PARAMETERS = {
  *  - 1 bobina + corriente media → B — extrapolación: el documento exige
  *    explícitamente "alta" para que una sola bobina llegue a Media.
  *  - 2-3 bobinas + corriente baja/media → "Media" (M) — literal.
- *  - 2-3 bobinas + corriente alta → A — extrapolación monótona (no puede
- *    valer menos que 2-3 bobinas con corriente más baja, que ya es M).
+ *  - 2-3 bobinas + corriente alta → M — el documento reserva "Alta" para
+ *    "múltiples bobinas con corriente alta", y enumera 2-3 como el tramo que
+ *    llega a Media: dos bobinas no son "múltiples". Sigue siendo monótono (no
+ *    vale menos que 2-3 con corriente más baja, que ya es M). Hasta la Fase
+ *    11a.1 esta rama devolvía A, lo que hacía que `multipleCoilsThreshold`
+ *    fuera código muerto: 3 y 40 bobinas daban idéntico resultado.
  *  - ≥4 bobinas ("múltiples") + corriente alta → "Alta" (A) — literal.
  *  - ≥4 bobinas + corriente baja/media → M — extrapolación: piso, no baja
  *    de lo que ya logran 2-3 bobinas al mismo nivel de corriente.
@@ -53,7 +57,7 @@ export function activeCoilFieldIntensity(
     return current === "A" ? "M" : "B";
   }
   if (activeCoilCount < MAGNETIC_FIELD_PARAMETERS.multipleCoilsThreshold) {
-    return current === "A" ? "A" : "M";
+    return "M";
   }
   return current === "A" ? "A" : "M";
 }
@@ -63,12 +67,12 @@ export function activeCoilFieldIntensity(
  * efectivo la intensidad no cambia; más allá, degrada un nivel por cada
  * `degradeStepUnits` de exceso, hasta saturar en "N" (sin efecto).
  *
- * Revisado en Fase 5 (punto 4 del orden de trabajo): el plano físico ya
- * provee `GridPosition` real (`floorplan/`), pero `distanceUnits` se mantiene
- * como escalar que aporta el llamador — hoy no existe ningún llamador con un
- * proyectil posicionado sobre el plano (aparece en Fase 8/10). El helper de
- * distancia entre celdas se añadirá en `geometry/` cuando exista ese primer
- * llamador, para no fijar la métrica (Manhattan/euclídea) sin caso de uso.
+ * `distanceUnits` sigue siendo un escalar que aporta el llamador — esta
+ * función no conoce el grid. Resuelto en Fase 11a (2026-07-17): ya existe el
+ * primer llamador con un proyectil posicionado sobre el plano
+ * (`projectile-simulation.ts`), y la métrica que quedaba por fijar es
+ * Manhattan (`geometry/grid-distance.ts`, con la razón documentada allí).
+ * Los llamadores componen `intensityAtDistance(base, manhattanDistance(a, b))`.
  */
 export function intensityAtDistance(
   base: MagneticFieldIntensity,

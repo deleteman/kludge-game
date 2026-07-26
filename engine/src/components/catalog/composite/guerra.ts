@@ -1,6 +1,7 @@
 /**
  * Catálogo de componentes compuestos — Nave de Guerra (GDD 7.4, líneas 413-430).
- * 17 componentes funcionales (nivel 1 compuesto) + 1 ensamblaje complejo (Torreta automatizada, nivel 2).
+ * 17 componentes funcionales (nivel 1 compuesto) + 1 ensamblaje complejo (Torreta automatizada, nivel 2)
+ * + 1 arma cuerpo a cuerpo (Garra de abordaje, Fase 11d — ver nota junto a su definición).
  */
 
 import type { ComponentId } from "../../physical-component.types.js";
@@ -322,5 +323,27 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
       ],
     },
     // Nota: contiene Ácido de batería (catálogo químico: acido-de-bateria).
+  },
+  {
+    id: "garra-de-abordaje" as ComponentId,
+    name: "Garra de abordaje",
+    data: {
+      // Solo ACT, sin EM: alcance nulo por diseño — es el arma cuerpo a cuerpo
+      // de referencia (Fase 11d), en contraste directo con `torreta-automatizada`
+      // (EM+ACT, a distancia). Mismo mecanismo de propiedades ya existente en el
+      // catálogo, sin inventar un tag de "arma" — así un enemigo cuerpo a cuerpo
+      // referencia este componente (`EnemyActor.weaponComponentId`) igual que uno
+      // a distancia referencia `torreta-automatizada`, y desarmarlo a futuro es
+      // degradar esta misma instancia/definición.
+      functional: [{ tag: "ACT", power: 50, cadence: 4, directional: true }],
+      material: { RE: "M" },
+    },
+    recipe: {
+      ingredients: [
+        { ref: "motor-pequeno" as ComponentId, quantity: 1 },
+        { ref: "plancha-metalica" as ComponentId, quantity: 1 },
+        { ref: "tornilleria-fijacion" as ComponentId, quantity: 2 },
+      ],
+    },
   },
 ];

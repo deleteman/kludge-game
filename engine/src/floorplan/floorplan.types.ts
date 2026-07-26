@@ -56,6 +56,31 @@ export interface AnchorPoint {
   readonly position: GridPosition;
 }
 
+export type ComponentSeedId = Brand<string, "ComponentSeedId">;
+
+/**
+ * Objeto compuesto autorado directamente en Tiled, capa `semillas` (estándar
+ * nuevo, rework del capítulo 1: "sin stock → inspeccionar → desarmar →
+ * reutilizar"). Solo compuestos (GDD 7.1-7.2: los átomos no se "encuentran"
+ * sueltos con identidad propia dando vueltas por la nave) — la validación de
+ * que `componentId` resuelve a un compuesto real del catálogo vive en
+ * `instantiate-component-seeds.ts`, no acá: este parser no conoce el
+ * `componentRegistry` (se mantiene puro, igual que el resto de
+ * `floorplan-parser.ts`).
+ */
+export interface ComponentSeedPoint {
+  readonly id: ComponentSeedId;
+  readonly sectionId: SectionId;
+  readonly position: GridPosition;
+  /** Debe resolver a un `ComponentId` compuesto — validado al instanciar, no al parsear. */
+  readonly componentId: string;
+  readonly condition?: string;
+  /** Si se omite, se deriva del `id` del propio objeto Tiled (estable entre parseos). */
+  readonly instanceId?: string;
+  /** Si está presente, la semilla solo se instancia cuando ese capítulo pasa a ser el activo. Si se omite, se instancia siempre (kit inicial de la nave). */
+  readonly chapterId?: string;
+}
+
 export interface ShipFloorplan {
   readonly id: string;
   readonly archetype: ShipArchetype;
@@ -66,9 +91,27 @@ export interface ShipFloorplan {
   readonly sections: readonly FloorplanSection[];
   readonly conduits: readonly ConduitConnection[];
   readonly anchors: readonly AnchorPoint[];
+  /** Objetos compuestos sembrados vía la capa Tiled `semillas`. Capa opcional: mapas sin ella parsean `[]`. */
+  readonly componentSeeds: readonly ComponentSeedPoint[];
 }
 
 /** Área de una sección en celdas — es también su volumen atmosférico (ver `atmosphere-projection.ts`). */
 export function sectionArea(section: FloorplanSection): number {
   return section.cells.length;
+}
+
+/**
+ * Sección que contiene una celda dada, o `undefined` si la celda no pertenece
+ * a ninguna (fuera del plano, o hueco entre secciones). Lo necesita `/game`
+ * (Fase 10d) para resolver a qué sección pertenece una celda clickeada por el
+ * jugador — no había ningún consumidor de esto antes de que el plano fuera
+ * interactivo.
+ */
+export function sectionContainingCell(
+  floorplan: ShipFloorplan,
+  position: GridPosition,
+): FloorplanSection | undefined {
+  return floorplan.sections.find((section) =>
+    section.cells.some((cell) => cell.x === position.x && cell.y === position.y),
+  );
 }

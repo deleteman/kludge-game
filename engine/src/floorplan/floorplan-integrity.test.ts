@@ -5,6 +5,8 @@ import { validateFloorplanIntegrity } from "./floorplan-integrity.js";
 import type {
   AnchorId,
   AnchorPoint,
+  ComponentSeedId,
+  ComponentSeedPoint,
   ConduitConnection,
   FloorplanSection,
   ShipFloorplan,
@@ -32,6 +34,10 @@ function anchor(id: string, sectionId: string, x: number, y: number): AnchorPoin
   return { id: id as AnchorId, sectionId: sectionId as SectionId, position: { x, y } };
 }
 
+function componentSeed(id: string, sectionId: string, x: number, y: number, componentId: string): ComponentSeedPoint {
+  return { id: id as ComponentSeedId, sectionId: sectionId as SectionId, position: { x, y }, componentId };
+}
+
 function floorplan(overrides: Partial<ShipFloorplan> = {}): ShipFloorplan {
   return {
     id: "nave-test",
@@ -50,6 +56,7 @@ function floorplan(overrides: Partial<ShipFloorplan> = {}): ShipFloorplan {
     ],
     conduits: [ventConduit("alfa", "beta")],
     anchors: [anchor("alfa-a1", "alfa", 0, 0)],
+    componentSeeds: [],
     ...overrides,
   };
 }
@@ -127,5 +134,24 @@ describe("validateFloorplanIntegrity", () => {
       }),
     );
     expect(issues.map((issue) => issue.kind)).toContain("duplicate-anchor-id");
+  });
+
+  it("detecta una semilla de componente fuera de su sección declarada", () => {
+    const issues = validateFloorplanIntegrity(
+      floorplan({ componentSeeds: [componentSeed("semilla-1", "alfa", 5, 5, "x")] }),
+    );
+    expect(issues.map((issue) => issue.kind)).toContain("component-seed-outside-section");
+  });
+
+  it("detecta ids de semilla de componente duplicados", () => {
+    const issues = validateFloorplanIntegrity(
+      floorplan({
+        componentSeeds: [
+          componentSeed("s1", "alfa", 0, 0, "x"),
+          componentSeed("s1", "beta", 2, 0, "y"),
+        ],
+      }),
+    );
+    expect(issues.map((issue) => issue.kind)).toContain("duplicate-component-seed-id");
   });
 });

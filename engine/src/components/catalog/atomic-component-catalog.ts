@@ -1,6 +1,6 @@
 /**
  * Catálogo de componentes atómicos universales (GDD 7.2).
- * 20 piezas, disponibles en los 4 arquetipos. Solo los atómicos tienen footprint fijo de catálogo.
+ * 21 piezas, disponibles en los 4 arquetipos. Solo los atómicos tienen footprint fijo de catálogo.
  */
 
 import type { ComponentId } from "../physical-component.types.js";
@@ -123,9 +123,24 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Imán permanente",
     data: {
       footprint: { width: 1, height: 1 },
-      material: { MAG: true },
+      material: { MAG: true, RE: "M" },
     },
     // Nota: núcleo ferromagnético para electroimanes (caso 9), sin conductividad eléctrica declarada.
+    // `RE` declarada en la Fase 11a.1: como proyectil de un riel (caso 17) su masa virtual sale
+    // ligera — es un imán chico, no un ariete. Que no reviente una puerta ni mate a un tripulante
+    // es el resultado buscado: para eso está `pieza-hierro`.
+  },
+  {
+    id: "pieza-hierro" as ComponentId,
+    name: "Pieza de hierro",
+    data: {
+      footprint: { width: 1, height: 1 },
+      material: { MAG: true, RE: "A" },
+    },
+    // Nota: hierro macizo. El documento §5 la nombra junto al imán permanente como proyectil
+    // posible del riel improvisado ("un imán permanente o pieza de hierro"); hasta la Fase 11a.1
+    // solo existía como cuerpo ficticio del test del caso 17. Es la contraparte pesada del imán:
+    // mismo footprint, `RE` alta, masa virtual mayor -> daño de impacto mayor (ASA 1).
   },
   {
     id: "tubo-rigido" as ComponentId,

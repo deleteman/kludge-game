@@ -1,57 +1,64 @@
-import type { Footprint } from "../geometry/grid-position.types.js";
 import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type {
   KineticDamageSeverity,
   KineticImpactEvent,
   VelocityLevel,
 } from "./kinetic-events.types.js";
+import type { ProjectileBody } from "./projectile.types.js";
+import { virtualMass, type VirtualMassLevel } from "./virtual-mass.js";
 
 /**
- * Umbral de footprint "grande" (documento §3: "el tamaño/footprint de la
- * pieza, como proxy de masa"). Sin tabla numérica en ningún documento —
- * valor de referencia ajustable, mismo criterio de honestidad que
- * `THERMAL_CONDUCTIVITY_PARAMETERS` (caso de validación 2).
- */
-export const KINETIC_IMPACT_PARAMETERS = {
-  /** Área (width × height, unidades de grid) a partir de la cual una pieza cuenta como "grande". */
-  largeFootprintArea: 4,
-} as const;
-
-/**
- * Resuelve el daño por impacto cinético (documento §3, tabla de resolución
- * literal): alto si la velocidad es alta; medio si la velocidad es media, o
- * si es baja pero el footprint es grande; bajo en el resto. Deliberadamente
- * no pondera "física real" (no ½mv²) — tabla cualitativa, mismo criterio que
- * el resto de reglas de interacción del GDD 5.6.
+ * Resuelve el daño por impacto cinético cruzando velocidad acumulada
+ * (documento §2) con masa virtual (`virtual-mass.ts`, ASA 1). Sigue siendo una
+ * tabla cualitativa y no física real (no ½mv²), mismo criterio que el resto de
+ * reglas de interacción del GDD 5.6.
+ *
+ * DEROGA el documento §3 (decisión del operador, Fase 11a.1 — anotada también
+ * en `docs/Extension_aceleracion_magnetica.md` §3, no solo aquí). El doc fijaba
+ * "Daño alto si la velocidad es alta" sin mirar el tamaño; ahora la masa modula
+ * en AMBOS sentidos, así que un proyectil ligero a velocidad alta hace daño
+ * medio, no alto. Sin esa degradación, el defecto que ASA 1 existe para
+ * corregir sobrevivía justo en la fila que más importa: una carcasa de plástico
+ * y una plancha reforzada lanzadas igual de rápido seguían matando igual.
+ *
+ * |       | masa B | masa M | masa A |
+ * |-------|--------|--------|--------|
+ * | vel B | bajo   | bajo   | medio  |
+ * | vel M | bajo   | medio  | alto   |
+ * | vel A | medio  | alto   | alto   |
  */
 export function resolveKineticImpact(
   velocity: VelocityLevel,
-  footprint: Footprint,
+  body: ProjectileBody,
   targetRef: string,
   tick: TickContext,
 ): KineticImpactEvent {
-  const area = footprint.width * footprint.height;
-  const severity = kineticDamageSeverity(velocity, area);
   return {
     kind: "kinetic-impact",
     targetRef,
     velocity,
-    severity,
+    severity: kineticDamageSeverity(velocity, virtualMass(body.footprint, body.re)),
     elapsedSeconds: tick.elapsedSeconds,
   };
 }
 
+const VELOCITY_SCORE: Record<Exclude<VelocityLevel, "N">, number> = { B: 1, M: 2, A: 3 };
+const MASS_SCORE: Record<VirtualMassLevel, number> = { B: 1, M: 2, A: 3 };
+
 function kineticDamageSeverity(
   velocity: VelocityLevel,
-  footprintArea: number,
+  mass: VirtualMassLevel,
 ): KineticDamageSeverity {
-  if (velocity === "A") {
+  // Un proyectil en reposo no impacta (el simulador solo resuelve impactos de
+  // proyectiles en movimiento), pero la tabla no puede quedar indefinida.
+  if (velocity === "N") {
+    return "low";
+  }
+  const score = VELOCITY_SCORE[velocity] + MASS_SCORE[mass];
+  if (score >= 5) {
     return "high";
   }
-  if (velocity === "M") {
-    return "medium";
-  }
-  if (velocity === "B" && footprintArea >= KINETIC_IMPACT_PARAMETERS.largeFootprintArea) {
+  if (score >= 4) {
     return "medium";
   }
   return "low";

@@ -59,6 +59,29 @@ describe("task-scheduler: single-actor execution", () => {
     expect(effect.mock.calls[0]?.[0]).toMatchObject({ id: "t", state: "completed" });
   });
 
+  it("forwards analyzedSubstanceId from the effect result into task-completed (Fase 11e)", () => {
+    const substanceId = "reaction:unidentified:VOLAT" as never;
+    const effect = vi.fn(() => ({ analyzedSubstanceId: substanceId }));
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((e) => events.push(e));
+    const scheduler = new TaskScheduler({ effect, emitter });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "analyze-substance",
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1)); // arranca
+    scheduler.tick(tickOf(2)); // completa
+
+    const completed = events.find((e) => e.kind === "task-completed");
+    expect(completed).toMatchObject({ analyzedSubstanceId: substanceId });
+  });
+
   it("updates the actor's logical section after a go-to task", () => {
     const scheduler = new TaskScheduler();
     scheduler.enqueue(

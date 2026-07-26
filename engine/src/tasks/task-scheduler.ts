@@ -49,6 +49,19 @@ interface ActorRecord {
 }
 
 /**
+ * Vista mínima de un actor tal como la conoce el scheduler (id/status/sección).
+ * Deliberadamente MÁS ANGOSTA que `CrewActor` completo (Fase 9: specialty,
+ * tier, hp, trait) — el scheduler solo necesita saber si un actor está
+ * libre/ocupado/esperando para resolver colas y dependencias (GDD §4), no el
+ * perfil completo del tripulante, que vive en el roster (`crew/crew-roster.ts`).
+ */
+export interface SchedulerActorSnapshot {
+  readonly id: CrewActorId;
+  readonly status: CrewActorStatus;
+  readonly currentSectionId?: SectionId;
+}
+
+/**
  * Scheduler de tareas del core loop (Fase 6). Clase con estado + `tick(ctx)`,
  * mismo patrón que `HazardAccumulator`/`StructuralIntegrity`. Implementa
  * `Tickable`: se registra en `CoreLoopModeMachine`, que solo la avanza en modo
@@ -196,7 +209,7 @@ export class TaskScheduler implements Tickable {
     return this.tasksById.get(id);
   }
 
-  getActor(id: CrewActorId): CrewActor | undefined {
+  getActor(id: CrewActorId): SchedulerActorSnapshot | undefined {
     const record = this.actors.get(id);
     if (!record) {
       return undefined;
@@ -251,14 +264,21 @@ export class TaskScheduler implements Tickable {
     if (task.type === "go-to" && task.targetSectionId !== undefined) {
       this.actorRecord(task.actorId).currentSectionId = task.targetSectionId;
     }
+    // Efecto de dominio ANTES del evento (orden correcto del patrón Observer):
+    // el efecto muta el estado (ej. instala el componente en el `Blueprint`) y
+    // recién después se notifica, para que los observadores (el redibujo del
+    // overlay en `/game`) vean el estado ya mutado — si no, el objeto recién
+    // instalado aparecía un evento tarde (desfase de uno, playtest #8).
+    const result = this.effect(task);
     this.emitter?.emit({
       kind: "task-completed",
       taskId: task.id,
       actorId: task.actorId,
       type: task.type,
       elapsedSeconds: ctx.elapsedSeconds,
+      obtained: result?.obtained,
+      analyzedSubstanceId: result?.analyzedSubstanceId,
     });
-    this.effect(task);
     this.refreshActorStatus(task.actorId);
   }
 

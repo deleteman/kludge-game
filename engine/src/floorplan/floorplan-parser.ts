@@ -6,6 +6,8 @@ import { CONDUIT_KINDS, SHIP_ARCHETYPES } from "./floorplan.types.js";
 import type {
   AnchorId,
   AnchorPoint,
+  ComponentSeedId,
+  ComponentSeedPoint,
   ConduitConnection,
   ConduitKind,
   FloorplanSection,
@@ -41,6 +43,7 @@ export function parseShipFloorplan(json: unknown): ShipFloorplan {
   const sections = parseSections(requireObjectLayer(map, "secciones"));
   const conduits = parseConduits(requireObjectLayer(map, "conductos"));
   const anchors = parseAnchors(requireObjectLayer(map, "anclajes"), sections);
+  const componentSeeds = parseComponentSeeds(findOptionalObjectLayer(map, "semillas"), sections);
 
   const floorplan: ShipFloorplan = {
     id: shipId,
@@ -50,6 +53,7 @@ export function parseShipFloorplan(json: unknown): ShipFloorplan {
     sections,
     conduits,
     anchors,
+    componentSeeds,
   };
 
   try {
@@ -107,6 +111,24 @@ function requireObjectLayer(map: TiledMap, name: string): readonly TiledObject[]
   return layer.objects;
 }
 
+/**
+ * Igual que `requireObjectLayer`, pero la capa es OPCIONAL: mapas sin capa
+ * `semillas` todavía autorada (los 3 arquetipos sin verificación de punta a
+ * punta) siguen parseando en vez de romper — devuelve `[]`.
+ */
+function findOptionalObjectLayer(map: TiledMap, name: string): readonly TiledObject[] {
+  const layer = map.layers.find(
+    (candidate: TiledLayer) => candidate.type === "objectgroup" && candidate.name === name,
+  );
+  if (!layer) {
+    return [];
+  }
+  if (!Array.isArray(layer.objects)) {
+    throw new FloorplanParseError(`Object layer '${name}' must have an 'objects' array`);
+  }
+  return layer.objects;
+}
+
 // ---------------------------------------------------------------------------
 // Propiedades custom de Tiled ({ name, type, value }[])
 // ---------------------------------------------------------------------------
@@ -115,6 +137,7 @@ interface PropertyBag {
   string(name: string): string;
   number(name: string): number;
   numberOr(name: string, fallback: number): number;
+  stringOrUndefined(name: string): string | undefined;
 }
 
 function propertyBag(properties: readonly TiledProperty[] | undefined, owner: string): PropertyBag {
@@ -141,6 +164,16 @@ function propertyBag(properties: readonly TiledProperty[] | undefined, owner: st
     },
     numberOr(name, fallback) {
       return byName.has(name) ? this.number(name) : fallback;
+    },
+    stringOrUndefined(name) {
+      const value = byName.get(name);
+      if (value === undefined) {
+        return undefined;
+      }
+      if (typeof value !== "string" || value.length === 0) {
+        throw new FloorplanParseError(`Property '${name}' of ${owner} must be a non-empty string`);
+      }
+      return value;
     },
   };
 }
@@ -250,5 +283,49 @@ function parseAnchors(
       );
     }
     return { id: id as AnchorId, sectionId, position: cell };
+  });
+}
+
+/**
+ * Capa `semillas` (estándar nuevo): mismo criterio de posición que
+ * `parseAnchors` (floor-división, tolerante a coordenadas fraccionales de
+ * autoría) — pero NO valida que `componentId` sea un compuesto real: eso
+ * exige el `componentRegistry`, que este módulo no conoce
+ * (`instantiate-component-seeds.ts` lo hace).
+ */
+function parseComponentSeeds(
+  objects: readonly TiledObject[],
+  sections: readonly FloorplanSection[],
+): ComponentSeedPoint[] {
+  const sectionByCell = new Map<string, SectionId>();
+  for (const section of sections) {
+    for (const cell of section.cells) {
+      sectionByCell.set(`${cell.x},${cell.y}`, section.id);
+    }
+  }
+
+  return objects.map((object) => {
+    const properties = propertyBag(object.properties, `component seed object #${object.id}`);
+    const id = properties.string("id");
+    const componentId = properties.string("componentId");
+    const cell: GridPosition = {
+      x: Math.floor(object.x / GRID_CELL_SIZE_PX),
+      y: Math.floor(object.y / GRID_CELL_SIZE_PX),
+    };
+    const sectionId = sectionByCell.get(`${cell.x},${cell.y}`);
+    if (!sectionId) {
+      throw new FloorplanParseError(
+        `Component seed '${id}' at cell (${cell.x}, ${cell.y}) falls outside every section`,
+      );
+    }
+    return {
+      id: id as ComponentSeedId,
+      sectionId,
+      position: cell,
+      componentId,
+      condition: properties.stringOrUndefined("condition"),
+      instanceId: properties.stringOrUndefined("instanceId"),
+      chapterId: properties.stringOrUndefined("chapterId"),
+    };
   });
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ReactionResolver,
   buildChemicalCatalog,
+  synthesizeSubstance,
   type ChemicalSubstanceId,
   type ReactantSubstance,
   type ReactionContext,
@@ -43,5 +44,66 @@ describe("case 12 — Síntesis de un Compuesto Desconocido", () => {
     // El jugador puede usarla igual aunque no tenga nombre (pilar de diseño 4):
     // sus tags siguen siendo consultables como los de cualquier otra sustancia.
     expect(outcome.result?.id).toBeDefined();
+  });
+
+  // Fase 11c.3 — extiende el caso 12 más allá del fallback: el mismo catálogo real,
+  // pero a través del punto de entrada de producción (`synthesizeSubstance`), que es
+  // lo que el jugador dispara desde la mesa de creación. Antes de esta fase, nada en
+  // la suite construía un `NamedRecipeIndex` desde el catálogo real ni pasaba por
+  // este flujo — solo se probaba el `ReactionResolver` pelado.
+  describe("extensión: síntesis vía producción con el catálogo real (paso 1 y 2)", () => {
+    const id = (raw: string): ChemicalSubstanceId => raw as ChemicalSubstanceId;
+
+    it("receta nombrada: hidrógeno×2 + oxígeno → Agua", () => {
+      const { registry, factory, namedRecipeIndex } = buildChemicalCatalog();
+      const resolver = new ReactionResolver({ namedRecipeIndex });
+
+      const outcome = synthesizeSubstance(resolver, registry, factory, [
+        id("hidrogeno"),
+        id("hidrogeno"),
+        id("oxigeno"),
+      ]);
+
+      expect(outcome.result?.name).toBe("Agua");
+    });
+
+    it("la misma pareja de elementos en otra proporción sintetiza un compuesto distinto (GDD 5.4.2: Agua 2:1 vs Peróxido 2:2)", () => {
+      const { registry, factory, namedRecipeIndex } = buildChemicalCatalog();
+      const resolver = new ReactionResolver({ namedRecipeIndex });
+
+      const outcome = synthesizeSubstance(resolver, registry, factory, [
+        id("hidrogeno"),
+        id("hidrogeno"),
+        id("oxigeno"),
+        id("oxigeno"),
+      ]);
+
+      expect(outcome.result?.name).toBe("Peróxido");
+    });
+
+    it("sin receta nombrada pero con regla por tags aplicable: ácido + base de laboratorio → Solución neutralizada", () => {
+      const { registry, factory, namedRecipeIndex } = buildChemicalCatalog();
+      const resolver = new ReactionResolver({ namedRecipeIndex });
+
+      const outcome = synthesizeSubstance(resolver, registry, factory, [
+        id("acido-de-laboratorio"),
+        id("base-de-laboratorio"),
+      ]);
+
+      expect(outcome.result?.name).toMatch(/^Solución neutralizada/);
+    });
+
+    it("el fallback de esta misma síntesis, a través de producción, queda registrado y resoluble por id", () => {
+      const { registry, factory, namedRecipeIndex } = buildChemicalCatalog();
+      const resolver = new ReactionResolver({ namedRecipeIndex });
+
+      const outcome = synthesizeSubstance(resolver, registry, factory, [
+        id("carbono"),
+        id("nitrogeno"),
+      ]);
+
+      expect(outcome.result?.name).toMatch(/^Mezcla sin identificar/);
+      expect(registry.has(outcome.result!.id)).toBe(true);
+    });
   });
 });

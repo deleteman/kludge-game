@@ -68,6 +68,14 @@ Cada vez que inicies el proceso de implementación, seguirás estos pasos **sin 
 4. Implementar la tarea actual siguiendo las guías definidas en este y otros documentos.
 5. Cuando termines con la actividad actual, actualizar el archivo `ORDEN_DE_TRABAJO.md` marcando la tarea como cerrad.
 6. Mantendras un log de cambios en `changelog.log` en donde registraras la fecha del cambio, el detalle de lo que hicisite y la razón.
+7. Al cerrar cualquier fase o sub-fase, actualizar MAPA_DEL_CODIGO.md con los módulos nuevos o modificados — una línea por módulo, no un changelog. Es un paso de cierre, no opcional.
+
+
+## Uso eficiente de contexto (agentes y lecturas)
+ 
+- Antes de delegar la exploración de un archivo a un subagente, decidir si el siguiente paso ya es editarlo. Si sí, leerlo directamente — delegar y luego releer el mismo archivo paga el costo dos veces. Los subagentes de exploración son para responder una pregunta puntual, no un paso previo a una edición ya decidida.
+- Al explorar varios archivos relacionados que se van a sintetizar en un mismo plan, agrupar en 2-3 agentes de alcance más amplio en vez de uno por archivo — cada spawn tiene overhead fijo de contexto frío y no comparte hallazgos con los demás.
+- Antes de leer un archivo completo para un cambio puntual (un método, una propiedad), usar Grep para localizar la región exacta y leer solo esa parte. Reservar la lectura completa para cambios que de verdad tocan el archivo de forma amplia.
 
 ## Qué NO hacer
 

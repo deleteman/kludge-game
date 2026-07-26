@@ -4,16 +4,21 @@
  * Exporta ambos para inyección en otras partes del motor.
  */
 
-import type { EntityRegistry } from "../../composition/entity-registry.js";
 import type { ChemicalSubstanceDefinition, ChemicalSubstanceId } from "../chemical-substance.types.js";
 import { MapEntityRegistry } from "../../composition/entity-registry.js";
 import { createChemicalSubstanceFactory } from "../chemical-substance-factory.js";
+import { NamedRecipeIndex } from "../reaction/named-recipe-index.js";
 import { ELEMENT_CATALOG } from "./element-catalog.js";
 import { COMPOUND_CATALOG } from "./compound-catalog.js";
 
 export function buildChemicalCatalog(): {
-  registry: EntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>;
+  // `MapEntityRegistry` concreto (no la interfaz `EntityRegistry`): la síntesis
+  // en producción (11c.3) necesita `.register()` para inscribir el resultado
+  // de una mezcla sin receta nombrada, igual que `buildComponentCatalog`
+  // expone su registro para que `MissionRuntime` registre creaciones nuevas.
+  registry: MapEntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>;
   factory: ReturnType<typeof createChemicalSubstanceFactory>;
+  namedRecipeIndex: NamedRecipeIndex;
 } {
   const registry = new MapEntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>();
   const factory = createChemicalSubstanceFactory(registry);
@@ -52,5 +57,5 @@ export function buildChemicalCatalog(): {
     }
   }
 
-  return { registry, factory };
+  return { registry, factory, namedRecipeIndex: new NamedRecipeIndex(registry) };
 }

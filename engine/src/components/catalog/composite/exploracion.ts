@@ -6,6 +6,7 @@
 import type { ComponentId } from "../../physical-component.types.js";
 import type { FunctionalProperties } from "../../../properties/functional.types.js";
 import type { MaterialProperties } from "../../../properties/material.types.js";
+import type { Footprint } from "../../../geometry/grid-position.types.js";
 import type { Recipe } from "../../../composition/recipe.types.js";
 
 export interface CompositeComponentSpec {
@@ -14,6 +15,15 @@ export interface CompositeComponentSpec {
   readonly data: {
     readonly functional?: FunctionalProperties;
     readonly material?: MaterialProperties;
+    /**
+     * Footprint de catálogo — opcional (`CompositeComponentData.footprint`,
+     * `components/physical-component.types.ts`): la mayoría de los compuestos
+     * de catálogo pre-Fase-7 no lo tienen (se instalan solo vía mesa de
+     * creación, que calcula su propio footprint). Poblarlo acá es necesario
+     * únicamente para los compuestos que se siembran directo en el plano vía
+     * la capa Tiled `semillas` (`floorplan/instantiate-component-seeds.ts`).
+     */
+    readonly footprint?: Footprint;
   };
   readonly recipe: Recipe<ComponentId>;
 }
@@ -215,6 +225,9 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
         { tag: "REC", threshold: 0.3, responseDelayMs: 75 },
       ],
       material: { CE: "A" },
+      // Footprint de catálogo, ver nota en `herramientas-reparacion-externa` —
+      // consola de radio con antena, ocupa 1x2.
+      footprint: { width: 1, height: 2 },
     },
     recipe: {
       ingredients: [
@@ -272,6 +285,11 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
         { tag: "REC", threshold: 0.5, responseDelayMs: 100 },
       ],
       material: { RE: "A" },
+      // Footprint de catálogo (no de mesa de creación): necesario para poder
+      // sembrarlo directo en el plano vía la capa Tiled `semillas`
+      // (`floorplan/instantiate-component-seeds.ts`) — caja de herramientas
+      // portátil, ocupa 2x1.
+      footprint: { width: 2, height: 1 },
     },
     recipe: {
       ingredients: [
@@ -304,6 +322,9 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 5 }],
       material: { CE: "N" },
+      // Footprint de catálogo, ver nota en `herramientas-reparacion-externa` —
+      // tanque cilíndrico, ocupa 2x2.
+      footprint: { width: 2, height: 2 },
     },
     recipe: {
       ingredients: [

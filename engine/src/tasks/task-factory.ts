@@ -1,6 +1,6 @@
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
-import type { CrewTask, CrewTaskId, TaskType } from "./task.types.js";
+import type { CrewTask, CrewTaskId, TaskPayload, TaskType } from "./task.types.js";
 import { baseDurationFor } from "./task-parameters.js";
 
 export interface CreateCrewTaskInput {
@@ -8,6 +8,7 @@ export interface CreateCrewTaskInput {
   readonly actorId: CrewActorId;
   readonly type: TaskType;
   readonly targetSectionId?: SectionId;
+  readonly payload?: TaskPayload;
   readonly dependsOn?: ReadonlyArray<CrewTaskId>;
   /**
    * Duración estimada en segundos. Si se omite, se toma la base data-driven del
@@ -35,6 +36,7 @@ export function createCrewTask(input: CreateCrewTaskInput): CrewTask {
     actorId: input.actorId,
     type: input.type,
     targetSectionId: input.targetSectionId,
+    payload: input.payload,
     estimatedDurationSeconds: duration,
     dependsOn: input.dependsOn ? [...input.dependsOn] : [],
     state: "pending",

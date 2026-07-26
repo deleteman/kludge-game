@@ -31,7 +31,12 @@ function buildCoreLoop(): {
   const events: CoreLoopDomainEvent[] = [];
   emitter.onAny((e) => events.push(e));
   const completed: string[] = [];
-  const scheduler = new TaskScheduler({ emitter, effect: (t) => completed.push(t.id) });
+  const scheduler = new TaskScheduler({
+    emitter,
+    effect: (t) => {
+      completed.push(t.id);
+    },
+  });
   const machine = new CoreLoopModeMachine(emitter);
   machine.registerTickable(scheduler);
   return { machine, scheduler, events, completed };

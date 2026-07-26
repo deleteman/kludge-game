@@ -1,1514 +1,1764 @@
-{
-  "compressionlevel": -1,
-  "height": 22,
-  "infinite": false,
-  "layers": [
-    {
-      "draworder": "topdown",
-      "id": 1,
-      "name": "secciones",
-      "objects": [
-        {
-          "id": 1,
-          "name": "puente",
-          "type": "",
-          "x": 0,
-          "y": 224,
-          "width": 192,
-          "height": 160,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "puente"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.puente"
-            }
-          ]
-        },
-        {
-          "id": 2,
-          "name": "pasillo-central",
-          "type": "",
-          "x": 192,
-          "y": 288,
-          "width": 832,
-          "height": 64,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.pasillo-central"
-            }
-          ]
-        },
-        {
-          "id": 3,
-          "name": "soporte-vital",
-          "type": "",
-          "x": 192,
-          "y": 160,
-          "width": 160,
-          "height": 128,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "soporte-vital"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.soporte-vital"
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "name": "sala-hibernacion",
-          "type": "",
-          "x": 352,
-          "y": 160,
-          "width": 192,
-          "height": 128,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "sala-hibernacion"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.sala-hibernacion"
-            }
-          ]
-        },
-        {
-          "id": 5,
-          "name": "invernadero",
-          "type": "",
-          "x": 544,
-          "y": 128,
-          "width": 192,
-          "height": 160,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "invernadero"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.invernadero"
-            }
-          ]
-        },
-        {
-          "id": 6,
-          "name": "esclusa-eva",
-          "type": "",
-          "x": 192,
-          "y": 352,
-          "width": 128,
-          "height": 64,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "esclusa-eva"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.esclusa-eva"
-            }
-          ]
-        },
-        {
-          "id": 7,
-          "name": "bodega-carga",
-          "type": "",
-          "x": 320,
-          "y": 352,
-          "width": 320,
-          "height": 192,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.bodega-carga"
-            }
-          ]
-        },
-        {
-          "id": 8,
-          "name": "taller",
-          "type": "",
-          "x": 320,
-          "y": 544,
-          "width": 160,
-          "height": 128,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "taller"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.taller"
-            }
-          ]
-        },
-        {
-          "id": 9,
-          "name": "ingenieria",
-          "type": "",
-          "x": 640,
-          "y": 352,
-          "width": 192,
-          "height": 128,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.ingenieria"
-            }
-          ]
-        },
-        {
-          "id": 10,
-          "name": "propulsion",
-          "type": "",
-          "x": 1024,
-          "y": 256,
-          "width": 256,
-          "height": 160,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.propulsion"
-            }
-          ]
-        },
-        {
-          "id": 11,
-          "name": "tanques-combustible",
-          "type": "",
-          "x": 1024,
-          "y": 416,
-          "width": 192,
-          "height": 128,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "tanques-combustible"
-            },
-            {
-              "name": "nameKey",
-              "type": "string",
-              "value": "section.tanques-combustible"
-            }
-          ]
-        }
-      ],
-      "opacity": 1,
-      "type": "objectgroup",
-      "visible": true,
-      "x": 0,
-      "y": 0
-    },
-    {
-      "draworder": "topdown",
-      "id": 2,
-      "name": "conductos",
-      "objects": [
-        {
-          "id": 12,
-          "name": "ventilacion:puente-pasillo-central",
-          "type": "",
-          "x": 192,
-          "y": 304,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "puente"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 13,
-          "name": "ventilacion:soporte-vital-pasillo-central",
-          "type": "",
-          "x": 208,
-          "y": 288,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "soporte-vital"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 14,
-          "name": "ventilacion:sala-hibernacion-pasillo-central",
-          "type": "",
-          "x": 400,
-          "y": 288,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "sala-hibernacion"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 15,
-          "name": "ventilacion:invernadero-pasillo-central",
-          "type": "",
-          "x": 592,
-          "y": 288,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "invernadero"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 16,
-          "name": "ventilacion:esclusa-eva-pasillo-central",
-          "type": "",
-          "x": 208,
-          "y": 352,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "esclusa-eva"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 17,
-          "name": "ventilacion:bodega-carga-pasillo-central",
-          "type": "",
-          "x": 368,
-          "y": 352,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "bodega-carga"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 18,
-          "name": "ventilacion:taller-bodega-carga",
-          "type": "",
-          "x": 336,
-          "y": 544,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "taller"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "bodega-carga"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 19,
-          "name": "ventilacion:ingenieria-pasillo-central",
-          "type": "",
-          "x": 688,
-          "y": 352,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "ingenieria"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 20,
-          "name": "ventilacion:propulsion-pasillo-central",
-          "type": "",
-          "x": 1024,
-          "y": 304,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "propulsion"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 21,
-          "name": "ventilacion:tanques-combustible-propulsion",
-          "type": "",
-          "x": 1072,
-          "y": 416,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "tanques-combustible"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "propulsion"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "ventilacion"
-            }
-          ]
-        },
-        {
-          "id": 22,
-          "name": "electrico:ingenieria-pasillo-central",
-          "type": "",
-          "x": 752,
-          "y": 352,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "ingenieria"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "electrico"
-            }
-          ]
-        },
-        {
-          "id": 23,
-          "name": "electrico:pasillo-central-puente",
-          "type": "",
-          "x": 192,
-          "y": 336,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "puente"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "electrico"
-            }
-          ]
-        },
-        {
-          "id": 24,
-          "name": "electrico:pasillo-central-propulsion",
-          "type": "",
-          "x": 1024,
-          "y": 336,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "propulsion"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "electrico"
-            }
-          ]
-        },
-        {
-          "id": 25,
-          "name": "electrico:pasillo-central-soporte-vital",
-          "type": "",
-          "x": 272,
-          "y": 288,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "a",
-              "type": "string",
-              "value": "pasillo-central"
-            },
-            {
-              "name": "b",
-              "type": "string",
-              "value": "soporte-vital"
-            },
-            {
-              "name": "kind",
-              "type": "string",
-              "value": "electrico"
-            }
-          ]
-        }
-      ],
-      "opacity": 1,
-      "type": "objectgroup",
-      "visible": true,
-      "x": 0,
-      "y": 0
-    },
-    {
-      "draworder": "topdown",
-      "id": 3,
-      "name": "anclajes",
-      "objects": [
-        {
-          "id": 26,
-          "name": "puente-a1",
-          "type": "",
-          "x": 112,
-          "y": 240,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "puente-a1"
-            }
-          ]
-        },
-        {
-          "id": 27,
-          "name": "puente-a2",
-          "type": "",
-          "x": 176,
-          "y": 272,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "puente-a2"
-            }
-          ]
-        },
-        {
-          "id": 28,
-          "name": "puente-a3",
-          "type": "",
-          "x": 16,
-          "y": 336,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "puente-a3"
-            }
-          ]
-        },
-        {
-          "id": 29,
-          "name": "puente-a4",
-          "type": "",
-          "x": 80,
-          "y": 368,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "puente-a4"
-            }
-          ]
-        },
-        {
-          "id": 30,
-          "name": "pasillo-central-a1",
-          "type": "",
-          "x": 624,
-          "y": 304,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "pasillo-central-a1"
-            }
-          ]
-        },
-        {
-          "id": 31,
-          "name": "pasillo-central-a2",
-          "type": "",
-          "x": 624,
-          "y": 336,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "pasillo-central-a2"
-            }
-          ]
-        },
-        {
-          "id": 32,
-          "name": "soporte-vital-a1",
-          "type": "",
-          "x": 304,
-          "y": 176,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "soporte-vital-a1"
-            }
-          ]
-        },
-        {
-          "id": 33,
-          "name": "soporte-vital-a2",
-          "type": "",
-          "x": 208,
-          "y": 240,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "soporte-vital-a2"
-            }
-          ]
-        },
-        {
-          "id": 34,
-          "name": "soporte-vital-a3",
-          "type": "",
-          "x": 240,
-          "y": 272,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "soporte-vital-a3"
-            }
-          ]
-        },
-        {
-          "id": 35,
-          "name": "sala-hibernacion-a1",
-          "type": "",
-          "x": 496,
-          "y": 176,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "sala-hibernacion-a1"
-            }
-          ]
-        },
-        {
-          "id": 36,
-          "name": "sala-hibernacion-a2",
-          "type": "",
-          "x": 368,
-          "y": 240,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "sala-hibernacion-a2"
-            }
-          ]
-        },
-        {
-          "id": 37,
-          "name": "sala-hibernacion-a3",
-          "type": "",
-          "x": 432,
-          "y": 272,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "sala-hibernacion-a3"
-            }
-          ]
-        },
-        {
-          "id": 38,
-          "name": "invernadero-a1",
-          "type": "",
-          "x": 656,
-          "y": 144,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "invernadero-a1"
-            }
-          ]
-        },
-        {
-          "id": 39,
-          "name": "invernadero-a2",
-          "type": "",
-          "x": 720,
-          "y": 176,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "invernadero-a2"
-            }
-          ]
-        },
-        {
-          "id": 40,
-          "name": "invernadero-a3",
-          "type": "",
-          "x": 560,
-          "y": 240,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "invernadero-a3"
-            }
-          ]
-        },
-        {
-          "id": 41,
-          "name": "invernadero-a4",
-          "type": "",
-          "x": 624,
-          "y": 272,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "invernadero-a4"
-            }
-          ]
-        },
-        {
-          "id": 42,
-          "name": "esclusa-eva-a1",
-          "type": "",
-          "x": 272,
-          "y": 368,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "esclusa-eva-a1"
-            }
-          ]
-        },
-        {
-          "id": 43,
-          "name": "esclusa-eva-a2",
-          "type": "",
-          "x": 272,
-          "y": 400,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "esclusa-eva-a2"
-            }
-          ]
-        },
-        {
-          "id": 44,
-          "name": "bodega-carga-a1",
-          "type": "",
-          "x": 496,
-          "y": 368,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a1"
-            }
-          ]
-        },
-        {
-          "id": 45,
-          "name": "bodega-carga-a2",
-          "type": "",
-          "x": 496,
-          "y": 400,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a2"
-            }
-          ]
-        },
-        {
-          "id": 46,
-          "name": "bodega-carga-a3",
-          "type": "",
-          "x": 496,
-          "y": 432,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a3"
-            }
-          ]
-        },
-        {
-          "id": 47,
-          "name": "bodega-carga-a4",
-          "type": "",
-          "x": 496,
-          "y": 464,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a4"
-            }
-          ]
-        },
-        {
-          "id": 48,
-          "name": "bodega-carga-a5",
-          "type": "",
-          "x": 496,
-          "y": 496,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a5"
-            }
-          ]
-        },
-        {
-          "id": 49,
-          "name": "bodega-carga-a6",
-          "type": "",
-          "x": 496,
-          "y": 528,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "bodega-carga-a6"
-            }
-          ]
-        },
-        {
-          "id": 50,
-          "name": "taller-a1",
-          "type": "",
-          "x": 400,
-          "y": 560,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "taller-a1"
-            }
-          ]
-        },
-        {
-          "id": 51,
-          "name": "taller-a2",
-          "type": "",
-          "x": 400,
-          "y": 592,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "taller-a2"
-            }
-          ]
-        },
-        {
-          "id": 52,
-          "name": "taller-a3",
-          "type": "",
-          "x": 400,
-          "y": 624,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "taller-a3"
-            }
-          ]
-        },
-        {
-          "id": 53,
-          "name": "taller-a4",
-          "type": "",
-          "x": 400,
-          "y": 656,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "taller-a4"
-            }
-          ]
-        },
-        {
-          "id": 54,
-          "name": "ingenieria-a1",
-          "type": "",
-          "x": 720,
-          "y": 368,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria-a1"
-            }
-          ]
-        },
-        {
-          "id": 55,
-          "name": "ingenieria-a2",
-          "type": "",
-          "x": 688,
-          "y": 400,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria-a2"
-            }
-          ]
-        },
-        {
-          "id": 56,
-          "name": "ingenieria-a3",
-          "type": "",
-          "x": 656,
-          "y": 432,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria-a3"
-            }
-          ]
-        },
-        {
-          "id": 57,
-          "name": "ingenieria-a4",
-          "type": "",
-          "x": 784,
-          "y": 432,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria-a4"
-            }
-          ]
-        },
-        {
-          "id": 58,
-          "name": "ingenieria-a5",
-          "type": "",
-          "x": 752,
-          "y": 464,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "ingenieria-a5"
-            }
-          ]
-        },
-        {
-          "id": 59,
-          "name": "propulsion-a1",
-          "type": "",
-          "x": 1168,
-          "y": 272,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion-a1"
-            }
-          ]
-        },
-        {
-          "id": 60,
-          "name": "propulsion-a2",
-          "type": "",
-          "x": 1168,
-          "y": 304,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion-a2"
-            }
-          ]
-        },
-        {
-          "id": 61,
-          "name": "propulsion-a3",
-          "type": "",
-          "x": 1168,
-          "y": 336,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion-a3"
-            }
-          ]
-        },
-        {
-          "id": 62,
-          "name": "propulsion-a4",
-          "type": "",
-          "x": 1168,
-          "y": 368,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion-a4"
-            }
-          ]
-        },
-        {
-          "id": 63,
-          "name": "propulsion-a5",
-          "type": "",
-          "x": 1168,
-          "y": 400,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "propulsion-a5"
-            }
-          ]
-        },
-        {
-          "id": 64,
-          "name": "tanques-combustible-a1",
-          "type": "",
-          "x": 1168,
-          "y": 432,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "tanques-combustible-a1"
-            }
-          ]
-        },
-        {
-          "id": 65,
-          "name": "tanques-combustible-a2",
-          "type": "",
-          "x": 1040,
-          "y": 496,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "tanques-combustible-a2"
-            }
-          ]
-        },
-        {
-          "id": 66,
-          "name": "tanques-combustible-a3",
-          "type": "",
-          "x": 1104,
-          "y": 528,
-          "width": 0,
-          "height": 0,
-          "point": true,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "id",
-              "type": "string",
-              "value": "tanques-combustible-a3"
-            }
-          ]
-        }
-      ],
-      "opacity": 1,
-      "type": "objectgroup",
-      "visible": true,
-      "x": 0,
-      "y": 0
-    }
-  ],
-  "nextlayerid": 4,
-  "nextobjectid": 67,
-  "orientation": "orthogonal",
-  "properties": [
-    {
-      "name": "archetype",
-      "type": "string",
-      "value": "exploracion"
-    },
-    {
-      "name": "nameKey",
-      "type": "string",
-      "value": "ship.exploracion.name"
-    },
-    {
-      "name": "schemaVersion",
-      "type": "int",
-      "value": 1
-    },
-    {
-      "name": "shipId",
-      "type": "string",
-      "value": "nave-exploracion"
-    }
-  ],
-  "renderorder": "right-down",
-  "tiledversion": "1.10.2",
-  "tileheight": 32,
-  "tilesets": [],
-  "tilewidth": 32,
-  "type": "map",
-  "version": "1.10",
-  "width": 40
+{ "compressionlevel":-1,
+ "height":22,
+ "infinite":false,
+ "layers":[
+        {
+         "compression":"",
+         "data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAIAAAACAAAAAgAAAAIAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACAAAAAgAAAAIAAAACAAAAAwAAAAEAAAACAAAAAgAAAAIAAAACAAAAAwAAAAsAAAAMAAAADAAAADQAAAAMAAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAADAAAADQAAAAgAAAAIAAAAA0AAAALAAAADAAAAAwAAAAMAAAADAAAAA0AAAALAAAANAAAACEAAAAhAAAADAAAADUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACAAAAAgAAAAIAAAACAAAACwAAAAwAAAAMAAAADAAAAAwAAAANAAAACwAAAAwAAAAMAAAADAAAAAwAAAANAAAACwAAAAwAAAAMAAAADAAAAAwAAAANAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAAIQAAAAwAAAAMAAAADAAAABUAAAAWAAAAFgAAABYAAAAWAAAAFwAAABUAAAAWAAAAFgAAABYAAAAWAAAAFwAAABUAAAAWAAAAFgAAABYAAAAWAAAAFwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAADAAAACwAAAAwAAAAgAAAAIAAAAAwAAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAgAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAMAAAADAAAAAwAAAAMAAAADAAAAAwAAAAgAAAADQAAAAsAAAAhAAAADAAAAAwAAAAMAAAAHwAAAB8AAAAgAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAIAAAAB8AAAAfAAAAHwAAAB8AAAAfAAAAHwAAAB8AAAAfAAAADAAAAAwAAAAMAAAADAAAAAwAAAAMAAAADAAAAA0AAAAVAAAAFgAAABYAAAAWAAAAFgAAAAEAAAAqAAAADAAAAAIAAAADAAAAAQAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAwAAAAEAAAACAAAAAgAAAAwAAAACAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAMAAAADAAAAAwAAAAMAAAAIAAAAAwAAAANAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAAAAFgAAAD4AAAAWAAAAFwAAAAsAAAAMAAAAIAAAAAwAAAAMAAAADAAAAAwAAAAMAAAADAAAADUAAAALAAAADAAAAAwAAAAMAAAAIAAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAAAAFgAAABYAAAAWAAAAFgAAABYAAAAWAAAAFwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAADAAAAAwAAAAMAAAADAAAAAwAAAAMAAAADAAAAAwAAAA1AAAACwAAAAwAAAAhAAAADAAAAAwAAAANAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAACoAAAAMAAAADAAAAAIAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAAAAwAAAAgAAAADAAAAAwAAAAMAAAADAAAACAAAAAMAAAANQAAABUAAAAWAAAAFgAAABYAAAAWAAAAFwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAMAAAAIAAAAAwAAAA0AAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAMAAAADAAAAAwAAAAMAAAADAAAAAwAAAAMAAAADAAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAADAAAAAwAAAAMAAAAIAAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAAAAFgAAABYAAAAWAAAAFgAAABYAAAAWAAAAFgAAABYAAAA\/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFQAAABYAAAAWAAAAFgAAABYAAAAXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAIAAAACAAAAAgAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAMAAAADAAAAAwAAAANAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAAHwAAAAwAAAAfAAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFQAAABYAAAAWAAAAFgAAABcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+         "encoding":"base64",
+         "height":22,
+         "id":4,
+         "name":"background",
+         "opacity":1,
+         "type":"tilelayer",
+         "visible":true,
+         "width":40,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "compression":"",
+         "data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARAAAAAAAAACcAAAAnAAAAAAAAAAAAAAA6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAhAAAAAAAAAAAAAAAAAAAASAAAAAAAAAAAAAAAIgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIAAAAAAAAAAAAAAEgAAAAAAAAAEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEoAAAAAAAAAAAAAADoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEkAAAAAAAAAAAAAAAAAAAAAAAAAIgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+         "encoding":"base64",
+         "height":22,
+         "id":6,
+         "name":"objects",
+         "opacity":1,
+         "type":"tilelayer",
+         "visible":false,
+         "width":40,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "compression":"",
+         "data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABQAAAAUAAAAFAAAABQAAAAUAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAUAAAAFAAAABQAAAAUAAAAGAAAABAAAAAUAAAAFAAAABQAAAAUAAAAGAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAEAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAEAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAUAAAAFAAAABQAAAAUAAAAOAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAOAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAAAUAAAAFAAAABQAAAAUAAAAFAAAABQAAAAYAAAAOAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAZAAAAAAAAABkAAAAZAAAAGgAAABgAAAAZAAAAGQAAAAAAAAAAAAAAGgAAABgAAAAZAAAAGQAAAAAAAAAZAAAAGQAAABoAAAAZAAAAGQAAABkAAAAZAAAAGQAAABkAAAAZAAAAGQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAABQAAAAUAAAAAAAAABQAAAAUAAAAFAAAABQAAAAUAAAAFAAAAAAAAAAAAAAAFAAAABQAAAAUAAAAFAAAABQAAAAUAAAAFAAAAAAAAAAUAAAAFAAAABQAAAAUAAAAFAAAABQAAAAUAAAAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAYAAAAGQAAABkAAAAZAAAAGQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAABQAAAAUAAAAFAAAABQAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAGQAAAAAAAAAAAAAAGQAAABkAAAAZAAAAGgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABkAAAAZAAAAGQAAABkAAAAZAAAAGgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAGQAAAAAAAAAZAAAAGQAAABkAAAAZAAAAGQAAABkAAAAaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAABkAAAAZAAAAGQAAABkAAAAaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAABkAAAAZAAAAGQAAABoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+         "encoding":"base64",
+         "height":22,
+         "id":5,
+         "name":"walls",
+         "opacity":0.7,
+         "type":"tilelayer",
+         "visible":false,
+         "width":40,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":1,
+         "name":"secciones",
+         "objects":[
+                {
+                 "height":160,
+                 "id":1,
+                 "name":"puente",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"puente"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.puente"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":160,
+                 "x":0,
+                 "y":224
+                }, 
+                {
+                 "height":64,
+                 "id":2,
+                 "name":"pasillo-central",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.pasillo-central"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":864,
+                 "x":160,
+                 "y":288
+                }, 
+                {
+                 "height":128,
+                 "id":3,
+                 "name":"soporte-vital",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.soporte-vital"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":192,
+                 "x":160,
+                 "y":160
+                }, 
+                {
+                 "height":128,
+                 "id":4,
+                 "name":"sala-hibernacion",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"sala-hibernacion"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.sala-hibernacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":192,
+                 "x":352,
+                 "y":160
+                }, 
+                {
+                 "height":160,
+                 "id":5,
+                 "name":"invernadero",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"invernadero"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.invernadero"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":192,
+                 "x":544,
+                 "y":128
+                }, 
+                {
+                 "height":64,
+                 "id":6,
+                 "name":"esclusa-eva",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"esclusa-eva"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.esclusa-eva"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":160,
+                 "x":160,
+                 "y":352
+                }, 
+                {
+                 "height":192,
+                 "id":7,
+                 "name":"bodega-carga",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.bodega-carga"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":320,
+                 "x":320,
+                 "y":352
+                }, 
+                {
+                 "height":128,
+                 "id":8,
+                 "name":"taller",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"taller"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.taller"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":160,
+                 "x":320,
+                 "y":544
+                }, 
+                {
+                 "height":128,
+                 "id":9,
+                 "name":"ingenieria",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.ingenieria"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":192,
+                 "x":640,
+                 "y":352
+                }, 
+                {
+                 "height":160,
+                 "id":10,
+                 "name":"propulsion",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.propulsion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":256,
+                 "x":1024,
+                 "y":256
+                }, 
+                {
+                 "height":128,
+                 "id":11,
+                 "name":"tanques-combustible",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"tanques-combustible"
+                        }, 
+                        {
+                         "name":"nameKey",
+                         "type":"string",
+                         "value":"section.tanques-combustible"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":192,
+                 "x":1024,
+                 "y":416
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":2,
+         "name":"conductos",
+         "objects":[
+                {
+                 "height":0,
+                 "id":12,
+                 "name":"ventilacion:puente-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"puente"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":192,
+                 "y":304
+                }, 
+                {
+                 "height":0,
+                 "id":13,
+                 "name":"ventilacion:soporte-vital-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":208,
+                 "y":288
+                }, 
+                {
+                 "height":0,
+                 "id":14,
+                 "name":"ventilacion:sala-hibernacion-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"sala-hibernacion"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":400,
+                 "y":288
+                }, 
+                {
+                 "height":0,
+                 "id":15,
+                 "name":"ventilacion:invernadero-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"invernadero"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":592,
+                 "y":288
+                }, 
+                {
+                 "height":0,
+                 "id":16,
+                 "name":"ventilacion:esclusa-eva-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"esclusa-eva"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":208,
+                 "y":352
+                }, 
+                {
+                 "height":0,
+                 "id":17,
+                 "name":"ventilacion:bodega-carga-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"bodega-carga"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":368,
+                 "y":352
+                }, 
+                {
+                 "height":0,
+                 "id":18,
+                 "name":"ventilacion:taller-bodega-carga",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"taller"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"bodega-carga"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":336,
+                 "y":544
+                }, 
+                {
+                 "height":0,
+                 "id":19,
+                 "name":"ventilacion:ingenieria-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"ingenieria"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":688,
+                 "y":352
+                }, 
+                {
+                 "height":0,
+                 "id":20,
+                 "name":"ventilacion:propulsion-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"propulsion"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1024,
+                 "y":304
+                }, 
+                {
+                 "height":0,
+                 "id":21,
+                 "name":"ventilacion:tanques-combustible-propulsion",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"tanques-combustible"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"propulsion"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"ventilacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1072,
+                 "y":416
+                }, 
+                {
+                 "height":0,
+                 "id":22,
+                 "name":"electrico:ingenieria-pasillo-central",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"ingenieria"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":752,
+                 "y":352
+                }, 
+                {
+                 "height":0,
+                 "id":23,
+                 "name":"electrico:pasillo-central-puente",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"puente"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":160.685887053234,
+                 "y":336.431918799266
+                }, 
+                {
+                 "height":0,
+                 "id":24,
+                 "name":"electrico:pasillo-central-propulsion",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"propulsion"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1024,
+                 "y":336
+                }, 
+                {
+                 "height":0,
+                 "id":25,
+                 "name":"electrico:pasillo-central-soporte-vital",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":307.201382140158,
+                 "y":287.352121801101
+                }, 
+                {
+                 "height":0,
+                 "id":72,
+                 "name":"senal:pasillo-central-soporte-vital",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"senal"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":286.037360976136,
+                 "y":286.48828420257
+                }, 
+                {
+                 "height":0,
+                 "id":71,
+                 "name":"electrico:esclusa-eva-pasillo",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"esclusa-eva"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":272.893653179946,
+                 "y":350.839924178051
+                }, 
+                {
+                 "height":0,
+                 "id":73,
+                 "name":"electrico:pasillo-central-soporte-vital",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"electrico"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":307.310225677573,
+                 "y":284.634488716121
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":3,
+         "name":"anclajes",
+         "objects":[
+                {
+                 "height":0,
+                 "id":26,
+                 "name":"puente-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"puente-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":112,
+                 "y":240
+                }, 
+                {
+                 "height":0,
+                 "id":27,
+                 "name":"puente-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"puente-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":176,
+                 "y":272
+                }, 
+                {
+                 "height":0,
+                 "id":28,
+                 "name":"puente-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"puente-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":16,
+                 "y":336
+                }, 
+                {
+                 "height":0,
+                 "id":29,
+                 "name":"puente-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"puente-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":80,
+                 "y":368
+                }, 
+                {
+                 "height":0,
+                 "id":30,
+                 "name":"pasillo-central-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"pasillo-central-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":624,
+                 "y":304
+                }, 
+                {
+                 "height":0,
+                 "id":31,
+                 "name":"pasillo-central-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"pasillo-central-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":624,
+                 "y":336
+                }, 
+                {
+                 "height":0,
+                 "id":32,
+                 "name":"soporte-vital-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"soporte-vital-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":304,
+                 "y":176
+                }, 
+                {
+                 "height":0,
+                 "id":33,
+                 "name":"soporte-vital-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"soporte-vital-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":208,
+                 "y":240
+                }, 
+                {
+                 "height":0,
+                 "id":34,
+                 "name":"soporte-vital-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"soporte-vital-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":240,
+                 "y":272
+                }, 
+                {
+                 "height":0,
+                 "id":35,
+                 "name":"sala-hibernacion-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"sala-hibernacion-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":176
+                }, 
+                {
+                 "height":0,
+                 "id":36,
+                 "name":"sala-hibernacion-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"sala-hibernacion-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":368,
+                 "y":240
+                }, 
+                {
+                 "height":0,
+                 "id":37,
+                 "name":"sala-hibernacion-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"sala-hibernacion-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":432,
+                 "y":272
+                }, 
+                {
+                 "height":0,
+                 "id":38,
+                 "name":"invernadero-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"invernadero-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":656,
+                 "y":144
+                }, 
+                {
+                 "height":0,
+                 "id":39,
+                 "name":"invernadero-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"invernadero-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":720,
+                 "y":176
+                }, 
+                {
+                 "height":0,
+                 "id":40,
+                 "name":"invernadero-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"invernadero-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":560,
+                 "y":240
+                }, 
+                {
+                 "height":0,
+                 "id":41,
+                 "name":"invernadero-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"invernadero-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":624,
+                 "y":272
+                }, 
+                {
+                 "height":0,
+                 "id":42,
+                 "name":"esclusa-eva-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"esclusa-eva-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":272,
+                 "y":368
+                }, 
+                {
+                 "height":0,
+                 "id":43,
+                 "name":"esclusa-eva-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"esclusa-eva-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":272,
+                 "y":400
+                }, 
+                {
+                 "height":0,
+                 "id":44,
+                 "name":"bodega-carga-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":368
+                }, 
+                {
+                 "height":0,
+                 "id":45,
+                 "name":"bodega-carga-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":400
+                }, 
+                {
+                 "height":0,
+                 "id":46,
+                 "name":"bodega-carga-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":432
+                }, 
+                {
+                 "height":0,
+                 "id":47,
+                 "name":"bodega-carga-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":464
+                }, 
+                {
+                 "height":0,
+                 "id":48,
+                 "name":"bodega-carga-a5",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a5"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":496
+                }, 
+                {
+                 "height":0,
+                 "id":49,
+                 "name":"bodega-carga-a6",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"bodega-carga-a6"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":496,
+                 "y":528
+                }, 
+                {
+                 "height":0,
+                 "id":50,
+                 "name":"taller-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"taller-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":400,
+                 "y":560
+                }, 
+                {
+                 "height":0,
+                 "id":51,
+                 "name":"taller-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"taller-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":400,
+                 "y":592
+                }, 
+                {
+                 "height":0,
+                 "id":52,
+                 "name":"taller-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"taller-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":400,
+                 "y":624
+                }, 
+                {
+                 "height":0,
+                 "id":53,
+                 "name":"taller-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"taller-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":400,
+                 "y":656
+                }, 
+                {
+                 "height":0,
+                 "id":54,
+                 "name":"ingenieria-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":720,
+                 "y":368
+                }, 
+                {
+                 "height":0,
+                 "id":55,
+                 "name":"ingenieria-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":688,
+                 "y":400
+                }, 
+                {
+                 "height":0,
+                 "id":56,
+                 "name":"ingenieria-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":656,
+                 "y":432
+                }, 
+                {
+                 "height":0,
+                 "id":57,
+                 "name":"ingenieria-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":784,
+                 "y":432
+                }, 
+                {
+                 "height":0,
+                 "id":58,
+                 "name":"ingenieria-a5",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"ingenieria-a5"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":752,
+                 "y":464
+                }, 
+                {
+                 "height":0,
+                 "id":59,
+                 "name":"propulsion-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":272
+                }, 
+                {
+                 "height":0,
+                 "id":60,
+                 "name":"propulsion-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":304
+                }, 
+                {
+                 "height":0,
+                 "id":61,
+                 "name":"propulsion-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":336
+                }, 
+                {
+                 "height":0,
+                 "id":62,
+                 "name":"propulsion-a4",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion-a4"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":368
+                }, 
+                {
+                 "height":0,
+                 "id":63,
+                 "name":"propulsion-a5",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"propulsion-a5"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":400
+                }, 
+                {
+                 "height":0,
+                 "id":64,
+                 "name":"tanques-combustible-a1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"tanques-combustible-a1"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1168,
+                 "y":432
+                }, 
+                {
+                 "height":0,
+                 "id":65,
+                 "name":"tanques-combustible-a2",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"tanques-combustible-a2"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1040,
+                 "y":496
+                },
+            
+                {
+                 "height":0,
+                 "id":66,
+                 "name":"tanques-combustible-a3",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"tanques-combustible-a3"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1104,
+                 "y":528
+                }, 
+                {
+                 "height":0,
+                 "id":67,
+                 "name":"valvula-simple-1",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"condition",
+                         "type":"string",
+                         "value":"jammed"
+                        }, 
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"capitulo-1-valvula-atascada"
+                        }, 
+                        {
+                         "name":"instanceId",
+                         "type":"string",
+                         "value":"capitulo-1-valvula-atascada"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":209.259892804197,
+                 "y":200.707036150074
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":false,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":7,
+         "name":"semillas",
+         "objects":[
+                {
+                 "height":0,
+                 "id":68,
+                 "name":"semilla-herramientas-reparacion",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"componentId",
+                         "type":"string",
+                         "value":"herramientas-reparacion-externa"
+                        }, 
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"semilla-herramientas-reparacion"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":256,
+                 "y":224
+                }, 
+                {
+                 "height":0,
+                 "id":69,
+                 "name":"semilla-radio-largo-alcance",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"componentId",
+                         "type":"string",
+                         "value":"radio-largo-alcance"
+                        }, 
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"semilla-radio-largo-alcance"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":160,
+                 "y":160
+                }, 
+                {
+                 "height":0,
+                 "id":70,
+                 "name":"semilla-reservorio-agua",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"componentId",
+                         "type":"string",
+                         "value":"reservorio-agua-reciclada"
+                        }, 
+                        {
+                         "name":"id",
+                         "type":"string",
+                         "value":"semilla-reservorio-agua"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":256,
+                 "y":160
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":false,
+         "x":0,
+         "y":0
+        }],
+ "nextlayerid":8,
+ "nextobjectid":74,
+ "orientation":"orthogonal",
+ "properties":[
+        {
+         "name":"archetype",
+         "type":"string",
+         "value":"exploracion"
+        }, 
+        {
+         "name":"nameKey",
+         "type":"string",
+         "value":"ship.exploracion.name"
+        }, 
+        {
+         "name":"schemaVersion",
+         "type":"int",
+         "value":1
+        }, 
+        {
+         "name":"shipId",
+         "type":"string",
+         "value":"nave-exploracion"
+        }],
+ "renderorder":"right-down",
+ "tiledversion":"1.12.2",
+ "tileheight":32,
+ "tilesets":[
+        {
+         "columns":10,
+         "firstgid":1,
+         "image":"..\/..\/..\/..\/game\/assets\/sprites\/tiles\/tileset-nave.png",
+         "imageheight":320,
+         "imagewidth":320,
+         "margin":0,
+         "name":"interior",
+         "spacing":0,
+         "tilecount":100,
+         "tileheight":32,
+         "tilewidth":32,
+         "transparentcolor":"#000000"
+        }],
+ "tilewidth":32,
+ "type":"map",
+ "version":"1.10",
+ "width":40
 }

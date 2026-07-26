@@ -21,6 +21,7 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   combine: 10,
   install: 8,
   connect: 5,
+  "analyze-substance": 10,
 };
 
 /** Duración base de un tipo de tarea (segundos). Punto único de lectura de la tabla. */

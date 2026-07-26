@@ -1,7 +1,9 @@
 // GDD 9, caso 15 — "Reconstrucción desde Cero": ruta atómica completa (GDD 7.1) — piezas salvadas de 2-3 compuestos desmontados se combinan en un compuesto nuevo que la nave nunca tuvo preinstalado, en contraste con el caso 1 (que reutiliza compuestos intactos).
 import { describe, expect, it } from "vitest";
 import {
+  atomicRecoveryFraction,
   createPhysicalComponentFactory,
+  durationMultiplierFor,
   isCompositeEntity,
   MapEntityRegistry,
   type ComponentId,
@@ -117,8 +119,23 @@ describe("case 15 — Reconstrucción desde Cero", () => {
     expect(sensorRefs).toEqual(expect.arrayContaining([LENTE_ATOMICA, FOTOCELDA_ATOMICA]));
   });
 
-  it.todo(
-    "el coste de tiempo y la pérdida de material al desmontar escalan según el tier del Ingeniero " +
-      "(GDD 6.5) — depende de Fase 9 (tripulación), que no existe todavía en el motor",
-  );
+  it("el coste de tiempo y la pérdida de material al desmontar escalan según el tier del Ingeniero (GDD 6.5)", () => {
+    // Un Ingeniero Experto desmonta más rápido (×0.6, GDD 6.6) y recupera casi
+    // todo (~92.5%, GDD 6.5 + bonus +10%) que un Novato de otra especialidad
+    // (×1.2 de penalización fuera de afinidad, sin el bonus del +10%).
+    const expertEngineerDuration = durationMultiplierFor("dismantle", "ingeniero", "experto");
+    const noviceMedicDuration = durationMultiplierFor("dismantle", "medico", "novato");
+    expect(expertEngineerDuration).toBeLessThan(noviceMedicDuration);
+
+    const expertEngineerRecovery = atomicRecoveryFraction("experto", "ingeniero");
+    const noviceMedicRecovery = atomicRecoveryFraction("novato", "medico");
+    expect(expertEngineerRecovery).toBeGreaterThan(noviceMedicRecovery);
+    expect(expertEngineerRecovery).toBeCloseTo(1); // 0.925 base + 0.1 bonus, clamped a 1
+    expect(noviceMedicRecovery).toBeCloseTo(0.6);
+
+    // Un compuesto de baja resistencia estructural (RE=B) pierde piezas
+    // frágiles sin importar el tier del especialista (GDD 6.5).
+    const lowResistanceRecovery = atomicRecoveryFraction("experto", "ingeniero", "B");
+    expect(lowResistanceRecovery).toBeLessThan(expertEngineerRecovery);
+  });
 });

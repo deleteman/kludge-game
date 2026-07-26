@@ -9,6 +9,8 @@ import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
+import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 
 const INSTANCE_A = "instance-a" as PlacedComponentInstanceId;
 const INSTANCE_B = "instance-b" as PlacedComponentInstanceId;
@@ -16,7 +18,7 @@ const INSTANCE_B = "instance-b" as PlacedComponentInstanceId;
 function buildFixtureBlueprint(): Blueprint {
   return {
     metadata: {
-      schemaVersion: 2,
+      schemaVersion: 4,
       id: "fixture-blueprint",
       name: "Fixture Blueprint",
       engineVersion: "0.0.0",
@@ -28,11 +30,14 @@ function buildFixtureBlueprint(): Blueprint {
         instanceId: INSTANCE_A,
         componentDefinitionId: "fixture-component-a" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+        condition: "ok",
       },
       {
         instanceId: INSTANCE_B,
         componentDefinitionId: "fixture-component-b" as ComponentId,
         placement: { position: { x: 1, y: 0 }, footprint: { width: 1, height: 2 }, rotation: 90 },
+        condition: "ok",
+        structuralResistanceOverride: "M",
       },
     ],
     reservoirContents: [
@@ -65,6 +70,15 @@ function buildFixtureBlueprint(): Blueprint {
         },
       ],
     },
+    sectionAtmospheres: [
+      {
+        sectionId: "bahia-carga" as SectionId,
+        gases: [[GAS.OXYGEN, 0.21]],
+        temperatureCelsius: 21,
+        pressureKpa: 101,
+      },
+    ],
+    unpoweredSectionIds: ["invernadero" as SectionId],
   };
 }
 
@@ -101,5 +115,29 @@ describe("blueprint: serialize/deserialize round-trip", () => {
     expect(() => deserializeBlueprint(serializeBlueprint(withDanglingReservoir))).toThrow(
       BlueprintParseError,
     );
+  });
+
+  it("defaults sectionAtmospheres/unpoweredSectionIds/structuralResistanceOverride when loading a pre-11b (schema v3) save", () => {
+    const v3 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    delete v3.sectionAtmospheres;
+    delete v3.unpoweredSectionIds;
+    const placedComponents = v3.placedComponents as Array<Record<string, unknown>>;
+    delete placedComponents[1]!.structuralResistanceOverride;
+    (v3.metadata as Record<string, unknown>).schemaVersion = 3;
+
+    const restored = deserializeBlueprint(JSON.stringify(v3));
+    expect(restored.sectionAtmospheres).toEqual([]);
+    expect(restored.unpoweredSectionIds).toEqual([]);
+    expect(restored.placedComponents[1]!.structuralResistanceOverride).toBeUndefined();
+  });
+
+  it("rejects an invalid structuralResistanceOverride value", () => {
+    const broken = { ...buildFixtureBlueprint() } as unknown as Record<string, unknown>;
+    const placedComponents = (broken.placedComponents as Array<Record<string, unknown>>).map(
+      (entry, index) => (index === 1 ? { ...entry, structuralResistanceOverride: "Z" } : entry),
+    );
+    broken.placedComponents = placedComponents;
+
+    expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(BlueprintParseError);
   });
 });

@@ -15,7 +15,9 @@ export interface FloorplanIntegrityIssue {
     | "conduit-sections-not-adjacent"
     | "invalid-conduit-aperture"
     | "anchor-outside-section"
-    | "duplicate-anchor-id";
+    | "duplicate-anchor-id"
+    | "component-seed-outside-section"
+    | "duplicate-component-seed-id";
   readonly detail: string;
 }
 
@@ -109,6 +111,25 @@ export function validateFloorplanIntegrity(floorplan: ShipFloorplan): FloorplanI
       issues.push({
         kind: "anchor-outside-section",
         detail: `Anchor '${anchor.id}' at (${anchor.position.x}, ${anchor.position.y}) is not inside section '${anchor.sectionId}'`,
+      });
+    }
+  }
+
+  const seenComponentSeedIds = new Set<string>();
+  for (const seed of floorplan.componentSeeds) {
+    if (seenComponentSeedIds.has(seed.id)) {
+      issues.push({
+        kind: "duplicate-component-seed-id",
+        detail: `Duplicate component seed id: ${seed.id}`,
+      });
+    }
+    seenComponentSeedIds.add(seed.id);
+
+    const section = sectionsById.get(seed.sectionId);
+    if (!section || !cellSet(section).has(cellKey(seed.position))) {
+      issues.push({
+        kind: "component-seed-outside-section",
+        detail: `Component seed '${seed.id}' at (${seed.position.x}, ${seed.position.y}) is not inside section '${seed.sectionId}'`,
       });
     }
   }

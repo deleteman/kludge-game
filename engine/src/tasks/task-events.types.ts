@@ -1,5 +1,7 @@
 import type { DomainEventBase } from "../simulation/domain-event.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
+import type { ComponentId } from "../components/physical-component.types.js";
+import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { CrewTaskId, TaskType } from "./task.types.js";
 
 /**
@@ -28,6 +30,10 @@ export interface TaskCompletedEvent extends DomainEventBase {
   readonly taskId: CrewTaskId;
   readonly actorId: CrewActorId;
   readonly type: TaskType;
+  /** Piezas acreditadas al inventario por el efecto (ej. desarmar un compuesto). Ver `TaskEffectResult`. */
+  readonly obtained?: ReadonlyArray<{ readonly componentId: ComponentId; readonly quantity: number }>;
+  /** Sustancia revelada por "Analizar Sustancia" (Fase 11e). Ver `TaskEffectResult`. */
+  readonly analyzedSubstanceId?: ChemicalSubstanceId;
 }
 
 /**

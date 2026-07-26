@@ -45,8 +45,11 @@ interface MinimalMapOptions {
   sections?: unknown[];
   conduits?: unknown[];
   anchors?: unknown[];
+  componentSeeds?: unknown[];
   tilewidth?: number;
   mapProperties?: RawProperty[];
+  /** Omite la capa `semillas` por completo (a diferencia de `componentSeeds: []`, que la deja presente y vacía). */
+  omitComponentSeedsLayer?: boolean;
 }
 
 function minimalMap(options: MinimalMapOptions = {}): unknown {
@@ -60,6 +63,16 @@ function minimalMap(options: MinimalMapOptions = {}): unknown {
     point(64, 32, props({ a: "alfa", b: "beta", kind: "ventilacion" })),
   ];
   const anchors = options.anchors ?? [point(16, 16, props({ id: "alfa-a1" }))];
+  const componentSeeds = options.componentSeeds ?? [];
+
+  const layers: unknown[] = [
+    { type: "objectgroup", name: "secciones", objects: sections },
+    { type: "objectgroup", name: "conductos", objects: conduits },
+    { type: "objectgroup", name: "anclajes", objects: anchors },
+  ];
+  if (!options.omitComponentSeedsLayer) {
+    layers.push({ type: "objectgroup", name: "semillas", objects: componentSeeds });
+  }
 
   return {
     type: "map",
@@ -76,11 +89,7 @@ function minimalMap(options: MinimalMapOptions = {}): unknown {
         archetype: "investigacion",
         nameKey: "ship.test.name",
       }),
-    layers: [
-      { type: "objectgroup", name: "secciones", objects: sections },
-      { type: "objectgroup", name: "conductos", objects: conduits },
-      { type: "objectgroup", name: "anclajes", objects: anchors },
-    ],
+    layers,
   };
 }
 
@@ -113,6 +122,8 @@ describe("parseShipFloorplan", () => {
       sectionId: "alfa",
       position: { x: 0, y: 0 },
     });
+
+    expect(floorplan.componentSeeds).toEqual([]);
   });
 
   it("une varios rectángulos con el mismo id en una sección en L", () => {
@@ -206,5 +217,79 @@ describe("parseShipFloorplan", () => {
     const map = minimalMap() as { layers: { name: string }[] };
     map.layers = map.layers.filter((layer) => layer.name !== "secciones");
     expect(() => parseShipFloorplan(map)).toThrow(/secciones/);
+  });
+
+  describe("capa 'semillas' (objetos compuestos, opcional)", () => {
+    it("parsea componentSeeds: [] cuando la capa está ausente por completo (mapas de arquetipos aún sin autorar)", () => {
+      const floorplan = parseShipFloorplan(minimalMap({ omitComponentSeedsLayer: true }));
+      expect(floorplan.componentSeeds).toEqual([]);
+    });
+
+    it("parsea una semilla con todas sus propiedades", () => {
+      const floorplan = parseShipFloorplan(
+        minimalMap({
+          componentSeeds: [
+            point(
+              16,
+              16,
+              props({
+                id: "semilla-herramientas",
+                componentId: "herramientas-reparacion-externa",
+                condition: "ok",
+                instanceId: "capitulo-1-herramientas",
+                chapterId: "1",
+              }),
+            ),
+          ],
+        }),
+      );
+      expect(floorplan.componentSeeds).toHaveLength(1);
+      expect(floorplan.componentSeeds[0]).toEqual({
+        id: "semilla-herramientas",
+        sectionId: "alfa",
+        position: { x: 0, y: 0 },
+        componentId: "herramientas-reparacion-externa",
+        condition: "ok",
+        instanceId: "capitulo-1-herramientas",
+        chapterId: "1",
+      });
+    });
+
+    it("parsea una semilla solo con las propiedades requeridas (id, componentId) — el resto queda undefined", () => {
+      const floorplan = parseShipFloorplan(
+        minimalMap({
+          componentSeeds: [point(16, 16, props({ id: "semilla-radio", componentId: "radio-largo-alcance" }))],
+        }),
+      );
+      expect(floorplan.componentSeeds[0]).toEqual({
+        id: "semilla-radio",
+        sectionId: "alfa",
+        position: { x: 0, y: 0 },
+        componentId: "radio-largo-alcance",
+        condition: undefined,
+        instanceId: undefined,
+        chapterId: undefined,
+      });
+    });
+
+    it("rechaza una semilla sin 'componentId'", () => {
+      expect(() =>
+        parseShipFloorplan(
+          minimalMap({ componentSeeds: [point(16, 16, props({ id: "semilla-incompleta" }))] }),
+        ),
+      ).toThrow(FloorplanParseError);
+    });
+
+    it("rechaza una semilla que cae fuera de toda sección", () => {
+      expect(() =>
+        parseShipFloorplan(
+          minimalMap({
+            componentSeeds: [
+              point(300, 300, props({ id: "semilla-huerfana", componentId: "herramientas-reparacion-externa" })),
+            ],
+          }),
+        ),
+      ).toThrow(/outside every section/);
+    });
   });
 });
