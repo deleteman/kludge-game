@@ -2356,3 +2356,67 @@ Archivos nuevos: `engine/src/ship-status/*` + test, `game/src/ui/widgets/ship-st
 `tsc`/`eslint` limpios en `/engine` y `/game`; 543 tests en verde en `/engine` (13 nuevos).
 Razón: `nuevo-orden.md`, Subfase 11g — infraestructura fundacional para los capítulos 2-8, más feedback de
 playtest del operador sobre la ubicación del panel de sustancias.
+
+2026-07-28 — Subfase 11h: Piezas Atómicas de Salida de Información — Indicador LED y Pantalla LCD
+Extiende el catálogo atómico (GDD 7.2, docs/Extension_indicador_led_pantalla_lcd.md) con el hueco que hoy
+impedía aplicar legibilidad total (GDD §11.1) al estado en REPOSO de un nodo, no solo a eventos. 3 piezas
+nuevas: Indicador LED (1×1, `REC`, feedback binario ON/OFF por tinte en runtime, sin sistema nuevo), Pantalla
+LCD (2×1, `REC` independiente, muestra el VALOR real del nodo cableado, no solo binario — texto con throttle
+de 250-500ms, no por frame), Sensor de Presión (1×1, `EM`/`triggerType: "pressure"`, único emisor del catálogo
+que se evalúa contra el mundo real en vez de estar siempre activo mientras cableado). Motor: nuevo
+`pressure-emitter-input-source.ts` (`pressureAwareEmitterInputs`, resuelve por TAG funcional, no por identidad
+— principio 1 de CLAUDE.md) y `lcd-display-value.ts` (`resolveLcdDisplayValue`). Caso de validación 19 ("El
+Panel de Diagnóstico Improvisado"): LCD cableado al sensor de presión de una sección con fuga activa. Juego:
+`mission-overlay-renderer.ts` expone sprites/texto de LED/LCD por instancia fuera del `graphics` bakeado
+compartido, para poder retintar/actualizar sin redibujar todo el overlay.
+Archivos nuevos: `engine/src/mission/{pressure-emitter-input-source,lcd-display-value}.ts` + tests,
+`engine/src/validation/case-19-panel-diagnostico-improvisado.test.ts`, `game/assets/sprites/components/
+pantalla-lcd.png` (el Indicador LED usa placeholder por código, sin sprite propio todavía). Modificados:
+`atomic-component-catalog.ts`, `functional.types.ts`, `mission-overlay-renderer.ts`, `floorplan-scene.ts`.
+Razón: `nuevo-orden.md`, Subfase 11h — cerrar el gap de legibilidad de estado en reposo antes de escalar a
+más capítulos con sensores/paneles de diagnóstico.
+
+2026-07-28 — Feedback de playtest manual sobre la Subfase 11h (fuga del Capítulo 1)
+El operador jugó el escenario de fuga (Sensor de Presión + LCD + LED + junta hermética rota, Cap.1) y reportó
+4 puntos. Investigados y resueltos 3; el 4º (cablear señal entre secciones sin conducto `senal` directo)
+se investigó y NO es un bug — el BFS de `assertSignalWiringReachable` ya soporta multi-salto, la causa real es
+que solo existe un conducto `senal` autorado en todo el juego (PENDIENTES_OBSERVACIONES.md punto 14), y la
+restricción de requerir infraestructura `senal` real para cruzar de sección es una decisión INTENCIONAL de la
+Fase 11f.1, confirmada con el operador — sin cambios de código.
+1. **HUD sin reflejar la fuga**: `ship-status-aggregation.ts::aggregateAtmosphere` suma un factor
+   `pressureFraction = pressureKpa/101` al `worstFraction` ya existente (antes solo miraba gas tóxico) —
+   decisión del operador: sumarlo al indicador "Atmósfera" existente, sin fila nueva de HUD.
+2. **Fuga ausente del checklist/sinopsis**: se formaliza como 3ª resolución del Capítulo 1
+   (`replacement-installed-connected`, reutilizada tal cual — ya validaba "condition ok + posición + lista de
+   ids aceptables", sin inventar un tipo de resolución nuevo), con clave i18n `crisis.objective.capitulo-1.fuga`
+   y sinopsis ampliada. Decisión del operador: formalizarla como objetivo real, no dejarla de attrezzo.
+3. **Highlight de instalación solo marcaba 1 celda**: `MissionInteractionController.installPickerHighlightCells`
+   resuelve el footprint completo de la opción enfocada en el picker en la posición donde realmente encajaría
+   (`findFittingInstallPlacement`, mismo criterio que `confirmInstall`); `floorplan-scene.ts::updateSelectedHighlight`
+   reescrito a un pool de rectángulos (uno por celda, mismo patrón que `updateWireHighlights`) en vez de un
+   único `Rectangle` 1×1 fijo.
+4. **Pedido adicional del operador tras revisar el primer intento de plan**: la presión debía recuperarse
+   visiblemente al reparar la junta, no quedar estancada. Redujo el alcance de una "limitación conocida" ya
+   documentada: `sealBreachPressureSink` pasa de "drena o nada" a bidireccional (`SealBreachConfig` con
+   `recoveryRateKpaPerSecond`, tasa negativa cuando la junta está sellada); `MissionAtmosphereRuntime.tick()`
+   gana un clamp de dos lados (`PRESSURE_SINK_FLOOR_KPA` / nueva `PRESSURE_RECOVERY_CEILING_KPA` = atmósfera
+   estándar). Bug de arquitectura detectado y corregido ANTES de shippear: la primera versión identificaba
+   "¿está sellada?" por `instanceId` fijo, pero el flujo real de reparación (desmontar + instalar) crea una
+   instancia NUEVA — se rediseñó para identificar por POSICIÓN + lista de `componentDefinitionId` aceptables,
+   mismo criterio que la resolución de crisis `replacement-installed-connected`.
+5. **Pedido adicional del operador tras un segundo intento de plan**: el LED se enciende en VERDE al detectar
+   la fuga, mismo verde que el resto de la paleta reserva para "todo bien" — semánticamente al revés para una
+   alarma. Fix acotado: `LED_ACTIVE_TINT` pasa de `0x64dc78` a `0xe0a33f` (ámbar, reutilizado de
+   `jammed`/`planning`), sin cambios de arquitectura. El operador pidió considerar un MVP de "componentes
+   configurables" (color + condición `>`/`<`/`=` por instancia) — decisión explícita: separarlo, cerrar
+   primero lo planificado y planificar el MVP en otra sesión (anotado en PENDIENTES_OBSERVACIONES.md punto 15).
+Archivos: `engine/src/ship-status/ship-status-aggregation.ts` + test, `engine/src/crisis/campaign/
+chapter-01-primer-aviso.ts` + test, `engine/src/mission/{mission-atmosphere-runtime,seal-breach-pressure-sink}.ts`
++ test, `engine/src/validation/case-20-fuga-por-junta-rota.test.ts`, `engine/src/mission/
+chapter-01-mission.integration.test.ts`, `engine/src/crisis/campaign/chapter-01.test.ts`, `engine/src/index.ts`,
+`game/src/mission/{mission-interaction-controller,mission-runtime}.ts`, `game/src/scenes/floorplan-scene.ts`,
+`game/src/render/palette.ts`, `game/src/i18n/{es,en}.ts`.
+`tsc`/`vite build` limpios en `/engine`, `/game` y `/electron`; 99 archivos / 560 tests en verde en `/engine`.
+Razón: feedback de playtest manual del operador sobre la Subfase 11h recién implementada — antes de darla por
+cerrada, hacerla jugable de punta a punta con retroalimentación real de estado de nave, objetivo formal,
+recuperación visible y semántica de color correcta.

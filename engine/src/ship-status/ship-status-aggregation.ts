@@ -4,7 +4,7 @@ import type { ComponentId, PhysicalComponentDefinition } from "../components/phy
 import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
 import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import { GAS, STANDARD_OXYGEN_FRACTION } from "../atmosphere/atmosphere-composition.types.js";
-import { getGasFraction } from "../atmosphere/section.types.js";
+import { getGasFraction, standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import { OXYGEN_COMBUSTION_THRESHOLDS } from "../atmosphere/combustion-atmosphere.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
@@ -42,11 +42,19 @@ export interface SectionAtmosphereEntry {
   readonly atmosphere: SectionAtmosphere;
 }
 
+/** Presión estándar (Subfase 11h) — reutilizada, no re-hardcodeada, para expresar desviación como fracción [0,1]. */
+const STANDARD_PRESSURE_KPA = standardSectionAtmosphere().pressureKpa;
+
 /**
  * Agregación a nivel de nave de la atmósfera (Subfase 11g): peor sección
- * gana. Deriva del gas contaminante con mayor concentración que tenga tag
- * `TOX`, usando el mismo umbral letal (Espec. §1) que ya usa
- * `REACTION_PARAMETERS.toxicity` — no se inventan umbrales nuevos.
+ * gana. Combina dos factores independientes, cada uno con su propia noción
+ * de "peor sección":
+ *  - Gas contaminante con tag `TOX`, contra el umbral letal (Espec. §1) que ya
+ *    usa `REACTION_PARAMETERS.toxicity` — no se inventan umbrales nuevos.
+ *  - Desviación de presión (Subfase 11h, escenario de fuga en Capítulo 1):
+ *    `pressureKpa` por debajo de la atmósfera estándar también degrada el
+ *    indicador — una fuga es un problema de atmósfera aunque no libere ningún
+ *    gas tóxico.
  */
 export function aggregateAtmosphere(
   sections: ReadonlyArray<SectionAtmosphereEntry>,
@@ -57,6 +65,8 @@ export function aggregateAtmosphere(
   }
   let worstFraction = 1;
   for (const { atmosphere } of sections) {
+    const pressureFraction = atmosphere.pressureKpa / STANDARD_PRESSURE_KPA;
+    worstFraction = Math.min(worstFraction, pressureFraction);
     for (const gasKey of atmosphere.gases.keys()) {
       if (gasKey === GAS.OXYGEN || gasKey === GAS.NITROGEN || gasKey === GAS.CO2) {
         continue;

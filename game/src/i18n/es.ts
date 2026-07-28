@@ -74,6 +74,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.hud.hull-integrity": "Integridad de casco",
   "ui.floorplan.hud.energy": "Energía",
   "ui.floorplan.hud.substances-button": "Sustancias ({count})",
+  "ui.floorplan.lcd.no-data": "SIN DATO",
+  "ui.floorplan.lcd.pressure-unit": "kPa",
   "ui.floorplan.mission.empty-queue": "— sin tareas —",
   "ui.floorplan.mission.queue.task-label.go-to": "Yendo a sección",
   "ui.floorplan.mission.queue.task-label.dismantle": "Desmontando",
@@ -134,7 +136,8 @@ export const ES: Readonly<Record<string, string>> = {
 
   "crisis.objective.capitulo-1.compuerta": "Restablecer la compuerta bloqueada",
   "crisis.objective.capitulo-1.sensor": "Alimentar la compuerta con su sensor",
-  "crisis.briefing.capitulo-1-primer-aviso": "Una válvula de apertura (un actuador) está atascada y no responde a su sensor: bloquea el paso a una sección. Nada crítico todavía. Hay dos cosas por arreglar. Primero, la válvula: encontrala en el plano (el marcador pulsante), desmontala e instalá en su lugar otra válvula simple o un motor pequeño equivalente. Segundo, la señal: el sensor de proximidad del pasillo quedó sin cablear al panel de la compuerta. Activá el Modo cableado, hacé click en el nodo del sensor y luego en el del panel para que un tripulante tienda el cable. Con las dos cosas hechas, dale a Ejecutar.",
+  "crisis.objective.capitulo-1.fuga": "Sellar la fuga de presión",
+  "crisis.briefing.capitulo-1-primer-aviso": "Una válvula de apertura (un actuador) está atascada y no responde a su sensor: bloquea el paso a una sección. Nada crítico todavía. Hay tres cosas por arreglar. Primero, la válvula: encontrala en el plano (el marcador pulsante), desmontala e instalá en su lugar otra válvula simple o un motor pequeño equivalente. Segundo, la señal: el sensor de proximidad del pasillo quedó sin cablear al panel de la compuerta. Activá el Modo cableado, hacé click en el nodo del sensor y luego en el del panel para que un tripulante tienda el cable. Tercero, hay una fuga de presión: una junta hermética cercana está rota y la sección está perdiendo presión — desmontala e instalá la de repuesto para sellarla. Con las tres cosas hechas, dale a Ejecutar.",
 
   "crisis.objective.capitulo-2.combinador": "Combinar ambos sensores en el panel",
   "crisis.briefing.capitulo-2-ecos-en-el-pasillo": "Dos sensores de movimiento del pasillo disparan la alarma con cualquier eco aislado: hay que combinar sus señales para que solo se active cuando AMBOS confirman movimiento real. El panel combinador ya está configurado como compuerta AND, pero le faltan las entradas. Activá el Modo cableado y tendé un cable desde cada sensor hasta el nodo del panel (podés clickear en cualquier orden). OJO: hay un temporizador y aprieta. Cuando pasa la mitad del tiempo, el sistema automatizado empieza a soltar descargas a la tripulación cada pocos segundos, y el vencimiento total es un golpe fuerte + fallo de misión. Nadie muere en este capítulo, pero el HP perdido queda. Cableá rápido los dos sensores y dale a Ejecutar.",

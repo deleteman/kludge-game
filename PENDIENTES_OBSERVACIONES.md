@@ -192,3 +192,16 @@ dónde, y qué costaría arreglarlo.
     nada activo porque solo exploración se juega de punta a punta (los otros 3 son posiciones de referencia
     sin verificación visual, `chapter-01-primer-aviso.ts`). Autorar los `senal` de esos arquetipos cuando
     entren en testeo real. Intra-sección nunca requiere conducto.
+
+15. **MVP de "componentes configurables" pedido explícitamente por el operador — fuera de alcance de la
+    Subfase 11h, se planifica en otra sesión.** Playtest de la fuga de Cap.1: el Indicador LED se enciende
+    en verde (`LED_ACTIVE_TINT`) al detectar la fuga, mismo verde que el resto de la paleta reserva para
+    "todo bien" — semánticamente al revés para una alarma. El fix acotado de esta subfase fue cambiar el
+    color fijo a ámbar (`0xe0a33f`, reutilizado de `jammed`/`planning`), sin tocar arquitectura. El operador
+    pidió considerar, para una sesión futura, un MVP real de configurabilidad por instancia: elegir color y
+    condición de disparo (`>`, `<`, `=`) para componentes como el LED. Esto requeriría: datos de
+    configuración por instancia (bump de `schemaVersion` del blueprint), una UI/interacción nueva para
+    configurar la instancia colocada, y que el LED lea el valor numérico real (no solo booleano) por el
+    mismo mecanismo que ya usa la Pantalla LCD (`resolveLcdDisplayValue`, resolución por tag funcional). No
+    iniciar sin un ciclo de preguntas propio con el operador (alcance: ¿solo LED o cualquier receptor de
+    señal con salida numérica?, ¿editable en cualquier momento o solo antes de instalar?, etc.).

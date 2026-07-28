@@ -5,6 +5,8 @@ import {
   CHAPTER_01_GATE_NODE_ID,
   CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE,
   CHAPTER_01_PRIMER_AVISO,
+  CHAPTER_01_SEAL_INSTANCE_ID,
+  CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
   CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
   CHAPTER_01_SENSOR_NODE_ID,
 } from "./chapter-01-primer-aviso.js";
@@ -15,7 +17,7 @@ import {
   createDefaultCrisisTriggerRegistry,
 } from "../rules/crisis-rule-registry.js";
 import { buildComponentCatalog } from "../../components/catalog/build-component-catalog.js";
-import type { Blueprint } from "../../blueprint/blueprint.types.js";
+import type { Blueprint, PlacedComponentInstance } from "../../blueprint/blueprint.types.js";
 import type { SignalEdgeId } from "../../signals/signal-edge.types.js";
 
 describe("capítulo 1 — variantes por arquetipo", () => {
@@ -97,10 +99,16 @@ describe("capítulo 1 — variantes por arquetipo", () => {
       expect(triggered.state).toBe("active");
 
       // Resolución AND: además de reparar la válvula, hay que cablear el sensor
-      // al panel de la compuerta (los dos nodos sembrados, unidos por un edge).
+      // al panel de la compuerta (los dos nodos sembrados, unidos por un edge)
+      // Y sellar la fuga de presión (Subfase 11h) — junta hermética sana en
+      // la posición de la junta rota sembrada (`sealPosition`).
+      const sealSeed = CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE[archetype].find(
+        (entry) => entry.instanceId === CHAPTER_01_SEAL_INSTANCE_ID,
+      )!;
+      const repairedSeal: PlacedComponentInstance = { ...sealSeed, condition: "ok" };
       const repairedShip: Blueprint = {
         ...jammedShip,
-        placedComponents: [{ ...seed, condition: "ok" }],
+        placedComponents: [{ ...seed, condition: "ok" }, repairedSeal],
         signalGraph: {
           nodes: [...CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE[archetype]],
           edges: [{ id: "cable" as SignalEdgeId, from: CHAPTER_01_SENSOR_NODE_ID, to: CHAPTER_01_GATE_NODE_ID }],
@@ -114,5 +122,43 @@ describe("capítulo 1 — variantes por arquetipo", () => {
       );
       expect(resolved.state).toBe("resolved-success");
     }
+  });
+
+  it("Subfase 11h: no se resuelve si la válvula y el sensor están OK pero la junta hermética sigue rota", () => {
+    const triggerRules = createDefaultCrisisTriggerRegistry();
+    const resolutionRules = createDefaultCrisisResolutionRegistry();
+    const componentRegistry = buildComponentCatalog().registry;
+    const archetype = "exploracion" as const;
+    const definition = CHAPTER_01_BY_ARCHETYPE[archetype];
+    const seed = CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE[archetype];
+
+    const almostRepairedShip: Blueprint = {
+      metadata: {
+        schemaVersion: 3,
+        id: "fixture-fuga-pendiente",
+        name: "Fixture",
+        engineVersion: "0.0.0",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        updatedAt: "2026-07-28T00:00:00.000Z",
+      },
+      // La junta rota sembrada (`CHAPTER_01_SEAL_INSTANCE_ID`) sigue "jammed"
+      // acá — no se incluye ninguna instancia sana en su posición.
+      placedComponents: [{ ...seed, condition: "ok" }],
+      reservoirContents: [],
+      signalGraph: {
+        nodes: [...CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE[archetype]],
+        edges: [{ id: "cable" as SignalEdgeId, from: CHAPTER_01_SENSOR_NODE_ID, to: CHAPTER_01_GATE_NODE_ID }],
+      },
+      sectionAtmospheres: [],
+      unpoweredSectionIds: [],
+    };
+
+    const result = evaluateCrisis(
+      "active",
+      definition,
+      { ship: almostRepairedShip, tick: { dtSeconds: 1, elapsedSeconds: 1 }, componentRegistry },
+      { triggerRules, resolutionRules },
+    );
+    expect(result.state).toBe("active");
   });
 });

@@ -75,6 +75,22 @@ Reemplaza el panel fijo de acciones (`mission-action-panel.ts`, Fase 10d) como e
 
 
 
+#### Subfase 11h: Piezas Atómicas de Salida de Información — Indicador LED y Pantalla LCD
+
+Extiende el catálogo atómico (GDD 7.2) con dos piezas nuevas cuyo único propósito es visualizar el estado de una señal — el hueco que hoy impide aplicar el pilar de legibilidad total (GDD §11.1) al estado en reposo de un nodo, no solo a eventos. Documento fuente: `docs/Extension_indicador_led_pantalla_lcd.md`.
+
+* **Indicador LED (versión base, sin dependencias):** Nueva pieza atómica `REC`, footprint 1×1, feedback visual binario (encendido/apagado) del estado de la señal a la que está cableada. Se implementa apoyada exclusivamente en el sistema de tinte en runtime ya existente (GDD 11.0) — no depende de ningún sistema pendiente de construir. *(Nota: el documento fuente referencia "sub-fase 11e" como dueña del sistema de luces aditivas; en este plan esa función corresponde a la Subfase 12a — referencia desactualizada del documento original, corregida aquí.)* La versión con intensidad graduada (mismo patrón que `MAG`, Fase 11a) se implementa después, ver Subfase 12a → "Potenciar Indicador LED con intensidad graduada".
+
+* **Pantalla LCD:** Nueva pieza atómica `REC` independiente (no es receta ni compuesto de otras piezas), footprint 2×1, muestra el valor real de la propiedad del nodo cableado (no solo estado binario): ON/OFF de un `REC`, nivel de un `RES`, valor cualitativo de una propiedad de material, o estado/contador de un latch. Cableable opcionalmente a un Chip de circuito genérico (GDD 7.2) para lógica de formato — el chip es opcional, no un ensamblaje. Requiere renderizado de texto dinámico con intervalo de actualización de 250-500ms (no por frame). Las etiquetas de texto (ON/OFF, nombres de estado) deben pasar por el sistema de claves de traducción (CLAUDE.md); los valores numéricos puros no lo requieren.
+
+* **Sub-categoría conceptual — "actuador de salida de información":** Aclarar dentro de la semántica de `ACT` (GDD 5.1) que LED y LCD no producen trabajo físico, solo visualizan estado de otro nodo — sin alterar el modelo de propiedades existente.
+
+* **Caso de validación 18 — "El Panel de Diagnóstico Improvisado":** Cablear una Pantalla LCD al sensor de presión de una sección con fuga de gas activa, mostrando el nivel restante en tiempo real. Valida el Indicador LED como pieza base, la lectura de valor real del LCD, y la integración con el sistema de atmósfera (GDD 5.5) como fuente de datos. Verificar que no choque con el caso 17 (Extensión de aceleración magnética, Fase 11a).
+
+* Cada pieza requiere su propio test unitario en `/engine` antes de darse por integrada, siguiendo el estándar de CLAUDE.md.
+
+
+
 ### Fase 12 — Pulido Estructural Sensorial: Luces y Audio
 
 El objetivo aquí es asegurar la inmersión visual y el feedback diegético necesario antes de masificar los niveles.
@@ -85,6 +101,9 @@ El objetivo aquí es asegurar la inmersión visual y el feedback diegético nece
 
 
 * **Estados de Daño de Fondo:** Integrar efectos de daño persistentes (`StateDrivenEffect` de la Fase 8) vinculados a las cicatrices activas (por ejemplo, chispas eléctricas continuas de un conductor sobrecargado o parpadeos de luz ambiental en secciones sin energía).
+
+
+* **Potenciar Indicador LED con intensidad graduada (depende de: Subfase 11h):** Una vez disponible el renderizado de luces aditivas de esta subfase, extender el Indicador LED (11h) para que su intensidad escale bajo/medio/alto junto con el emisor de origen (mismo patrón que `MAG`, Fase 11a), en vez de quedar limitado al binario por tinte con el que se implementó originalmente.
 
 
 
@@ -257,6 +276,9 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 
  |
 | **Gap: Legibilidad del Plano (Capas + Flujo Animado, GDD §10)**<br> | **Fase 11f**<br> | Toggle de capas HUD + integración de `conduit-flow-effect` al plano real.
+
+ |
+| **Gap: Falta pieza de feedback visual de señal (LED/LCD)**<br> | **Fase 11h**<br> | Dos piezas atómicas nuevas (Indicador LED, Pantalla LCD) + sub-categoría "salida de información" + caso de validación 18.
 
  |
 | **Gap: Iluminación Dinámica**<br> | **Fase 12a**<br> | Luces aditivas, pulsos de alerta y parpadeos en cables.

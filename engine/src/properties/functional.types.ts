@@ -27,6 +27,15 @@ export interface ActuatorProperty {
   readonly directional: boolean;
 }
 
+/**
+ * Sub-categoría conceptual "actuador de salida de información" (Subfase 11h,
+ * docs/Extension_indicador_led_pantalla_lcd.md §3): piezas como el Indicador
+ * LED o la Pantalla LCD no encajan en `ActuatorProperty` — no convierten
+ * energía en trabajo físico, solo visualizan el estado de otro nodo. No se
+ * modelan como `ACT`: se etiquetan `REC` (reciben la señal que muestran), sin
+ * agregar un tag nuevo al esquema.
+ */
+
 export interface ReservoirProperty {
   readonly tag: "RES";
   readonly resourceType: ResourceType;

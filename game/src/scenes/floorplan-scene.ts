@@ -3,6 +3,7 @@ import {
   ATOMIC_COMPONENT_CATALOG,
   GRID_CELL_SIZE_PX,
   advanceChapterProgress,
+  resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
 import type { SignalEdgeId } from "engine";
@@ -19,6 +20,7 @@ import type {
   GridPosition,
   KineticDomainEvent,
   PhysicalComponentDefinition,
+  PlacedComponentInstanceId,
   ScriptedRoute,
   SectionId,
   TaskType,
@@ -69,6 +71,8 @@ import {
   HEADER_COLOR,
   HOVER_HIGHLIGHT_COLOR,
   LABEL_COLOR,
+  LED_ACTIVE_TINT,
+  LED_INACTIVE_TINT,
   OBJECTIVE_DONE_COLOR,
   SEALED_VALVE_COLOR,
   sectionScarFlickerAlpha,
@@ -235,6 +239,12 @@ export class FloorplanScene extends Phaser.Scene {
   private overlayContainer?: Phaser.GameObjects.Container;
   /** Grafo de señal (nodos + cables) del overlay — capa `señales` del HUD (Fase 11f.3), atenuado por su toggle. */
   private signalGraphics?: Phaser.GameObjects.Graphics;
+  /** Sprites de Indicador LED por instancia (Subfase 11h) — retinte por tick, ver `updateLedIndicators`. */
+  private ledIndicators: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle> = new Map();
+  /** Texto de Pantalla LCD por instancia (Subfase 11h) — actualizado con throttle, ver `updateLcdDisplays`. */
+  private lcdDisplays: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Text> = new Map();
+  /** Throttle de `updateLcdDisplays` (Subfase 11h, doc fuente §2: 250-500ms, no por frame). */
+  private lcdRedrawAccumulatorMs = 0;
   /** Tokens de proyectiles ferromagnéticos en vuelo (Fase 11a.3) — redibujado cada frame en ejecución. */
   private projectileContainer?: Phaser.GameObjects.Container;
   /** Trayectoria fantasma en pausa táctica (Fase 11a.3, ASA 3) — calculada una vez al entrar en pausa, destruida al reanudar. */
@@ -330,7 +340,14 @@ export class FloorplanScene extends Phaser.Scene {
 
   private hoverHighlight?: Phaser.GameObjects.Rectangle;
   private hoverCell?: GridPosition;
-  private selectedHighlight?: Phaser.GameObjects.Rectangle;
+  /**
+   * Resaltado persistente de la selección (bug 6): un rectángulo por celda
+   * ocupada, no uno solo — con picker de instalación abierto marca el
+   * footprint completo de la opción enfocada (`installPickerHighlightCells`),
+   * así no tapa overlaps sin querer (playtest, Subfase 11h). Sin picker, cae a
+   * una única celda (`selectedCell`), mismo comportamiento de siempre.
+   */
+  private selectedHighlightCells: Phaser.GameObjects.Rectangle[] = [];
   /** Tooltip con el nombre de la pieza/zona bajo el cursor (playtest #14); objeto de HUD, sigue al puntero en coords de pantalla. */
   private tooltip?: Phaser.GameObjects.Container;
   /** Celda cuyo contenido ya está pintado en `tooltip` — evita redibujar en cada `pointermove` dentro de la misma celda. */
@@ -458,17 +475,10 @@ export class FloorplanScene extends Phaser.Scene {
       .setVisible(false);
     this.markAsWorldObject(this.hoverHighlight);
 
-    // Resaltado PERSISTENTE de la celda seleccionada (color distinto del
-    // hover): queda marcada aunque el mouse se mueva, para no colocar algo en
-    // la celda equivocada (bug 6). Se reposiciona vía `onSelectionChanged`.
-    this.selectedHighlight = this.add
-      .rectangle(0, 0, CELL, CELL)
-      .setOrigin(0, 0)
-      .setStrokeStyle(3, SELECTED_CELL_COLOR, 1)
-      .setFillStyle(SELECTED_CELL_COLOR, 0.22)
-      .setDepth(RENDER_DEPTH.hoverHighlight)
-      .setVisible(false);
-    this.markAsWorldObject(this.selectedHighlight);
+    // Resaltado PERSISTENTE de la celda/footprint seleccionado (color distinto
+    // del hover): queda marcado aunque el mouse se mueva, para no colocar algo
+    // en la celda equivocada (bug 6). Se reconstruye vía `onSelectionChanged`
+    // (ver `updateSelectedHighlight`).
 
     const worldWidth = this.mission.shipFloorplan.gridSize.width * CELL;
     const worldHeight = this.mission.shipFloorplan.gridSize.height * CELL;
@@ -755,6 +765,8 @@ export class FloorplanScene extends Phaser.Scene {
     if (this.mission.coreLoop.mode === "execution") {
       this.updateConduitFlowEffects(delta / 1000);
       this.updateSignalWireFlowEffects(delta / 1000);
+      this.updateLedIndicators();
+      this.updateLcdDisplays(delta / 1000);
     }
     // HUD de estado permanente + panel de acciones flotante (Subfase 11g):
     // el HUD se auto-throttlea por cambio de valor; el panel flotante debe
@@ -975,15 +987,29 @@ export class FloorplanScene extends Phaser.Scene {
     }
   }
 
-  /** Reposiciona/oculta el resaltado persistente de la celda seleccionada (bug 6), según `interaction.selectedCell`. */
+  /**
+   * Reconstruye el resaltado persistente de la selección (bug 6): con picker
+   * de instalación abierto, un rectángulo por celda del footprint completo de
+   * la opción enfocada (`installPickerHighlightCells`); si no, una única
+   * celda (`selectedCell`), mismo comportamiento de siempre. Se destruye y
+   * redibuja por completo en cada cambio (mismo patrón que `updateWireHighlights`).
+   */
   private updateSelectedHighlight(): void {
-    if (!this.selectedHighlight) return;
-    const cell = this.interaction.selectedCell;
-    if (!cell) {
-      this.selectedHighlight.setVisible(false);
-      return;
+    for (const rect of this.selectedHighlightCells) rect.destroy();
+    this.selectedHighlightCells = [];
+
+    const footprintCells = this.interaction.installPickerHighlightCells;
+    const cells = footprintCells ?? (this.interaction.selectedCell ? [this.interaction.selectedCell] : []);
+    for (const cell of cells) {
+      const rect = this.add
+        .rectangle(cell.x * CELL, cell.y * CELL, CELL, CELL)
+        .setOrigin(0, 0)
+        .setStrokeStyle(3, SELECTED_CELL_COLOR, 1)
+        .setFillStyle(SELECTED_CELL_COLOR, 0.22)
+        .setDepth(RENDER_DEPTH.hoverHighlight);
+      this.markAsWorldObject(rect);
+      this.selectedHighlightCells.push(rect);
     }
-    this.selectedHighlight.setPosition(cell.x * CELL, cell.y * CELL).setVisible(true);
   }
 
   // --- Briefing de crisis -------------------------------------------------
@@ -1665,6 +1691,8 @@ export class FloorplanScene extends Phaser.Scene {
     );
     this.overlayContainer = overlay.container;
     this.signalGraphics = overlay.signalGraphics;
+    this.ledIndicators = overlay.ledIndicatorsByInstanceId;
+    this.lcdDisplays = overlay.lcdDisplaysByInstanceId;
     this.markAsWorldObject(this.overlayContainer);
     // El grafo de señal (nodos + cables) es la capa `señales` (Fase 11f.3): al
     // reconstruirse el overlay reaplica el estado actual del toggle.
@@ -1852,6 +1880,53 @@ export class FloorplanScene extends Phaser.Scene {
       if (!effect) continue;
       const { active, intensity } = signalWireFlowIntensity(edge, this.mission);
       effect.update({ active, intensity, kind: "senal", visible }, deltaSeconds);
+    }
+  }
+
+  /**
+   * Indicador LED (Subfase 11h): tinte por estado ON/OFF de su propio nodo
+   * `REC` — se lee `signalRuntime.outputOf` cada tick (operación barata, sin
+   * acumulador) porque, a diferencia del LCD, un tinte binario no necesita
+   * throttle para leerse bien.
+   */
+  private updateLedIndicators(): void {
+    if (this.ledIndicators.size === 0) return;
+    const nodeByOwner = new Map(
+      this.mission.blueprint.signalGraph.nodes
+        .filter((node) => node.role === "receptor")
+        .map((node) => [node.ownerRef, node]),
+    );
+    for (const [instanceId, sprite] of this.ledIndicators) {
+      const node = nodeByOwner.get(instanceId);
+      const active = node ? this.mission.signalRuntime.outputOf(node.id) : false;
+      const color = active ? LED_ACTIVE_TINT : LED_INACTIVE_TINT;
+      if (sprite instanceof Phaser.GameObjects.Rectangle) {
+        sprite.setFillStyle(color);
+      } else {
+        sprite.setTint(color);
+      }
+    }
+  }
+
+  /**
+   * Pantalla LCD (Subfase 11h, doc fuente §2): valor real resuelto por
+   * `resolveLcdDisplayValue` (canal de lectura directa, no el booleano del
+   * grafo de señales), con throttle propio (`lcdRedrawAccumulatorMs`) para no
+   * reformatear texto cada frame — mismo criterio que `queueRedrawAccumulatorMs`.
+   */
+  private updateLcdDisplays(deltaSeconds: number): void {
+    if (this.lcdDisplays.size === 0) return;
+    this.lcdRedrawAccumulatorMs += deltaSeconds * 1000;
+    if (this.lcdRedrawAccumulatorMs < 300) return;
+    this.lcdRedrawAccumulatorMs = 0;
+    const atmosphereOf = (sectionId: SectionId) => this.mission.atmosphereRuntime.atmosphereOf(sectionId);
+    for (const [instanceId, text] of this.lcdDisplays) {
+      const value = resolveLcdDisplayValue(this.mission.blueprint, this.mission.shipFloorplan, instanceId, atmosphereOf);
+      if (!value) {
+        text.setText(t("ui.floorplan.lcd.no-data"));
+        continue;
+      }
+      text.setText(`${value.pressureKpa.toFixed(1)} ${t("ui.floorplan.lcd.pressure-unit")}`);
     }
   }
 

@@ -552,6 +552,12 @@ export {
   CHAPTER_01_INITIAL_ATOMIC_STOCK,
   CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE,
   CHAPTER_01_PRIMER_AVISO,
+  CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
+  CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
+  CHAPTER_01_SEAL_INSTANCE_ID,
+  CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE,
+  CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
+  CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE,
 } from "./crisis/campaign/chapter-01-primer-aviso.js";
 export {
   CHAPTER_02_BY_ARCHETYPE,
@@ -599,8 +605,23 @@ export type {
   PowerScarSource,
   SignalOutputReader,
 } from "./mission/mission-signal-runtime.js";
+// Subfase 11h — sensor de presión real (Indicador LED / Pantalla LCD) + resolución de valor del LCD.
+export {
+  PRESSURE_SENSOR_TRIGGER_KPA,
+  pressureAwareEmitterInputs,
+} from "./mission/pressure-emitter-input-source.js";
+export { resolveLcdDisplayValue } from "./mission/lcd-display-value.js";
+export type { LcdDisplayValue } from "./mission/lcd-display-value.js";
 // Fase 11b — atmósfera viva de la misión (wireado por primera vez).
-export { MissionAtmosphereRuntime } from "./mission/mission-atmosphere-runtime.js";
+export {
+  MissionAtmosphereRuntime,
+  PRESSURE_RECOVERY_CEILING_KPA,
+  PRESSURE_SINK_FLOOR_KPA,
+} from "./mission/mission-atmosphere-runtime.js";
+export type { SectionPressureSinkSource } from "./mission/mission-atmosphere-runtime.js";
+// Subfase 11h — escenario de fuga por pieza sellada rota (Capítulo 1).
+export { sealBreachPressureSink } from "./mission/seal-breach-pressure-sink.js";
+export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";
 // Fase 11b — cicatriz de RE por componente instalado (primer llamador de StructuralIntegrity).
 export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).

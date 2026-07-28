@@ -18,6 +18,7 @@ import {
   CHAPTER_01_ANCHOR_POSITION,
   CHAPTER_01_GATE_NODE_ID,
   CHAPTER_01_PRIMER_AVISO,
+  CHAPTER_01_SEAL_INSTANCE_ID,
   CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
   CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
   CHAPTER_01_SENSOR_NODE_ID,
@@ -69,9 +70,16 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
   it("dispara al iniciar la ejecución y resuelve tras desmontar+instalar el reemplazo", () => {
     const shipState = new MutableShipState(chapter01InitialShip());
     const componentRegistry = buildComponentCatalog().registry;
+    const sealSeed = CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE.exploracion.find(
+      (entry) => entry.instanceId === CHAPTER_01_SEAL_INSTANCE_ID,
+    )!;
     // Stock disponible del reemplazo que instala este escenario (no ejercita
     // la escasez del capítulo 1 — eso lo cubre `chapter-01-primer-aviso.test.ts`).
-    const atomicStock = new MutableAtomicStock({ ["motor-pequeno" as ComponentId]: 1 });
+    // Subfase 11h: también 1 junta hermética de repuesto, para sellar la fuga.
+    const atomicStock = new MutableAtomicStock({
+      ["motor-pequeno" as ComponentId]: 1,
+      ["junta-hermetica" as ComponentId]: 1,
+    });
     const scheduler = new TaskScheduler({
       effect: createShipTaskEffect(shipState, componentRegistry, atomicStock),
     });
@@ -131,6 +139,30 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
         },
       }),
     );
+    // 3er paso (Subfase 11h): sellar la fuga — desmontar la junta rota e
+    // instalar la de repuesto, en paralelo a la cadena válvula→sensor.
+    scheduler.enqueue(
+      createCrewTask({
+        id: "dismantle-junta" as CrewTaskId,
+        actorId: ENGINEER,
+        type: "dismantle",
+        payload: { kind: "dismantle", instanceId: CHAPTER_01_SEAL_INSTANCE_ID },
+      }),
+    );
+    scheduler.enqueue(
+      createCrewTask({
+        id: "install-junta" as CrewTaskId,
+        actorId: ENGINEER,
+        type: "install",
+        dependsOn: ["dismantle-junta" as CrewTaskId],
+        payload: {
+          kind: "install",
+          instanceId: "junta-reemplazo" as PlacedComponentInstanceId,
+          componentDefinitionId: "junta-hermetica" as ComponentId,
+          placement: { position: sealSeed.placement.position, footprint: { width: 1, height: 1 }, rotation: 0 },
+        },
+      }),
+    );
     mode.tick(1); // no-op: seguimos en "planning"
     expect(crisisRuntime.crisisState).toBe("not-triggered");
 
@@ -138,8 +170,10 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
     mode.tick(1); // primer tick en ejecución: el trigger ya aplica (válvula jammed desde el inicio)
     expect(crisisRuntime.crisisState).toBe("active");
 
-    // dismantle (12s) + install (8s) + connect (5s) = 25s, a 1 tick por segundo.
-    for (let i = 0; i < 40 && crisisRuntime.crisisState !== "resolved-success"; i++) {
+    // dismantle (12s) + install (8s) + connect (5s) = 25s, a 1 tick por segundo;
+    // la cadena de la junta corre en paralelo, mismo actor pero sin dependsOn
+    // cruzado — el scheduler la intercala, no se suma en serie.
+    for (let i = 0; i < 60 && crisisRuntime.crisisState !== "resolved-success"; i++) {
       mode.tick(1);
     }
 

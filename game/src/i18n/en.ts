@@ -74,6 +74,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.hud.hull-integrity": "Hull integrity",
   "ui.floorplan.hud.energy": "Energy",
   "ui.floorplan.hud.substances-button": "Substances ({count})",
+  "ui.floorplan.lcd.no-data": "NO DATA",
+  "ui.floorplan.lcd.pressure-unit": "kPa",
   "ui.floorplan.mission.empty-queue": "— no tasks —",
   "ui.floorplan.mission.queue.task-label.go-to": "Heading to section",
   "ui.floorplan.mission.queue.task-label.dismantle": "Dismantling",
@@ -134,7 +136,8 @@ export const EN: Readonly<Record<string, string>> = {
 
   "crisis.objective.capitulo-1.compuerta": "Restore the blocked gate",
   "crisis.objective.capitulo-1.sensor": "Feed the gate from its sensor",
-  "crisis.briefing.capitulo-1-primer-aviso": "An intake valve (an actuator) is jammed and not responding to its sensor: it's blocking access to a section. Nothing critical yet. Two things need fixing. First, the valve: find it on the floorplan (the pulsing marker), dismantle it, and in its place install another simple valve or an equivalent small motor. Second, the signal: the corridor proximity sensor was left unwired from the gate's control panel. Turn on Wire mode, click the sensor's node and then the panel's node so a crew member runs the cable. With both done, hit Play.",
+  "crisis.objective.capitulo-1.fuga": "Seal the pressure leak",
+  "crisis.briefing.capitulo-1-primer-aviso": "An intake valve (an actuator) is jammed and not responding to its sensor: it's blocking access to a section. Nothing critical yet. Three things need fixing. First, the valve: find it on the floorplan (the pulsing marker), dismantle it, and in its place install another simple valve or an equivalent small motor. Second, the signal: the corridor proximity sensor was left unwired from the gate's control panel. Turn on Wire mode, click the sensor's node and then the panel's node so a crew member runs the cable. Third, there's a pressure leak: a nearby gasket is broken and the section is losing pressure — dismantle it and install the spare to seal it. With all three done, hit Play.",
 
   "crisis.objective.capitulo-2.combinador": "Combine both sensors at the panel",
   "crisis.briefing.capitulo-2-ecos-en-el-pasillo": "Two corridor motion sensors trip the alarm on any stray echo: their signals need combining so it only fires when BOTH confirm real movement. The combiner panel is already set up as an AND gate, but it has no inputs. Turn on Wire mode and run a cable from each sensor to the panel's node (either click order works). Careful: there's a timer and it bites. Past the halfway mark the automated system starts shocking the crew every few seconds, and full expiry is a heavy hit plus mission failure. Nobody dies this chapter, but lost HP stays lost. Wire both sensors fast and hit Play.",

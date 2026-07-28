@@ -55,6 +55,20 @@ export const COMPONENT_CONDITION_TINT: Readonly<Partial<Record<ComponentConditio
   destroyed: 0x4a4a52,
 };
 
+/**
+ * Indicador LED (Subfase 11h): binario, resuelto por tinte en runtime (GDD
+ * 11.0), sin sistema de luces nuevo. Ámbar de alerta encendido / gris
+ * apagado — mismo criterio de "dos fenómenos nunca deben verse igual" que el
+ * resto de la paleta (principio 6). Distinto de `COMPONENT_CONDITION_TINT`
+ * (ese es por `condition` de la instancia, este es por estado de señal
+ * ON/OFF). Reutiliza el ámbar ya existente de `jammed`/`planning` — el verde
+ * queda reservado para "todo bien" en el resto de la paleta, usarlo también
+ * para una alarma sería semánticamente al revés (Subfase 11h, feedback de
+ * playtest).
+ */
+export const LED_ACTIVE_TINT = 0xe0a33f;
+export const LED_INACTIVE_TINT = 0x3a3f4a;
+
 /** Colores de token de tripulante (Fase 10d), asignados cíclicamente por índice de actor activo. */
 export const CREW_TOKEN_COLORS: readonly number[] = [
   0xf0f2f8, 0x64dc78, 0x4a7bd4, 0xf2d24b, 0xe0483f, 0xb47bd4,

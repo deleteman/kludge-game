@@ -22,6 +22,13 @@ import {
   ReactionResolver,
   TaskScheduler,
   allEmittersActive,
+  pressureAwareEmitterInputs,
+  CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
+  CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
+  CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE,
+  CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
+  CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE,
+  sealBreachPressureSink,
   buildChemicalCatalog,
   buildComponentCatalog,
   createCrewTask,
@@ -38,7 +45,12 @@ import {
   toReactant,
   MapEntityRegistry,
 } from "engine";
-import type { MixtureHazardPreview, PhysicalComponentDefinition, ShipStatusSnapshot } from "engine";
+import type {
+  EmitterInputSource,
+  MixtureHazardPreview,
+  PhysicalComponentDefinition,
+  ShipStatusSnapshot,
+} from "engine";
 import { listCustomCreations, loadCustomCreation } from "../meta/save-adapter.js";
 import { sectionCentroidCell } from "../render/floorplan-renderer.js";
 import type {
@@ -111,6 +123,15 @@ export class MissionRuntime {
   readonly kineticEvents = new EventEmitter<KineticDomainEvent>();
   /** Estado de señales vivo de la misión (Fase 11a): qué nodos están energizados AHORA. */
   readonly signalRuntime: MissionSignalRuntime;
+  /**
+   * Fuente de entradas de emisor compartida por `signalRuntime` y por la
+   * predicción de trayectoria (Subfase 11h): envuelve `allEmittersActive` para
+   * que un `sensor-presion` se resuelva contra la atmósfera real de su
+   * sección en vez de darse siempre por activo. Guardada como campo (no
+   * recreada en cada llamado) para que ambos consumidores compartan el mismo
+   * criterio.
+   */
+  private readonly emitterInputs: EmitterInputSource;
   /** Proyectiles ferromagnéticos sueltos sobre el plano (Fase 11a). */
   readonly projectiles: ProjectileSimulation;
   /**
@@ -181,9 +202,15 @@ export class MissionRuntime {
     const enemySeed: EnemySeed | undefined = ENEMY_SEED_BY_CHAPTER_ID.get(save.chapterProgress.currentChapterId);
     this.enemyState = new MutableEnemyState(enemySeed?.enemies ?? []);
     this.enemyRoutes = enemySeed?.routes ?? new Map();
+    this.emitterInputs = pressureAwareEmitterInputs(
+      this.shipState,
+      this.shipFloorplan,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      allEmittersActive(this.shipState),
+    );
     this.signalRuntime = new MissionSignalRuntime(
       this.shipState,
-      allEmittersActive(this.shipState),
+      this.emitterInputs,
       this.signalEvents,
       {
         shipFloorplan: this.shipFloorplan,
@@ -231,6 +258,19 @@ export class MissionRuntime {
     this.atmosphereRuntime = new MissionAtmosphereRuntime(
       this.shipFloorplan,
       save.shipState.sectionAtmospheres,
+      // Escenario de fuga del Capítulo 1 (Subfase 11h — ahora objetivo formal
+      // de la crisis, ver `chapter-01-primer-aviso.ts`): drena la sección
+      // mientras la junta hermética no esté sellada, y la RECUPERA en cuanto
+      // el jugador la repara (desmontar+instalar cuenta, se identifica por
+      // posición, no por instanceId — mismo criterio que la resolución de
+      // crisis `replacement-installed-connected`).
+      sealBreachPressureSink(this.shipState, {
+        position: CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE[save.metadata.archetype],
+        acceptableComponentDefinitionIds: CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
+        sectionId: CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE[save.metadata.archetype],
+        drainRateKpaPerSecond: CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
+        recoveryRateKpaPerSecond: CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
+      }),
     );
     this.structuralRuntime = new MissionStructuralRuntime(
       this.shipState,
@@ -381,7 +421,7 @@ export class MissionRuntime {
         previewMissionTrajectory({
           blueprint: this.blueprint,
           signalState: this.signalRuntime.signalState,
-          emitterInputs: allEmittersActive(this.shipState),
+          emitterInputs: this.emitterInputs,
           registry: this.componentRegistry,
           projectiles: this.projectiles,
           ref: state.ref,

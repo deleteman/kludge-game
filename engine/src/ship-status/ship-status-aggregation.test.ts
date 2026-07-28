@@ -65,6 +65,27 @@ describe("aggregateAtmosphere (peor sección gana)", () => {
     const result = aggregateAtmosphere([clean, poisoned], chemicalRegistry);
     expect(result.level).toBe("critical");
   });
+
+  it("Subfase 11h: una fuga de presión sin gas tóxico también degrada el indicador", () => {
+    const leaking = {
+      atmosphere: { ...atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }), pressureKpa: 40 },
+    };
+    const result = aggregateAtmosphere([leaking], chemicalRegistry);
+    // 40/101 ≈ 0.396 → "warning", no "critical": el piso real de la fuga
+    // (`PRESSURE_SINK_FLOOR_KPA`, `mission-atmosphere-runtime.ts`) es
+    // justamente 40 kPa — "fuga menor" por diseño, nunca llega a crítico.
+    expect(result.level).toBe("warning");
+    expect(result.fraction).toBeCloseTo(40 / 101, 5);
+  });
+
+  it("Subfase 11h: una fuga en una sección degrada el agregado aunque otra esté a presión estándar", () => {
+    const clean = { atmosphere: atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }) };
+    const leaking = {
+      atmosphere: { ...atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }), pressureKpa: 35 },
+    };
+    const result = aggregateAtmosphere([clean, leaking], chemicalRegistry);
+    expect(result.level).toBe("warning");
+  });
 });
 
 describe("aggregateLifeSupport (respirabilidad, peor sección gana)", () => {

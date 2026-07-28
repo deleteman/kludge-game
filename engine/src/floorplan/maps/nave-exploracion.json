@@ -750,6 +750,35 @@
                 }, 
                 {
                  "height":0,
+                 "id":75,
+                 "name":"senal:pasillo-central-soporte-vital",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"soporte-vital"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"senal"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":286.037360976136,
+                 "y":286.48828420257
+                }, 
+                {
+                 "height":0,
                  "id":71,
                  "name":"electrico:esclusa-eva-pasillo",
                  "opacity":1,
@@ -805,10 +834,97 @@
                  "width":0,
                  "x":307.310225677573,
                  "y":284.634488716121
+                }, 
+                {
+                 "height":0,
+                 "id":76,
+                 "name":"senal:pasillo-central-sala-ibernacion",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"sala-hibernacion"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"senal"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":433.590924664053,
+                 "y":287.030339944421
+                }, 
+                {
+                 "height":0,
+                 "id":77,
+                 "name":"senal:pasillo-central-invernadero",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"pasillo-central"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"invernadero"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"senal"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":696.638623472534,
+                 "y":287.411016787849
+                }, 
+                {
+                 "height":0,
+                 "id":78,
+                 "name":"senal:sala-hibernacion-invernadero",
+                 "opacity":1,
+                 "point":true,
+                 "properties":[
+                        {
+                         "name":"a",
+                         "type":"string",
+                         "value":"sala-hibernacion"
+                        }, 
+                        {
+                         "name":"b",
+                         "type":"string",
+                         "value":"invernadero"
+                        }, 
+                        {
+                         "name":"kind",
+                         "type":"string",
+                         "value":"senal"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":547.032624005482,
+                 "y":221.553922874872
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":true,
+         "visible":false,
          "x":0,
          "y":0
         }, 
@@ -1711,12 +1827,12 @@
                 }],
          "opacity":1,
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }],
  "nextlayerid":8,
- "nextobjectid":74,
+ "nextobjectid":79,
  "orientation":"orthogonal",
  "properties":[
         {

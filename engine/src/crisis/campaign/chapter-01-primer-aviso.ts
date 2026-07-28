@@ -44,7 +44,15 @@ export const CHAPTER_01_ACTUATOR_INSTANCE_ID =
  * (no `undefined`): reemplaza por completo el stock generoso por defecto que
  * arma `campaign-save-factory.ts` para el resto del catálogo.
  */
-export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {};
+// Subfase 11h: 1 unidad de Sensor de Presión + Pantalla LCD + Indicador LED
+// (para poder instalarlos sin desarmar nada) y 1 junta hermética de repuesto
+// (para reparar la fuga sembrada más abajo, ver `CHAPTER_01_SEAL_INSTANCE_ID`).
+export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
+  "sensor-presion": 1,
+  "pantalla-lcd": 1,
+  "indicador-led": 1,
+  "junta-hermetica": 1,
+} as AtomicPartsStock;
 
 /**
  * 2º paso del capítulo (señal simple, `docs/Primeras_8_crisis.md`): un sensor
@@ -60,6 +68,23 @@ export const CHAPTER_01_GATE_PANEL_INSTANCE_ID = "capitulo-1-panel-compuerta" as
 export const CHAPTER_01_SENSOR_NODE_ID = "capitulo-1-nodo-sensor" as SignalNodeId;
 export const CHAPTER_01_GATE_NODE_ID = "capitulo-1-nodo-compuerta" as SignalNodeId;
 
+/**
+ * Fuga de presión (Subfase 11h, playtest de Indicador LED/Pantalla LCD/Sensor
+ * de Presión): attrezzo PARALELO al puzzle de la válvula de arriba — no toca
+ * `triggers`/`resolutions`/`consequence` de este capítulo, no es una crisis
+ * formal todavía (decisión del operador: validar más adelante si merece
+ * serlo). Una junta hermética sembrada rota (`condition: "jammed"`) drena
+ * `soporte-vital` vía `seal-breach-pressure-sink.ts`; el jugador la repara
+ * desmontándola e instalando la de repuesto (`CHAPTER_01_INITIAL_ATOMIC_STOCK`).
+ */
+export const CHAPTER_01_SEAL_INSTANCE_ID = "capitulo-1-junta-rota" as PlacedComponentInstanceId;
+/** Drenaje mientras la junta esté rota — confirmado con el operador. */
+export const CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND = 1.5;
+/** Recuperación una vez sellada (pedido del operador tras el primer playtest) — misma magnitud que el drenaje. */
+export const CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND = 1.5;
+/** Piezas aceptables para sellar la fuga — mismo criterio que la resolución de crisis (lista cerrada, sin tag genérico disponible). */
+export const CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS: ReadonlyArray<ComponentId> = ["junta-hermetica" as ComponentId];
+
 interface Chapter01ArchetypeParams {
   readonly anchorPosition: GridPosition;
   readonly blockedSectionId: SectionId;
@@ -67,6 +92,8 @@ interface Chapter01ArchetypeParams {
   readonly sensorPosition: GridPosition;
   /** Panel de control de la compuerta (nodo receptor) — junto a la válvula. */
   readonly gatePanelPosition: GridPosition;
+  /** Junta hermética rota (Subfase 11h, fuga de presión) — junto a la válvula, sin solapar. */
+  readonly sealPosition: GridPosition;
 }
 
 /**
@@ -75,7 +102,9 @@ interface Chapter01ArchetypeParams {
  * (`floorplan/maps/nave-exploracion.json`, capa `anclajes`, objeto
  * `valvula-simple-1`) — cae en el borde de `soporte-vital`; `sensorPosition`
  * (pasillo-central) y `gatePanelPosition` (soporte-vital) son celdas
- * transitables verificadas contra la grilla del mapa. Los otros 3 arquetipos:
+ * transitables verificadas contra la grilla del mapa. `sealPosition`
+ * (Subfase 11h) también confirmada por el operador para exploración
+ * (`{x:6,y:5}`, junto a la válvula sin solapar). Los otros 3 arquetipos:
  * posiciones de referencia (anclaje + offset), SIN verificación visual
  * (decisión del operador — solo Exploración se juega de punta a punta por ahora).
  */
@@ -85,24 +114,28 @@ const CHAPTER_01_PARAMS_BY_ARCHETYPE: Record<ShipArchetype, Chapter01ArchetypePa
     blockedSectionId: "soporte-vital" as SectionId,
     sensorPosition: { x: 7, y: 9 },
     gatePanelPosition: { x: 7, y: 6 },
+    sealPosition: { x: 6, y: 5 },
   },
   guerra: {
     anchorPosition: { x: 17, y: 6 },
     blockedSectionId: "enfermeria-basica" as SectionId,
     sensorPosition: { x: 17, y: 8 },
     gatePanelPosition: { x: 18, y: 6 },
+    sealPosition: { x: 17, y: 5 },
   },
   investigacion: {
     anchorPosition: { x: 17, y: 11 },
     blockedSectionId: "hangar-drones" as SectionId,
     sensorPosition: { x: 17, y: 13 },
     gatePanelPosition: { x: 18, y: 11 },
+    sealPosition: { x: 17, y: 10 },
   },
   medica: {
     anchorPosition: { x: 22, y: 5 },
     blockedSectionId: "laboratorio-muestras" as SectionId,
     sensorPosition: { x: 22, y: 7 },
     gatePanelPosition: { x: 23, y: 5 },
+    sealPosition: { x: 22, y: 4 },
   },
 };
 
@@ -129,10 +162,15 @@ function buildChapter01Definition(archetype: ShipArchetype): CrisisDefinition {
         blockedSectionId: params.blockedSectionId,
       },
     ],
-    // Las DOS resoluciones deben cumplirse (AND): reparar/sustituir la válvula
-    // atascada (cualquier pieza con tag ACT, no una lista cerrada de ids —
-    // principio de diseño #1) Y cablear el sensor de proximidad al panel de
-    // la compuerta.
+    // Las TRES resoluciones deben cumplirse (AND): reparar/sustituir la
+    // válvula atascada (cualquier pieza con tag ACT, no una lista cerrada de
+    // ids — principio de diseño #1) Y cablear el sensor de proximidad al
+    // panel de la compuerta Y sellar la fuga de presión (Subfase 11h,
+    // playtest — reutiliza `replacement-installed-connected`, MISMA regla que
+    // ya usa la válvula: verifica posición + `condition: "ok"` + lista
+    // cerrada de `componentDefinitionId` aceptables — acá cerrada porque no
+    // existe ningún tag funcional que signifique "sella la atmósfera", ver
+    // `seal-breach-pressure-sink.ts`).
     resolutions: [
       {
         kind: "functional-tag-installed",
@@ -145,6 +183,12 @@ function buildChapter01Definition(archetype: ShipArchetype): CrisisDefinition {
         fromNodeId: CHAPTER_01_SENSOR_NODE_ID,
         toNodeId: CHAPTER_01_GATE_NODE_ID,
         objectiveKey: "crisis.objective.capitulo-1.sensor",
+      },
+      {
+        kind: "replacement-installed-connected",
+        anchorPosition: params.sealPosition,
+        acceptableComponentDefinitionIds: ["junta-hermetica" as ComponentId],
+        objectiveKey: "crisis.objective.capitulo-1.fuga",
       },
     ],
     // Sin `timer`: capítulo 1 no tiene amenaza real, solo introduce el loop.
@@ -187,6 +231,14 @@ function buildChapter01SeededComponents(archetype: ShipArchetype): ReadonlyArray
   return [
     cell(params.sensorPosition, CHAPTER_01_SENSOR_INSTANCE_ID, "fotorreceptor"),
     cell(params.gatePanelPosition, CHAPTER_01_GATE_PANEL_INSTANCE_ID, "chip-circuito-generico"),
+    // Fuga de presión (Subfase 11h) — junta hermética sembrada ROTA, a
+    // diferencia de las dos piezas de arriba (sembradas `ok`).
+    {
+      instanceId: CHAPTER_01_SEAL_INSTANCE_ID,
+      componentDefinitionId: "junta-hermetica" as ComponentId,
+      placement: { position: params.sealPosition, footprint: { width: 1, height: 1 }, rotation: 0 },
+      condition: "jammed",
+    },
   ];
 }
 
@@ -222,6 +274,16 @@ export const CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE: Record<
 > = Object.fromEntries(
   SHIP_ARCHETYPES.map((archetype) => [archetype, buildChapter01SeededNodes(archetype)]),
 ) as Record<ShipArchetype, ReadonlyArray<SignalNode<PlacedComponentInstanceId>>>;
+
+/** Sección que drena la fuga de presión (Subfase 11h) — misma que `blockedSectionId`, por arquetipo. */
+export const CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE: Record<ShipArchetype, SectionId> = Object.fromEntries(
+  SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].blockedSectionId]),
+) as Record<ShipArchetype, SectionId>;
+
+/** Posición de la junta hermética de la fuga (Subfase 11h) — identidad que usa el sumidero de presión, por arquetipo. */
+export const CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE: Record<ShipArchetype, GridPosition> = Object.fromEntries(
+  SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].sealPosition]),
+) as Record<ShipArchetype, GridPosition>;
 
 // --- Compatibilidad con 10a/10b (Exploración es el arquetipo de referencia) ---
 export const CHAPTER_01_PRIMER_AVISO = CHAPTER_01_BY_ARCHETYPE.exploracion;

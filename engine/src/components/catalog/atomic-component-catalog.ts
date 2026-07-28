@@ -1,6 +1,6 @@
 /**
  * Catálogo de componentes atómicos universales (GDD 7.2).
- * 21 piezas, disponibles en los 4 arquetipos. Solo los atómicos tienen footprint fijo de catálogo.
+ * 24 piezas, disponibles en los 4 arquetipos. Solo los atómicos tienen footprint fijo de catálogo.
  */
 
 import type { ComponentId } from "../physical-component.types.js";
@@ -221,5 +221,43 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
       material: { CE: "N" },
     },
     // Nota: contenedor, sin conductividad eléctrica.
+  },
+  {
+    id: "indicador-led" as ComponentId,
+    name: "Indicador LED",
+    data: {
+      footprint: { width: 1, height: 1 },
+      functional: [{ tag: "REC", threshold: 0.5, responseDelayMs: 100 }],
+    },
+    // Nota: extensión Subfase 11h (docs/Extension_indicador_led_pantalla_lcd.md §1).
+    // "Actuador de salida de información" (§3 del documento): no produce trabajo físico
+    // como el resto de `ACT`, solo visualiza el estado ON/OFF del nodo al que está cableado
+    // — feedback binario resuelto en /game con tinte en runtime (GDD 11.0), sin sistema nuevo.
+  },
+  {
+    id: "pantalla-lcd" as ComponentId,
+    name: "Pantalla LCD",
+    data: {
+      footprint: { width: 2, height: 1 },
+      functional: [{ tag: "REC", threshold: 0.5, responseDelayMs: 100 }],
+    },
+    // Nota: extensión Subfase 11h (docs/Extension_indicador_led_pantalla_lcd.md §2). Pieza
+    // atómica independiente, no receta de otras piezas. A diferencia del Indicador LED, no
+    // solo lee su propio nodo REC (ON/OFF) — el valor real que muestra (ej. presión de una
+    // sección) se resuelve por fuera del grafo de señales, ver `mission/lcd-display-value.ts`.
+  },
+  {
+    id: "sensor-presion" as ComponentId,
+    name: "Sensor de presión",
+    data: {
+      footprint: { width: 1, height: 1 },
+      functional: [{ tag: "EM", range: 0, triggerType: "pressure", frequency: 1 }],
+    },
+    // Nota: extensión Subfase 11h, requerido por el caso de validación 19 ("El Panel de
+    // Diagnóstico Improvisado"). A diferencia del resto de `EM` del catálogo (siempre activos
+    // mientras cableados, ver `allEmittersActive`), este `triggerType` SÍ se evalúa contra el
+    // mundo real — ver `mission/pressure-emitter-input-source.ts` — porque sin eso el caso 19
+    // no puede validar nada (un sensor que reporta lo mismo con o sin fuga no sirve de panel de
+    // diagnóstico). Resuelve el punto 3 de PENDIENTES_OBSERVACIONES.md solo para este `triggerType`.
   },
 ];

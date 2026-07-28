@@ -120,6 +120,33 @@ export class MissionInteractionController {
   }
 
   /**
+   * Celdas que realmente ocuparía la instalación en curso (footprint completo
+   * de la opción enfocada en el picker, en la posición donde de verdad
+   * encajaría — `findFittingInstallPlacement`, motor, misma resolución que usa
+   * `confirmInstall`), para que `FloorplanScene` resalte el footprint entero
+   * en vez de una sola celda y así no tape overlaps sin querer (playtest,
+   * Subfase 11h). `undefined` si no hay picker abierto o la opción enfocada no
+   * encaja en ningún lado (sin resaltado, se mantiene el 1x1 de `selectedCell`).
+   */
+  get installPickerHighlightCells(): ReadonlyArray<GridPosition> | undefined {
+    if (!this.installPickerState) return undefined;
+    const state = this.installPickerState;
+    const options = state.activeTab === "inventory" ? state.inventoryOptions : state.catalogOptions;
+    const option = options[state.selectedIndex];
+    if (!option) return undefined;
+    const section = sectionContainingCell(this.mission.shipFloorplan, state.position);
+    if (!section) return undefined;
+    const fitPosition = findFittingInstallPlacement(
+      section,
+      this.mission.blueprint.placedComponents,
+      option.footprint,
+      state.position,
+    );
+    if (!fitPosition) return undefined;
+    return occupiedCells({ position: fitPosition, footprint: option.footprint, rotation: 0 });
+  }
+
+  /**
    * `true` si hay contenido contextual que mostrar (Subfase 11g): la escena
    * lo usa para decidir si debe reposicionar/mostrar el panel flotante cada
    * frame, sin conocer los detalles de `ActionPanelContent`.
@@ -530,6 +557,7 @@ export class MissionInteractionController {
             selectedIndex: 0,
           };
           this.redrawInstallPickerModal();
+          this.callbacks.onSelectionChanged();
         },
         onAnalyzeSubstance: (substanceId) => {
           if (!this.selectedActorIdValue) return;
@@ -644,11 +672,13 @@ export class MissionInteractionController {
           if (!this.installPickerState) return;
           this.installPickerState = { ...this.installPickerState, activeTab: tab, selectedIndex: 0 };
           this.redrawInstallPickerModal();
+          this.callbacks.onSelectionChanged();
         },
         onSelect: (index) => {
           if (!this.installPickerState) return;
           this.installPickerState = { ...this.installPickerState, selectedIndex: index };
           this.redrawInstallPickerModal();
+          this.callbacks.onSelectionChanged();
         },
         onInstall: (option) => this.confirmInstall(option, state.position),
         onCancel: () => this.closeInstallPicker(),
@@ -697,5 +727,6 @@ export class MissionInteractionController {
     this.installPickerContainer?.destroy(true);
     this.installPickerContainer = undefined;
     this.installPickerState = undefined;
+    this.callbacks.onSelectionChanged();
   }
 }

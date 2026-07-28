@@ -10,6 +10,8 @@ import {
   CHAPTER_01_ANCHOR_POSITION,
   CHAPTER_01_GATE_NODE_ID,
   CHAPTER_01_PRIMER_AVISO,
+  CHAPTER_01_SEAL_INSTANCE_ID,
+  CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
   CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
   CHAPTER_01_SENSOR_NODE_ID,
 } from "./chapter-01-primer-aviso.js";
@@ -108,9 +110,18 @@ describe("Capítulo 1 — Primer Aviso (escenario completo)", () => {
     });
     expect(replacedResult.state).toBe("active");
 
-    // Tick 4: además cableó el sensor al panel de la compuerta -> ahora sí resuelve.
+    // Tick 4: además cableó el sensor al panel de la compuerta Y selló la
+    // fuga de presión (Subfase 11h) -> ahora sí resuelve (AND de las 3).
+    const sealSeed = CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE.exploracion.find(
+      (entry) => entry.instanceId === CHAPTER_01_SEAL_INSTANCE_ID,
+    )!;
+    const resolvedShip = shipWithActuator("ok", "motor-pequeno" as ComponentId);
     const resolvedCtx: CrisisEvalContext = {
-      ship: { ...shipWithActuator("ok", "motor-pequeno" as ComponentId), signalGraph: chapter01Graph(true) },
+      ship: {
+        ...resolvedShip,
+        placedComponents: [...resolvedShip.placedComponents, { ...sealSeed, condition: "ok" }],
+        signalGraph: chapter01Graph(true),
+      },
       tick: { dtSeconds: 1, elapsedSeconds: 120 },
       componentRegistry,
     };
