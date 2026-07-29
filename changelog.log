@@ -2567,3 +2567,22 @@ Archivos: `game/src/ui/widgets/{crew-queue-panel,mission-action-panel}.ts`, `gam
 `game/src/scenes/floorplan-scene.ts`.
 `tsc --noEmit` limpio en `/engine` y `/game`; `vite build` limpio; `/engine` 569 tests; eslint limpio.
 Razón: segundo playtest del operador sobre 12c.7 — pulido de timer, wrap del nombre y reubicación de la luz del desmontaje.
+
+2026-07-30 — Fase 12c.8: CRT en dos capas + estática localizada + accesibilidad
+Reestructuración del filtro CRT (feedback del operador sobre 12c.4). `crt-pipeline.ts` reescrito con uniforms
+(`uCrtIntensity`/`uFailure`/`uTime`/`uResolution`/`uViewportSize`) vía `onPreRender`: capa "Clean CRT" (scanlines ≤15%,
+aberración cromática base, barrel ≤2%, glow de fósforo de 4 taps) escalada por `uCrtIntensity`; capa "System Failure"
+(CA fuerte + flicker ~1.9 Hz < umbral WCAG) escalada por `uFailure`. Barrel/scanlines en coords globales de ventana
+(`gl_FragCoord`) para coherencia entre las dos cámaras. Aplicado a frame completo (mundo + HUD) — `registerCrtPipeline`
+devuelve la instancia por cámara; driver por frame `updateCrtDriver` en `floorplan-scene.ts` deriva `uFailure` de la
+condición del overlay de alerta (crítico/overload violento/inicio de crisis) por el control de flicker. Estática de
+fósforo localizada nueva (`phosphor-static-effect.ts`) sobre la celda averiada, disparada en el suscriptor de
+`failureEvents`, con gate de flicker. Accesibilidad: `crtIntensity`/`flickerIntensity` en `GameSettings`, store vivo
+`render/crt-settings.ts`, widget `ui/widgets/kenney-slider.ts` (primitivas) y dos sliders en `options-scene.ts` con
+claves i18n nuevas.
+Archivos: `game/src/render/{crt-pipeline,crt-settings}.ts`, `game/src/scenes/{floorplan-scene,options-scene}.ts`,
+`game/src/particles/effects/phosphor-static-effect.ts`, `game/src/meta/game-settings.types.ts`,
+`game/src/ui/widgets/kenney-slider.ts`, `game/src/i18n/{es,en}.ts`.
+`tsc --noEmit` limpio en `/game`; `vite build` limpio. Smoke test visual aprobado por el operador.
+Razón: hacer legible la lectura de componentes sin perder la estética retro y proteger a jugadores fotosensibles
+(feedback del operador + roadmap Duskers de estática localizada).

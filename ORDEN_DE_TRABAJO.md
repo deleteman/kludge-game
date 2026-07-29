@@ -2572,3 +2572,35 @@ notificaciones legible pedido por el operador.
 - Luz del desmontaje: el operador se refería a las FICHAS que vuelan hacia la mesa, no al efecto del proceso. Se quitó el
   `PointLight`/`lightHook` de `dismantleEffect` (quedan las bolas de energía) y `fireCollectibleToWorkbench` gana un halo
   aditivo pulsante (glow) sobre el núcleo — el HUD no está iluminado, así que la "luz" es blend ADD, no un `PointLight` real.
+
+### Fase 12c.8 — CRT en dos capas + estática localizada + accesibilidad ✅ (2026-07-30)
+
+Ajuste de feedback del operador sobre el CRT (`crt-pipeline.ts`, 12c.4): reestructurarlo en dos capas conceptuales y
+cubrir accesibilidad fotosensibilidad. Decisiones tomadas con el operador: CRT a **frame completo** (mundo + HUD, no solo
+HUD); estática localizada como **efecto de partículas** (no uniforms de shader); **dos controles** de accesibilidad
+separados (estético vs parpadeo/fallo). 100% `/game`, sin tocar `/engine`.
+
+- **Shader parametrizado (`crt-pipeline.ts`):** uniforms `uCrtIntensity`/`uFailure`/`uTime`/`uResolution`/`uViewportSize`
+  vía `onPreRender`, en vez de constantes hardcodeadas. Capa "Clean CRT" (scanlines ≤15%, CA base leve, barrel ≤2%, glow
+  de fósforo barato de 4 taps) escalada por `uCrtIntensity`; capa "System Failure" (CA fuerte + flicker ~1.9 Hz, bajo el
+  umbral WCAG) escalada por `uFailure`. Barrel/scanlines en coords globales de ventana (`gl_FragCoord` + `uResolution`)
+  para ser coherentes entre las dos cámaras. Alpha-preserving. A `uCrtIntensity=0` es passthrough.
+- **Full-frame (`floorplan-scene.ts`):** `registerCrtPipeline` ahora devuelve la instancia (una por cámara) y se aplica a
+  `cameras.main` + `hudCamera`. Driver por frame (`updateCrtDriver`) sube/baja `crtFailureLevel` con ease exponencial según
+  la misma condición del overlay de alerta (crítico / overload violento / inicio de crisis, en ejecución), multiplicado por
+  el control de flicker → `uFailure`. **Bloom nativo descartado** a favor del glow en shader (una sola mecánica, sin riesgo
+  de orden FX-vs-pipeline).
+- **Estática de fósforo localizada (`phosphor-static-effect.ts` nuevo):** ruido de fósforo sobre la celda del componente
+  averiado (patrón `fireEnvironmentalDamage`: devuelve emisores para que la escena los marque de mundo + depth). Disparada
+  en el suscriptor de `failureEvents` (major = ruptura estructural / incendio / explosión; minor = resto), con gate del
+  control de flicker (a 0 no aparece). No usa el `effect-registry` (una-por-kind, ya ocupados) — helper dedicado `fireLocalStatic`.
+- **Accesibilidad:** `GameSettings` gana `crtIntensity`/`flickerIntensity` (clamp [0,1], defaults 0.7/1.0); store vivo en
+  memoria `render/crt-settings.ts` (desacopla lectura por-frame del plano de escritura en vivo del slider); widget nuevo
+  `ui/widgets/kenney-slider.ts` (primitivas — el pack Kenney no trae slider); dos sliders en `options-scene.ts` con claves
+  i18n `ui.menu.options.crt-intensity`/`flicker-intensity`, persistidos en "Volver".
+
+`tsc --noEmit` limpio en `/game`; `vite build` limpio. Smoke test visual aprobado por el operador.
+Riesgo anotado a vigilar en playtest: posible costura de barrel en la frontera del header entre las dos cámaras (barrel
+≤2%, mínima) — fallback documentado en el plan = compositar en un `RenderTexture` full-screen y aplicar el pipeline una vez.
+Razón: feedback del operador para hacer legible la lectura de componentes sin perder la estética retro, y proteger a
+jugadores fotosensibles.

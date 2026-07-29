@@ -99,7 +99,7 @@ import {
 import { metaGameStateMachine } from "../meta/meta-game.js";
 import { campaignSession } from "../meta/campaign-session.js";
 import { buildCrisisOutcome, setPendingCrisisOutcome } from "../meta/crisis-outcome.js";
-import { saveCampaignSave } from "../meta/save-adapter.js";
+import { saveCampaignSave, loadSettings } from "../meta/save-adapter.js";
 import { MissionRuntime } from "../mission/mission-runtime.js";
 import {
   MissionInteractionController,
@@ -127,7 +127,9 @@ import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
 import { createScrollableText } from "../ui/widgets/scrollable-text.js";
 import { CustomCursor } from "../ui/custom-cursor.js";
-import { registerCrtPipeline } from "../render/crt-pipeline.js";
+import { registerCrtPipeline, type CrtPostFxPipeline } from "../render/crt-pipeline.js";
+import { getCrtIntensity, getFlickerIntensity, hydrateCrtSettings } from "../render/crt-settings.js";
+import { firePhosphorStatic } from "../particles/effects/phosphor-static-effect.js";
 import { NotificationCenter } from "../ui/widgets/notification-center.js";
 import { renderCrewQueue, type CrewQueueHandle, type UnifiedQueueTask } from "../ui/widgets/crew-queue-panel.js";
 import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
@@ -255,6 +257,15 @@ export class FloorplanScene extends Phaser.Scene {
    * pintaba encima de `cameras.main`/HUD, tapando el modal de briefing).
    */
   private hudCamera!: Phaser.Cameras.Scene2D.Camera;
+
+  /**
+   * Instancias del pipeline CRT (una por cámara: mundo + HUD), sembradas en
+   * `create()`. La escena les fija `failure`/`time`/`crtIntensity` cada frame
+   * (ver el driver en `update()`). Vacío bajo Canvas (el pipeline es no-op ahí).
+   */
+  private crtPipelines: CrtPostFxPipeline[] = [];
+  /** Rampa suavizada [0,1] de la capa "System Failure" del CRT — sube en crítico/crisis, baja al normalizarse. */
+  private crtFailureLevel = 0;
 
   private overlayContainer?: Phaser.GameObjects.Container;
   /** Grafo de señal (nodos + cables) del overlay — capa `señales` del HUD (Fase 11f.3), atenuado por su toggle. */
@@ -486,9 +497,15 @@ export class FloorplanScene extends Phaser.Scene {
     // después — por eso pinta siempre último (ver comentario del campo).
     this.cameras.main.setViewport(0, HEADER_HEIGHT, MAP_VIEWPORT_WIDTH, MAP_VIEWPORT_HEIGHT);
     this.hudCamera = this.cameras.add(0, 0, 1280, 720);
-    // Filtro CRT sutil sobre el HUD (12c.4): brillo de fósforo retro en textos
-    // y bordes. Solo bajo WebGL — en Canvas no hace nada, sin romper.
-    registerCrtPipeline(this, this.hudCamera);
+    // Filtro CRT (12c.4 → reestructurado en dos capas): brillo de fósforo retro
+    // sobre el FRAME COMPLETO (mundo + HUD) — barrel/scanlines coherentes entre
+    // ambas cámaras vía `gl_FragCoord` global (ver `crt-pipeline.ts`). Solo bajo
+    // WebGL — en Canvas no hace nada, sin romper. Se siembra el store de
+    // intensidad desde disco (async, hasta entonces sirve los defaults).
+    this.crtPipelines = [registerCrtPipeline(this, this.cameras.main), registerCrtPipeline(this, this.hudCamera)].filter(
+      (p): p is CrtPostFxPipeline => p !== null,
+    );
+    void loadSettings().then((settings) => hydrateCrtSettings(settings));
 
     this.interaction = new MissionInteractionController(
       this.rex,
@@ -761,6 +778,17 @@ export class FloorplanScene extends Phaser.Scene {
           .position;
         if (cell) fireEventEffect(this, cell, event);
         fireEventSound(this, event);
+        // Estática de fósforo LOCALIZADA (capa "System Failure", roadmap
+        // Duskers): la celda del componente averiado pierde "señal". Gate por el
+        // control de flicker de accesibilidad (a 0, un jugador fotosensible no la
+        // ve, coherente con la capa `uFailure` del shader). Severidad por gravedad:
+        // ruptura estructural / incendio / explosión = major; el resto = minor.
+        if (cell && getFlickerIntensity() > 0) {
+          const major =
+            event.kind === "structural-failure" ||
+            (event.kind === "overload" && (event.failureMode === "fire" || event.failureMode === "explosion"));
+          this.fireLocalStatic(cell, major ? "major" : "minor");
+        }
         // Overlay de alerta de pantalla completa (Fase 12a): solo incendio/
         // explosión son lo bastante graves como para justificar un flash
         // GLOBAL — un corte ("cut", ej. cortocircuito eléctrico) ya tiene su
@@ -907,6 +935,12 @@ export class FloorplanScene extends Phaser.Scene {
         time / 1000 < this.violentAlertUntilSeconds ||
         time / 1000 < this.crisisStartAlertUntilSeconds);
     this.redrawScreenAlertOverlay(time / 1000, screenAlertActive);
+    // Driver de la capa "System Failure" del CRT (12c.4 reestructurado): la
+    // misma condición del overlay de alerta (crítico / overload violento /
+    // inicio de crisis, en ejecución) sube una rampa suavizada, que decae al
+    // normalizarse. Se multiplica por el control de flicker de accesibilidad,
+    // así que a flicker 0 la capa queda apagada aunque la estética CRT siga.
+    this.updateCrtDriver(time / 1000, delta / 1000, screenAlertActive);
     // Parpadeo verdoso del retrato del tripulante en gas tóxico/corrosivo
     // (12c.2). Estado vivo de atmósfera → overlay persistente por tarjeta.
     this.syncCrewToxicOverlays();
@@ -981,6 +1015,41 @@ export class FloorplanScene extends Phaser.Scene {
   /** Un objeto de mundo no se renderiza en `hudCamera` — solo en `cameras.main`. */
   private markAsWorldObject(obj: Phaser.GameObjects.GameObject): void {
     this.hudCamera.ignore(obj);
+  }
+
+  /**
+   * Sincroniza los uniforms del CRT cada frame. `crtFailureLevel` sigue a
+   * `active` (misma condición del overlay de alerta) con un ease exponencial
+   * (subida rápida, bajada más lenta) para que la crisis "encienda" el fósforo
+   * de golpe y se calme suave. El resultado, escalado por el control de flicker,
+   * alimenta `uFailure` (aberración + parpadeo); `crtIntensity` viene del slider.
+   */
+  private updateCrtDriver(nowSeconds: number, deltaSeconds: number, active: boolean): void {
+    if (this.crtPipelines.length === 0) return;
+    const target = active ? 1 : 0;
+    // Constante de tiempo distinta según suba o baje (ver comentario).
+    const rate = target > this.crtFailureLevel ? 8 : 2.5;
+    const k = 1 - Math.exp(-rate * Math.max(deltaSeconds, 0));
+    this.crtFailureLevel += (target - this.crtFailureLevel) * k;
+    const crtIntensity = getCrtIntensity();
+    const failure = this.crtFailureLevel * getFlickerIntensity();
+    for (const pipeline of this.crtPipelines) {
+      pipeline.crtIntensity = crtIntensity;
+      pipeline.failure = failure;
+      pipeline.time = nowSeconds;
+    }
+  }
+
+  /**
+   * Estática de fósforo localizada sobre `cell` (capa "System Failure"). Marca
+   * los emisores como objetos de MUNDO + depth de efecto para evitar el bug de
+   * doble-cámara (mismo patrón que `fireEnvironmentalDamage`).
+   */
+  private fireLocalStatic(cell: { x: number; y: number }, severity: "minor" | "major"): void {
+    for (const emitter of firePhosphorStatic(this, cell, severity)) {
+      emitter.setDepth(RENDER_DEPTH.effect);
+      this.markAsWorldObject(emitter);
+    }
   }
 
   private isOverFixedUi(pointer: Phaser.Input.Pointer): boolean {

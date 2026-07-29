@@ -259,6 +259,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.menu.options.header": "Opciones",
   "ui.menu.options.language": "Idioma",
   "ui.menu.options.fullscreen": "Pantalla completa",
+  "ui.menu.options.crt-intensity": "Intensidad CRT",
+  "ui.menu.options.flicker-intensity": "Parpadeo / Fallo",
   "ui.menu.options.on": "Activado",
   "ui.menu.options.off": "Desactivado",
   "ui.menu.options.back": "Volver",
