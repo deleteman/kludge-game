@@ -50,6 +50,18 @@ import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapsho
  *    `StructuralIntegrity` (`failure/structural-failure.ts`) cableada en vivo
  *    por primera vez (`MissionStructuralRuntime`, Fase 11b) — antes existía
  *    la clase pero ningún llamador de producción.
+ *
+ * Fase 12a: `schemaVersion` 4→5 — se añade `Blueprint.overloadedRefs`, cicatriz
+ * persistente de "conductor/reservorio en cortocircuito" (`OverloadRule`,
+ * `failure/overload-rule.ts`), cableada en vivo por primera vez
+ * (`MissionOverloadRuntime`, `mission/mission-overload-runtime.ts`) — misma
+ * situación que tenía `StructuralIntegrity` antes de 11b: la regla existía y
+ * estaba testeada (caso de validación 2) pero sin ningún llamador de
+ * producción. A diferencia de la cicatriz de RE (alimentada por corrosión
+ * real de la atmósfera), no existe ninguna simulación de carga eléctrica en
+ * el motor — `load`/`capacity` son datos scripteados por la crisis
+ * (`CrisisDefinition.scriptedOverloads`), mismo criterio narrativo que
+ * `condition: "jammed"` sembrado en el capítulo 1.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -104,4 +116,6 @@ export interface Blueprint {
   readonly sectionAtmospheres: ReadonlyArray<SectionAtmosphereSnapshot>;
   /** Cicatriz de energía (Fase 11b): secciones sin suministro, ver `MissionSignalRuntime`. */
   readonly unpoweredSectionIds: ReadonlyArray<SectionId>;
+  /** Cicatriz de sobrecarga (Fase 12a): refs de conducto/reservorio en cortocircuito permanente, ver `MissionOverloadRuntime`. */
+  readonly overloadedRefs: ReadonlyArray<PlacedComponentInstanceId>;
 }

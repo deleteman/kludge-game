@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 6 node_modules/electron/dist/Electron.app/Contents/MacOS/Electron /Users/fernando.doglio/workspace/kludge-game/electron)",
+      "Bash(node_modules/.bin/electron --version)",
+      "Bash(npm uninstall *)",
+      "Bash(git -C /Users/fernando.doglio/workspace/kludge-game status --short)",
+      "Bash(echo \"clean: $?\")",
+      "Bash(grep -n \"PlacedComponentInstanceId,$\" /Users/fernando.doglio/workspace/kludge-game/game/src/mission/mission-runtime.ts)",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -rln \"sprites/components\\\\|spriteKey\\\\|componentSprite\\\\|components/\\\\${\" /Users/fernando.doglio/workspace/kludge-game/game/src)",
+      "Bash(xargs -I{} cat {})",
+      "Bash(grep -n \"anchors: \\\\[\\\\]\\\\|anchors:$\" -A2 -B2 /Users/fernando.doglio/workspace/kludge-game/engine/src/floorplan/floorplan-integrity.test.ts)",
+      "Bash(grep -n '\"id\":[0-9]*,$' /Users/fernando.doglio/workspace/kludge-game/engine/src/floorplan/maps/nave-exploracion.json)",
+      "Bash(git checkout *)",
+      "Bash(find \"$HOME/Library/Application Support\" -maxdepth 3 -iname \"*Code*\" 2>/dev/null)",
+      "Read(//Users/fernando.doglio/Library/Application Support/**)",
+      "Read(//Users/fernando.doglio/Library/Application Support/Code/User/History/**)",
+      "Bash(grep -rl \"nave-exploracion\" \"/Users/fernando.doglio/Library/Application Support/Code/User/History\" 2>/dev/null)",
+      "Bash(grep -rl \"nave-exploracion.json\" \"/Users/fernando.doglio/Library/Application Support/Code/User/History\" 2>/dev/null | xargs grep -l \"resource\" 2>/dev/null)",
+      "Bash(git fsck *)",
+      "Bash(sed -n '260,300px' /Users/fernando.doglio/workspace/kludge-game/game/src/scenes/floorplan-scene.ts 2>/dev/null; sed -n '260,300p' /Users/fernando.doglio/workspace/kludge-game/game/src/scenes/floorplan-scene.ts; echo ---; sed -n '290,330p' /Users/fernando.doglio/workspace/kludge-game/game/src/mission/mission-interaction-controller.ts)",
+      "Bash(grep -n \"H\\\\${\" -r /Users/fernando.doglio/workspace/kludge-game/engine/src /Users/fernando.doglio/workspace/kludge-game/game/src)",
+      "Bash(grep -rn '\"H1\"\\\\|\"H2\"\\\\|`H\\\\$\\\\|nodeLabel\\\\|portLabel' /Users/fernando.doglio/workspace/kludge-game/engine/src /Users/fernando.doglio/workspace/kludge-game/game/src)",
+      "Bash(grep -rn '\"H1\"\\\\|'\"'\"'H1'\"'\"'\\\\|H1 \\\\|H2 \\\\|`H1`\\\\|Habitac\\\\|hull-section\\\\|seccion' /Users/fernando.doglio/workspace/kludge-game/game/src /Users/fernando.doglio/workspace/kludge-game/engine/src)",
+      "Bash(grep -rln \"H\\\\d\\\\|H\\\\${\" /Users/fernando.doglio/workspace/kludge-game/game/src /Users/fernando.doglio/workspace/kludge-game/engine/src /Users/fernando.doglio/workspace/kludge-game/game/content)",
+      "Bash(grep -rn \"role\\\\[0\\\\]\\\\|charAt\\(0\\)\\\\|slice\\(0, 1\\)\\\\|toUpperCase\\(\\).charAt\\\\|label = \\\\`\" /Users/fernando.doglio/workspace/kludge-game/game/src /Users/fernando.doglio/workspace/kludge-game/engine/src)",
+      "Bash(npm -v)",
+      "Bash(git status *)",
+      "Bash(npm run *)",
+      "Bash(mkdir -p /Users/fernando.doglio/.claude/plans)",
+      "Bash(./node_modules/.bin/tsc -p game/tsconfig.json --noEmit)",
+      "Bash(ls -la ~/.nvm 2>/dev/null | head; ls -la ~ 2>/dev/null | grep -i node; find / -maxdepth 6 -iname \"node\" -type f 2>/dev/null | head -10)",
+      "Read(//Users/fernando.doglio/.nvm/**)",
+      "Read(//Users/fernando.doglio/**)",
+      "Bash(./node_modules/.bin/eslint .)",
+      "Bash(mkdir -p /Users/fernando.doglio/.claude/plans 2>/dev/null; ls /Users/fernando.doglio/.claude/plans)",
+      "Bash(../node_modules/.bin/vitest run *)"
+    ],
+    "additionalDirectories": [
+      "/Users/fernando.doglio/workspace/kludge-game/game/src/scenes",
+      "/Users/fernando.doglio/.claude/plans"
+    ]
+  }
+}

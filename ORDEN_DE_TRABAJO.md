@@ -2307,3 +2307,268 @@ entorno, queda pendiente de confirmación visual por el operador antes del cierr
 Razón: feedback de playtest manual del operador sobre la Subfase 11h recién implementada — antes de darla por
 cerrada del todo, hacerla jugable de punta a punta con retroalimentación real de estado de nave, objetivo
 formal, recuperación visible y semántica de color correcta.
+
+### Fase 12a — Iluminación Dinámica y Estados de Daño ✅ (2026-07-28)
+
+Primera subfase de la Fase 12 (`nuevo-orden.md`, "Pulido Estructural Sensorial: Luces y Audio"): sistema de
+luces aditivas dinámicas, estados de daño de fondo persistentes, y capa "estructural" del HUD del plano —
+hasta ahora un botón sin overlay real (`PENDIENTES_OBSERVACIONES.md` punto 11).
+
+**Motor**: cicatriz persistente de sobrecarga eléctrica — `Blueprint.overloadedRefs` (`schemaVersion` 4→5) +
+`MissionOverloadRuntime` (`engine/src/mission/mission-overload-runtime.ts`), primer llamador de producción de
+`OverloadRule` (existía completa y testeada desde el caso de validación 2, sin ningún runtime que la
+ejercitara — mismo punto de partida que tenía `StructuralIntegrity` antes de la Fase 11b). A diferencia de la
+corrosión (alimentada por un dato real y continuo, la atmósfera), no existe simulación de carga eléctrica en el
+motor: el `load`/`capacityOverride` de cada sobrecarga es dato SCRIPTEADO por la crisis
+(`CrisisDefinition.scriptedOverloads`, nuevo campo opcional, ausente = ninguno todavía en ningún capítulo) —
+mismo criterio narrativo que `condition: "jammed"` sembrado en el capítulo 1, decisión explícita del operador
+tras preguntarlo. Solo el `failureMode "cut"` (corte/cortocircuito, típico de recurso eléctrico) deja cicatriz
+visual continua; `"fire"`/`"explosion"` ya tienen su propio burst (`overload-effect.ts`). Segunda pieza de
+motor: `aggregateSectionHullIntegrity` (`engine/src/ship-status/ship-status-aggregation.ts`), agregación de RE
+POR SECCIÓN (peor caso entre los componentes anclados, mismo criterio que `aggregateHullIntegrity` ya usaba a
+nivel nave completa), expuesta vía `ShipStatusQuery.sectionHullIntegrity`.
+
+**Juego**: módulo nuevo de luces aditivas (`game/src/particles/effects/dynamic-light.ts` + `LightHook` en
+`particle-effect.types.ts`) generaliza el único precedente existente (`scene.add.pointlight` en
+`combustion-effect.ts`, burst temporal) a un helper reusable para bursts y efectos persistentes, resolviendo el
+mismo bug de doble-cámara que ya afectaba a los emisores de partículas. `overloaded-conductor-effect.ts`
+(`StateDrivenEffect`) dibuja chispas + luz parpadeante en la posición de cada instancia con `ref` en
+`overloadedRefs` — cicatriz sin retorno, nunca se detiene, igual que `redrawUnpoweredSectionScar`.
+`redrawScreenAlertOverlay` (`floorplan-scene.ts`) agrega un overlay de alerta rojo a pantalla completa
+(`hudCamera`, fijo, nuevo depth `RENDER_DEPTH.screenAlert`), disparado por: dominio del `ShipStatusSnapshot` en
+`"critical"` (cubre fuga crítica vía atmósfera) o un `overload` con `failureMode` fire/explosion reciente —
+"combustión violenta" queda fuera del disparador porque no existe ningún llamador de producción de
+`CombustionEvent` en `MissionRuntime` todavía (mismo tipo de hueco que tenía `OverloadRule`, anotado como nuevo
+punto 16 en `PENDIENTES_OBSERVACIONES.md`). Capa "estructural" del HUD: `drawStructuralLayer`
+(`floorplan-renderer.ts`) tiñe cada sección degradada (ámbar/rojo, `STRUCTURAL_LAYER_COLOR`), redibujada cada
+frame desde `floorplan-scene.ts`.
+
+**Fuera de alcance, confirmado con el operador durante la planificación**: intensidad graduada del Indicador
+LED (no hay fuente de nivel graduado genérica en el grafo de señales más allá de `VelocityLevel`/MAG, dominio
+distinto) — anotado en `PENDIENTES_OBSERVACIONES.md` punto 15.
+
+Archivos nuevos: `engine/src/mission/mission-overload-runtime.ts` + test,
+`game/src/particles/effects/{dynamic-light,overloaded-conductor-effect}.ts`. Modificados:
+`engine/src/blueprint/blueprint.types.ts`, `engine/src/blueprint/blueprint-serializer.ts` (+ test),
+`engine/src/crisis/crisis-definition.types.ts`, `engine/src/ship-status/{ship-status-aggregation,
+ship-status-runtime}.ts` (+ test), `engine/src/save/campaign-save-factory.ts`, `engine/src/index.ts`, ~20
+fixtures de test que construían un `Blueprint` literal (campo nuevo no opcional), `game/src/particles/
+particle-effect.types.ts`, `game/src/render/{palette,render-depths,floorplan-renderer}.ts`,
+`game/src/scenes/floorplan-scene.ts`, `game/src/mission/mission-runtime.ts`.
+`tsc --noEmit` limpio en `/engine` y `/game`; 100 archivos / 565 tests en verde en `/engine` (sin regresiones).
+Verificación manual: servidor de dev de `/game` arranca sin errores (smoke test HTTP), pero SIN verificación
+visual interactiva de los efectos (chispas/luz/overlay) — ningún capítulo autora todavía `scriptedOverloads`,
+así que el wiring queda inerte en partida real hasta que exista contenido que lo dispare (mismo estado que
+tuvieron los conductos `fluido`/`senal` sin autorar tras la Fase 11f). Queda pendiente de confirmación visual
+por el operador cuando haya contenido real que lo ejercite.
+Razón: `nuevo-orden.md`, Subfase 12a — pulido sensorial antes de escalar a más capítulos, y cierre del hueco de
+la capa "estructural" del HUD documentado desde la Fase 11f.
+
+### Fix post-cierre 2026-07-29 — Fase 12a (iluminación invisible en partida real)
+
+Playtest manual del operador tras el cierre de 12a: "no veo luces por ningún lado". Investigación confirmó que
+el código de la fase era correcto pero estaba desconectado de cualquier contenido real (mismo patrón que los
+conductos `fluido`/`senal` sin autorar, punto 13 de `PENDIENTES_OBSERVACIONES.md`) — 4 causas puntuales,
+corregidas todas en esta ronda:
+
+1. **Chispas + luz de conductor sobrecargado sin contenido**: `Blueprint.overloadedRefs` nunca lo poblaba
+   ningún capítulo. `chapter-01-primer-aviso.ts` gana un `cable-cobre` sembrado en `ingenieria` (Exploración,
+   `{x:22,y:12}` — dentro del bounding box de la sección, sin coincidir con ningún anclaje autorado; NO
+   verificado contra la capa de paredes del tilemap, riesgo cosmético bajo dado que es attrezzo puramente
+   decorativo) + `scriptedOverloads: [{ instanceId: CHAPTER_01_OVERLOAD_INSTANCE_ID, load: 150 }]` en la
+   `CrisisDefinition` (150 > 100 de capacidad del cable → dispara `failureMode: "cut"` de forma determinística
+   desde el primer tick de ejecución). Nuevo test de integración
+   (`chapter-01-mission.integration.test.ts`) confirma que ambos lados (instancia sembrada + `instanceId`
+   scripteado) apuntan a la MISMA referencia — un typo en cualquiera de los dos habría quedado indetectado por
+   el chequeo de tipos solo.
+2. **Alarma de pantalla completa inalcanzable**: el umbral `"critical"` (fracción ≤0.25) nunca se alcanza en el
+   contenido actual (confirmado: la fuga del Cap.1 tiene un piso de `40/101≈0.40` → `"warning"`, nunca
+   `"critical"`). Se agrega un disparador nuevo: el INICIO de la crisis también fuerza el overlay
+   (`crisisStartAlertUntilSeconds`, `floorplan-scene.ts`). Hallazgo importante durante la corrección: en ambos
+   capítulos existentes el trigger YA aplica desde el arranque de la misión (`MissionRuntime` corre un tick
+   síncrono de la crisis en su constructor, ANTES de que la escena exista y se suscriba a `crisisEvents`) — si
+   el disparador solo escuchara el evento en vivo, nunca se habría visto, repitiendo el mismo bug. Se chequea
+   `mission.crisisState === "active"` al crear la escena, ADEMÁS de la suscripción en vivo (para capítulos
+   futuros donde el trigger aplique después del arranque).
+3. **Golpes eléctricos del Cap.2 sin luz**: `electricArcEffect` (`environmental-damage-effect.ts`) ya disparaba
+   partículas reales en cada electrocución, pero sin luz aditiva. Gana un burst de `createDynamicLight` con el
+   mismo patrón de tween que `combustion-effect.ts`. `EnvironmentalEffectObject` amplía su unión para incluir
+   `PointLight`.
+4. **"Parpadeos de luz ambiental en secciones sin energía" nunca implementado**: ejemplo del texto original de
+   12a que había quedado fuera. Mismo problema que el punto 1: `unpoweredSectionIds` tampoco lo poblaba ningún
+   capítulo. `chapter-01-primer-aviso.ts` gana `unpoweredSectionId: "taller"` (Exploración, sección de attrezzo
+   sin rol en el puzzle), sembrado en `campaign-save-factory.ts`. Nueva `PointLight` violeta apagada por sección
+   (`UNPOWERED_SECTION_LIGHT_COLOR`, distinto de la cicatriz de sobrecarga — ausencia de energía, no alarma
+   activa), parpadeo derivado de la misma curva que ya usa el tinte (`unpoweredSectionLightIntensity`,
+   `sectionScarFlickerAlpha` reescalada).
+
+Los otros 3 arquetipos (guerra/investigación/médica) NO reciben `overloadedConductorPosition`/`unpoweredSectionId`
+en esta ronda — a diferencia del resto de posiciones de `chapter-01-primer-aviso.ts` (offsets de referencia sin
+verificación visual), un `SectionId` inválido podría referenciar una sección inexistente en un mapa no leído
+esta sesión; se prefirió dejarlos ausentes antes que inventar un id sin verificar.
+
+Archivos nuevos: ninguno. Modificados: `engine/src/crisis/campaign/chapter-01-primer-aviso.ts`,
+`engine/src/save/campaign-save-factory.ts`, `engine/src/mission/chapter-01-mission.integration.test.ts`,
+`game/src/particles/effects/environmental-damage-effect.ts`, `game/src/render/palette.ts`,
+`game/src/scenes/floorplan-scene.ts`.
+`tsc --noEmit` limpio en `/engine` y `/game`; 100 archivos / 566 tests en verde en `/engine` (565 previos + 1
+nuevo). Verificación manual: smoke test HTTP del dev server únicamente — sin entorno de navegador disponible en
+esta sesión para confirmar visualmente que las luces se ven en partida real; queda pendiente de confirmación
+del operador antes de dar el playtest por resuelto del todo. La posición del `cable-cobre` en `ingenieria` NO
+se verificó contra la capa de paredes del tilemap (solo contra el bounding box de la sección y los anclajes
+autorados) — riesgo cosmético bajo, revisar si aparece incrustado en una pared al jugarlo.
+Razón: feedback de playtest manual del operador ("no veo luces por ningún lado") sobre la Fase 12a recién
+cerrada — el mecanismo estaba construido y testeado, pero invisible en partida real por falta de contenido que
+lo ejerciera.
+
+#### 2ª ronda del mismo playtest (2026-07-29): ajustes de sensación + alcance de sombras
+
+Tras confirmar que las 4 correcciones de arriba funcionaban, el operador reportó 2 ajustes de sensación y una
+respuesta a mis preguntas de seguimiento:
+
+1. **Luz del taller demasiado predecible**: `unpoweredSectionLightIntensity` reusaba `sectionScarFlickerAlpha`
+   (seno suave, período fijo 1.6s) — se leía como un pulso regular, no una falla real. Reemplazado por
+   `flickeringLightIntensity` (`palette.ts`), patrón nuevo: suma de senos a frecuencias inconmensurables +
+   umbral que recorta casi todo a 0 — mayormente oscura, con chispazos breves e irregulares ("luz de
+   emergencia que quiere prender y no puede"). Determinístico (sin `Math.random()`), con `seed` por sección
+   (`sectionFlickerSeed`, `floorplan-scene.ts`) para que dos secciones sin energía no titilen sincronizadas.
+2. **Luz del arco eléctrico (electrocución) tapaba el resto del efecto**: radio 60→26px, intensidad pico 1→0.35
+   — acompaña el rayo/chispas en vez de taparlos.
+3. **Chispas de conductor sobrecargado**: confirmado que SÍ se ven con una partida nueva — el operador no
+   encontró un bug, sino que no entendía el propósito narrativo del indicador (es attrezzo puramente
+   decorativo, documentado como tal desde que se sembró — no bloquea ningún objetivo del capítulo).
+4. **Sombras dinámicas**: pedido nuevo, explícitamente fuera del alcance de 12a — el operador pidió
+   planificarlo como una NUEVA subfase (no sprites de sombra estáticos, sombras que reaccionen a las fuentes
+   de luz dinámicas ya entregadas). Documentado como "Subfase 12d" en `nuevo-orden.md`, sin implementar —
+   requiere su propio ciclo de preguntas (alcance de oclusión real vs. sombreado de superficie, qué proyecta
+   sombra, impacto de migrar `dynamic-light.ts` de `PointLight` a `scene.lights` si se opta por Light2D).
+
+Archivos modificados: `game/src/render/palette.ts`, `game/src/scenes/floorplan-scene.ts`,
+`game/src/particles/effects/environmental-damage-effect.ts`. Documentación: `nuevo-orden.md` (nueva Subfase
+12d, sin implementar). `tsc --noEmit` limpio en `/game`; suite de `/engine` sin cambios (566 tests, no tocado
+en esta ronda). Verificación manual: sin navegador disponible en esta sesión, pendiente de confirmación visual
+del operador para los ajustes de sensación (1 y 2).
+
+### Fase 12b — Sistema de Audio Diegético ✅ (2026-07-29)
+
+Segunda subfase de la Fase 12 (`nuevo-orden.md`, "Pulido Estructural Sensorial: Luces y Audio"): dominio nuevo
+`game/src/audio/` vinculado a `effect-registry.ts` para sonido por fenómeno, y SFX corto que acompaña los barks
+de texto por personalidad (ya existentes end-to-end desde antes de esta fase — el objetivo 2 de 12b no era
+crear el sistema de barks, solo sonorizar la burbuja ya construida). El operador colocó el pack real
+(`game/assets/audio/{UI,gameplay,voices}/`) al arrancar la subfase.
+
+**Arquitectura**: mismo patrón Factory que `particles/effect-registry.ts` — `phenomenon-sound-registry.ts`
+(`fireEventSound`, mapa `DomainEvent["kind"] → EventDrivenSound`) vive en paralelo a `EFFECTS_BY_KIND`, sin
+tocarlo. `audio-asset-registry.ts` sigue el mismo criterio que `ui-asset-registry.ts` (imports `?url` explícitos,
+solo las variantes usadas, no las ~230 del pack completo) + `preloadAudioAssets` llamado en el `preload()` de
+las 10 escenas que ya llamaban `preloadUiAssets`. `gas-leak-sound.ts` es el análogo sonoro de
+`createGasLeakEffect` (`StateDrivenSound`, loop con volumen ∝ concentración), cableado en
+`initSectionAtmosphereEffects`/`updateSectionAtmosphereEffects` junto al efecto de partículas — con `.stop()`
+explícito en el `SHUTDOWN` de la escena, porque a diferencia de un `ParticleEmitter` un `Phaser.Sound` vive en
+el `SoundManager` del juego, no en la escena, y no se destruye solo al cambiar de escena (bug real detectado y
+corregido antes de cerrar, no solo documentado).
+
+**Gaps de asset señalados en código** (mismo criterio que sprites faltantes, CLAUDE.md): el pack no trae siseo
+de fuga de gas, zumbido eléctrico continuo, sirena de alarma ni paso sobre piso metálico dedicados —
+aproximaciones usadas (`engineCircular` para fuga, `forceField`/`explosionCrunch`/`lowFrequency_explosion` para
+sobrecarga, `computerNoise` para alarma, `impactMetal` para instalación/pasos), documentadas en
+`audio-asset-registry.ts`. `voices/Female|Male/` queda sin usar — son clips genéricos en inglés que no
+corresponden a las líneas i18n de los barks (`engine/src/crew/bark-bank.ts`), usarlos como locución real
+requeriría re-grabar, fuera de alcance. Combustión y corrosión (`HazardEvent`) tienen su sonido listo pero
+tampoco tienen llamador real en `floorplan-scene.ts` hoy (mismo gap #16 de `PENDIENTES_OBSERVACIONES.md` para
+combustión; corrosión tiene el mismo problema, no documentado ahí antes de esta fase) — solo suenan en
+`particle-gallery-scene.ts` (demo).
+
+**Ampliación post-cierre (mismo día, playtest manual del operador)**: 5 pedidos nuevos fuera del texto original
+de 12b, implementados en la misma ronda para no dejar el playtest a medias:
+1. Hover/click de botones en el punto único `createKenneyButton` (`ui/widgets/kenney-button.ts`) — cubre las 10
+   escenas de menú y todos los widgets de misión de una sola vez.
+2. Click sobre celda del plano (`MissionInteractionController.handleMapClick`).
+3. Apertura/cierre de modal (briefing de crisis, picker de instalación).
+4. Sonido de instalación completada (`impactMetal`, en el `task-completed` de tipo `install`).
+5. Alarma: sin asset de sirena dedicado (`computerNoise` como aproximación), disparada como sonido puntual en
+   los mismos 3 puntos donde ya se activaba el overlay de alerta visual de 12a (arranque con crisis ya activa,
+   `crisis-triggered` en vivo, `overload` violento) — no un loop continuo nuevo, para no duplicar arquitectura
+   sin necesidad.
+6. Paso de tripulantes (`impactMetal`, distinto rango de variantes que instalación) en `chainHops`/
+   `stepAsideCrewToken`, filtrado por identidad de referencia a `CREW_SIGNATURE` para no sonar en enemigos.
+
+Archivos nuevos: `game/src/audio/{audio-asset-registry,audio-effect.types,audio-utils,bark-sound,
+phenomenon-sound-registry}.ts`, `game/src/audio/effects/{overload-sound,combustion-sound,corrosion-sound,
+gas-leak-sound}.ts`. Modificados: `game/src/crew/bark-controller.ts`, `game/src/scenes/floorplan-scene.ts`,
+`game/src/scenes/particle-gallery-scene.ts`, `game/src/mission/mission-interaction-controller.ts`,
+`game/src/ui/widgets/kenney-button.ts`, y el `preload()` de las 9 escenas de menú restantes (`title-scene.ts`,
+`options-scene.ts`, `creative-hub-scene.ts`, `pause-menu-scene.ts`, `crew-select-scene.ts`,
+`archetype-select-scene.ts`, `crisis-result-scene.ts`, `credits-scene.ts`, `creative-workbench-scene.ts`).
+`tsc --noEmit` y `vite build` limpios en `/game`; suite de `/engine` sin cambios (566 tests, no tocado — esta
+fase es 100% `/game`). Verificación manual: playtest completo por el operador (dos rondas, la segunda sobre la
+ampliación post-cierre) — confirmado sin reportar bugs pendientes al cierre de esta entrada.
+Razón: `nuevo-orden.md`, Subfase 12b — feedback diegético de audio antes de escalar a más capítulos; la
+ampliación post-cierre respondió directamente al playtest manual del operador sobre el alcance real de "audio
+por fenómenos" (UI, movimiento, instalación, alarma no estaban en el texto original de la subfase).
+
+### Fase 12c — Micro-interacciones, Juice y Personalidad de la UI ✅ (2026-07-29)
+
+Tercera subfase de la Fase 12 (`nuevo-orden.md`). Rota en 6 sub-fases por tamaño (9 ítems del texto + 4 deudas
+de `PENDIENTES_OBSERVACIONES.md` plegadas: hover visual, iconos de botón, #2 scroll, #5 modal). Casi todo `/game`;
+la única excepción que toca `/engine`+save es la deuda #8 (creación con sprites reales, 12c.5).
+
+Decisiones tomadas con el operador (ciclo de preguntas de planificación): #8 incluida como 12c.5; las 4 deudas
+plegadas; shader CRT sutil por defecto. Sprites de cursor provistos por el operador en `game/assets/sprites/ui/cursor/`.
+
+- **12c.1 — Fundamentos de juice + botones:** `game/src/ui/ui-effects.ts` nuevo (`popIn`/`slideOut`/`clickReaction`/
+  `shake`/`flash`/`attachHoverJuice`). Hover VISUAL en todos los botones (`kenney-button.ts`, antes solo sonido).
+  Iconos en botón MESA (`construction-table.png`) y toggle Química (`mixer.png`), registrados en `ui-asset-registry.ts`.
+- **12c.2 — Reacciones de retrato:** `crew-strip.ts` centra retratos (origin 0.5), tinte de salud en reposo, expone
+  `portraits` por actor. Escena: sacudida+rotación + destello por causa (verde corrosión) al daño, estática analógica
+  + apagado en muerte; parpadeo tóxico/corrosivo por overlay persistente (`syncCrewToxicOverlays`, usa `contaminantAt`).
+- **12c.3 — Cursor contextual:** `game/src/ui/custom-cursor.ts` nuevo — `setDefaultCursor(url(...))` según estado del
+  `MissionInteractionController` (default/selectable/wire/dismantle). Se limpia en el SHUTDOWN de la escena.
+- **12c.4 — Pantalla completa:** viñeta radial generada por código reemplaza el tinte plano del overlay de alerta
+  (`ensureVignetteTexture`); `game/src/render/crt-pipeline.ts` nuevo — CRT sutil (scanlines + aberración cromática)
+  sobre `hudCamera`, solo bajo WebGL (degrada sin romper en Canvas).
+- **12c.5 — Satisfacción de deconstrucción:** (a) recolección visible — texto ascendente por elemento + partícula
+  coleccionable en arco hacia la mesa (`fireElementCollection`). (b) deuda #8 — `CreationPart[]` en `CompositeComponentData`
+  (offset+rotación+footprint por pieza), poblado en `nameAndRegisterCreation` (`calculateFootprintOrigin` nuevo), round-trip
+  por el serializer de creación, dibujado en `mission-overlay-renderer.ts::drawCreationLayout` con los sprites reales.
+- **12c.6 — Bugs plegados:** #5 nombre de síntesis con `wordWrap` dentro del modal; #2 scroll del selector de instalación
+  preservado entre rebuilds (`initialScrollT`/`onListReady`, panel `t`).
+
+`tsc --noEmit` limpio en `/engine` y `/game`; `vite build` limpio; suite de `/engine` 569 tests (3 nuevos de layout de
+creación en `custom-creation.test.ts`); eslint limpio. Verificación visual: pendiente de playtest manual del operador
+(estándar `/game`, CLAUDE.md).
+Razón: `nuevo-orden.md`, Subfase 12c — dar carácter/juice a la UI y cerrar la "satisfacción de deconstrucción" de
+Shipbreaker antes de escalar a más capítulos.
+
+### Fase 12c.7 — Fixes de playtest de 12c ✅ (2026-07-29)
+
+Cierre de las 8 observaciones del playtest de 12c. 100% `/game` salvo un cambio chico de motor (recuperar la pieza
+atómica al desmontar). Decisiones con el operador: la pieza atómica se recupera al stock (desgaste a futuro);
+notificaciones cablean desmantelamiento + síntesis + tarea fallida/bloqueada + objetivo/crisis; posición arriba-centro.
+
+- **A (obs #2)** — cursor custom en UI clickeable: `UI_POINTER_CURSOR_CSS` exportado de `custom-cursor.ts`, aplicado vía
+  `setInteractive({ cursor })` en `createKenneyButton`, filas de `kenney-list`/`kenney-card-list`, "✕" del panel de acciones
+  y botón de sustancias (antes revertían al puntero chico del sistema).
+- **B (obs #1)** — tooltip de misión ahora se ubica ARRIBA del cursor (se volteaba solo si se saldría por arriba), sin taparse.
+- **C (obs #6/#7 + PENDIENTES obs #6)** — hover/click en filas de lista y tarjetas de química: sonido (`uiButtonHover`/`Click`)
+  + realce de fondo; click en modo cableado suena (`mapCellSelect`).
+- **D (obs #3/#4)** — `dismantleEffect` reescrito a "bolas de energía" (orbes cian/dorados aditivos + chispas + luz pulsante
+  vía `createDynamicLight`/`lightHook`); motor: desmontar una pieza atómica la acredita al stock y devuelve `obtained` (test).
+- **E (obs #5)** — nuevo `game/src/ui/widgets/notification-center.ts` (pila arriba-centro, tipos info/success/warning/error con
+  color+sonido, popIn/auto-descarte); cableado: desmantelamiento (lista de obtenidos, reemplaza los toasts por-elemento),
+  síntesis/fabricación, tarea fallida/bloqueada, objetivo completado, escalada de crisis. `RENDER_DEPTH.notification=29`.
+- **F (obs #8)** — tarjeta de "Resultado" de la mesa: el nombre (`outcome.name`) ahora envuelve, "Mezcla sin identificar" no se sale.
+
+`tsc --noEmit` limpio en `/engine` y `/game`; `vite build` limpio; `/engine` 569 tests (test de "desmontar atómico acredita
+stock" actualizado); eslint limpio. Verificación visual pendiente de playtest manual del operador.
+Razón: playtest manual de 12c — pulido de cursor/tooltip/listas, unificación del efecto de desmontaje y un sistema de
+notificaciones legible pedido por el operador.
+
+**Ajustes de segundo playtest (mismo bloque 12c.7):**
+- Timer de tarea pendiente en la cola: se mostraba crudo (`12 × 0.6 = 7.199999999999999`); `crew-queue-panel.ts` ahora
+  redondea el estimado (`~7s`).
+- Nombre de pieza en el panel de acción contextual se salía de la caja cuando era un token largo sin espacios;
+  `mission-action-panel.ts` usa `useAdvancedWrap` en el título para partir la palabra.
+- Luz del desmontaje: el operador se refería a las FICHAS que vuelan hacia la mesa, no al efecto del proceso. Se quitó el
+  `PointLight`/`lightHook` de `dismantleEffect` (quedan las bolas de energía) y `fireCollectibleToWorkbench` gana un halo
+  aditivo pulsante (glow) sobre el núcleo — el HUD no está iluminado, así que la "luz" es blend ADD, no un `PointLight` real.

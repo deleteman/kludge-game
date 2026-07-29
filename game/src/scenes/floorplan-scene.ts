@@ -28,6 +28,7 @@ import type {
 
 import { t } from "../i18n/i18n.js";
 import {
+  drawStructuralLayer,
   FLOORPLAN_LAYER_IDS,
   renderFloorplan,
   sectionCentroidCell,
@@ -52,8 +53,13 @@ import { PARTICLE_TEXTURE_URLS } from "../particles/particle-texture-registry.js
 import { preloadComponentSprites } from "../render/component-sprite-registry.js";
 import { preloadCrewPortraits } from "../render/crew-portrait-registry.js";
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
-import { fireObtainedToast } from "../ui/widgets/obtained-toast.js";
+import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
+import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
+import { AUDIO_KEYS, preloadAudioAssets } from "../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../audio/audio-utils.js";
+import { createGasLeakSound, type GasLeakSoundState } from "../audio/effects/gas-leak-sound.js";
+import type { StateDrivenSound } from "../audio/audio-effect.types.js";
 import { fireEnvironmentalDamage } from "../particles/effects/environmental-damage-effect.js";
 import {
   createFreezingEffect,
@@ -62,9 +68,13 @@ import {
 } from "../particles/effects/atmosphere-state-effects.js";
 import type { GasCloudState } from "../particles/effects/atmosphere-state-effects.js";
 import { CLOUD_TINT } from "../particles/effects/hazard-effect.js";
-import type { StateDrivenEffect } from "../particles/particle-effect.types.js";
+import { createOverloadedConductorEffect } from "../particles/effects/overloaded-conductor-effect.js";
+import type { OverloadedConductorState } from "../particles/effects/overloaded-conductor-effect.js";
+import { createDynamicLight } from "../particles/effects/dynamic-light.js";
+import type { LightHook, StateDrivenEffect } from "../particles/particle-effect.types.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
 import {
+  CHEMICAL_TAG_COLORS,
   CONDUIT_LAYER_INACTIVE_ALPHA,
   CORE_LOOP_MODE_COLORS,
   CREW_TOKEN_COLORS,
@@ -74,11 +84,16 @@ import {
   LED_ACTIVE_TINT,
   LED_INACTIVE_TINT,
   OBJECTIVE_DONE_COLOR,
+  screenAlertFlickerAlpha,
+  SCREEN_ALERT_TINT,
   SEALED_VALVE_COLOR,
   sectionScarFlickerAlpha,
   SELECTED_CELL_COLOR,
   TIMER_TEXT_COLORS,
+  UNPOWERED_SECTION_LIGHT_COLOR,
+  UNPOWERED_SECTION_LIGHT_RADIUS_PX,
   UNPOWERED_SECTION_TINT,
+  unpoweredSectionLightIntensity,
   WIRE_HIGHLIGHT_COLOR,
 } from "../render/palette.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
@@ -107,12 +122,15 @@ import { cadenceForCrewHp } from "../crew/crew-hp-to-cadence.js";
 import { BarkController } from "../crew/bark-controller.js";
 import { findPath } from "../crew/floorplan-pathfinding.js";
 import { extractWalkableGrid, type WalkableGrid } from "../render/walkable-grid.js";
-import { preloadUiAssets } from "../ui/ui-asset-registry.js";
+import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
 import { createScrollableText } from "../ui/widgets/scrollable-text.js";
+import { CustomCursor } from "../ui/custom-cursor.js";
+import { registerCrtPipeline } from "../render/crt-pipeline.js";
+import { NotificationCenter } from "../ui/widgets/notification-center.js";
 import { renderCrewQueue, type CrewQueueHandle, type UnifiedQueueTask } from "../ui/widgets/crew-queue-panel.js";
-import { renderCrewStrip, type CrewStripHandle } from "../ui/widgets/crew-strip.js";
+import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
 import { renderFloorplanLayerTogglePanel } from "../ui/widgets/floorplan-layer-toggle-panel.js";
 import { renderShipStatusHud } from "../ui/widgets/ship-status-hud.js";
@@ -166,6 +184,8 @@ const QUEUE_PANEL_HEIGHT = 220;
  */
 const SHIP_STATUS_HUD_Y = SIDE_PANEL_Y + OBJECTIVES_STRIP_HEIGHT + QUEUE_PANEL_HEIGHT + 16;
 const SHIP_STATUS_HUD_HEIGHT = 170;
+/** Cuánto tiempo se sostiene el overlay de alerta global tras un `overload` violento (fire/explosion) — el evento en sí es puntual, la alarma visual dura más para que se note (Fase 12a). */
+const VIOLENT_ALERT_HOLD_SECONDS = 4;
 const ACTION_PANEL_WIDTH = 260;
 const ACTION_PANEL_HEIGHT = 220;
 /** Offset del panel flotante respecto al punto de anclaje (celda seleccionada o botón "Sustancias"), para no taparlo con el cursor. */
@@ -320,17 +340,60 @@ export class FloorplanScene extends Phaser.Scene {
   /** Tokens visuales de enemigo (Fase 11d.3) — sin contenido de capítulo todavía (11d.4), así que arranca vacío en misión real. */
   private readonly enemyTokens = new Map<EnemyActorId, EnemyToken>();
 
+  /** Cursor contextual reactivo (12c.3) — cambia el puntero según la acción válida bajo el ratón. */
+  private customCursor?: CustomCursor;
+
+  /** Sistema de notificaciones transitorias (12c.7) — avisos legibles arriba-centro del mapa. */
+  private notifications?: NotificationCenter;
+  /** Conteos previos para detectar qué materializó una tarea `combine` (síntesis vs. fabricación). */
+  private lastSubstancesCount = 0;
+  private lastCreationsCount = 0;
+  /** Evita notificar objetivos ya completos en el primer render de la tira. */
+  private objectivesNotifyReady = false;
+
+  /**
+   * Overlays de parpadeo tóxico sobre la tarjeta del tripulante en gas TOX/CORR
+   * (12c.2). Persistentes a nivel de escena (no dentro del widget, que se
+   * reconstruye a cada rato) para que el flicker no se corte en cada redibujo
+   * de la tira.
+   */
+  private readonly crewToxicOverlays = new Map<CrewActorId, Phaser.GameObjects.Rectangle>();
+
   /** Efectos state-driven de atmósfera por sección (Fase 11b) — un trío por sección, arrancado una vez en `create()`. */
   private readonly sectionAtmosphereEffects = new Map<
     SectionId,
     {
       readonly gasLeak: StateDrivenEffect<GasCloudState>;
+      readonly gasLeakSound: StateDrivenSound<GasLeakSoundState>;
       readonly freezing: StateDrivenEffect<{ readonly temperatureCelsius: number }>;
       readonly heatVapor: StateDrivenEffect<{ readonly temperatureCelsius: number }>;
     }
   >();
   /** Tinte parpadeante de sección sin energía (Fase 11b, cicatriz) — redibujado cada frame, sigue parpadeando en pausa. */
   private unpoweredSectionOverlay?: Phaser.GameObjects.Graphics;
+  /** Luz ambiental de sección sin energía (Fase 12a, corrección post-playtest) — creada una vez por sección, nunca removida. */
+  private readonly unpoweredSectionLights = new Map<SectionId, Phaser.GameObjects.PointLight>();
+  /** Chispas + luz de conductor sobrecargado (Fase 12a, cicatriz `overloadedRefs`) — creado una vez por instancia, nunca removido (consecuencias permanentes). */
+  private readonly overloadedConductorEffects = new Map<
+    PlacedComponentInstanceId,
+    StateDrivenEffect<OverloadedConductorState>
+  >();
+  /**
+   * Overlay de alerta de pantalla completa. Fase 12a lo hizo un rectángulo
+   * plano; 12c.4 lo cambia por una VIÑETA (bordes oscurecidos, centro
+   * transparente) tintada de rojo, para un aviso menos invasivo que un tinte
+   * uniforme. Objeto de HUD (`hudCamera`, fijo), su alpha pulsa cada frame.
+   */
+  private screenAlertOverlay?: Phaser.GameObjects.Image;
+  /** Instante (segundos de escena) hasta el que un `overload` violento fuerza el overlay de alerta, ver `VIOLENT_ALERT_HOLD_SECONDS`. */
+  private violentAlertUntilSeconds = -Infinity;
+  /**
+   * Instante (segundos de escena) hasta el que el INICIO de la crisis fuerza el overlay de alerta (Fase
+   * 12a, corrección post-playtest) — campo separado de `violentAlertUntilSeconds`: semánticamente es
+   * "la crisis acaba de empezar", no "hubo un evento violento", aunque comparten el mismo
+   * `VIOLENT_ALERT_HOLD_SECONDS` de sostenido.
+   */
+  private crisisStartAlertUntilSeconds = -Infinity;
 
   private dragOrigin?: { readonly x: number; readonly y: number; readonly scrollX: number; readonly scrollY: number };
   private dragDistance = 0;
@@ -377,6 +440,7 @@ export class FloorplanScene extends Phaser.Scene {
     preloadComponentSprites(this);
     preloadCrewPortraits(this);
     preloadUiAssets(this);
+    preloadAudioAssets(this);
   }
 
   create(): void {
@@ -397,6 +461,17 @@ export class FloorplanScene extends Phaser.Scene {
 
     const save = campaignSession.requireActive();
     this.mission = new MissionRuntime(save);
+    // Overlay de alerta al iniciar crisis (Fase 12a, corrección post-playtest):
+    // `MissionRuntime` corre un tick SÍNCRONO de la crisis en su constructor
+    // (GDD §4: "la crisis ya está disparada cuando arranca la planificación"),
+    // ANTES de que esta escena exista — si el trigger ya aplica desde el
+    // arranque (como en los capítulos 1 y 2 actuales), el evento
+    // `crisis-triggered` en vivo (suscripción más abajo) nunca llega a verse.
+    this.crisisStartAlertUntilSeconds =
+      this.mission.crisisState === "active" ? this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS : -Infinity;
+    if (this.mission.crisisState === "active") {
+      this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
+    }
     this.nameByComponentId = new Map(ATOMIC_COMPONENT_CATALOG.map((spec) => [spec.id as string, spec.name]));
     // Carga async de creaciones custom (11c.1): se registran en el runtime y sus
     // nombres se suman al mapa compartido con el controller (misma referencia, se
@@ -411,6 +486,9 @@ export class FloorplanScene extends Phaser.Scene {
     // después — por eso pinta siempre último (ver comentario del campo).
     this.cameras.main.setViewport(0, HEADER_HEIGHT, MAP_VIEWPORT_WIDTH, MAP_VIEWPORT_HEIGHT);
     this.hudCamera = this.cameras.add(0, 0, 1280, 720);
+    // Filtro CRT sutil sobre el HUD (12c.4): brillo de fósforo retro en textos
+    // y bordes. Solo bajo WebGL — en Canvas no hace nada, sin romper.
+    registerCrtPipeline(this, this.hudCamera);
 
     this.interaction = new MissionInteractionController(
       this.rex,
@@ -552,6 +630,16 @@ export class FloorplanScene extends Phaser.Scene {
     // de tripulación, acciones) trae su propia caja delimitada (playtest #16),
     // para que se vea la separación y ninguno invada al otro.
 
+    this.customCursor = new CustomCursor(this);
+    this.customCursor.reset();
+
+    // Notificaciones arriba-centro del área de mapa (12c.7). Objetos de HUD.
+    this.notifications = new NotificationCenter(this, MAP_VIEWPORT_WIDTH / 2, HEADER_HEIGHT + 12, (obj) =>
+      this.markAsHudObject(obj),
+    );
+    this.lastSubstancesCount = this.mission.availableSubstances.length;
+    this.lastCreationsCount = this.mission.installableCreations.length;
+
     this.redrawCrewStrip();
     this.redrawQueuePanel();
     this.renderObjectivesStrip();
@@ -585,6 +673,7 @@ export class FloorplanScene extends Phaser.Scene {
       }
       this.updateHoverHighlight(pointer);
       this.updateTooltip(pointer);
+      this.updateCursor(pointer);
     });
     this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
       // Selección de tripulante (tira) y cancelar tarea (cola) por hit-test a
@@ -657,10 +746,12 @@ export class FloorplanScene extends Phaser.Scene {
       this.mission.kineticEvents.onAny((event) => {
         const cell = this.kineticEventPosition(event);
         if (cell) fireEventEffect(this, cell, event);
+        fireEventSound(this, event);
       }),
       this.mission.signalEvents.onAny((event) => {
         const cell = this.mission.blueprint.signalGraph.nodes.find((node) => node.id === event.nodeId)?.position;
         if (cell) fireEventEffect(this, cell, event);
+        fireEventSound(this, event);
       }),
       // Fase 11b: `structuralDegradedEffect`/`structuralFailureEffect` ya
       // existían completos pero sin llamador en misión real (solo demostrados
@@ -669,10 +760,29 @@ export class FloorplanScene extends Phaser.Scene {
         const cell = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === event.ref)?.placement
           .position;
         if (cell) fireEventEffect(this, cell, event);
+        fireEventSound(this, event);
+        // Overlay de alerta de pantalla completa (Fase 12a): solo incendio/
+        // explosión son lo bastante graves como para justificar un flash
+        // GLOBAL — un corte ("cut", ej. cortocircuito eléctrico) ya tiene su
+        // propia cicatriz local (chispas + luz, `syncOverloadedConductorEffects`),
+        // sin necesidad de alarmar toda la pantalla.
+        if (event.kind === "overload" && (event.failureMode === "fire" || event.failureMode === "explosion")) {
+          this.violentAlertUntilSeconds = this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS;
+          this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
+          this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "error" });
+        }
       }),
       this.mission.crisisEvents.onAny((event) => {
         this.updateHeader();
         this.updateProblemMarkerVisibility();
+        if (event.kind === "crisis-triggered") {
+          // Capítulos futuros donde el trigger aplique DESPUÉS del arranque
+          // (a diferencia de los capítulos 1/2 actuales, ver el chequeo
+          // síncrono en `create()`) — mismo hold que ese caso.
+          this.crisisStartAlertUntilSeconds = this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS;
+          this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
+          this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "warning" });
+        }
         if (event.kind === "crisis-resolved") {
           this.goToCrisisResult(event.outcome);
         }
@@ -680,6 +790,14 @@ export class FloorplanScene extends Phaser.Scene {
     ];
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       for (const unsubscribe of missionSubscriptions) unsubscribe();
+      // Los loops de audio (`gasLeakSound`) viven en el `SoundManager` del
+      // juego, no en la escena — a diferencia de los emisores de partículas,
+      // Phaser no los destruye solo al cambiar de escena. Sin este stop, un
+      // loop de fuga activo seguiría sonando tras salir de la misión.
+      for (const effects of this.sectionAtmosphereEffects.values()) effects.gasLeakSound.stop();
+      // El cursor CSS del canvas es global (12c.3): sin esto, el puntero
+      // reactivo (ej. la mira de cableado) se filtraría a los menús.
+      this.input.setDefaultCursor("default");
     });
 
     this.updateHeader();
@@ -757,6 +875,41 @@ export class FloorplanScene extends Phaser.Scene {
     // La cicatriz de sección sin energía, en cambio, parpadea siempre — es
     // una marca persistente de la nave, no un efecto de la simulación.
     this.redrawUnpoweredSectionScar(time / 1000);
+    this.syncUnpoweredSectionLights(time / 1000);
+    // Chispas + luz de conductor sobrecargado (Fase 12a): misma cicatriz
+    // permanente que la de arriba, parpadea siempre, sin importar el modo.
+    this.syncOverloadedConductorEffects(time / 1000, delta / 1000);
+    // Capa "estructural" del HUD (Fase 12a): tiñe cada sección por su peor RE
+    // agregado — barata de recalcular (pocas secciones), se redibuja siempre,
+    // igual que la cicatriz de energía.
+    drawStructuralLayer(this.floorplanRender.conduitLayers.estructural, this.mission.shipFloorplan, (sectionId) =>
+      this.mission.sectionHullIntegrity(sectionId),
+    );
+    // Overlay de alerta de pantalla completa (Fase 12a): dominio del HUD de
+    // estado en crítico, un `overload` violento reciente, o el INICIO de la
+    // crisis (corrección post-playtest: con el criterio original la alarma
+    // era inalcanzable en los capítulos actuales — la fuga del Cap.1 nunca
+    // llega a "critical", solo "warning") — solo mientras la misión sigue en
+    // ejecución (no tiene sentido tras resolver la crisis).
+    // Nota: "combustión violenta" queda fuera del disparador hasta que exista
+    // un runtime de misión real que emita `CombustionEvent` — hoy la química
+    // de reacción solo corre en tests/galería de partículas, sin llamador de
+    // producción en `MissionRuntime` (mismo tipo de hueco que tenía
+    // `OverloadRule` antes de esta fase).
+    const hasCriticalShipStatus =
+      this.mission.shipStatus.atmosphere.level === "critical" ||
+      this.mission.shipStatus.lifeSupport.level === "critical" ||
+      this.mission.shipStatus.hullIntegrity.level === "critical" ||
+      this.mission.shipStatus.energy.level === "critical";
+    const screenAlertActive =
+      this.mission.coreLoop.mode === "execution" &&
+      (hasCriticalShipStatus ||
+        time / 1000 < this.violentAlertUntilSeconds ||
+        time / 1000 < this.crisisStartAlertUntilSeconds);
+    this.redrawScreenAlertOverlay(time / 1000, screenAlertActive);
+    // Parpadeo verdoso del retrato del tripulante en gas tóxico/corrosivo
+    // (12c.2). Estado vivo de atmósfera → overlay persistente por tarjeta.
+    this.syncCrewToxicOverlays();
     // El flujo de conductos (Fase 11f, fix 11f.7): a diferencia de la cicatriz
     // de arriba (una marca estática que solo parpadea), los tokens de flujo
     // SE MUEVEN — es una animación de simulación, y todo lo que se mueve debe
@@ -915,6 +1068,36 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   /**
+   * Cursor contextual reactivo (12c.3): elige el sprite del puntero según la
+   * acción válida bajo el ratón. Escucha el estado del `MissionInteractionController`
+   * (`wireMode`, `isCellInteractable`, `tooltipContentAt`) — la escena resuelve
+   * la celda de mundo (el controller no conoce coords de pantalla, por diseño).
+   * Sobre UI fija / modal cede al cursor por defecto (los botones imponen su
+   * propia mano). `CustomCursor.set` deduplica, así que llamarlo cada
+   * `pointermove` no reescribe el cursor salvo que el tipo cambie.
+   */
+  private updateCursor(pointer: Phaser.Input.Pointer): void {
+    if (!this.customCursor) return;
+    if (this.briefingOpen || this.objectivesOpen || this.interaction.installPickerOpen || this.isOverFixedUi(pointer)) {
+      this.customCursor.set("default");
+      return;
+    }
+    if (this.interaction.wireMode) {
+      this.customCursor.set("wire");
+      return;
+    }
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const cell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    const content = this.interaction.tooltipContentAt(cell);
+    if (content?.kind === "instance") {
+      // Hay una pieza bajo el cursor: se puede operar sobre ella (desmontar, etc.).
+      this.customCursor.set("dismantle");
+      return;
+    }
+    this.customCursor.set(this.interaction.isCellInteractable(cell) ? "selectable" : "default");
+  }
+
+  /**
    * Muestra la ficha rica (nombre, ícono de condición, propiedades,
    * composición) de la pieza/zona bajo el cursor (rework post-playtest de
    * Fase 11d: antes solo mostraba el nombre y el resto de la info quedaba
@@ -949,11 +1132,14 @@ export class FloorplanScene extends Phaser.Scene {
     }
     this.tooltip.setVisible(true);
     const bounds = this.tooltip.getBounds();
-    // A la derecha/abajo del cursor por defecto; se voltea si se saldría del área de mapa.
+    // ARRIBA del cursor por defecto (12c.7, obs #1): el cursor custom (más grande)
+    // tapaba el tooltip cuando iba debajo. Gap vertical amplio para librar el
+    // sprite del cursor; se voltea hacia abajo solo si se saldría por arriba.
+    const GAP_Y = 22;
     let x = pointer.x + 14;
-    let y = pointer.y + 16;
+    let y = pointer.y - GAP_Y - bounds.height;
     if (x + bounds.width > SIDE_PANEL_X - 10) x = pointer.x - 14 - bounds.width;
-    if (y + bounds.height > 720) y = pointer.y - 16 - bounds.height;
+    if (y < HEADER_HEIGHT + 4) y = pointer.y + GAP_Y;
     this.tooltip.setPosition(x, y);
   }
 
@@ -1023,12 +1209,14 @@ export class FloorplanScene extends Phaser.Scene {
       return;
     }
     this.briefingOpen = true;
+    this.sound.play(pickSoundKey(AUDIO_KEYS.modalOpen), { volume: 0.5 });
     this.briefingContainer = renderMissionBriefingModal(
       this.rex,
       this.mission.crisisDefinition.name,
       t(briefingKey),
       t("ui.floorplan.mission.briefing.understood"),
       () => {
+        this.sound.play(pickSoundKey(AUDIO_KEYS.modalClose), { volume: 0.5 });
         this.briefingContainer?.destroy(true);
         this.briefingContainer = undefined;
         this.briefingOpen = false;
@@ -1356,6 +1544,7 @@ export class FloorplanScene extends Phaser.Scene {
         width: 130,
         height: 30,
         fontSize: "12px",
+        iconTextureKey: UI_TEXTURE_KEYS.iconWorkbench,
         onClick: () => this.openWorkbench(),
       },
     ).setDepth(RENDER_DEPTH.hudContent);
@@ -1495,12 +1684,14 @@ export class FloorplanScene extends Phaser.Scene {
     const previouslyDone = this.objectivesDoneKeys;
     const nowDone = new Set<string>();
     const flashTargets: number[] = [];
+    const newlyDoneLabels: string[] = [];
     let lineY = y;
     statuses.forEach((objective, index) => {
       const label = objective.objectiveKey ? t(objective.objectiveKey) : "";
       if (objective.done && objective.objectiveKey) nowDone.add(objective.objectiveKey);
       if (objective.done && objective.objectiveKey && !previouslyDone.has(objective.objectiveKey)) {
         flashTargets.push(lineY);
+        newlyDoneLabels.push(label);
       }
       container.add(
         this.add
@@ -1516,6 +1707,15 @@ export class FloorplanScene extends Phaser.Scene {
       if (index < statuses.length - 1) lineY += 2;
     });
     this.objectivesDoneKeys = nowDone;
+
+    // Notificar objetivos recién completados (12c.7), salvo en el primer render
+    // (donde `previouslyDone` está vacío y marcaría como "nuevos" los ya cumplidos).
+    if (this.objectivesNotifyReady) {
+      for (const label of newlyDoneLabels) {
+        this.notifications?.push({ title: t("ui.floorplan.notification.objective-done"), lines: [label], type: "success" });
+      }
+    }
+    this.objectivesNotifyReady = true;
 
     this.markAsHudObject(container);
     this.objectivesStrip = container;
@@ -1688,6 +1888,9 @@ export class FloorplanScene extends Phaser.Scene {
       this.mission.blueprint,
       this.mission.shipFloorplan,
       this.walkableGrid,
+      // Deuda #8 (12c.5): resolver de definición para dibujar creaciones con los
+      // sprites reales de sus partes en vez del rectángulo placeholder.
+      (id) => this.mission.definitionOf(id),
     );
     this.overlayContainer = overlay.container;
     this.signalGraphics = overlay.signalGraphics;
@@ -1750,12 +1953,14 @@ export class FloorplanScene extends Phaser.Scene {
     for (const section of this.mission.shipFloorplan.sections) {
       const position = sectionCentroidCell(section);
       const gasLeak = createGasLeakEffect(this.registerParticleEmitter);
+      const gasLeakSound = createGasLeakSound();
       const freezing = createFreezingEffect(this.registerParticleEmitter);
       const heatVapor = createHeatVaporEffect(this.registerParticleEmitter);
       gasLeak.start(this, position);
+      gasLeakSound.start(this);
       freezing.start(this, position);
       heatVapor.start(this, position);
-      this.sectionAtmosphereEffects.set(section.id, { gasLeak, freezing, heatVapor });
+      this.sectionAtmosphereEffects.set(section.id, { gasLeak, gasLeakSound, freezing, heatVapor });
     }
   }
 
@@ -1781,6 +1986,16 @@ export class FloorplanScene extends Phaser.Scene {
     this.markAsWorldObject(token);
   };
 
+  /**
+   * Mismo registro que `registerParticleEmitter`, para las luces aditivas
+   * persistentes (Fase 12a, `LightHook`) — un `PointLight` es tan susceptible
+   * al bug de doble-cámara como un emisor de partículas.
+   */
+  private readonly registerLight: LightHook = (light: Phaser.GameObjects.PointLight): void => {
+    light.setDepth(RENDER_DEPTH.effect);
+    this.markAsWorldObject(light);
+  };
+
   private updateSectionAtmosphereEffects(deltaSeconds: number): void {
     for (const [sectionId, effects] of this.sectionAtmosphereEffects) {
       const atmosphere = this.mission.atmosphereRuntime.atmosphereOf(sectionId);
@@ -1793,13 +2008,15 @@ export class FloorplanScene extends Phaser.Scene {
       // `hazard-effect.ts` ya usa para el burst discreto del mismo fenómeno
       // (principio 6 — una fuga de gas se ve igual sea cual sea el disparador).
       const contaminant = this.mission.contaminantAt(sectionId);
+      const concentration = contaminant?.concentration ?? 0;
       effects.gasLeak.update(
         {
-          concentration: contaminant?.concentration ?? 0,
+          concentration,
           tint: CLOUD_TINT[contaminant?.tag === "TOX" ? "toxic-threshold" : "corrosive-exposure"],
         },
         deltaSeconds,
       );
+      effects.gasLeakSound.update({ concentration });
     }
   }
 
@@ -1959,6 +2176,115 @@ export class FloorplanScene extends Phaser.Scene {
     }
     this.markAsWorldObject(graphics);
     this.unpoweredSectionOverlay = graphics;
+  }
+
+  /**
+   * Luz ambiental de sección sin energía (Fase 12a, corrección post-playtest —
+   * ejemplo del texto original de la fase que había quedado sin implementar,
+   * solo el tinte de `redrawUnpoweredSectionScar` existía). Una `PointLight`
+   * por sección, creada una vez y nunca removida (misma cicatriz sin retorno
+   * que el tinte), centrada en `sectionCentroidPx`, con intensidad
+   * parpadeante (`unpoweredSectionLightIntensity`).
+   */
+  private syncUnpoweredSectionLights(elapsedSeconds: number): void {
+    for (const sectionId of this.mission.blueprint.unpoweredSectionIds) {
+      if (this.unpoweredSectionLights.has(sectionId)) continue;
+      const section = this.mission.shipFloorplan.sections.find((entry) => entry.id === sectionId);
+      if (!section) continue;
+      const { x, y } = sectionCentroidPx(section);
+      const light = createDynamicLight(
+        this,
+        x,
+        y,
+        UNPOWERED_SECTION_LIGHT_COLOR,
+        UNPOWERED_SECTION_LIGHT_RADIUS_PX,
+        unpoweredSectionLightIntensity(elapsedSeconds, sectionFlickerSeed(sectionId)),
+        this.registerLight,
+      );
+      this.unpoweredSectionLights.set(sectionId, light);
+    }
+    for (const [sectionId, light] of this.unpoweredSectionLights) {
+      light.intensity = unpoweredSectionLightIntensity(elapsedSeconds, sectionFlickerSeed(sectionId));
+    }
+  }
+
+  /**
+   * Chispas + luz de conductor sobrecargado (Fase 12a, cicatriz
+   * `Blueprint.overloadedRefs`, `MissionOverloadRuntime`): un efecto por
+   * instancia, creado la primera vez que aparece en la cicatriz y nunca
+   * removido — mismo criterio "sin retorno" que `redrawUnpoweredSectionScar`.
+   * A diferencia de esa función (que destruye/recrea un `Graphics` cada
+   * frame porque es barato), acá se crean partículas/luz UNA VEZ y solo se
+   * actualiza el parpadeo, porque recrear un `ParticleEmitter`/`PointLight`
+   * cada frame sí sería costoso.
+   */
+  private syncOverloadedConductorEffects(elapsedSeconds: number, deltaSeconds: number): void {
+    for (const instanceId of this.mission.blueprint.overloadedRefs) {
+      if (this.overloadedConductorEffects.has(instanceId)) continue;
+      const instance = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId);
+      if (!instance) continue;
+      const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
+      effect.start(this, instance.placement.position);
+      this.overloadedConductorEffects.set(instanceId, effect);
+    }
+    for (const effect of this.overloadedConductorEffects.values()) {
+      effect.update({ elapsedSeconds }, deltaSeconds);
+    }
+  }
+
+  /**
+   * Overlay de alerta de pantalla completa (Fase 12a): parpadeo rojo sobre
+   * TODO el canvas (`hudCamera`, fijo — no debe scrollear con el mapa) ante
+   * una crisis crítica en curso. Redibujado cada frame como
+   * `redrawUnpoweredSectionScar`, mismo criterio "cicatriz/alerta, no
+   * simulación": sigue parpadeando en pausa táctica.
+   */
+  private redrawScreenAlertOverlay(elapsedSeconds: number, active: boolean): void {
+    if (!active) {
+      this.screenAlertOverlay?.setVisible(false);
+      return;
+    }
+    if (!this.screenAlertOverlay) {
+      this.screenAlertOverlay = this.add
+        .image(0, 0, this.ensureVignetteTexture())
+        .setOrigin(0, 0)
+        .setDisplaySize(this.scale.width, this.scale.height)
+        .setTint(SCREEN_ALERT_TINT)
+        .setDepth(RENDER_DEPTH.screenAlert);
+      this.markAsHudObject(this.screenAlertOverlay);
+    }
+    this.screenAlertOverlay.setVisible(true);
+    // La viñeta ya trae el degradado; el pulso solo modula su opacidad global.
+    this.screenAlertOverlay.setAlpha(screenAlertFlickerAlpha(elapsedSeconds));
+  }
+
+  /**
+   * Textura de viñeta (radial, transparente al centro → opaca en los bordes)
+   * generada por código una sola vez (12c.4). Sin asset externo: se dibuja con
+   * un gradiente radial sobre un `CanvasTexture`, reutilizable por cualquier
+   * overlay de alerta que la tinte.
+   */
+  private ensureVignetteTexture(): string {
+    const key = "vignette-alert";
+    if (this.textures.exists(key)) return key;
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const canvasTexture = this.textures.createCanvas(key, w, h);
+    const ctx = canvasTexture?.getContext();
+    if (canvasTexture && ctx) {
+      const cx = w / 2;
+      const cy = h / 2;
+      const inner = Math.min(w, h) * 0.35;
+      const outer = Math.hypot(cx, cy);
+      const gradient = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+      gradient.addColorStop(0, "rgba(255,255,255,0)");
+      gradient.addColorStop(0.7, "rgba(255,255,255,0.35)");
+      gradient.addColorStop(1, "rgba(255,255,255,1)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, w, h);
+      canvasTexture.refresh();
+    }
+    return key;
   }
 
   // --- Tokens de tripulación (persistentes, para poder animar el salto) ---
@@ -2245,6 +2571,13 @@ export class FloorplanScene extends Phaser.Scene {
   ): void {
     if (index >= waypoints.length) return;
     const next = waypoints[index]!;
+    // Paso sobre piso metálico (playtest): solo tripulación, no enemigos —
+    // `signature` distingue por identidad de referencia (`CREW_SIGNATURE` es
+    // el único singleton usado para tokens de tripulación, ver `enemyJumpSignature`
+    // para el resto de llamadas a `chainHops`).
+    if (signature === CREW_SIGNATURE) {
+      this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
+    }
     const tween = hopMove(this, token.dot, { x: token.dot.x, y: token.dot.y }, next, cadence, signature, perHopMs);
     tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
   }
@@ -2274,6 +2607,7 @@ export class FloorplanScene extends Phaser.Scene {
     const currentCell = { x: Math.floor(from.x / CELL), y: Math.floor(from.y / CELL) };
     const aside = this.adjacentWalkableCell(currentCell);
     if (!aside) return;
+    this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
     hopMove(this, token.dot, from, this.cellCenterPx(aside), this.cadenceForActor(actorId), CREW_SIGNATURE);
   }
 
@@ -2338,7 +2672,10 @@ export class FloorplanScene extends Phaser.Scene {
     const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(actorId);
     if (!cell) return;
     const durationMs = Math.max(300, (task?.estimatedDurationSeconds ?? 0) * 1000);
-    const emitters = type === "install" ? installEffect(this, cell, durationMs) : dismantleEffect(this, cell, durationMs);
+    const emitters =
+      type === "install"
+        ? installEffect(this, cell, durationMs)
+        : dismantleEffect(this, cell, durationMs);
     for (const emitter of emitters) {
       emitter.setDepth(RENDER_DEPTH.effect);
       this.markAsWorldObject(emitter);
@@ -2358,6 +2695,9 @@ export class FloorplanScene extends Phaser.Scene {
         // (install/dismantle/connect); el efecto ya corrió antes del evento
         // (fix del desfase, motor), así que el estado está actualizado.
         if (event.type !== "go-to") {
+          if (event.type === "install") {
+            this.sound.play(pickSoundKey(AUDIO_KEYS.install), { volume: 0.6 });
+          }
           this.redrawOverlay();
           // El grafo de cables pudo cambiar (connect/dismantle del dueño de un
           // nodo) — sincronizar sus efectos de flujo en el mismo punto (Fase 11f.6).
@@ -2377,18 +2717,44 @@ export class FloorplanScene extends Phaser.Scene {
           // Feedback de "obtuviste X" al desarmar un compuesto (playtest de
           // Fase 11d): sin esto, el stock se acreditaba en silencio —
           // principio 6, todo estado relevante necesita representación.
+          // 12c.5: un texto ascendente POR elemento (no un string concatenado) +
+          // una partícula coleccionable por elemento que vuela hacia la mesa.
           if (event.obtained && event.obtained.length > 0) {
             const task = this.mission.scheduler.getTask(event.taskId);
             const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(event.actorId);
-            if (cell) {
-              const pixel = this.cellCenterPx(cell);
-              const text = event.obtained
-                .map((entry) => `x${entry.quantity} ${this.nameByComponentId.get(entry.componentId as string) ?? entry.componentId}`)
-                .join(", ");
-              const toast = fireObtainedToast(this, pixel.x, pixel.y, `${t("ui.floorplan.mission.obtained-toast")}: ${text}`);
-              toast.setDepth(RENDER_DEPTH.effect);
-              this.markAsWorldObject(toast);
+            if (cell) this.fireElementCollection(cell, event.obtained);
+            // Detalle legible del desmantelamiento por el sistema de notificaciones (12c.7).
+            this.notifications?.push({
+              title: t("ui.floorplan.notification.dismantled"),
+              lines: event.obtained.map(
+                (entry) => `×${entry.quantity} ${this.nameByComponentId.get(entry.componentId as string) ?? entry.componentId}`,
+              ),
+              type: "success",
+            });
+          }
+          // Síntesis/fabricación completada (tarea `combine`, 12c.7): el motor ya
+          // materializó la sustancia/creación (su listener corre antes), así que se
+          // detecta por el crecimiento del conteo y se notifica el nombre.
+          if (event.type === "combine") {
+            const subs = this.mission.availableSubstances;
+            const creations = this.mission.installableCreations;
+            if (subs.length > this.lastSubstancesCount) {
+              const s = subs[subs.length - 1];
+              this.notifications?.push({
+                title: t("ui.floorplan.notification.synthesized"),
+                lines: s ? [s.name] : undefined,
+                type: "success",
+              });
+            } else if (creations.length > this.lastCreationsCount) {
+              const c = creations[creations.length - 1];
+              this.notifications?.push({
+                title: t("ui.floorplan.notification.fabricated"),
+                lines: c ? [c.name] : undefined,
+                type: "success",
+              });
             }
+            this.lastSubstancesCount = subs.length;
+            this.lastCreationsCount = creations.length;
           }
           // Bark de resultado al TERMINAR una acción asignada ("listo").
           this.barkForActor(event.actorId, "success");
@@ -2429,6 +2795,20 @@ export class FloorplanScene extends Phaser.Scene {
       case "task-failed": {
         // Solo una tarea FALLIDA da bark ("no salió"); bloqueo/cancelación no.
         if (event.kind === "task-failed") this.barkForActor(event.actorId, "failure");
+        // Notificación de tarea fallida/bloqueada (12c.7) — la cancelación es
+        // acción voluntaria del jugador, no amerita aviso.
+        if (event.kind === "task-failed" || event.kind === "task-blocked") {
+          const failedTask = this.mission.scheduler.getTask(event.taskId);
+          this.notifications?.push({
+            title: t(
+              event.kind === "task-failed"
+                ? "ui.floorplan.notification.task-failed"
+                : "ui.floorplan.notification.task-blocked",
+            ),
+            lines: failedTask ? [this.taskTypeLabel(failedTask.type)] : undefined,
+            type: event.kind === "task-failed" ? "error" : "warning",
+          });
+        }
         this.updateCrewTokenLabel(event.actorId);
         this.updateCrewTokenWorking(event.actorId);
         this.redrawQueuePanel();
@@ -2479,12 +2859,129 @@ export class FloorplanScene extends Phaser.Scene {
         // Causa sin fenómeno ambiental propio: cae al efecto de cuerpo del registro.
         const cell = { x: Math.floor(token.dot.x / CELL), y: Math.floor(token.dot.y / CELL) };
         fireEventEffect(this, cell, event);
+        fireEventSound(this, event);
       }
       this.flashCrewToken(event.actorId);
     }
     this.flashCrewCard(event.actorId);
     this.redrawCrewStrip();
+    // Reacción del RETRATO (12c.2): sacudida + destello por causa, y en muerte
+    // estática analógica + apagado. Va DESPUÉS del redibujo porque la tira se
+    // reconstruye por completo — se anima el retrato recién creado, no uno que
+    // el redibujo va a destruir a continuación.
+    this.reactCrewPortrait(event);
     this.barkForActor(event.actorId, event.kind === "crew-death" ? "crew-death" : "severe-injury");
+  }
+
+  /**
+   * Reacción visual del retrato del tripulante ante daño/muerte (12c.2):
+   *  - Sacudida horizontal + rotación (violenta en muerte, contenida en daño).
+   *  - Destello de color POR CAUSA sobre el retrato: verde para corrosión
+   *    (tóxico), rojo para el resto — legible a qué murió/se hirió.
+   *  - Muerte: tras la sacudida, "estática analógica" (parpadeo rápido de alpha)
+   *    y apagado a un retrato tenue.
+   */
+  private reactCrewPortrait(event: CrewDomainEvent): void {
+    const portrait = this.crewStrip?.portraits.get(event.actorId);
+    if (!portrait) return;
+    const death = event.kind === "crew-death";
+    const baseX = portrait.x;
+    const amp = death ? 9 : 5;
+    this.tweens.killTweensOf(portrait);
+    this.tweens.add({
+      targets: portrait,
+      x: baseX + amp,
+      angle: death ? 8 : 4,
+      duration: death ? 45 : 60,
+      yoyo: true,
+      repeat: death ? 5 : 3,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        portrait.x = baseX;
+        portrait.angle = 0;
+        if (death) this.playAnalogStatic(portrait);
+      },
+    });
+    // Destello de color por causa, sobre el retrato.
+    const flashColor = event.cause === "corrosion" ? 0x6adc7a : 0xe0483f;
+    const overlay = this.add
+      .rectangle(portrait.x, portrait.y, portrait.displayWidth, portrait.displayHeight, flashColor, 0.55)
+      .setOrigin(0.5)
+      .setDepth(RENDER_DEPTH.hudContent + 1);
+    this.markAsHudObject(overlay);
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0,
+      duration: death ? 700 : 380,
+      onComplete: () => overlay.destroy(),
+    });
+  }
+
+  /** Parpadeo rápido de alpha ("estática analógica") y apagado tenue del retrato tras la muerte (12c.2). */
+  private playAnalogStatic(portrait: CrewPortraitObject): void {
+    this.tweens.add({
+      targets: portrait,
+      alpha: { from: 1, to: 0.35 },
+      duration: 55,
+      yoyo: true,
+      repeat: 5,
+      ease: "Steps.easeInOut",
+      onComplete: () => {
+        this.tweens.add({ targets: portrait, alpha: 0.25, duration: 300 });
+        // Apagado analógico: grayscale del retrato muerto (preFX null bajo Canvas → se omite).
+        if (portrait instanceof Phaser.GameObjects.Image) {
+          portrait.preFX?.addColorMatrix().grayscale(1);
+        }
+      },
+    });
+  }
+
+  /**
+   * Sincroniza el overlay de parpadeo tóxico por tripulante (12c.2): crea/actualiza
+   * un rectángulo verdoso (TOX) o ámbar (CORR) sobre la tarjeta del tripulante que
+   * está en una sección con ese contaminante, y lo retira cuando deja de estarlo.
+   * Persistente (no vive en el widget, que se reconstruye) para que el flicker no
+   * se corte con cada redibujo de la tira.
+   */
+  private syncCrewToxicOverlays(): void {
+    const hits = this.crewStrip?.cardHitAreas ?? [];
+    const toxicNow = new Set<CrewActorId>();
+    for (const hit of hits) {
+      const actor = this.mission.crewState.get(hit.actorId) ?? this.mission.activeCrew.find((a) => a.id === hit.actorId);
+      const sectionId = actor?.currentSectionId;
+      const contaminant = sectionId ? this.mission.contaminantAt(sectionId) : undefined;
+      if (!contaminant) continue;
+      toxicNow.add(hit.actorId);
+      const color = CHEMICAL_TAG_COLORS[contaminant.tag];
+      let overlay = this.crewToxicOverlays.get(hit.actorId);
+      if (!overlay) {
+        overlay = this.add
+          .rectangle((hit.xMin + hit.xMax) / 2, CREW_STRIP_Y + CREW_STRIP_HEIGHT / 2, hit.xMax - hit.xMin, CREW_STRIP_HEIGHT, color, 0.001)
+          .setDepth(RENDER_DEPTH.hudContent + 1);
+        this.markAsHudObject(overlay);
+        this.tweens.add({
+          targets: overlay,
+          alpha: 0.22,
+          duration: 620,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+        this.crewToxicOverlays.set(hit.actorId, overlay);
+      } else {
+        // La tarjeta pudo moverse (reorden/selección) — reancla y recolorea.
+        overlay.setPosition((hit.xMin + hit.xMax) / 2, CREW_STRIP_Y + CREW_STRIP_HEIGHT / 2);
+        overlay.setFillStyle(color, overlay.alpha);
+      }
+    }
+    // Retirar overlays de quienes ya no están expuestos (o desaparecieron de la tira).
+    for (const [actorId, overlay] of this.crewToxicOverlays) {
+      if (!toxicNow.has(actorId)) {
+        this.tweens.killTweensOf(overlay);
+        overlay.destroy();
+        this.crewToxicOverlays.delete(actorId);
+      }
+    }
   }
 
   /**
@@ -2528,6 +3025,94 @@ export class FloorplanScene extends Phaser.Scene {
     this.tweens.add({ targets: token.dot, scale: 1.4, duration: 90, yoyo: true });
   }
 
+  /**
+   * "Satisfacción de deconstrucción" (12c.5): al desmontar un compuesto, por
+   * CADA elemento atómico obtenido dispara (1) un texto ascendente propio (no
+   * un string concatenado) y (2) una partícula coleccionable que arquea desde
+   * la celda hacia el botón de la MESA, al estilo de la recolección de loot de
+   * otros juegos. Construye sobre el toast de `obtained-toast.ts`.
+   *
+   * El texto es objeto de MUNDO (sigue la celda); la partícula es objeto de HUD
+   * (vuela a un botón que vive en coords de pantalla), así que su origen se
+   * convierte mundo→pantalla con la misma fórmula que `updateActionPanelAnchor`.
+   */
+  private fireElementCollection(
+    cell: GridPosition,
+    obtained: ReadonlyArray<{ readonly componentId: string; readonly quantity: number }>,
+  ): void {
+    const cam = this.cameras.main;
+    const startX = (cell.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom;
+    const startY = HEADER_HEIGHT + (cell.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom;
+    const targetX = WORKBENCH_BUTTON_X;
+    const targetY = HEADER_HEIGHT / 2;
+
+    // Partícula coleccionable por elemento con trayectoria en arco hacia la mesa
+    // (12c.5). El detalle textual legible (qué se obtuvo) va por el sistema de
+    // notificaciones (12c.7), no como toasts de mundo por-elemento superpuestos.
+    obtained.forEach((_entry, index) => {
+      this.time.delayedCall(index * 90, () => this.fireCollectibleToWorkbench(startX, startY, targetX, targetY));
+    });
+  }
+
+  /**
+   * Una "bola de energía" dorada que arquea de `start` a `target` (coords de
+   * pantalla) y hace "pop" el botón de la mesa al llegar (12c.5). La luz que
+   * pidió el playtest (12c.7, obs #3) va acá, sobre la ficha que vuela: un halo
+   * aditivo que pulsa alrededor del núcleo brillante — el HUD no está iluminado
+   * por `PointLight` (cámara fija sin luces), así que el "glow" se hace con un
+   * arco de blend ADD, no con una luz real del motor de render.
+   */
+  private fireCollectibleToWorkbench(startX: number, startY: number, targetX: number, targetY: number): void {
+    const glow = this.add
+      .circle(startX, startY, 13, 0xffe27a, 0.5)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(RENDER_DEPTH.hudContent + 1);
+    const dot = this.add
+      .circle(startX, startY, 5, 0xfff4c2, 1)
+      .setStrokeStyle(1, 0xffffff, 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(RENDER_DEPTH.hudContent + 2);
+    this.markAsHudObject(glow);
+    this.markAsHudObject(dot);
+    // Pulso del halo: sube/baja de tamaño y alpha para leerse como luz viva.
+    const halo = this.tweens.add({
+      targets: glow,
+      scale: 1.5,
+      alpha: 0.75,
+      duration: 200,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    // Punto de control por encima de la recta start→target → arco visible.
+    const control = new Phaser.Math.Vector2((startX + targetX) / 2, Math.min(startY, targetY) - 80);
+    const curve = new Phaser.Curves.QuadraticBezier(
+      new Phaser.Math.Vector2(startX, startY),
+      control,
+      new Phaser.Math.Vector2(targetX, targetY),
+    );
+    const proxy = { t: 0 };
+    const point = new Phaser.Math.Vector2();
+    this.tweens.add({
+      targets: proxy,
+      t: 1,
+      duration: 620,
+      ease: "Cubic.easeIn",
+      onUpdate: () => {
+        curve.getPoint(proxy.t, point);
+        const shrink = 1 - proxy.t * 0.4;
+        dot.setPosition(point.x, point.y).setScale(shrink);
+        glow.setPosition(point.x, point.y);
+      },
+      onComplete: () => {
+        halo.stop();
+        glow.destroy();
+        dot.destroy();
+        if (this.workbenchButton) clickReaction(this, this.workbenchButton as unknown as Phaser.GameObjects.Container);
+      },
+    });
+  }
+
   /** Flash rojo breve sobre la tarjeta del tripulante golpeado en la tira inferior. */
   private flashCrewCard(actorId: CrewActorId): void {
     const hit = this.crewStrip?.cardHitAreas.find((a) => a.actorId === actorId);
@@ -2544,4 +3129,13 @@ export class FloorplanScene extends Phaser.Scene {
 /** `ConduitConnection` no tiene id propio (Fase 11f) — clave compuesta para `conduitFlowEffects`. */
 function conduitFlowKey(conduit: ConduitPath["conduit"]): string {
   return `${conduit.a}-${conduit.b}-${conduit.kind}`;
+}
+
+/** Hash determinístico simple de un `SectionId` a semilla de `unpoweredSectionLightIntensity` (Fase 12a) — desincroniza el parpadeo si hay más de una sección sin energía a la vez. */
+function sectionFlickerSeed(sectionId: SectionId): number {
+  let hash = 0;
+  for (let i = 0; i < sectionId.length; i += 1) {
+    hash = (hash * 31 + sectionId.charCodeAt(i)) % 1000;
+  }
+  return hash;
 }

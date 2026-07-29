@@ -3,6 +3,10 @@ import type Label from "phaser3-rex-plugins/templates/ui/label/Label.js";
 import { UI_TEXTURE_KEYS } from "../ui-asset-registry.js";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
+import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../../audio/audio-utils.js";
+import { attachHoverJuice } from "../ui-effects.js";
+import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 
 /**
  * El pack Kenney "Grey" es claro (gris plateado) — texto claro (`LABEL_COLOR`,
@@ -19,6 +23,10 @@ export interface KenneyButtonOptions {
   readonly fontSize?: string;
   readonly enabled?: boolean;
   readonly square?: boolean;
+  /** Texture key de un icono opcional a la izquierda del texto (12c.1). */
+  readonly iconTextureKey?: string;
+  /** Tamaño del icono en px (cuadrado). Por defecto se ajusta al alto del botón. */
+  readonly iconSize?: number;
   readonly onClick: () => void;
 }
 
@@ -44,6 +52,15 @@ export function createKenneyButton(
     background.setAlpha(0.4);
   }
 
+  // Icono opcional a la izquierda del texto (12c.1). rexUI lo coloca antes del
+  // texto en un label horizontal; si la texture no existe, se omite sin romper.
+  const iconSize = options.iconSize ?? Math.min(height - 10, 24);
+  const icon =
+    options.iconTextureKey && scene.textures.exists(options.iconTextureKey)
+      ? scene.add.image(0, 0, options.iconTextureKey).setDisplaySize(iconSize, iconSize)
+      : undefined;
+  if (icon && !enabled) icon.setAlpha(0.4);
+
   const button = scene.rexUI.add
     .label({
       x,
@@ -51,18 +68,29 @@ export function createKenneyButton(
       width,
       height,
       background,
+      icon,
       text: scene.add.text(0, 0, label, {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: options.fontSize ?? "16px",
         color: enabled ? BUTTON_TEXT_COLOR : BUTTON_TEXT_COLOR_DISABLED,
       }),
       align: "center",
-      space: { left: 10, right: 10, top: 8, bottom: 8 },
+      space: { left: 10, right: 10, top: 8, bottom: 8, icon: icon ? 6 : 0 },
     })
     .layout();
 
   if (enabled) {
-    button.setInteractive({ useHandCursor: true }).on("pointerdown", options.onClick);
+    button
+      // Cursor custom (12c.7, obs #2) en vez de `useHandCursor` (puntero del sistema, más chico).
+      .setInteractive({ cursor: UI_POINTER_CURSOR_CSS })
+      .on("pointerover", () => scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonHover), { volume: 0.3 }))
+      .on("pointerdown", () => {
+        scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonClick), { volume: 0.5 });
+        options.onClick();
+      });
+    // Feedback VISUAL de hover/click (12c.1) — antes solo había sonido en hover
+    // (deuda de PENDIENTES "falta efecto hover visual en los botones").
+    attachHoverJuice(scene, button);
   }
 
   return button;

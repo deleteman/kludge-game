@@ -3,7 +3,11 @@ import { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "../floorplan/initial-ship-state
 import { CREW_CAPACITY_BY_ARCHETYPE, selectActiveCrew, type CrewRoster } from "../crew/crew-roster.js";
 import type { CrewActor } from "../crew/crew-actor.types.js";
 import type { Blueprint } from "../blueprint/blueprint.types.js";
-import { CHAPTER_01_BY_ARCHETYPE, CHAPTER_01_INITIAL_ATOMIC_STOCK } from "../crisis/campaign/chapter-01-primer-aviso.js";
+import {
+  CHAPTER_01_BY_ARCHETYPE,
+  CHAPTER_01_INITIAL_ATOMIC_STOCK,
+  CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE,
+} from "../crisis/campaign/chapter-01-primer-aviso.js";
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
 
@@ -42,7 +46,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 4,
+      schemaVersion: 5,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -64,7 +68,13 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // Sin snapshot todavía: `MissionAtmosphereRuntime` siembra aire estándar por
     // sección al no encontrar una entrada (Fase 11b).
     sectionAtmospheres: [],
-    unpoweredSectionIds: [],
+    // Fase 12a: sección sembrada sin energía (attrezzo, solo Exploración por
+    // ahora) — cicatriz REAL desde el arranque, para que la luz ambiental de
+    // "sección sin energía" sea verificable jugando, no solo en tests.
+    unpoweredSectionIds: CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]
+      ? [CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]!]
+      : [],
+    overloadedRefs: [],
   };
 
   return {

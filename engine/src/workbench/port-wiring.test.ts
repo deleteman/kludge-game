@@ -49,6 +49,7 @@ function blueprintWith(signalGraph: SignalGraph<PlacedComponentInstanceId>): Blu
     signalGraph,
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

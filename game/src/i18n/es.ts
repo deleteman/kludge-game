@@ -114,6 +114,14 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.composition-title": "Composición",
   "ui.floorplan.mission.obtained-toast": "Obtuviste",
 
+  "ui.floorplan.notification.dismantled": "Desmantelado",
+  "ui.floorplan.notification.synthesized": "Sustancia sintetizada",
+  "ui.floorplan.notification.fabricated": "Pieza fabricada",
+  "ui.floorplan.notification.task-failed": "Tarea fallida",
+  "ui.floorplan.notification.task-blocked": "Tarea bloqueada",
+  "ui.floorplan.notification.objective-done": "Objetivo completado",
+  "ui.floorplan.notification.crisis-escalation": "La crisis escala",
+
   "component.functional.EM": "Emisor de señal — genera un pulso ante un disparador",
   "component.functional.REC": "Receptor de señal — reacciona a un pulso recibido",
   "component.functional.ACT": "Actuador — convierte energía en trabajo físico",

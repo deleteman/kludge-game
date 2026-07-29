@@ -63,6 +63,7 @@ export { createPhysicalComponentFactory } from "./components/physical-component-
 export type {
   AtomicComponentData,
   ComponentId,
+  CreationPart,
   CompositeComponentData,
   PhysicalComponentDefinition,
 } from "./components/physical-component.types.js";
@@ -480,7 +481,7 @@ export {
 } from "./workbench/workbench-state.types.js";
 export type { WorkbenchPiece, WorkbenchPieceId, WorkbenchState } from "./workbench/workbench-state.types.js";
 
-export { calculateFootprint, calculateOccupiedCells } from "./workbench/footprint-calculator.js";
+export { calculateFootprint, calculateFootprintOrigin, calculateOccupiedCells } from "./workbench/footprint-calculator.js";
 export { addSignalNode, connectNodes } from "./workbench/workbench-signal-adapter.js";
 export { buildRecipeFromPieces } from "./workbench/creation-recipe-builder.js";
 export { nameAndRegisterCreation } from "./workbench/creation-naming.js";
@@ -527,6 +528,7 @@ export type {
   JammedActuatorBlocksSectionTriggerSpec,
   MotionSensorsActiveTriggerSpec,
   ReplacementInstalledConnectedResolutionSpec,
+  ScriptedOverloadSubject,
   SignalNodesWiredResolutionSpec,
   SignalOutputCase,
   SignalOutputMatchesResolutionSpec,
@@ -624,6 +626,8 @@ export { sealBreachPressureSink } from "./mission/seal-breach-pressure-sink.js";
 export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";
 // Fase 11b — cicatriz de RE por componente instalado (primer llamador de StructuralIntegrity).
 export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.js";
+// Fase 12a — cicatriz de sobrecarga scripteada por contenido (primer llamador de OverloadRule).
+export { MissionOverloadRuntime } from "./mission/mission-overload-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).
 export type { ShipStatusLevel, ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status/ship-status.types.js";
 export {
@@ -631,6 +635,7 @@ export {
   aggregateAtmosphere,
   aggregateLifeSupport,
   aggregateHullIntegrity,
+  aggregateSectionHullIntegrity,
   aggregateEnergy,
 } from "./ship-status/ship-status-aggregation.js";
 export { ShipStatusQuery } from "./ship-status/ship-status-runtime.js";

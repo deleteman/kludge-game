@@ -41,6 +41,7 @@ function fixtureShip(overrides: Partial<Blueprint> = {}): Blueprint {
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
     ...overrides,
   };
 }
@@ -302,7 +303,7 @@ describe("createShipTaskEffect", () => {
     });
   });
 
-  it("dismantling an atomic piece credits nothing (no recipe to reverse)", () => {
+  it("dismantling an atomic piece recovers the piece itself to atomic stock (12c.7, obs #4)", () => {
     const registry = buildComponentCatalog().registry;
     const instanceId = "valvula-1" as PlacedComponentInstanceId;
     const shipState = new MutableShipState(
@@ -320,7 +321,7 @@ describe("createShipTaskEffect", () => {
     const atomicStock = new MutableAtomicStock({});
     const effect = createShipTaskEffect(shipState, registry, atomicStock);
 
-    effect(
+    const result = effect(
       createCrewTask({
         id: "t1" as CrewTaskId,
         actorId: ACTOR,
@@ -329,7 +330,11 @@ describe("createShipTaskEffect", () => {
       }),
     );
 
-    expect(atomicStock.get()).toEqual({});
+    // La pieza atómica vuelve al stock como su propia pieza, y el desmontaje la
+    // reporta en `obtained` (para el coleccionable + notificación de `/game`).
+    expect(atomicStock.get()).toEqual({ ["valvula-simple" as ComponentId]: 1 });
+    expect(result?.obtained).toEqual([{ componentId: "valvula-simple" as ComponentId, quantity: 1 }]);
+    expect(shipState.get().placedComponents).toEqual([]);
   });
 
   it("installing an atomic component consumes one unit of stock", () => {

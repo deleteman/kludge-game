@@ -5,6 +5,7 @@ import type { CrewActorId, DomainEvent, SectionId } from "engine";
 import { t } from "../i18n/i18n.js";
 import { renderFloorplan } from "../render/floorplan-renderer.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
+import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
 import { createConduitFlowEffect } from "../particles/effects/conduit-flow-effect.js";
 import {
   createFreezingEffect,
@@ -263,7 +264,9 @@ export class ParticleGalleryScene extends Phaser.Scene {
 
     for (const entry of GALLERY_ENTRIES) {
       this.input.keyboard?.on(`keydown-${entry.key}`, () => {
-        fireEventEffect(this, position, entry.buildEvent());
+        const event = entry.buildEvent();
+        fireEventEffect(this, position, event);
+        fireEventSound(this, event);
       });
     }
 

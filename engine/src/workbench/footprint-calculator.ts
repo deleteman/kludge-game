@@ -1,4 +1,4 @@
-import type { Footprint } from "../geometry/grid-position.types.js";
+import type { Footprint, GridPosition } from "../geometry/grid-position.types.js";
 import {
   effectiveFootprintExtent,
   occupiedCells,
@@ -32,6 +32,25 @@ export function calculateFootprint(pieces: ReadonlyArray<WorkbenchPiece>): Footp
   }
 
   return { width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * Esquina mínima (origen) del bounding box de la disposición — el punto que
+ * `calculateFootprint` descarta al devolver solo el tamaño. Necesario para
+ * expresar el offset de cada pieza RELATIVO al footprint del compuesto (deuda
+ * #8, Fase 12c.5), no en coordenadas absolutas de la mesa.
+ */
+export function calculateFootprintOrigin(pieces: ReadonlyArray<WorkbenchPiece>): GridPosition {
+  if (pieces.length === 0) {
+    throw new WorkbenchError("Cannot calculate footprint origin of an empty workbench");
+  }
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  for (const piece of pieces) {
+    minX = Math.min(minX, piece.placement.position.x);
+    minY = Math.min(minY, piece.placement.position.y);
+  }
+  return { x: minX, y: minY };
 }
 
 /**

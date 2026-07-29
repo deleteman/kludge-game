@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { t } from "../i18n/i18n.js";
 import { preloadUiAssets } from "../ui/ui-asset-registry.js";
+import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
@@ -23,6 +24,7 @@ export class PauseMenuScene extends Phaser.Scene {
 
   preload(): void {
     preloadUiAssets(this);
+    preloadAudioAssets(this);
   }
 
   create(): void {

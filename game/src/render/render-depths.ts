@@ -54,7 +54,11 @@ export const RENDER_DEPTH = {
    */
   hudBackground: 20,
   hudContent: 21,
+  /** Pila de notificaciones transitorias (12c.7) — por encima del HUD normal, por debajo de los diálogos bloqueantes. */
+  notification: 29,
   hudModal: 30,
+  /** Overlay de alerta de pantalla completa (Fase 12a) — por encima incluso de `hudModal`, para que el parpadeo de crisis crítica nunca quede tapado por un diálogo bloqueante. */
+  screenAlert: 31,
 } as const;
 
 export type RenderDepthName = keyof typeof RENDER_DEPTH;

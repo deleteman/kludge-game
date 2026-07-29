@@ -1,4 +1,5 @@
 import type Phaser from "phaser";
+import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
 import {
   ATOMIC_COMPONENT_CATALOG,
   assertSignalWiringReachable,
@@ -40,6 +41,8 @@ import {
 import type { TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 import type { MissionRuntime } from "./mission-runtime.js";
+import { AUDIO_KEYS } from "../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../audio/audio-utils.js";
 
 export interface MissionInteractionGeometry {
   /**
@@ -99,6 +102,10 @@ export class MissionInteractionController {
     readonly selectedIndex: number;
   };
   private installPickerContainer?: Phaser.GameObjects.Container;
+  /** Panel scrolleable vivo de la lista del selector, para preservar su scroll entre rebuilds (deuda #2). */
+  private installPickerList?: ScrollablePanel;
+  /** Fracción de scroll (0..1) a restaurar en el próximo rebuild del selector. */
+  private installPickerScrollT = 0;
 
   constructor(
     private readonly scene: SceneWithRexUI,
@@ -271,6 +278,7 @@ export class MissionInteractionController {
     }
 
     // Marca la celda sobre la que se va a actuar (resaltado persistente, bug 6).
+    this.scene.sound.play(pickSoundKey(AUDIO_KEYS.mapCellSelect), { volume: 0.4 });
     this.setSelectedCell(position);
 
     if (instance) {
@@ -454,6 +462,8 @@ export class MissionInteractionController {
       (candidate) => candidate.position.x === position.x && candidate.position.y === position.y,
     );
     if (!node) return;
+    // Feedback sonoro al clickear un nodo en modo cableado (12c.7, PENDIENTES obs #6).
+    this.scene.sound.play(pickSoundKey(AUDIO_KEYS.mapCellSelect), { volume: 0.4 });
 
     // Primer nodo: se elige como origen y se guía al segundo.
     if (!this.wireFirstNodeId) {
@@ -549,6 +559,8 @@ export class MissionInteractionController {
           this.callbacks.onTaskQueued();
         },
         onOpenInstallPicker: (position) => {
+          this.scene.sound.play(pickSoundKey(AUDIO_KEYS.modalOpen), { volume: 0.5 });
+          this.installPickerScrollT = 0;
           this.installPickerState = {
             position,
             inventoryOptions: this.buildInventoryOptions(),
@@ -670,12 +682,17 @@ export class MissionInteractionController {
       {
         onTabChange: (tab) => {
           if (!this.installPickerState) return;
+          // Otra pestaña = otra lista → el scroll arranca de cero.
+          this.installPickerScrollT = 0;
           this.installPickerState = { ...this.installPickerState, activeTab: tab, selectedIndex: 0 };
           this.redrawInstallPickerModal();
           this.callbacks.onSelectionChanged();
         },
         onSelect: (index) => {
           if (!this.installPickerState) return;
+          // Misma lista, solo cambia la selección → preservar el scroll actual
+          // antes de que el rebuild destruya el panel vivo (deuda #2).
+          this.installPickerScrollT = this.installPickerList?.t ?? 0;
           this.installPickerState = { ...this.installPickerState, selectedIndex: index };
           this.redrawInstallPickerModal();
           this.callbacks.onSelectionChanged();
@@ -683,6 +700,10 @@ export class MissionInteractionController {
         onInstall: (option) => this.confirmInstall(option, state.position),
         onCancel: () => this.closeInstallPicker(),
         markAsHudObject: (obj) => this.callbacks.markAsHudObject(obj),
+        initialScrollT: this.installPickerScrollT,
+        onListReady: (panel) => {
+          this.installPickerList = panel;
+        },
       },
     );
     this.installPickerContainer.setDepth(RENDER_DEPTH.hudModal);
@@ -724,8 +745,11 @@ export class MissionInteractionController {
   }
 
   private closeInstallPicker(): void {
+    this.scene.sound.play(pickSoundKey(AUDIO_KEYS.modalClose), { volume: 0.5 });
     this.installPickerContainer?.destroy(true);
     this.installPickerContainer = undefined;
+    this.installPickerList = undefined;
+    this.installPickerScrollT = 0;
     this.installPickerState = undefined;
     this.callbacks.onSelectionChanged();
   }

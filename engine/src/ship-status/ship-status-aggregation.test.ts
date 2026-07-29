@@ -7,10 +7,13 @@ import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
+import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import {
   aggregateAtmosphere,
   aggregateEnergy,
   aggregateHullIntegrity,
+  aggregateSectionHullIntegrity,
   aggregateLifeSupport,
   fractionToLevel,
 } from "./ship-status-aggregation.js";
@@ -119,6 +122,58 @@ describe("aggregateHullIntegrity (peor RE gana, destroyed fuerza crítico)", () 
       componentRegistry,
     );
     expect(result).toEqual({ level: "critical", fraction: 0 });
+  });
+});
+
+describe("aggregateSectionHullIntegrity (Fase 12a, mismo criterio worst-case pero acotado a una sección)", () => {
+  const CASCO_A = "casco-a" as SectionId;
+  const CASCO_B = "casco-b" as SectionId;
+  const twoSectionFloorplan: ShipFloorplan = {
+    id: "nave-test",
+    archetype: "investigacion",
+    nameKey: "ship.test.name",
+    gridSize: { width: 4, height: 1 },
+    sections: [
+      { id: CASCO_A, nameKey: "section.a", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
+      { id: CASCO_B, nameKey: "section.b", cells: [{ x: 2, y: 0 }, { x: 3, y: 0 }] },
+    ],
+    conduits: [],
+    anchors: [],
+    componentSeeds: [],
+  };
+
+  it("returns nominal for a section with no structural components", () => {
+    const result = aggregateSectionHullIntegrity([], componentRegistry, twoSectionFloorplan, CASCO_A);
+    expect(result).toEqual({ level: "nominal", fraction: 1 });
+  });
+
+  it("only considers components anchored in the requested section", () => {
+    const damagedInA = placedInstance({
+      componentDefinitionId: planchaMetalica,
+      condition: "destroyed",
+      placement: { position: { x: 0, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
+    });
+    const okInB = placedInstance({
+      instanceId: "instance-2" as PlacedComponentInstanceId,
+      componentDefinitionId: planchaMetalica,
+      placement: { position: { x: 2, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
+    });
+
+    const sectionA = aggregateSectionHullIntegrity(
+      [damagedInA, okInB],
+      componentRegistry,
+      twoSectionFloorplan,
+      CASCO_A,
+    );
+    expect(sectionA).toEqual({ level: "critical", fraction: 0 });
+
+    const sectionB = aggregateSectionHullIntegrity(
+      [damagedInA, okInB],
+      componentRegistry,
+      twoSectionFloorplan,
+      CASCO_B,
+    );
+    expect(sectionB.level).toBe("warning");
   });
 });
 

@@ -58,3 +58,14 @@ export type ParticleEmitterHook = (emitter: Phaser.GameObjects.Particles.Particl
  * soporta eso de forma nativa).
  */
 export type FlowTokenHook = (token: Phaser.GameObjects.Image) => void;
+
+/**
+ * Mismo problema que `ParticleEmitterHook`, para luces aditivas persistentes
+ * (Fase 12a: `game/src/particles/effects/dynamic-light.ts`) — un
+ * `Phaser.GameObjects.PointLight` creado con `scene.add.pointlight` es tan
+ * susceptible al bug de doble-cámara como un emisor de partículas, y a
+ * diferencia de los bursts cortos existentes (`combustion-effect.ts`), una
+ * luz persistente queda visible el tiempo suficiente para que el duplicado
+ * fijo de `hudCamera` sea notorio.
+ */
+export type LightHook = (light: Phaser.GameObjects.PointLight) => void;

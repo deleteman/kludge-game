@@ -63,6 +63,7 @@ function shipWithActuator(condition: "ok" | "jammed", definitionId: ComponentId)
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

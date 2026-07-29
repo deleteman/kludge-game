@@ -3,7 +3,7 @@ import type Phaser from "phaser";
 import type { GridPosition } from "../particle-effect.types.js";
 import { spawnBurst, spreadRange, textureScale, toPixel } from "../particle-utils.js";
 import {
-  DIRT_TEXTURES,
+  CIRCLE_TEXTURES,
   FLARE_TEXTURE,
   SMOKE_TEXTURES,
   SPARK_TEXTURES,
@@ -77,51 +77,85 @@ export function installEffect(scene: Phaser.Scene, position: GridPosition, durat
   return [sparks, flashes];
 }
 
-/** Desmontaje de una pieza: escombros marrones radiales que caen + nube de polvo gris que sube, durante toda la acción. */
-export function dismantleEffect(scene: Phaser.Scene, position: GridPosition, durationMs: number): Emitter[] {
+/**
+ * Desmontaje de una pieza (12c.7, obs #3/#4): en vez de escombros marrones
+ * apagados, "bolas de energía" — orbes brillantes cian/dorados que salen
+ * disparados radialmente con blend aditivo (glow), chispas rápidas y una tenue
+ * nube de humo para dar peso. Se ve satisfactorio tanto en el desmontaje de un
+ * compuesto como de una pieza atómica (ambas ahora recuperan piezas al stock).
+ * La "luz" energética que pidió el playtest va sobre las fichas coleccionables
+ * que vuelan hacia la mesa (`fireCollectibleToWorkbench`), no sobre este efecto
+ * de proceso.
+ */
+export function dismantleEffect(
+  scene: Phaser.Scene,
+  position: GridPosition,
+  durationMs: number,
+): Emitter[] {
   const { px, py } = toPixel(position);
 
-  const debris = spawnBurst(
+  const orbs = spawnBurst(
     scene,
     px,
     py,
     {
-      lifespan: 500,
-      speed: { min: 40, max: 110 },
-      angle: { min: 0, max: 360 }, // radial (a diferencia del arco ascendente de instalar)
-      gravityY: 340,
-      scale: { start: textureScale(9), end: textureScale(3) },
+      lifespan: 620,
+      speed: { min: 60, max: 150 },
+      angle: { min: 0, max: 360 }, // radial
+      gravityY: 60,
+      scale: { start: textureScale(11), end: textureScale(2) },
       alpha: { start: 1, end: 0 },
-      rotate: { min: 0, max: 360 },
-      quantity: 2,
+      quantity: 3,
       frequency: 55,
-      tint: [0x9a8b76, 0x7d6f5c, 0xb0a390],
+      blendMode: "ADD",
+      tint: [0x9ff2ff, 0xffe27a, 0xffffff, 0x66d4ff],
       x: spreadRange(5),
       y: spreadRange(5),
     },
     durationMs,
-    DIRT_TEXTURES,
+    CIRCLE_TEXTURES,
   );
 
-  const dust = spawnBurst(
+  const sparks = spawnBurst(
     scene,
     px,
     py,
     {
-      lifespan: 700,
-      speed: { min: 8, max: 24 },
-      angle: { min: 250, max: 290 },
-      scale: { start: textureScale(10), end: textureScale(26) },
-      alpha: { start: 0.35, end: 0 },
+      lifespan: 380,
+      speed: { min: 90, max: 210 },
+      angle: { min: 0, max: 360 },
+      scale: { start: textureScale(6), end: 0 },
+      alpha: { start: 1, end: 0 },
       quantity: 2,
-      frequency: 90,
-      tint: 0x8a8079,
-      x: spreadRange(8),
-      y: spreadRange(6),
+      frequency: 70,
+      blendMode: "ADD",
+      tint: [0xffffff, 0x9ff2ff, 0xffe27a],
+      x: spreadRange(4),
+      y: spreadRange(4),
+    },
+    durationMs,
+    SPARK_TEXTURES,
+  );
+
+  const smoke = spawnBurst(
+    scene,
+    px,
+    py,
+    {
+      lifespan: 640,
+      speed: { min: 8, max: 22 },
+      angle: { min: 250, max: 290 },
+      scale: { start: textureScale(9), end: textureScale(22) },
+      alpha: { start: 0.22, end: 0 },
+      quantity: 1,
+      frequency: 120,
+      tint: 0x334155,
+      x: spreadRange(7),
+      y: spreadRange(5),
     },
     durationMs,
     SMOKE_TEXTURES,
   );
 
-  return [debris, dust];
+  return [orbs, sparks, smoke];
 }

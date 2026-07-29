@@ -5,6 +5,7 @@ import { t } from "../i18n/i18n.js";
 import { HEADER_COLOR, LABEL_COLOR } from "../render/palette.js";
 import { UI_FONT_FAMILY } from "../ui/fonts.js";
 import { preloadUiAssets } from "../ui/ui-asset-registry.js";
+import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton, setButtonHighlighted } from "../ui/widgets/kenney-button.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
 import { campaignSession } from "../meta/campaign-session.js";
@@ -29,6 +30,7 @@ export class CrewSelectScene extends Phaser.Scene {
 
   preload(): void {
     preloadUiAssets(this);
+    preloadAudioAssets(this);
   }
 
   create(): void {

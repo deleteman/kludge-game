@@ -45,6 +45,7 @@ function buildFixtureBlueprint(): Blueprint {
     },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

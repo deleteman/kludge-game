@@ -37,18 +37,38 @@
    **Fase 11f.7**: el flujo seguía moviéndose en pausa (proyectiles/atmósfera sí se congelaban) — corregido,
    `updateConduitFlowEffects`/`updateSignalWireFlowEffects` ahora solo corren en `coreLoop.mode === "execution"`.
    ✅ RESUELTO.
-2. en las listas de elementos (como en el modal de instalación), si hago click en un elemento para el que tuve que scrollear para verlo, la lista se vuelve al inicio (no se deselecciona, pero se mueve autoamticamente a su estado original), complicando así la exploración de la lista.
+2. ✅ RESUELTO (Fase 12c.6). en las listas de elementos (como en el modal de instalación), si hago click en un elemento para el que tuve que scrollear para verlo, la lista se vuelve al inicio (no se deselecciona, pero se mueve autoamticamente a su estado original), complicando así la exploración de la lista.
+   Resuelto: el selector de instalación se recrea entero al seleccionar un ítem; ahora preserva la fracción de
+   scroll del `ScrollablePanel` de rexUI entre rebuilds (`initialScrollT`/`onListReady` en
+   `install-picker-modal.ts`, captura de `panel.t` en `mission-interaction-controller.ts`). La paleta de química
+   no tenía el bug (no se recrea al seleccionar un elemento).
 3. Los tripulantes siguen moviendose incluso si a mitad de camino se pausa el juego.
 
 4. Las sustancias quimicas deberían poder sintetizarse solamente desde un aparato especifico. al hacerle click a la "estación quimica" (nombre que se puede mejorar) el menú contextual debería ser "Fabricar sustancias" y "Desmontar".
 
-5. El texto al crear las sustancias quimicas se sale del modal de confirmacion.
+5. ✅ RESUELTO (Fase 12c.6). El texto al crear las sustancias quimicas se sale del modal de confirmacion.
+   Resuelto: `confirmSynthesis` (`creative-workbench-scene.ts`) dibujaba el nombre de la sustancia (20px) sin
+   `wordWrap` dentro de una caja de 520px — un nombre largo desbordaba. Ahora se envuelve dentro del ancho de la
+   caja (con margen).
+
+6. ✅ RESUELTO (Fase 12c.7). No hay feedback sonoro para los clicks cuando estamos en modo cableado.
+   Resuelto: `handleWireModeClick` (`mission-interaction-controller.ts`) reproduce `AUDIO_KEYS.mapCellSelect` al
+   clickear un nodo válido (seleccionar origen, deseleccionar o confirmar destino).
+7. El modo pantalla completa queda en negro sin errores en la consola.
+8. 
+
 
 ## Fine-tunning
 
-* El botón de MESA y el botón de creaciones quimicas podría tener un icono junto al nombre, tengo iconos en game/assets/ui/ui-components/BUTTON-ICONS que podriamos usar
+* ✅ RESUELTO (Fase 12c.1). El botón de MESA y el botón de creaciones quimicas podría tener un icono junto al nombre, tengo iconos en game/assets/ui/ui-components/BUTTON-ICONS que podriamos usar
+  Resuelto: botón MESA con `construction-table.png` y toggle Física/Química con `mixer.png` (ruta real
+  `game/assets/sprites/ui/ui-components/BUTTON-ICONS/`), vía el nuevo `iconTextureKey` de `createKenneyButton`.
 * El menú de la pantalla inicial se ve y se siente profesional? Qué le falta?
 * Los primeros 10 minutos de gameplay, son adictivos? Le dan algún reward al jugador?
+* ✅ RESUELTO (Fase 12c.1). Falta efectos hover en los botones de la UI. Ahora mismo hay sonidos al hacerle hover, lo cual es genial, pero falta un efecto visual que corresponda con la acción.
+  Resuelto: `attachHoverJuice` (`game/src/ui/ui-effects.ts`) engancha un tween sutil de escala en
+  `pointerover`/`pointerout` + pulso al `pointerdown`, aplicado en el único punto `createKenneyButton`, así que
+  todos los botones de menú y de misión lo heredan.
 
 ## Deuda técnica detectada (fuera de alcance de la fase en curso)
 
@@ -114,13 +134,19 @@ dónde, y qué costaría arreglarlo.
    sprite falte). Encaja naturalmente en 11c.2 (cuando la mesa pase a ser superficie real en misión) o
    en la Fase 12 (pulido visual).
 
-8. **Una creación compuesta instalada se dibuja como un rectángulo placeholder** (Fase 11c.1, reportado en playtest).
+8. ✅ RESUELTO (Fase 12c.5). **Una creación compuesta instalada se dibuja como un rectángulo placeholder** (Fase 11c.1, reportado en playtest).
    El `componentDefinitionId` de una creación es `creation-XXXX`, que no tiene sprite propio en
    `game/assets/sprites/components/`, así que `renderFloorplan` cae al placeholder. Para dibujarla como
    sus piezas reales habría que descomponer el compuesto (su receta) y pintar el sprite de cada parte en
    su offset dentro del footprint — trabajo de render no trivial, y a futuro una creación podría merecer
    identidad visual propia. Distinto del #7 (ese es la mesa; este es el plano de misión). Diferido a la
    Fase 12 o a cuando se defina la representación visual de compuestos custom.
+   Resuelto: `buildRecipeFromPieces` descartaba las posiciones, así que se agregó `CompositeComponentData.layout`
+   (`CreationPart[]` = ref + offset relativo al origen del footprint + footprint + rotación por pieza), poblado en
+   `nameAndRegisterCreation` (`calculateFootprintOrigin` nuevo) y round-trippeado por el serializer de creación (3
+   tests nuevos). `renderMissionOverlay` recibe un `resolveDefinition` y `drawCreationLayout` pinta el sprite real de
+   cada parte en su offset (con fallback a placeholder por parte que falte). Es el plano de MISIÓN; el #7 (la mesa) ya
+   estaba resuelto por separado.
 
 9. ⚠️ PARCIALMENTE RESUELTO (Fase 11e). **Una sustancia sintetizada (11c.3) queda disponible pero sin destino de uso.** `MissionRuntime.queueSynthesis`
    resuelve la identidad de la mezcla (`engine/src/chemistry/production/synthesize-substance.ts`, vía
@@ -155,7 +181,7 @@ dónde, y qué costaría arreglarlo.
     exista una simulación real de fluidos/reservorios con transporte entre secciones — hueco relacionado
     con el punto 9 de este archivo (reservorios sin `substanceId`/`amount`).
 
-11. **Capa `estructural` del HUD (11f) es un botón sin dato ni overlay detrás — decisión de alcance
+11. ✅ RESUELTO (Fase 12a). **Capa `estructural` del HUD (11f) es un botón sin dato ni overlay detrás — decisión de alcance
     explícita.** El texto original de la Subfase 11f mencionaba una capa "estructural" que no corresponde a
     ningún `ConduitKind` del motor (`ventilacion`/`electrico`/`fluido`/`senal`) — la integridad estructural
     es un dato de sección (`structuralResistanceOverride`/cicatrices de RE en `blueprint.types.ts`, hoy solo
@@ -164,6 +190,12 @@ dónde, y qué costaría arreglarlo.
     para no dejar un hueco entre el texto de la fase y la UI, pero no controla ningún render —
     `conduitLayers.estructural` en `floorplan-renderer.ts` se crea vacío a propósito. Implementar cuando el
     GDD defina un overlay real de integridad de casco/RE.
+    Resuelto: `aggregateSectionHullIntegrity` (`engine/src/ship-status/ship-status-aggregation.ts`) agrega el
+    peor RE de los componentes anclados en una sección (mismo criterio worst-case que `aggregateHullIntegrity`
+    a nivel nave), expuesto vía `ShipStatusQuery.sectionHullIntegrity`/`MissionRuntime.sectionHullIntegrity`.
+    `drawStructuralLayer` (`game/src/render/floorplan-renderer.ts`) tiñe cada sección degradada
+    (ámbar/rojo, `STRUCTURAL_LAYER_COLOR`), redibujado cada frame por `floorplan-scene.ts` — mismo criterio
+    que `redrawUnpoweredSectionScar`.
 
 12. **Un conducto asume que `(a, b, kind)` es una clave única (11f).** `ConduitConnection` no tiene un id
     propio; `game/src/scenes/floorplan-scene.ts::conduitFlowKey` usa `${a}-${b}-${kind}` como clave del
@@ -205,3 +237,38 @@ dónde, y qué costaría arreglarlo.
     mismo mecanismo que ya usa la Pantalla LCD (`resolveLcdDisplayValue`, resolución por tag funcional). No
     iniciar sin un ciclo de preguntas propio con el operador (alcance: ¿solo LED o cualquier receptor de
     señal con salida numérica?, ¿editable en cualquier momento o solo antes de instalar?, etc.).
+    **Confirmado como fuera de alcance en la planificación de la Fase 12a (2026-07-28)**: el ítem "Potenciar
+    Indicador LED con intensidad graduada" del texto de 12a (`nuevo-orden.md`) quedó explícitamente diferido
+    — no existe en el motor ninguna fuente de nivel graduado genérica en el grafo de señales (solo
+    `VelocityLevel` del dominio kinetics/MAG, Fase 11a), así que graduar el LED requiere antes decidir de
+    dónde sale ese nivel para el caso general, no solo para fuentes cinéticas. 12a sí entregó el sistema de
+    luces aditivas (`game/src/particles/effects/dynamic-light.ts`) que un LED graduado futuro reutilizaría.
+
+16. **`CombustionEvent`/reacciones químicas no tienen ningún llamador de producción en `MissionRuntime`
+    (detectado en Fase 12a).** Igual que `OverloadRule` antes de esta fase, `ReactionResolver`/las reglas de
+    combustión (`engine/src/chemistry/reaction/rules/combustion.ts`) solo se ejercitan en tests — no hay
+    ningún runtime de misión que evalúe reacciones químicas en vivo, así que `combustionEffect`
+    (`game/src/particles/effects/combustion-effect.ts`) sigue siendo un efecto demostrado únicamente en
+    `particle-gallery-scene.ts`, nunca disparado en partida real. Consecuencia directa para 12a: el overlay
+    de alerta de pantalla completa (`redrawScreenAlertOverlay`, `floorplan-scene.ts`) NO reacciona a
+    "combustión violenta" pese a que el texto de la fase lo pedía — solo a `overload` (fire/explosion) y al
+    agregado crítico de `ShipStatusSnapshot` (que sí cubre la fuga crítica, vía el dominio atmósfera). Lo
+    necesita cualquier capítulo cuyo caso de validación dependa de que un incendio real ocurra en misión, no
+    solo en la mesa de creación/reacciones aisladas. Al resolverlo, revisar también si el `PointLight` de
+    `combustion-effect.ts:116-130` necesita el `LightHook` de 12a (`game/src/particles/particle-effect.types.ts`)
+    — hoy ese burst no registra su luz contra `hudCamera.ignore()`, un riesgo menor mientras sea un burst
+    corto (300-2000ms) pero a revisar si algún día se vuelve más largo.
+    **Ampliado en Fase 12b**: el mismo hueco existe para `HazardEvent` (`toxic-threshold`/`corrosive-exposure`,
+    umbral de exposición atmosférica a tripulante) — tampoco tiene llamador real en `floorplan-scene.ts`, solo
+    se demuestra en `particle-gallery-scene.ts`. El sonido de corrosión (`game/src/audio/effects/
+    corrosion-sound.ts`) y el de combustión quedaron listos y registrados en `phenomenon-sound-registry.ts`,
+    pero ninguno de los dos suena en partida real hasta que exista el runtime que dispare estos eventos.
+
+17. **No hay asset dedicado de siseo de fuga de gas, zumbido eléctrico continuo, sirena de alarma ni paso sobre
+    piso metálico en el pack de audio (Fase 12b).** El pack colocado por el operador en `game/assets/audio/`
+    (`UI/`, `gameplay/`, `voices/`) es de ciencia ficción/acción genérico, no industrial de mantenimiento de
+    nave — no trae ninguno de esos cuatro sonidos. Aproximaciones usadas en su lugar, documentadas en
+    `game/src/audio/audio-asset-registry.ts`: `engineCircular` (loop de motor grave) para la fuga de gas,
+    `computerNoise` para la alarma, `impactMetal` para instalación/pasos de tripulante. Reemplazar cuando se
+    consiga un asset más específico — el punto de cambio es un solo archivo (`AUDIO_KEYS`), no requiere tocar
+    ningún llamador.

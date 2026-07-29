@@ -39,6 +39,7 @@ function buildBlueprint(
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

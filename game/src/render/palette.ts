@@ -1,4 +1,12 @@
-import type { ChemicalSubstanceId, ChemicalTag, ComponentCondition, ConduitKind, CoreLoopMode, SignalNodeRole } from "engine";
+import type {
+  ChemicalSubstanceId,
+  ChemicalTag,
+  ComponentCondition,
+  ConduitKind,
+  CoreLoopMode,
+  ShipStatusLevel,
+  SignalNodeRole,
+} from "engine";
 
 /**
  * Paleta placeholder de Fase 5, data-driven. Cuando se elija el pack de
@@ -127,6 +135,56 @@ export const UNPOWERED_SECTION_MAX_ALPHA = 0.7;
 export const UNPOWERED_SECTION_FLICKER_PERIOD_SECONDS = 1.6;
 
 /**
+ * Luz ambiental de "sección sin energía" (Fase 12a, corrección post-playtest — el texto original de la
+ * fase la pedía como ejemplo de "estados de daño de fondo" y había quedado sin implementar). Violeta
+ * apagado, no ámbar/rojo: es AUSENCIA de energía, no una alarma activa como la sobrecarga o el overlay
+ * global.
+ *
+ * 2ª corrección del mismo playtest: la primera versión reusaba `sectionScarFlickerAlpha` (seno suave,
+ * período fijo de 1.6s) — se leía como un pulso predecible, no como una falla real. `flickeringLightIntensity`
+ * (abajo) es un patrón nuevo, no reutilizado de ningún otro parpadeo del proyecto a propósito: mayormente
+ * OSCURA, con chispazos breves e irregulares — "luz de emergencia que quiere prender y no puede", no un
+ * "todo bien pero atenuado".
+ */
+export const UNPOWERED_SECTION_LIGHT_COLOR = 0x2a1f4a;
+export const UNPOWERED_SECTION_LIGHT_RADIUS_PX = 96;
+const UNPOWERED_SECTION_LIGHT_MIN_INTENSITY = 0.02;
+const UNPOWERED_SECTION_LIGHT_MAX_INTENSITY = 0.22;
+
+/**
+ * Parpadeo errático genérico (Fase 12a, corrección post-playtest): suma de senos a frecuencias
+ * inconmensurables entre sí (sin múltiplos enteros comunes) para que el resultado no se perciba
+ * periódico a simple vista, más un umbral que recorta casi todo a 0 — la luz pasa la mayor parte del
+ * tiempo prácticamente apagada, con chispazos cortos que rompen el silencio en vez de una onda continua.
+ * Determinístico (sin `Math.random()`): mismo criterio de testeabilidad que el resto del motor de
+ * partículas, y evita que dos lecturas del mismo instante dentro de un frame den valores distintos.
+ */
+function flickeringLightIntensity(elapsedSeconds: number, seed: number, minIntensity: number, maxIntensity: number): number {
+  const n1 = Math.sin(elapsedSeconds * 13.7 + seed);
+  const n2 = Math.sin(elapsedSeconds * 5.3 + seed * 2.1 + 1.7);
+  const n3 = Math.sin(elapsedSeconds * 27.1 + seed * 0.6 + 4.2);
+  const noise = (n1 + n2 * 0.6 + n3 * 0.3) / 1.9; // aproximadamente [-1, 1]
+  // Recorta todo por debajo del umbral a 0 — sin esto, la suma de senos sigue
+  // pareciendo una onda continua; con el umbral, se leen chispazos aislados.
+  const spike = Math.max(0, noise - 0.5) / 0.5;
+  return minIntensity + spike * (maxIntensity - minIntensity);
+}
+
+/**
+ * Intensidad de la luz ambiental de una sección sin energía en un instante dado — ver
+ * `flickeringLightIntensity`. `seed` (opcional, default 0) desincroniza el parpadeo entre secciones
+ * distintas si algún día hay más de una sin energía a la vez — sin él, todas titilarían al unísono.
+ */
+export function unpoweredSectionLightIntensity(elapsedSeconds: number, seed = 0): number {
+  return flickeringLightIntensity(
+    elapsedSeconds,
+    seed,
+    UNPOWERED_SECTION_LIGHT_MIN_INTENSITY,
+    UNPOWERED_SECTION_LIGHT_MAX_INTENSITY,
+  );
+}
+
+/**
  * Color curado por elemento base (GDD 5.4.1, mesa de creación modo química,
  * Fase 11c.3) — inspirado en color de llama/estado real (ej. sodio amarillo
  * de flama, cobre cobrizo, azufre amarillo), no en física exacta, mismo
@@ -213,4 +271,64 @@ export function sectionScarFlickerAlpha(elapsedSeconds: number): number {
   const phase = (elapsedSeconds / UNPOWERED_SECTION_FLICKER_PERIOD_SECONDS) * Math.PI * 2;
   const wave = (Math.sin(phase) + 1) / 2;
   return UNPOWERED_SECTION_MIN_ALPHA + wave * (UNPOWERED_SECTION_MAX_ALPHA - UNPOWERED_SECTION_MIN_ALPHA);
+}
+
+/**
+ * Cicatriz de "conductor/reservorio en cortocircuito" (Fase 12a,
+ * `Blueprint.overloadedRefs`, `MissionOverloadRuntime`). Mismo tono ámbar que
+ * `SPARK_COLOR_BY_RESOURCE.E` en `overload-effect.ts` (el burst inicial y la
+ * cicatriz persistente son el mismo fenómeno, deben leerse como continuación
+ * uno del otro) para la luz aditiva; color exclusivo distinto de
+ * `UNPOWERED_SECTION_TINT` para el tinte de superficie (principio 6: no debe
+ * confundirse con la cicatriz de sección sin energía).
+ */
+export const OVERLOADED_CONDUCTOR_LIGHT_COLOR = 0xf2d24b;
+export const OVERLOADED_CONDUCTOR_LIGHT_RADIUS_PX = 36;
+export const OVERLOADED_CONDUCTOR_LIGHT_MIN_INTENSITY = 0.25;
+export const OVERLOADED_CONDUCTOR_LIGHT_MAX_INTENSITY = 0.65;
+/** Parpadeo errático de chispa, mucho más rápido que la cicatriz de energía (0.35s vs. 1.6s) — un cortocircuito no respira, titila. */
+export const OVERLOADED_CONDUCTOR_FLICKER_PERIOD_SECONDS = 0.35;
+
+/** Intensidad de luz de un conductor sobrecargado en un instante dado — parpadeo rápido, no sinusoidal suave (a diferencia de `sectionScarFlickerAlpha`), para leerse como chispazo errático. */
+export function overloadedConductorFlickerIntensity(elapsedSeconds: number): number {
+  const phase = (elapsedSeconds / OVERLOADED_CONDUCTOR_FLICKER_PERIOD_SECONDS) * Math.PI * 2;
+  // Onda cuadrada suavizada (seno elevado a potencia impar) en vez de seno puro: transiciones más bruscas, "titileo" en vez de "respiración".
+  const wave = Math.abs(Math.sin(phase)) ** 3;
+  return (
+    OVERLOADED_CONDUCTOR_LIGHT_MIN_INTENSITY +
+    wave * (OVERLOADED_CONDUCTOR_LIGHT_MAX_INTENSITY - OVERLOADED_CONDUCTOR_LIGHT_MIN_INTENSITY)
+  );
+}
+
+/**
+ * Capa "estructural" del HUD del plano (Fase 12a): tiñe cada sección según su
+ * peor RE agregado (`aggregateSectionHullIntegrity`) — `nominal` no se
+ * dibuja (nada que remarcar), `warning`/`critical` usan el mismo par
+ * ámbar/rojo que `healthFractionColor`, para que el jugador ya asocie esos
+ * colores a "degradado"/"crítico" en el resto de la UI (principio 6: mismo
+ * fenómeno, mismo color, en vez de inventar una paleta nueva por overlay).
+ */
+export const STRUCTURAL_LAYER_COLOR: Readonly<Partial<Record<ShipStatusLevel, number>>> = {
+  warning: 0xe0a33f,
+  critical: 0xe0483f,
+};
+export const STRUCTURAL_LAYER_ALPHA = 0.35;
+
+/**
+ * Overlay de alerta de pantalla completa (Fase 12a): crisis crítica en curso
+ * (dominio del HUD de estado de nave en `"critical"`, o un evento violento de
+ * `overload`/`combustion`/fuga). Rojo puro, distinto de `UNPOWERED_SECTION_TINT`
+ * (casi negro) y de `OVERLOADED_CONDUCTOR_LIGHT_COLOR` (ámbar) — principio 6.
+ */
+export const SCREEN_ALERT_TINT = 0x8a0f0f;
+export const SCREEN_ALERT_MIN_ALPHA = 0;
+export const SCREEN_ALERT_MAX_ALPHA = 0.22;
+/** Más rápido que la cicatriz de sección pero más lento que el chispazo de sobrecarga — urgente sin llegar a epilepsia. */
+export const SCREEN_ALERT_FLICKER_PERIOD_SECONDS = 0.9;
+
+/** Alpha del overlay de alerta global en un instante dado — mismo criterio sinusoidal que `sectionScarFlickerAlpha`, período propio para no verse igual. */
+export function screenAlertFlickerAlpha(elapsedSeconds: number): number {
+  const phase = (elapsedSeconds / SCREEN_ALERT_FLICKER_PERIOD_SECONDS) * Math.PI * 2;
+  const wave = (Math.sin(phase) + 1) / 2;
+  return SCREEN_ALERT_MIN_ALPHA + wave * (SCREEN_ALERT_MAX_ALPHA - SCREEN_ALERT_MIN_ALPHA);
 }

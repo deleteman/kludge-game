@@ -1,6 +1,14 @@
 import Phaser from "phaser";
 import { effectiveFootprintExtent, GRID_CELL_SIZE_PX, occupiedCells } from "engine";
-import type { Blueprint, ComponentId, GridPosition, PlacedComponentInstanceId, ShipFloorplan } from "engine";
+import type {
+  Blueprint,
+  ComponentId,
+  CreationPart,
+  GridPosition,
+  PhysicalComponentDefinition,
+  PlacedComponentInstanceId,
+  ShipFloorplan,
+} from "engine";
 
 import { RENDER_DEPTH } from "./render-depths.js";
 import { componentTextureKey, hasComponentSprite } from "./component-sprite-registry.js";
@@ -65,6 +73,10 @@ export function renderMissionOverlay(
   // pasa), cae a la recta de siempre.
   floorplan?: ShipFloorplan,
   walkableGrid?: WalkableGrid,
+  // Deuda #8 (Fase 12c.5): resuelve la definición de un componente por id, para
+  // que una creación (`creation-XXXX`, sin sprite propio) se dibuje con los
+  // sprites reales de sus partes según su `layout`. Sin él, cae al placeholder.
+  resolveDefinition?: (id: ComponentId) => PhysicalComponentDefinition | undefined,
 ): MissionOverlayRender {
   const container = scene.add.container(0, 0).setDepth(RENDER_DEPTH.objects);
   const graphics = scene.add.graphics();
@@ -132,7 +144,10 @@ export function renderMissionOverlay(
     }
 
     // Sprite real si existe (tinte por `condition`, principio 6 de CLAUDE.md);
-    // si no, el rectángulo de color placeholder de siempre.
+    // si no, una creación con `layout` se dibuja como los sprites de sus partes
+    // (deuda #8, Fase 12c.5); si tampoco, el rectángulo de color placeholder.
+    const definition = resolveDefinition?.(instance.componentDefinitionId);
+    const layout = definition?.level === "composite" ? definition.data.layout : undefined;
     if (hasComponentSprite(scene, instance.componentDefinitionId)) {
       const sprite = scene.add
         .image(originX, originY, componentTextureKey(instance.componentDefinitionId))
@@ -141,6 +156,8 @@ export function renderMissionOverlay(
         .setDepth(RENDER_DEPTH.objects);
       if (tint !== undefined) sprite.setTint(tint);
       container.add(sprite);
+    } else if (layout && layout.length > 0) {
+      drawCreationLayout(scene, container, graphics, originX, originY, layout, tint, index);
     } else {
       const color = tint ?? SECTION_FILL_COLORS[index % SECTION_FILL_COLORS.length]!;
       graphics.fillStyle(color, 0.85);
@@ -182,6 +199,46 @@ export function renderMissionOverlay(
   }
 
   return { container, signalGraphics, ledIndicatorsByInstanceId, lcdDisplaysByInstanceId };
+}
+
+/**
+ * Dibuja una creación con `layout` (deuda #8, Fase 12c.5) como los sprites
+ * reales de sus partes, cada una en su offset dentro del footprint. Una parte
+ * sin sprite cae a un rectángulo placeholder (no bloquea al resto). El sprite
+ * se centra en la extensión efectiva de la parte y se rota por `part.rotation`,
+ * así que la imagen base (sin rotar) queda alineada con su celda ocupada.
+ */
+function drawCreationLayout(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  graphics: Phaser.GameObjects.Graphics,
+  originX: number,
+  originY: number,
+  layout: ReadonlyArray<CreationPart>,
+  tint: number | undefined,
+  index: number,
+): void {
+  layout.forEach((part, partIndex) => {
+    const ext = effectiveFootprintExtent({ position: { x: 0, y: 0 }, footprint: part.footprint, rotation: part.rotation });
+    const partX = originX + part.offset.x * CELL;
+    const partY = originY + part.offset.y * CELL;
+    if (hasComponentSprite(scene, part.ref)) {
+      const sprite = scene.add
+        .image(partX + (ext.width * CELL) / 2, partY + (ext.height * CELL) / 2, componentTextureKey(part.ref))
+        .setOrigin(0.5)
+        // La imagen base (sin rotar) mide footprint.width×height; al rotarla su
+        // caja visible coincide con la extensión efectiva ya calculada arriba.
+        .setDisplaySize(part.footprint.width * CELL, part.footprint.height * CELL)
+        .setAngle(part.rotation)
+        .setDepth(RENDER_DEPTH.objects);
+      if (tint !== undefined) sprite.setTint(tint);
+      container.add(sprite);
+    } else {
+      const color = tint ?? SECTION_FILL_COLORS[(index + partIndex) % SECTION_FILL_COLORS.length]!;
+      graphics.fillStyle(color, 0.85);
+      graphics.fillRect(partX, partY, ext.width * CELL, ext.height * CELL);
+    }
+  });
 }
 
 /** Dibuja un cable de señal ruteado por conductos (Fase 11f) — recta si no hay plano/grilla o si es intra-sección. */

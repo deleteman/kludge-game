@@ -69,4 +69,28 @@ function assertIsCustomCreationShape(value: unknown): asserts value is CustomCre
       throw new CustomCreationParseError("Invalid entry in CustomCreation.definition.recipe.ingredients");
     }
   }
+
+  // Layout de piezas (deuda #8, Fase 12c.5) — opcional y retrocompatible: las
+  // creaciones guardadas antes de 12c.5 no lo traen. Si está, se valida su forma.
+  const layout = (definition.data as Record<string, unknown>).layout;
+  if (layout !== undefined) {
+    if (!Array.isArray(layout)) {
+      throw new CustomCreationParseError("CustomCreation.definition.data.layout must be an array when present");
+    }
+    for (const part of layout) {
+      if (
+        !isPlainObject(part) ||
+        typeof part.ref !== "string" ||
+        !isPlainObject(part.offset) ||
+        typeof part.offset.x !== "number" ||
+        typeof part.offset.y !== "number" ||
+        !isPlainObject(part.footprint) ||
+        typeof part.footprint.width !== "number" ||
+        typeof part.footprint.height !== "number" ||
+        typeof part.rotation !== "number"
+      ) {
+        throw new CustomCreationParseError("Invalid entry in CustomCreation.definition.data.layout");
+      }
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
 import type { ComponentId, Footprint, FunctionalProperty, MaterialProperties } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, LABEL_COLOR } from "../../render/palette.js";
@@ -95,6 +96,14 @@ export function renderInstallPickerModal(
     readonly onCancel: () => void;
     /** Registra un objeto como HUD (lo ignora la cámara de mundo) — ver `floorplan-scene.ts`. */
     readonly markAsHudObject: (obj: Phaser.GameObjects.GameObject) => void;
+    /**
+     * Fracción de scroll (0..1) con la que arrancar la lista. El modal se
+     * recrea entero al seleccionar un ítem; sin esto la lista saltaba al inicio
+     * al clickear un elemento scrolleado (deuda #2 de PENDIENTES).
+     */
+    readonly initialScrollT?: number;
+    /** Devuelve el panel scrolleable recién creado para que el llamador lea su `t` antes del próximo rebuild. */
+    readonly onListReady?: (panel: ScrollablePanel) => void;
   },
 ): Phaser.GameObjects.Container {
   const centerX = MODAL_CENTER_X;
@@ -160,6 +169,12 @@ export function renderInstallPickerModal(
   ).setDepth(RENDER_DEPTH.hudModal);
   callbacks.markAsHudObject(list);
   container.once(Phaser.GameObjects.Events.DESTROY, () => list.destroy());
+  // Restaurar la posición de scroll previa (deuda #2): al recrear el modal por
+  // una selección, la lista debe quedar donde estaba, no saltar al inicio.
+  if (callbacks.initialScrollT !== undefined && Number.isFinite(callbacks.initialScrollT)) {
+    list.setT(Phaser.Math.Clamp(callbacks.initialScrollT, 0, 1));
+  }
+  callbacks.onListReady?.(list);
 
   const selected = options[selectedIndex];
   const descriptionX = DESCRIPTION_X;

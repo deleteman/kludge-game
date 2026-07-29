@@ -172,6 +172,22 @@ export interface CrewDamageConsequenceSpec {
 export type CrisisConsequenceSpec = TimeLossConsequenceSpec | CrewDamageConsequenceSpec;
 
 /**
+ * Sobrecarga scripteada por contenido (Fase 12a, `MissionOverloadRuntime`):
+ * a diferencia de la cicatriz de RE (alimentada por corrosión real de la
+ * atmósfera, `MissionStructuralRuntime`), no existe ninguna simulación de
+ * carga eléctrica/de fluido en el motor — `load`/`capacityOverride` son datos
+ * de guion, mismo criterio narrativo que `condition: "jammed"` sembrado en el
+ * capítulo 1. `OverloadRule.evaluate` sigue siendo la única lógica que decide
+ * si dispara: el guion solo aporta el sujeto, no el resultado.
+ */
+export interface ScriptedOverloadSubject {
+  readonly instanceId: PlacedComponentInstanceId;
+  readonly load: number;
+  /** Capacidad efectiva en el momento del guion; si se omite, usa la capacidad de catálogo. */
+  readonly capacityOverride?: number;
+}
+
+/**
  * Castigo progresivo por dilación (capítulo 2): mientras la crisis está activa y
  * el timer corre, a partir de `startFraction` del `softDeadlineSeconds` el
  * sistema automatizado electrocuta a un tripulante cada `intervalSeconds`.
@@ -218,4 +234,6 @@ export interface CrisisDefinition {
   readonly consequence: CrisisConsequenceSpec;
   /** Castigo progresivo mientras el timer corre (capítulo 2). Opcional. */
   readonly hazard?: CrisisHazardSchedule;
+  /** Conductos/reservorios que entran en sobrecarga por guion (Fase 12a). Opcional, default ninguno. */
+  readonly scriptedOverloads?: ReadonlyArray<ScriptedOverloadSubject>;
 }

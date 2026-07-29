@@ -79,6 +79,7 @@ function buildFixtureBlueprint(): Blueprint {
       },
     ],
     unpoweredSectionIds: ["invernadero" as SectionId],
+    overloadedRefs: ["panel-bahia-carga" as PlacedComponentInstanceId],
   };
 }
 

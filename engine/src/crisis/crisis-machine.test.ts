@@ -22,6 +22,7 @@ function fixtureShip(): Blueprint {
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

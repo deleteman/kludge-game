@@ -36,6 +36,7 @@ function blueprintWith(graph: SignalGraph<PlacedComponentInstanceId>): Blueprint
     signalGraph: graph,
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

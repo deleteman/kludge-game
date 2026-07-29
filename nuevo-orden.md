@@ -130,9 +130,112 @@ Modelo recomendado: Sonnet 3.5 para la implementación de transiciones en /game.
    - Si sufre daño grave o muere, el retrato debe temblar violentamente antes de apagarse con un efecto de estática analógica
 - **Filtro de aberración cromática/barrido:** Un shader sutil de pantalla CRT sobre la cámara del HUD (hudCamera, Fase 10d) para que los textos pixelados y los bordes tengan ese brillo de fósforo retro.
 - **Recolección Visible de Elementos Atómicos:** Al desmontar un componente, mostrar el nombre de cada elemento atómico obtenido por separado (texto ascendente individual por elemento, no un único string concatenado con todos), y disparar por cada elemento una partícula de tipo "coleccionable" con trayectoria vistosa hacia el botón de mesa (`createWorkbenchButton`, `floorplan-scene.ts`), al estilo de otros juegos con recolección de objetos. Construye sobre el efecto de desmontaje ya existente (`dismantleEffect`, `game/src/particles/effects/fabrication-effect.ts`).
+- **Creación Compuesta con Sprites Reales (deuda `PENDIENTES_OBSERVACIONES.md` #8):** Una creación instalada (`creation-XXXX`) se dibuja hoy como rectángulo placeholder en el plano de misión porque no tiene sprite propio. Descomponer el compuesto (su receta) y pintar el sprite de cada parte en su offset dentro del footprint, con fallback al placeholder cuando falte alguno. Distinto de la mesa de creación (deuda #7, ya resuelta): esto es el plano de misión. Refuerza la "satisfacción de deconstrucción" de Shipbreaker junto con la recolección de elementos de arriba.
 
 
-### Fase 13 — Capítulo 2: "Ecos en el Pasillo"
+#### Subfase 12d: Sombras Dinámicas (planificada 2026-07-29, pendiente de ciclo de preguntas propio)
+
+Pedido del operador tras el playtest de 12a: "no veo sombras de los elementos en el mapa, ya sea de las cosas
+en la capa `objects` autoradas en Tiled, o de los componentes que se ponen en el mapa y con los que puede
+interactuar el jugador". Explícitamente **no** son sprites de sombra estáticos (el blob/óvalo oscuro fijo bajo
+cada sprite, técnica barata típica de pixel art) — el operador pidió sombras DINÁMICAS, porque con 12a ya
+existen varias fuentes de luz que se mueven/parpadean en tiempo real (chispas de conductor sobrecargado, luz
+ambiental de sección sin energía, flash de electrocución) y esas sombras deberían reaccionar a esas luces, no
+quedar fijas.
+
+**Consideración técnica a resolver antes de plan de implementación** (por qué esto es una subfase aparte y no
+un ajuste de 12a): Phaser 3 no tiene sombreado 2D dinámico nativo atado a `PointLight` — el pipeline `Light2D`
+(`scene.lights`) sí soporta sprites con normal maps reaccionando a luces, pero es un sistema distinto del que
+ya usa el proyecto para `PointLight` (`game/src/particles/effects/dynamic-light.ts`, Fase 12a) y no proyecta
+sombras arrojadas por geometría — solo sombreado de superficie. Sombras arrojadas reales (oclusión de luz por
+un objeto) requerirían algo como raycasting 2D por objeto/luz o un enfoque de shadow-map, no hay precedente en
+el proyecto. Antes de planificar la implementación hay que decidir, con su propio ciclo de preguntas
+(CLAUDE.md, "minimizar assumptions"):
+- Alcance visual: ¿sombreado de superficie (Light2D + normal maps, más barato, no oclusión real) o sombras
+  arrojadas verdaderas (oclusión, más caro, requiere raycasting/shadow-map)?
+- Qué proyecta sombra: ¿solo componentes colocados por el jugador, o también objetos estáticos de la capa
+  Tiled `objects`? ¿Tripulación/enemigos?
+- Costo de rendimiento aceptable — cuántas fuentes de luz dinámicas simultáneas se esperan en una misión real
+  (hoy: cicatriz de sobrecarga + cicatriz de sección sin energía + bursts puntuales, un número bajo, pero sin
+  límite modelado).
+- Si la respuesta es sombreado de superficie (Light2D), migrar `dynamic-light.ts` de `PointLight` a
+  `scene.lights` sería un cambio de arquitectura sobre TODO lo entregado en 12a, no una extensión — impacto a
+  dimensionar antes de comprometerse.
+
+No implementar sin ese ciclo de preguntas — anotado acá para no perder el pedido, siguiendo el mismo criterio
+que otros ítems diferidos de este documento (ver Subfase 11h → 12a → "Potenciar Indicador LED").
+
+
+
+#### Subfase 12e: Contrato de Semántica de Color de Diagnóstico
+
+Ítem de pulido sensorial surgido de la evaluación de comparativas (deuda `PENDIENTES_OBSERVACIONES.md` #15). Es su propia subfase porque 12a ya está cerrada y este es un contrato transversal, no un ajuste puntual de una pieza.
+
+* **Contrato de color único:** Definir un lenguaje de color coherente para el estado de crisis (rojo = fatal/sin O2, ámbar = escalable, cian/blanco = seguro — la tabla de diagnóstico de FTL/Barotrauma) y auditar `palette.ts`, el Indicador LED (11h, hoy parcheado a ámbar caso por caso), el HUD de estado (11g) y los tags contra ese contrato. Hoy el verde reservado a "todo bien" se reusaba para alarmas — semánticamente al revés. Al ser transversal, toca varias superficies ya entregadas (LED, HUD, tags), de ahí que sea un cierre de consistencia y no obra nueva de una pieza.
+
+
+
+### Fase 13 — Gaps de Motor de las Comparativas de Género
+
+Estos cuatro sistemas de motor se detectaron *después* de cerrar la Fase 11, al evaluar Kludge contra los referentes del género (Barotrauma, Duskers, FTL, Shipbreaker — ver `docs/comparativas-juegos/`). No son pulido sensorial (eso es la Fase 12), sino infraestructura que los capítulos posteriores asumen — por eso se ubican **antes del Cap.2** y no como apéndice de la Fase 11 ya cerrada. El orden interno respeta las dependencias: 13a desbloquea la lógica de señales del Cap.2; 13d depende de 13b.
+
+#### Subfase 13a: Simulación de Emisores y Cascada de Fallas Emergente
+
+Resuelve dos deudas técnicas registradas en `PENDIENTES_OBSERVACIONES.md` (#3 emisores siempre disparados, #16 reacciones químicas sin llamador de producción en misión) que, juntas, impiden que las fallas se encadenen de forma **emergente** — el mayor logro de Barotrauma (agua conductora → cortocircuito → sobrecarga → incendio). Sin esto, las cascadas de crisis son secuencias scripteadas en la `CrisisDefinition`, no propagación real entre sistemas, y la lógica de señales del Cap.2 (Fase 14) no puede depender de que un sensor se dispare de verdad. Es infraestructura de motor de máxima prioridad: desbloquea contenido posterior.
+
+* **Simulación de Emisores (deuda #3):** Reemplazar `allEmittersActive` (`engine/src/mission/mission-signal-runtime.ts`), que activa TODOS los nodos emisores cada tick, por una evaluación real de `EmitterProperty` (`range`/`triggerType`/`frequency`) contra el mundo — un sensor de movimiento comprueba si hay un tripulante/enemigo en su rango. Se enchufa en el `EmitterInputSource` ya inyectado, sin reescribir el runtime. Desbloquea cualquier capítulo cuya lógica dependa de que un sensor se dispare de verdad (Cap.2 en adelante).
+
+* **Runtime de Reacciones Químicas en Misión (deuda #16):** Añadir a `MissionRuntime` el llamador de producción que hoy no existe para `ReactionResolver`/reglas de combustión (`engine/src/chemistry/reaction/rules/combustion.ts`) — igual que `OverloadRule` ya se evalúa en vivo. Esto dispara `CombustionEvent` en partida real (no solo en tests), habilitando `combustionEffect` y que el overlay de alerta de pantalla completa reaccione a incendios reales. Revisar de paso si el `PointLight` de `combustion-effect.ts` necesita el `LightHook` de 12a.
+
+* **Cascada Emergente:** Con emisores simulados + química en vivo + `OverloadRule` ya existente, permitir que una falla propague a otra por el estado compartido del mundo, sin scriptear la secuencia. Añadir su test de integración (una falla dispara la siguiente sin definición explícita del encadenamiento).
+
+#### Subfase 13b: Presupuesto de Energía de la Nave (Gap ③, estilo FTL)
+
+Realiza el sistema de energía que 11g dejó como stub ("no existe ningún sistema de energía `PowerGrid`/`EnergyGrid`… sentar las bases mínimas"). Convierte el triaje de recurso escaso de FTL en un sistema propio, reconciliado con el modelo físico de canibalización de Kludge. Es el substrato del sacrificio de energía del Cap.5 (Fase 18). Diseño cerrado en ciclo de preguntas 2026-07-29.
+
+* **Dominio de Energía (motor):** Nuevo `engine/src/power/` con un presupuesto total = suma de las **unidades discretas** que aporta cada fuente conectada (reactor + baterías + panel solar, `RES(E)`). Canibalizar/conectar una fuente extra sube el total.
+
+* **Reparto en dos niveles:** (1) **global → sección**: el jugador asigna bloques de unidades enteras por sección; lo no asignado deja la sección a oscuras (triaje manual). (2) **sección → componentes**: cada componente tiene una prioridad manual (set-and-forget); el pool de la sección alimenta a los componentes en orden de prioridad hasta agotarse; los que quedan bajo su umbral no arrancan.
+
+* **Reconciliación con cicatrices:** una sección cicatrizada (Cap.5 / 11b) queda permanentemente fuera de la grilla; el reparto vivo opera sobre el resto. `unpoweredSectionIds` pasa de flag de cicatriz a **consecuencia del presupuesto + cicatriz permanente** — reconciliar ambos sentidos.
+
+* **Capa de Energía en el Plano (UI):** Nueva capa del toggle de 11f con **heatmap** de demanda vs. suministro; el dial de reparto por sección es discreto (+1/−1 unidad), operado en modo pausa. Sin panel de barras abstracto — anclado al plano, mitigando el riesgo que el GDD §16 marca. La prioridad por componente se fija reordenando los componentes en el inspector de la capa.
+
+* **Estado dinámico:** la asignación de unidades y las prioridades por componente se serializan (encaja en el guardado de 11b, bump de schema).
+
+* *Nota de consistencia:* el conteo de unidades es una excepción **deliberada** a la escala cualitativa bajo/medio/alto del resto del motor (§5.2) — contar 1/2/3 unidades es distinto de exponer porcentajes exactos, asumido como tal.
+
+* Test unitario del reparto (déficit global + triaje interno por prioridad) antes de integrar.
+
+#### Subfase 13c: Degradación Funcional de Componentes (Gap ①)
+
+Cierra el hueco de "hardware frágil" de Duskers y refuerza el Pilar 2 (consecuencias permanentes): una pieza canibalizada no entra como de fábrica. Depende del guardado/schema de 11b (la condición es estado dinámico). Diseño cerrado 2026-07-29.
+
+* **Campo de condición (motor):** Añadir `condition` cualitativo por instancia (`nuevo`/`usado`/`degradado`/`crítico`) en `blueprint.types.ts`, ortogonal a `RE` y a las propiedades funcionales. Bump de `schemaVersion`.
+
+* **Efecto = fragilidad, no eficiencia:** una pieza degradada mantiene su función completa pero es más frágil — la condición aplica un **modificador sobre la RE efectiva ya existente** (no un segundo campo de RE) y sube la probabilidad de fallo catastrófico en `OverloadRule`/forzado de conductor. Decisión explícita: **no** reduce potencia/eficiencia (se descartó el nerf funcional del "80%" literal de Duskers).
+
+* **Escritores de condición:** (1) desmontar+reinstalar baja un escalón, probabilístico por tier del Ingeniero (reusa la lógica de §6.5); (2) exposición a una sustancia `CORR` en el tiempo baja la condición (tick en el dominio químico/atmósfera). **No** por sobrecarga previa (descartado).
+
+* **UI:** tag `[DEGRADADO]` en ámbar en el inspector + tinte/ícono en el sprite.
+
+* Test unitario del modificador de RE + riesgo por condición; integración "canibalizar deja la pieza frágil".
+
+#### Subfase 13d: Riesgo Sistémico al Desmontar (Gap ②)
+
+Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería viva = hazard). Distinto de la pérdida de material (§6.5, coste de tiempo/piezas): es un hazard **puntual en el acto de desmontaje** según el estado vivo de la pieza. Depende de 13b, que define "pieza viva" con precisión (= recibiendo ≥1 unidad de energía). Diseño cerrado 2026-07-29.
+
+* **Precondición de desmontaje seguro (motor):** en `ship-task-effect.ts` (resolución de desmontaje), evaluar si la instancia está viva (recibiendo energía / reservorio con contenido / sustancia peligrosa) y no fue purgada → emitir evento de dominio (`spark`/`leak`/`spill`) para `/game`.
+
+* **Flujo evitable (tarea previa):** nueva `TaskEffect` de "cortar energía a sección" / "cerrar válvula / purgar reservorio" que marca la pieza como segura de desmontar. El jugador la encola antes; encaja en el grafo de dependencias del core loop (desmontar depende de purgar), premiando planificar en pausa.
+
+* **Doble filo:** el mismo evento queda disponible como herramienta **deliberada** (provocar el chispazo, ligado a la trampa-de-chispa §5.5 / caso de validación 8).
+
+* Test: desmontar conductor energizado sin purga → evento de chispa/combustión; con purga previa → seguro.
+
+
+
+### Fase 14 — Capítulo 2: "Ecos en el Pasillo"
 
 * **Lógica Avanzada de Señales:** Diseñar el nivel de forma que requiera construir filtros AND/OR/NOT en la capa de señales utilizando sensores de movimiento y el chip de identificación de tripulación.
 
@@ -141,7 +244,7 @@ Modelo recomendado: Sonnet 3.5 para la implementación de transiciones en /game.
 
 
 
-### Fase 14 — Hito: Publicar Demo en Itch.io y Página de Steam
+### Fase 15 — Hito: Publicar Demo en Itch.io y Página de Steam
 
 * **Contenido de la Demo:** Limitar la build a los Capítulos 1 y 2 con el arquetipo de Exploración completamente jugable (único con tile art pulido).
 
@@ -156,7 +259,7 @@ Modelo recomendado: Sonnet 3.5 para la implementación de transiciones en /game.
 
 Este trimestre se enfoca en expandir la jugabilidad con la introducción de variables de tiempo y memoria, agregando mecánicas de progresión persistente para retener a los jugadores de la demo.
 
-### Fase 15 — Capítulo 3: "La Alarma que no Calla"
+### Fase 16 — Capítulo 3: "La Alarma que no Calla"
 
 * **Lógica de Memoria:** Implementar el diseño de nivel que requiere el uso del comportamiento `latch` (memoria síncrona) para capturar alertas fugaces de sensores de presión.
 
@@ -165,13 +268,13 @@ Este trimestre se enfoca en expandir la jugabilidad con la introducción de vari
 
 
 
-### Fase 16 — Capítulo 4: "Cortocircuito en la Bahía de Carga"
+### Fase 17 — Capítulo 4: "Cortocircuito en la Bahía de Carga"
 
 * **Física de Materiales:** El nivel introduce el comportamiento de cambio de estado y conductividad de fluidos variables con la temperatura (caso de validación 2). El jugador se enfrenta a un límite estricto de 90 segundos para enfriar un cableado o congelar una fuga de refrigerante.
 
 
 
-### Fase 17 — Capítulo 5: "El Reactor al Límite"
+### Fase 18 — Capítulo 5: "El Reactor al Límite"
 
 * **Pilar de Sacrificio:** Crisis avanzada de sobrecarga del reactor principal. El jugador debe tomar la decisión permanente de drenar y desactivar permanentemente la energía de una sección no crítica para salvar el soporte vital. La sección sacrificada se guarda como "sin energía" en la partida persistente de la campaña (11b).
 
@@ -183,19 +286,19 @@ Este trimestre se enfoca en expandir la jugabilidad con la introducción de vari
 
 Es el momento de introducir la simulación cruzada y participar en el festival de demos de Steam con un tráiler profesional.
 
-### Fase 18 — Capítulo 6: "Ataque y Fuga Simultánea"
+### Fase 19 — Capítulo 6: "Ataque y Fuga Simultánea"
 
 * **Simulación Multi-Falla:** Dos emergencias paralelas: abordaje hostil avanzado (11d) y fuga de amoníaco tóxico en el invernadero. Exige coordinar dependencias directas en la cola de tareas de la tripulación (Caso 14) y usar la mesa de creación en vivo en plena misión (11b) para ensamblar defensas improvisadas.
 
 
 
-### Fase 19 — Capítulo 7: "Las Cicatrices Vuelven"
+### Fase 20 — Capítulo 7: "Las Cicatrices Vuelven"
 
 * **Callback de Campaña:** El juego consulta el estado persistente guardado (11b). La sección con resistencia `RE` reducida en el Capítulo 3 o la zona desenergizada en el Capítulo 5 falla ante una fuga corrosiva y tóxica cruzada (caso de validación 13 de orden de prioridad entre tags simultáneos). Exige realizar síntesis química en la mesa de creación (11b) para neutralizar el ácido.
 
 
 
-### Fase 20 — Capítulo 8: "Punto de No Retorno"
+### Fase 21 — Capítulo 8: "Punto de No Retorno"
 
 * **Maniobra de Navegación (Piloto):** Introducir la mecánica de evasión a nivel de nave espacial (Caso 16), forzando al tripulante de rol Piloto a operar los actuadores de propulsión de la nave bajo una cuenta regresiva estricta.
 
@@ -210,19 +313,19 @@ Es el momento de introducir la simulación cruzada y participar en el festival d
 
 El trimestre final se enfoca en el aseguramiento de la calidad técnica, el soporte multiplataforma y la salida al mercado.
 
-### Fase 21 — Pulido General de Contenido e i18n
+### Fase 22 — Pulido General de Contenido e i18n
 
-* **Fase 21a (Soporte de Arquetipos):** Extender la verificación de los 8 capítulos jugables a las naves de Investigación, Guerra y Médica, resolviendo anomalías de anclaje visuales específicas de cada plano.
-
-
-* **Fase 21b (Desbloqueos):** Integrar la UI del árbol de logros de GDD §6.8 para reclutar tripulantes nombrados con habilidades pasivas fijas basadas en el estilo de juego del jugador.
+* **Fase 22a (Soporte de Arquetipos):** Extender la verificación de los 8 capítulos jugables a las naves de Investigación, Guerra y Médica, resolviendo anomalías de anclaje visuales específicas de cada plano.
 
 
-* **Fase 21c (Localización):** Auditoría total de los diccionarios de i18n en español e inglés.
+* **Fase 22b (Desbloqueos):** Integrar la UI del árbol de logros de GDD §6.8 para reclutar tripulantes nombrados con habilidades pasivas fijas basadas en el estilo de juego del jugador.
+
+
+* **Fase 22c (Localización):** Auditoría total de los diccionarios de i18n en español e inglés.
 
 
 
-### Fase 22 — Balanceo Técnico & Telemetría de QA
+### Fase 23 — Balanceo Técnico & Telemetría de QA
 
 * **Ajuste de Parámetros:** Refinar las variables físicas y químicas de la Especificación técnica §1-§4 basándose en el playtesting de los 8 capítulos en paralelo.
 
@@ -231,7 +334,7 @@ El trimestre final se enfoca en el aseguramiento de la calidad técnica, el sopo
 
 
 
-### Fase 23 — Empaquetado Standalone y Lanzamiento
+### Fase 24 — Empaquetado Standalone y Lanzamiento
 
 * Configurar los builds nativos de Electron para Windows, macOS y Linux.
 
@@ -240,7 +343,7 @@ El trimestre final se enfoca en el aseguramiento de la calidad técnica, el sopo
 
 
 
-### Fase 24 — Modo Dev de Autoría de Estado Inicial (Baja Prioridad)
+### Fase 25 — Modo Dev de Autoría de Estado Inicial (Baja Prioridad)
 
 * Se mantiene en backlog de baja prioridad, utilizándose solo de forma interna si el volumen de naves del operador lo exige.
 
@@ -272,7 +375,7 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 | **Gap: Save System Dinámico**<br> | **Fase 11b**<br> | Guardado y persistencia real a disco con Electron.
 
  |
-| **Gap: Cicatrices de Campaña**<br> | **Fase 11b / 19**<br> | Guardado de RE reducido y zonas sin energía + callbacks.
+| **Gap: Cicatrices de Campaña**<br> | **Fase 11b / 20**<br> | Guardado de RE reducido y zonas sin energía + callbacks.
 
  |
 | **Gap: Legibilidad del Plano (Capas + Flujo Animado, GDD §10)**<br> | **Fase 11f**<br> | Toggle de capas HUD + integración de `conduit-flow-effect` al plano real.
@@ -287,12 +390,30 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 | **Gap: Audio Sistémico**<br> | **Fase 12b**<br> | SFX reactivos por reglas e integración de barks de voz.
 
  |
-| **Gap: Balanceo y Telemetría**<br> | **Fase 22**<br> | Registro de Blueprints de QA para interceptar meta-soluciones.
+| **Gap: Balanceo y Telemetría**<br> | **Fase 23**<br> | Registro de Blueprints de QA para interceptar meta-soluciones.
 
  |
 | **Gap: Mitigar Frustración / Dead Ends**<br> | **Fase 11b (Save System)**<br> | El guardado manual y el sistema de reintento de misiones previenen bloqueos insalvables.
 
  |
-| **Estrategia de Wishlists**<br> | **Fase 14 (Demo)**<br> | Integración del importador de Blueprints en la demo para viralidad.
+| **Estrategia de Wishlists**<br> | **Fase 15 (Demo)**<br> | Integración del importador de Blueprints en la demo para viralidad.
+
+ |
+| **Comparativa Barotrauma — Cascada de fallas emergente + emisores simulados**<br> | **Fase 13a**<br> | Simulación real de `EmitterProperty` (deuda #3) + runtime de reacciones químicas en misión (deuda #16) → propagación entre sistemas sin scriptear.
+
+ |
+| **Comparativa FTL — Gap ③: Triaje de energía zero-sum**<br> | **Fase 13b**<br> | Dominio `power/` con presupuesto en unidades discretas, reparto sección→componente y capa de energía con heatmap en el plano.
+
+ |
+| **Comparativa Duskers — Gap ①: Hardware degradado pero funcional**<br> | **Fase 13c**<br> | Campo `condition` por instancia; degradación = fragilidad (RE efectiva + riesgo de fallo), escrita por canibalización y corrosión.
+
+ |
+| **Comparativa Shipbreaker — Gap ②: Riesgo sistémico al desmontar**<br> | **Fase 13d**<br> | Hazard en el acto de desmontar una pieza viva, evitable con tarea previa de purga/corte; doble filo como herramienta.
+
+ |
+| **Comparativa FTL/Barotrauma — Semántica de color de diagnóstico**<br> | **Fase 12e**<br> | Contrato único de color de crisis (rojo/ámbar/cian) auditado contra LED, HUD y tags (deuda #15).
+
+ |
+| **Comparativa Shipbreaker — Satisfacción de deconstrucción (visual)**<br> | **Fase 12c**<br> | Recolección visible de elementos + creación compuesta dibujada con los sprites reales de sus partes (deuda #8).
 
  |

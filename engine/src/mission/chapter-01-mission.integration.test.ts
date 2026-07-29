@@ -16,13 +16,16 @@ import {
 import {
   CHAPTER_01_ACTUATOR_INSTANCE_ID,
   CHAPTER_01_ANCHOR_POSITION,
+  CHAPTER_01_BY_ARCHETYPE,
   CHAPTER_01_GATE_NODE_ID,
+  CHAPTER_01_OVERLOAD_INSTANCE_ID,
   CHAPTER_01_PRIMER_AVISO,
   CHAPTER_01_SEAL_INSTANCE_ID,
   CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
   CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
   CHAPTER_01_SENSOR_NODE_ID,
 } from "../crisis/campaign/chapter-01-primer-aviso.js";
+import { MissionOverloadRuntime } from "./mission-overload-runtime.js";
 import { EventEmitter } from "../simulation/event-emitter.js";
 import type { CrisisDomainEvent } from "../crisis/crisis-events.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -56,6 +59,7 @@ function chapter01InitialShip(): Blueprint {
     signalGraph: { nodes: [...CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE.exploracion], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 
@@ -196,5 +200,27 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
     );
     expect(crisisEvents.map((event) => event.kind)).toEqual(["crisis-triggered", "crisis-resolved"]);
     expect(crisisEvents.at(-1)).toMatchObject({ outcome: "resolved-success" });
+  });
+
+  it("Fase 12a: el conductor sobrecargado sembrado del capítulo 1 (exploración) deja cicatriz real tras unos ticks en ejecución", () => {
+    // Reproduce el wiring real de contenido: el cable sembrado en
+    // `CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE.exploracion` (vía
+    // `chapter01InitialShip()`) + el `scriptedOverloads` declarado en la
+    // `CrisisDefinition` del mismo arquetipo deben apuntar al MISMO
+    // `instanceId` — este test habría fallado con un typo en cualquiera de
+    // los dos lados, cosa que el chequeo de tipos solo no detecta.
+    const shipState = new MutableShipState(chapter01InitialShip());
+    const componentRegistry = buildComponentCatalog().registry;
+    const overloadRuntime = new MissionOverloadRuntime(
+      shipState,
+      componentRegistry,
+      CHAPTER_01_BY_ARCHETYPE.exploracion.scriptedOverloads ?? [],
+    );
+
+    for (let t = 0; t < 5; t++) {
+      overloadRuntime.tick({ dtSeconds: 1, elapsedSeconds: t });
+    }
+
+    expect(shipState.get().overloadedRefs).toEqual([CHAPTER_01_OVERLOAD_INSTANCE_ID]);
   });
 });

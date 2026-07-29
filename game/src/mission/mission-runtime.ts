@@ -9,6 +9,7 @@ import {
   LooseFerromagneticPromoter,
   MissionAtmosphereRuntime,
   MissionProjectileWorld,
+  MissionOverloadRuntime,
   MissionSignalRuntime,
   MissionStructuralRuntime,
   ShipStatusQuery,
@@ -49,6 +50,7 @@ import type {
   EmitterInputSource,
   MixtureHazardPreview,
   PhysicalComponentDefinition,
+  ShipStatusIndicator,
   ShipStatusSnapshot,
 } from "engine";
 import { listCustomCreations, loadCustomCreation } from "../meta/save-adapter.js";
@@ -145,6 +147,8 @@ export class MissionRuntime {
   readonly atmosphereRuntime: MissionAtmosphereRuntime;
   /** Cicatriz de RE por componente instalado (Fase 11b) — primer llamador de `StructuralIntegrity`. */
   readonly structuralRuntime: MissionStructuralRuntime;
+  /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
+  readonly overloadRuntime: MissionOverloadRuntime;
   /** Estado agregado a nivel de nave (Subfase 11g) — consultado por el HUD permanente de `/game`. */
   private readonly shipStatusQuery: ShipStatusQuery;
   /** Eventos de fallo estructural (degradado/fallo, Fase 11b) — `/game` los pinta. */
@@ -329,6 +333,16 @@ export class MissionRuntime {
       );
     }
     this.crisisDefinition = definition;
+    // Fase 12a: sobrecarga scripteada por contenido — sin simulación de carga
+    // eléctrica real en el motor (ver comentario de `MissionOverloadRuntime`),
+    // el guion de la crisis (`scriptedOverloads`, ausente = ninguno todavía en
+    // ningún capítulo) es la única fuente de `load`/`capacity`.
+    this.overloadRuntime = new MissionOverloadRuntime(
+      this.shipState,
+      this.componentRegistry,
+      definition.scriptedOverloads ?? [],
+      this.failureEvents,
+    );
     this.crisisRuntime = new CrisisRuntime({
       definition,
       shipState: this.shipState,
@@ -377,6 +391,10 @@ export class MissionRuntime {
     // `MissionStructuralRuntime` lea el nivel corrosivo YA difundido este tick.
     this.coreLoop.registerTickable(this.atmosphereRuntime);
     this.coreLoop.registerTickable(this.structuralRuntime);
+    // Fase 12a: sin dependencia de dato vivo de otro runtime (el guion ya trae
+    // load/capacity fijos), el orden respecto a atmósfera/estructura no
+    // importa — se registra al final de este bloque por prolijidad.
+    this.coreLoop.registerTickable(this.overloadRuntime);
 
     const spawnSectionId = this.shipFloorplan.sections[0]?.id;
     for (const actor of this.activeCrew) {
@@ -771,6 +789,11 @@ export class MissionRuntime {
   /** Estado agregado a nivel de nave (Subfase 11g) — pull-based, se recalcula en cada lectura. */
   get shipStatus(): ShipStatusSnapshot {
     return this.shipStatusQuery.snapshot();
+  }
+
+  /** Integridad de casco de UNA sección (Fase 12a, capa "estructural" del HUD del plano). */
+  sectionHullIntegrity(sectionId: SectionId): ShipStatusIndicator {
+    return this.shipStatusQuery.sectionHullIntegrity(sectionId);
   }
 
   /**

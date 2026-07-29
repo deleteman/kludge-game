@@ -47,10 +47,10 @@ export function createShipTaskEffect(
 
     switch (payload.kind) {
       case "dismantle": {
-        const definition = componentRegistry.get(
-          shipState.get().placedComponents.find((entry) => entry.instanceId === payload.instanceId)
-            ?.componentDefinitionId as ComponentId,
-        );
+        const instance = shipState
+          .get()
+          .placedComponents.find((entry) => entry.instanceId === payload.instanceId);
+        const definition = componentRegistry.get(instance?.componentDefinitionId as ComponentId);
         if (definition && isCompositeEntity(definition)) {
           let nextStock = atomicStock.get();
           for (const ingredient of definition.recipe.ingredients) {
@@ -66,6 +66,14 @@ export function createShipTaskEffect(
           };
         }
         shipState.set(dismantleInstance(shipState.get(), payload.instanceId));
+        // Pieza ATÓMICA (12c.7, obs #4): se recupera al stock como su propia
+        // pieza — igual que un compuesto recupera sus ingredientes. Antes se
+        // destruía sin acreditar, así que el desmontaje no daba coleccionable ni
+        // notificación (a futuro, aplicará desgaste a la pieza recuperada).
+        if (definition && instance) {
+          atomicStock.set(creditStock(atomicStock.get(), instance.componentDefinitionId, 1));
+          return { obtained: [{ componentId: instance.componentDefinitionId, quantity: 1 }] };
+        }
         return;
       }
       case "install": {

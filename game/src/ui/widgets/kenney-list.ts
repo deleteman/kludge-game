@@ -2,6 +2,13 @@ import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepan
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { LABEL_COLOR, SECTION_FILL_COLORS } from "../../render/palette.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
+import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
+import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../../audio/audio-utils.js";
+
+/** Alpha de fondo de fila: base vs. realce al pasar el cursor (12c.7, obs #6). */
+const ROW_BG_ALPHA = 0.6;
+const ROW_BG_ALPHA_HOVER = 0.95;
 
 export interface KenneyListItem {
   readonly text: string;
@@ -57,7 +64,7 @@ export function createKenneyList(
   for (const item of items) {
     const enabled = item.enabled ?? true;
     const row = scene.add
-      .rectangle(0, 0, width - 24, 32, SECTION_FILL_COLORS[0], enabled ? 0.6 : 0.25)
+      .rectangle(0, 0, width - 24, 32, SECTION_FILL_COLORS[0], enabled ? ROW_BG_ALPHA : 0.25)
       .setOrigin(0.5);
     const rowLabel = scene.rexUI.add
       .label({
@@ -85,7 +92,19 @@ export function createKenneyList(
       })
       .layout();
     if (enabled) {
-      rowLabel.setInteractive({ useHandCursor: true }).on("pointerdown", item.onClick);
+      // Cursor custom + feedback de hover/click (12c.7, obs #2/#6): sonido y
+      // realce del fondo al pasar el cursor; sonido de click antes del onClick.
+      rowLabel
+        .setInteractive({ cursor: UI_POINTER_CURSOR_CSS })
+        .on("pointerover", () => {
+          row.setFillStyle(SECTION_FILL_COLORS[0], ROW_BG_ALPHA_HOVER);
+          scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonHover), { volume: 0.25 });
+        })
+        .on("pointerout", () => row.setFillStyle(SECTION_FILL_COLORS[0], ROW_BG_ALPHA))
+        .on("pointerdown", () => {
+          scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonClick), { volume: 0.4 });
+          item.onClick();
+        });
     }
     sizer.add(rowLabel, { padding: { left: 4, right: 4 } });
   }

@@ -4,6 +4,7 @@ import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, LABEL_COLOR, healthFractionColor, sectionScarFlickerAlpha } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
+import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 
 const BAR_HEIGHT = 8;
 const BAR_TRACK_COLOR = 0x1a2030;
@@ -88,7 +89,7 @@ export function renderShipStatusHud(
       fontSize: "11px",
       color: substancesCount > 0 ? HEADER_COLOR : LABEL_COLOR,
     })
-    .setInteractive({ useHandCursor: substancesCount > 0 })
+    .setInteractive({ cursor: substancesCount > 0 ? UI_POINTER_CURSOR_CSS : "default" })
     .on("pointerdown", () => {
       if (substancesCount > 0) callbacks.onOpenSubstances();
     });

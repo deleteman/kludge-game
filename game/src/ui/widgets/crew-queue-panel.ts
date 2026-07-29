@@ -50,7 +50,10 @@ function taskTimeSuffix(task: UnifiedQueueTask): string {
     const remaining = Math.max(0, task.estimatedDurationSeconds - task.elapsedSeconds);
     return `${remaining.toFixed(1)}s`;
   }
-  return `~${task.estimatedDurationSeconds}s`;
+  // Redondear: la duración modulada es un producto de floats (ej. 12 × 0.6 =
+  // 7.199999999999999) y se mostraba cruda con toda la basura decimal (obs de
+  // playtest). Es una estimación ("~"), así que el entero alcanza.
+  return `~${Math.round(task.estimatedDurationSeconds)}s`;
 }
 
 /**

@@ -8,6 +8,9 @@ import { getGasFraction, standardSectionAtmosphere } from "../atmosphere/section
 import { OXYGEN_COMBUSTION_THRESHOLDS } from "../atmosphere/combustion-atmosphere.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
+import { sectionContainingCell } from "../floorplan/floorplan.types.js";
+import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
 import type { ShipStatusIndicator, ShipStatusLevel } from "./ship-status.types.js";
 
 /**
@@ -29,6 +32,22 @@ export function fractionToLevel(fraction: number): ShipStatusLevel {
 function indicator(fraction: number): ShipStatusIndicator {
   const clamped = Math.max(0, Math.min(1, fraction));
   return { level: fractionToLevel(clamped), fraction: clamped };
+}
+
+/** Fracción de RE de una única instancia, mismo criterio que `aggregateHullIntegrity`. Null si no aplica (sin dato de RE). */
+function instanceHullFraction(
+  instance: PlacedComponentInstance,
+  componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+): number | null {
+  const catalogRE = componentRegistry.get(instance.componentDefinitionId)?.data.material?.RE;
+  if (!catalogRE) {
+    return null;
+  }
+  if (instance.condition === "destroyed") {
+    return 0;
+  }
+  const level = instance.structuralResistanceOverride ?? catalogRE;
+  return RE_LEVEL_FRACTION[level];
 }
 
 /** Nivel de RE mapeado a fracción [0,1], mismo orden A>M>B que `RE_ORDER` (`failure/structural-failure.ts`). */
@@ -118,17 +137,45 @@ export function aggregateHullIntegrity(
   let worstFraction = 1;
   let sawAny = false;
   for (const instance of placedComponents) {
-    const catalogRE = componentRegistry.get(instance.componentDefinitionId)?.data.material?.RE;
-    if (!catalogRE) {
+    const fraction = instanceHullFraction(instance, componentRegistry);
+    if (fraction === null) {
       continue;
     }
     sawAny = true;
-    if (instance.condition === "destroyed") {
-      worstFraction = 0;
+    worstFraction = Math.min(worstFraction, fraction);
+  }
+  return indicator(sawAny ? worstFraction : 1);
+}
+
+/**
+ * Agregación de integridad de casco POR SECCIÓN (Fase 12a: capa "estructural"
+ * del HUD del plano, hasta ahora sin overlay real — ver
+ * `game/src/render/floorplan-renderer.ts`). Mismo criterio worst-case que
+ * `aggregateHullIntegrity` a nivel nave, acotado a los componentes anclados
+ * en `sectionId` (`sectionContainingCell`, mismo criterio de anclaje que usa
+ * `MissionStructuralRuntime` para escribir la cicatriz de RE por instancia).
+ * Sin componentes con dato de RE en la sección: "nominal" por default, misma
+ * convención que la agregación a nivel nave.
+ */
+export function aggregateSectionHullIntegrity(
+  placedComponents: ReadonlyArray<PlacedComponentInstance>,
+  componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+  shipFloorplan: ShipFloorplan,
+  sectionId: SectionId,
+): ShipStatusIndicator {
+  let worstFraction = 1;
+  let sawAny = false;
+  for (const instance of placedComponents) {
+    const section = sectionContainingCell(shipFloorplan, instance.placement.position);
+    if (section?.id !== sectionId) {
       continue;
     }
-    const level = instance.structuralResistanceOverride ?? catalogRE;
-    worstFraction = Math.min(worstFraction, RE_LEVEL_FRACTION[level]);
+    const fraction = instanceHullFraction(instance, componentRegistry);
+    if (fraction === null) {
+      continue;
+    }
+    sawAny = true;
+    worstFraction = Math.min(worstFraction, fraction);
   }
   return indicator(sawAny ? worstFraction : 1);
 }

@@ -64,6 +64,7 @@ function blueprintWithHullPanel(): Blueprint {
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

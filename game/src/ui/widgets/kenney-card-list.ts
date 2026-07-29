@@ -3,6 +3,13 @@ import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepan
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, LABEL_COLOR } from "../../render/palette.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
+import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
+import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../../audio/audio-utils.js";
+
+/** Alpha de fondo de tarjeta: base vs. realce al pasar el cursor (12c.7, obs #7). */
+const CARD_BG_ALPHA = 0.7;
+const CARD_BG_ALPHA_HOVER = 0.95;
 
 export interface KenneyCardItem {
   /** Color del swatch/borde de la tarjeta (ej. color curado por elemento, o por tag del resultado). */
@@ -63,12 +70,11 @@ export function createKenneyCardList(
   const cardWidth = width - 24;
   for (const item of items) {
     const card = scene.add.container(0, 0);
-    card.add(
-      scene.add
-        .rectangle(0, 0, cardWidth, CARD_HEIGHT, 0x1a2030, 0.7)
-        .setOrigin(0, 0)
-        .setStrokeStyle(1, item.color, 0.9),
-    );
+    const cardBg = scene.add
+      .rectangle(0, 0, cardWidth, CARD_HEIGHT, 0x1a2030, CARD_BG_ALPHA)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, item.color, 0.9);
+    card.add(cardBg);
     card.add(
       scene.add.rectangle(10, CARD_HEIGHT / 2, SWATCH_SIZE, SWATCH_SIZE, item.color, 1).setOrigin(0.5),
     );
@@ -95,11 +101,23 @@ export function createKenneyCardList(
     }
     card.setSize(cardWidth, CARD_HEIGHT);
     if (item.onClick) {
+      const onClick = item.onClick;
       card.setInteractive(new Phaser.Geom.Rectangle(0, 0, cardWidth, CARD_HEIGHT), Phaser.Geom.Rectangle.Contains);
       if (card.input) {
-        card.input.cursor = "pointer";
+        // Cursor custom en vez del puntero del sistema (12c.7, obs #2).
+        card.input.cursor = UI_POINTER_CURSOR_CSS;
       }
-      card.on("pointerdown", item.onClick);
+      // Feedback de hover/click (12c.7, obs #7): sonido + realce del fondo.
+      card
+        .on("pointerover", () => {
+          cardBg.setFillStyle(0x1a2030, CARD_BG_ALPHA_HOVER);
+          scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonHover), { volume: 0.25 });
+        })
+        .on("pointerout", () => cardBg.setFillStyle(0x1a2030, CARD_BG_ALPHA))
+        .on("pointerdown", () => {
+          scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonClick), { volume: 0.4 });
+          onClick();
+        });
     }
     sizer.add(card, { padding: { left: 4, right: 4 } });
   }

@@ -107,6 +107,7 @@ function blueprintOf(
     signalGraph,
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

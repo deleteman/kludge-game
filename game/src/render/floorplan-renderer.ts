@@ -1,6 +1,14 @@
 import Phaser from "phaser";
 import { CONDUIT_KINDS, GRID_CELL_SIZE_PX } from "engine";
-import type { ConduitConnection, ConduitKind, FloorplanSection, GridPosition, ShipFloorplan } from "engine";
+import type {
+  ConduitConnection,
+  ConduitKind,
+  FloorplanSection,
+  GridPosition,
+  SectionId,
+  ShipFloorplan,
+  ShipStatusIndicator,
+} from "engine";
 
 import { createTileLayers } from "./tile-layers.js";
 import { RENDER_DEPTH } from "./render-depths.js";
@@ -13,14 +21,16 @@ import {
   SEALED_VALVE_COLOR,
   SECTION_FILL_ALPHA,
   SECTION_FILL_COLORS,
+  STRUCTURAL_LAYER_ALPHA,
+  STRUCTURAL_LAYER_COLOR,
   WALL_COLOR,
 } from "./palette.js";
 
 /**
  * Capas togglables del HUD del plano (Fase 11f, GDD §10): las 4 `ConduitKind`
- * reales + `"estructural"`, placeholder sin dato real todavía (no existe
- * overlay de integridad de casco/RE) — el botón existe en el HUD pero no
- * dibuja nada; ver `PENDIENTES_OBSERVACIONES.md`.
+ * reales + `"estructural"` — desde la Fase 12a, `"estructural"` tiñe cada
+ * sección según su peor RE agregado (`drawStructuralLayer`); antes era un
+ * botón sin overlay real (ver `PENDIENTES_OBSERVACIONES.md`, punto 11).
  */
 export type FloorplanLayerId = ConduitKind | "estructural";
 export const FLOORPLAN_LAYER_IDS: readonly FloorplanLayerId[] = [...CONDUIT_KINDS, "estructural"];
@@ -103,8 +113,10 @@ export function renderFloorplan(
     drawConduitLine(conduitLayers[path.conduit.kind], path);
     drawConduitMarker(conduitLayers[path.conduit.kind], path.conduit);
   }
-  // `conduitLayers.estructural` queda deliberadamente vacío — placeholder de
-  // HUD sin overlay real todavía (ver comentario de `FloorplanLayerId`).
+  // `conduitLayers.estructural` arranca vacío: a diferencia de los conductos
+  // (estáticos, se dibujan una sola vez acá), la integridad de casco cambia
+  // en vivo — la escena la redibuja periódicamente vía `drawStructuralLayer`
+  // (mismo criterio que `redrawUnpoweredSectionScar`).
 
   // Los nombres de sección ya no se dibujan fijos sobre el plano (playtest #14):
   // se muestran como tooltip al pasar el mouse (`FloorplanScene.updateTooltip`),
@@ -192,6 +204,32 @@ function drawConduitMarker(graphics: Phaser.GameObjects.Graphics, conduit: Condu
     graphics.strokeCircle(px, py, 7);
     graphics.lineBetween(px - 5, py - 5, px + 5, py + 5);
     graphics.lineBetween(px - 5, py + 5, px + 5, py - 5);
+  }
+}
+
+/**
+ * Capa "estructural" del HUD del plano (Fase 12a): tiñe cada sección según su
+ * peor RE agregado. `nominal` no dibuja nada — solo lo degradado necesita
+ * remarcarse (principio 6: una sección sana no debe competir visualmente con
+ * el resto del plano). Redibujado periódicamente por la escena
+ * (`floorplan-scene.ts`, mismo criterio que `redrawUnpoweredSectionScar`),
+ * no una sola vez en `renderFloorplan` — la integridad de casco cambia en
+ * vivo (`MissionStructuralRuntime`), a diferencia de los conductos estáticos.
+ */
+export function drawStructuralLayer(
+  graphics: Phaser.GameObjects.Graphics,
+  floorplan: ShipFloorplan,
+  indicatorForSection: (sectionId: SectionId) => ShipStatusIndicator,
+): void {
+  graphics.clear();
+  for (const section of floorplan.sections) {
+    const indicator = indicatorForSection(section.id);
+    const color = STRUCTURAL_LAYER_COLOR[indicator.level];
+    if (color === undefined) continue;
+    graphics.fillStyle(color, STRUCTURAL_LAYER_ALPHA);
+    for (const cell of section.cells) {
+      graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
+    }
   }
 }
 

@@ -84,6 +84,7 @@ function blueprintWithHullPanel(): Blueprint {
       },
     ],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

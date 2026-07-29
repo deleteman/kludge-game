@@ -35,6 +35,7 @@ function emptyBlueprint(): Blueprint {
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

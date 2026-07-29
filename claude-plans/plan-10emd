@@ -1,0 +1,179 @@
+# 10f + Hito de demo pública en itch.io — plan entero
+
+## Context
+
+La Fase 10 llevó el capítulo 1 a jugable de punta a punta salvo el **cierre del bucle de
+meta-juego**: hoy una crisis se resuelve, se muestra el resultado, pero `chapterProgress` NO avanza,
+el estado post-misión (nave modificada + HP de tripulación) NO se escribe de vuelta al save, y NO se
+persiste a disco (solo el "guardar y salir" del menú de pausa guarda). Eso es la **sub-fase 10f**
+(contenida, mayormente `/game` + helpers de motor pequeños).
+
+Cerrada la 10f, el siguiente corte del roadmap es el **hito de demo pública en itch.io** (dentro de
+Fase 11), cuyo alcance mínimo es: (1) capítulos 1 **y 2** completos — el cap. 2 es el primero que
+muestra combinación de señales (AND/OR/NOT), la promesa central "como redstone"; (2) export/import de
+blueprints del modo creativo (viralidad); (3) publicar en Windows. Este plan cubre 10f + el contenido
+jugable de la demo; el **empaquetado queda diferido** a un plan aparte (decisión del operador).
+
+Decisiones del operador ya tomadas para este plan (no volver a preguntar):
+- **Cap. 2 con daño real al fallar**: timer medio; si el combinador queda mal cableado al vencer, un
+  tripulante activo pierde HP (reusa `hp-resolution.ts`). Hay que aplicar la `consequence` de la
+  crisis, que hoy no se aplica en ningún lado.
+- **Export/import = archivo `.kludge` vía diálogo nativo de Electron** (IPC nuevo), no clipboard.
+- **Empaquetado diferido**: este plan no toca `electron-builder`.
+
+Restricciones permanentes (CLAUDE.md): no editar los JSON de mapa (los anclajes de Tiled son visuales;
+el estado inicial de componentes se autora en TS, decisión 10c); `npm run build` + `npm run lint` +
+`npm test -w engine` en verde por paquete; actualizar `ORDEN_DE_TRABAJO.md` y `changelog.log`; el motor
+emite eventos de dominio y `/game` se suscribe (nunca al revés); toda regla nueva de motor con su test;
+contenido data-driven con claves i18n ES+EN; sprites faltantes se avisan con ruta exacta + placeholder.
+
+Housekeeping pendiente (arrastrado): registrar en `changelog.log` el ajuste de duración de barks
+(hold 4s + fade 900ms, `bark-bubble.ts`) que quedó sin loguear — se incluye al cerrar el Paquete 1.
+
+---
+
+## Paquete 1 — 10f: cierre end-to-end (avance de capítulo + write-back + guardado)
+
+**Objetivo**: `crew-select → misión → resolución → resultado` que avanza `chapterProgress`, refleja el
+estado post-misión en el save y lo persiste. Construye la maquinaria aunque hoy no haya cap. 2 (el
+"Siguiente capítulo" queda deshabilitado hasta el Paquete 2, que lo enciende).
+
+### Motor (`/engine`)
+- **`crisis/campaign/chapter-sequence.ts`** (nuevo, data-driven): secuencia ordenada de capítulos por
+  arquetipo + `nextChapterAfter(currentChapterId, archetype): CrisisDefinitionId | undefined`. Hoy
+  `[chapter-01]` → next `undefined`. Con test. Es el único lugar que define el ORDEN (el
+  `CHAPTER_REGISTRY` existente solo mapea id→definición, sin orden).
+- **`save/chapter-progression.ts`** (nuevo): `advanceChapterProgress(save, resolvedChapterId):
+  CampaignSaveState` puro — agrega `resolvedChapterId` a `completedChapterIds` (dedup), fija
+  `currentChapterId = nextChapterAfter(...)` (o lo deja igual si no hay siguiente), y **siembra los
+  componentes iniciales del próximo capítulo** en `shipState` vía una tabla data-driven
+  `CHAPTER_SEED_BY_ID` (mismo patrón que `CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE` /
+  `campaign-save-factory.ts`, extraída para reutilizarse en el avance, no solo al crear la partida).
+  Con test (avanza cap. 1 → sin siguiente hoy; el test de "siembra el siguiente" se activa en Paquete 2).
+
+### Juego (`/game`)
+- **`mission/mission-runtime.ts`**: nuevo `toUpdatedSave(base: CampaignSaveState): CampaignSaveState`
+  — devuelve el save con `shipState = this.blueprint` (nave modificada) y `crew` actualizado con HP/
+  status reales de los actores (`scheduler.getActor(id)`), `activeCrewIds` intacto. Único punto de
+  write-back del estado vivo de la misión al formato persistente.
+- **`scenes/floorplan-scene.ts::goToCrisisResult`**: al resolverse, en orden: (1)
+  `updated = mission.toUpdatedSave(campaignSession.current)`; (2) si `resolution === "resolved-success"`,
+  `updated = advanceChapterProgress(updated, mission.crisisDefinition.id)`; (3)
+  `campaignSession.load(updated)` + autosave `void saveCampaignSave(updated)`; (4)
+  `setPendingCrisisOutcome(buildCrisisOutcome(updated, resolution))`; (5) transición. (Guardar en fallo
+  también persiste el estado, sin avanzar — decisión: autosave siempre al terminar la crisis.)
+- **`meta/crisis-outcome.ts::buildCrisisOutcome`**: calcular `nextChapterId` vía `nextChapterAfter`
+  (ya no `undefined` hardcodeado); el resumen lee el `save` ya actualizado (nave/tripulación
+  post-misión, no pre-misión).
+- **`scenes/crisis-result-scene.ts`**: "Siguiente capítulo" habilitado sii `outcome.nextChapterId`
+  definido; onClick → `metaGameStateMachine.transition("in-mission")` (la misión lee
+  `currentChapterId` ya avanzado del save activo). Sin cambios de flujo, solo se enciende cuando hay
+  siguiente.
+
+**Archivos**: `engine/src/crisis/campaign/chapter-sequence.ts`, `engine/src/save/chapter-progression.ts`
+(+ tests), `engine/src/index.ts` (exports); `game/src/mission/mission-runtime.ts`,
+`game/src/scenes/floorplan-scene.ts`, `game/src/meta/crisis-outcome.ts`,
+`game/src/scenes/crisis-result-scene.ts`.
+
+---
+
+## Paquete 2 — Capítulo 2 "Ecos en el Pasillo" (combinación de señales + daño al fallar)
+
+**Objetivo**: segundo capítulo jugable que introduce combinación de señales AND/OR/NOT, con timer medio
+y consecuencia de daño real a un tripulante si se automatiza mal. Enciende el "Siguiente capítulo" del
+Paquete 1 y da el primer disparador real a los barks/partículas de daño (pendientes desde 10e).
+
+### Motor (`/engine`)
+- **Trigger** nuevo `crisis/rules/motion-sensors-active.ts` (spec `motion-sensors-active` + regla):
+  la crisis está activa mientras los dos sensores de movimiento sembrados existan en el plano — mismo
+  patrón que `jammed-actuator-blocks-section.ts` (presencia de componente). Registrar en
+  `crisis-rule-registry.ts`. Con unit test.
+- **Resolución** nueva `crisis/rules/signal-output-matches.ts` (spec `signal-output-matches` + regla):
+  **reutiliza `signals/signal-evaluator.ts` (Fase 2)** para correr el grafo del `Blueprint` y verificar
+  que el nodo de salida designado produce el valor esperado dadas las entradas de los dos sensores (el
+  filtro NOT/combinador está bien cableado). Registrar en el registry. Con unit test (cableado correcto
+  → resuelto; combinador ausente/mal → no resuelto).
+- **Consecuencia aplicada** (esto es lo que hoy NO existe): extender el flujo para que, cuando el timer
+  expira a `resolved-failure`, **se aplique `definition.consequence`**. Nuevo spec `crew-damage` en
+  `crisis-definition.types.ts` (junto al `time-loss` existente). Como `evaluateCrisis` es puro y no
+  conoce la tripulación, la aplicación vive en `CrisisRuntime` (`mission/crisis-runtime.ts`), que sí
+  tiene acceso al estado: al detectar la transición a `resolved-failure` con consecuencia `crew-damage`,
+  aplica daño a un tripulante activo y emite `CrewDomainEvent` (`crew-damaged`/`crew-death`). Reutiliza
+  `hp-resolution.ts`: exponer `applyCrewDamage(actor, fraction, cause, elapsedSeconds)` (envuelve el
+  `applyHpLoss` interno ya existente) con una `CrewDamageCause` nueva para "sistema automatizado"
+  (p.ej. `electrocution`). Con tests (`crisis-runtime.test.ts`: timer expira → daño + evento).
+- **Contenido** `crisis/campaign/chapter-02-ecos-en-el-pasillo.ts`: `CrisisDefinition` por arquetipo
+  (timer medio `softDeadlineSeconds` + `onExpire: "resolved-failure"` + `consequence: crew-damage`),
+  componentes sembrados (2 sensores de movimiento + panel/actuador dueño del nodo de salida + infra de
+  nodos para el combinador, sin cable — el jugador lo arma), `briefingKey`, `objectiveKey`s. Registrar
+  en `CHAPTER_REGISTRY` (`chapter-registry.ts`), en la secuencia (cap.1 → cap.2, `chapter-sequence.ts`)
+  y en `CHAPTER_SEED_BY_ID` (`chapter-progression.ts`) para que se siembre al avanzar desde el cap. 1.
+  Verificar posiciones walkable en Exploración (otros arquetipos de referencia, criterio 10c). Con
+  tests (`chapter-02...test.ts`: trigger→resolución por cableado; timer→fallo+daño).
+
+### Juego (`/game`)
+- **`scenes/floorplan-scene.ts`**: suscribirse a `CrewDomainEvent` (nuevo emisor expuesto por
+  `MissionRuntime`, mismo patrón que `coreLoopEvents`/`crisisEvents`) → disparar el efecto de partículas
+  de daño/muerte (ya existe, `particles/effects/crew-death-effect.ts`, Fase 8/9) sobre el token + el
+  bark `severe-injury`/`crew-death` (`BarkController.fire`, ya lo admite sin cambios, cierra el
+  pendiente de 10e) + actualizar HP del token → cadencia "herido" (`crew-hp-to-cadence.ts`, ya existe).
+- **i18n** `es.ts`/`en.ts`: `briefing`/`objective` del cap. 2 (ES+EN), mecánicos no narrativos (misma
+  convención que cap. 1; `Primeras_8_crisis.md` marca la narrativa como pendiente).
+
+**Sprites faltantes a avisar** (si el cap. 2 usa piezas sin PNG): sensor de movimiento / combinador →
+`game/assets/sprites/components/<id>.png` (placeholder de código hasta que existan, convención CLAUDE.md).
+
+---
+
+## Paquete 3 — Export/import de blueprints del modo creativo (`.kludge`, diálogo Electron)
+
+**Objetivo**: compartir creaciones del modo creativo como archivo `.kludge` (viralidad de la demo).
+Reutiliza la serialización de `CustomCreation` ya existente y testeada.
+
+- **Electron**: nuevos canales IPC en `electron/src/ipc-channels.ts` (`blueprint:export`/
+  `blueprint:import`), `main.ts` (`dialog.showSaveDialog`/`showOpenDialog` con filtro `.kludge` +
+  `fs.writeFile`/`readFile`), `preload.ts` (exponer `window.kludgeBlueprint.export(json)`/`import()`).
+  Espejo del patrón ya usado por `window.kludgeSave`.
+- **Juego**: `meta/save-adapter.ts` gana `exportCreationToFile(creation)` /
+  `importCreationFromFile(): Promise<CustomCreation | undefined>` — serializan con
+  `serializeCustomCreation`/`deserializeCustomCreation` (motor, ya existen y validan versión al
+  deserializar) y hablan con `window.kludgeBlueprint`, con **fallback con aviso** fuera de Electron
+  (mismo criterio que el resto del adapter, nunca `localStorage`). `meta/electron-api.d.ts` declara la
+  API nueva.
+- **UI**: botones "Exportar"/"Importar" en `scenes/creative-hub-scene.ts` (exportar la creación
+  seleccionada; importar suma a la lista/guarda vía `saveCustomCreation`). i18n ES+EN.
+- **Motor**: sin cambios de tipos si el `.kludge` es un `CustomCreation` serializado tal cual; si hace
+  falta un guard de integridad extra en import, va con su test.
+
+---
+
+## Fuera de alcance de este plan (documentado)
+
+- **Empaquetado Windows** (`electron-builder` + NSIS/portable) y subida a itch.io — plan aparte, cuando
+  el contenido jugable esté verde (decisión del operador).
+- **Capítulos 3-8**, árbol de logros/tripulantes nombrados, empaquetado multiplataforma — Fase 11
+  completa, no la demo.
+
+---
+
+## Verificación
+
+Por paquete: `npm run build`, `npm run lint`, `npm test -w engine` en verde (motor con tests nuevos por
+cada regla/helper; `/game` sin runner → smoke visual, CLAUDE.md), y actualizar `ORDEN_DE_TRABAJO.md`
+(cerrar 10f; abrir sub-entradas del hito) + `changelog.log`.
+
+Playtest end-to-end en Exploración (`npm run dev -w game`, recarga completa) a cargo del operador:
+1. **10f**: crew-select → resolver cap. 1 → pantalla de resultado con resumen post-misión; reabrir la
+   partida (Continuar) y confirmar que el estado de la nave modificado persistió.
+2. **Cap. 2**: desde el resultado del cap. 1, "Siguiente capítulo" habilitado → entra al cap. 2;
+   cablear bien el combinador → resuelto; dejar vencer el timer → un tripulante recibe daño (partícula +
+   bark + cadencia herida) y resultado de fallo. `chapterProgress` avanzó y persistió.
+3. **Export/import**: en modo creativo, exportar una creación a `.kludge` e importarla en otra sesión.
+
+## Notas
+
+- 10f es mayormente `/game` + helpers de motor puros y testeables; el Paquete 2 es el grueso de motor
+  nuevo (reglas de trigger/resolución + aplicación de consecuencia), todo sobre patrones ya establecidos
+  (Strategy + registry + `signal-evaluator` de Fase 2 + `hp-resolution` de Fase 9). Mantiene el seam
+  Observer: el motor dice QUÉ pasó, `/game` lo muestra.
+- No se editan los JSON de mapa: el estado inicial del cap. 2 se autora en TS (decisión 10c).

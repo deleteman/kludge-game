@@ -51,6 +51,7 @@ function baseBlueprint(): Blueprint {
     },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

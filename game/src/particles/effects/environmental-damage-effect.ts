@@ -3,6 +3,7 @@ import type { CrewDamageCause } from "engine";
 
 import { type EffectScene, spawnBurst, spreadRange, textureScale } from "../particle-utils.js";
 import { FLARE_TEXTURE, SPARK_TEXTURES } from "../particle-texture-registry.js";
+import { createDynamicLight } from "./dynamic-light.js";
 
 /**
  * Daño AMBIENTAL sobre un tripulante — el entorno lo ataca (a diferencia de las
@@ -18,8 +19,11 @@ import { FLARE_TEXTURE, SPARK_TEXTURES } from "../particle-texture-registry.js";
  * pantalla.
  */
 
-/** Objeto de efecto ambiental: GameObject con componente de profundidad (Graphics/emisor de partículas). */
-export type EnvironmentalEffectObject = Phaser.GameObjects.Graphics | Phaser.GameObjects.Particles.ParticleEmitter;
+/** Objeto de efecto ambiental: GameObject con componente de profundidad (Graphics/emisor de partículas/luz). */
+export type EnvironmentalEffectObject =
+  | Phaser.GameObjects.Graphics
+  | Phaser.GameObjects.Particles.ParticleEmitter
+  | Phaser.GameObjects.PointLight;
 
 const ARC_COLOR = 0x3d8bff;
 const ARC_CORE_COLOR = 0xcfe6ff;
@@ -131,7 +135,24 @@ export function electricArcEffect(
     FLARE_TEXTURE,
   );
 
-  return [graphics, sparks, flash];
+  // Luz aditiva en el impacto (Fase 12a, corrección post-playtest): mismo
+  // patrón de burst con tween de intensidad que `combustion-effect.ts`, vida
+  // corta acorde a la duración total del arco (`ARC_STRIKES * ARC_STRIKE_MS`).
+  // Intensidad/radio bajos A PROPÓSITO (2ª corrección, mismo playtest): la
+  // primera versión (radio 60, intensidad hasta 1) tapaba el rayo y las
+  // chispas del propio arco — la luz debe acompañar el fenómeno, no taparlo.
+  const totalArcMs = ARC_STRIKES * ARC_STRIKE_MS;
+  const light = createDynamicLight(scene, target.x, target.y, ARC_CORE_COLOR, 26, 0.2);
+  scene.tweens.add({
+    targets: light,
+    intensity: { from: 0.15, to: 0.35 },
+    duration: 60,
+    yoyo: true,
+    repeat: Math.ceil(totalArcMs / 120),
+  });
+  scene.time.delayedCall(totalArcMs + 150, () => light.destroy());
+
+  return [graphics, sparks, flash, light];
 }
 
 /**

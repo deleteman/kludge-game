@@ -35,7 +35,8 @@ import { HEADER_COLOR, LABEL_COLOR, chemicalElementColor, chemicalResultColor } 
 import { renderWorkbench } from "../render/workbench-renderer.js";
 import { preloadComponentSprites } from "../render/component-sprite-registry.js";
 import { UI_FONT_FAMILY } from "../ui/fonts.js";
-import { preloadUiAssets } from "../ui/ui-asset-registry.js";
+import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
+import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyList } from "../ui/widgets/kenney-list.js";
 import { createKenneyCardList } from "../ui/widgets/kenney-card-list.js";
@@ -141,6 +142,7 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
 
   preload(): void {
     preloadUiAssets(this);
+    preloadAudioAssets(this);
     // Sprites de pieza para dibujar la mesa con arte real, no rectángulos
     // (cierre del pendiente #7); el que falte cae al placeholder por código.
     preloadComponentSprites(this);
@@ -230,6 +232,7 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         this.mode === "fisica" ? t("ui.menu.workbench.mode-chemistry") : t("ui.menu.workbench.mode-physical"),
         {
           width: 200,
+          iconTextureKey: UI_TEXTURE_KEYS.iconChemistry,
           onClick: () => {
             this.mode = this.mode === "fisica" ? "quimica" : "fisica";
             this.armedComponentId = undefined;
@@ -408,9 +411,21 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
       return;
     }
     const resultColor = chemicalResultColor(outcome.tags);
+    // Caja de resultado más alta (12c.7, obs #8): el nombre ahora envuelve, así que
+    // un resultado largo como "Mezcla sin identificar" ocupa 2 líneas sin salirse.
+    const resultBoxWidth = GRID_SIZE.width * CELL * 0.6;
+    const nameText = this.add.text(12, resultY + 26, outcome.name, {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "15px",
+      color: HEADER_COLOR,
+      wordWrap: { width: resultBoxWidth - 24 },
+    });
+    // La fila de tags va debajo del nombre ya envuelto, no a un offset fijo.
+    const tagsY = resultY + 26 + nameText.height + 6;
+    const resultBoxHeight = tagsY + 20 - resultY;
     container.add(
       this.add
-        .rectangle(0, resultY, GRID_SIZE.width * CELL * 0.6, 90, 0x1a2030, 0.85)
+        .rectangle(0, resultY, resultBoxWidth, resultBoxHeight, 0x1a2030, 0.85)
         .setOrigin(0, 0)
         .setStrokeStyle(2, resultColor, 1),
     );
@@ -421,19 +436,13 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         color: LABEL_COLOR,
       }),
     );
+    container.add(nameText);
     container.add(
-      this.add.text(12, resultY + 26, outcome.name, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "16px",
-        color: HEADER_COLOR,
-      }),
-    );
-    container.add(
-      this.add.text(12, resultY + 52, outcome.tags.map((tag) => this.chemicalTagLabel(tag)).join(" · "), {
+      this.add.text(12, tagsY, outcome.tags.map((tag) => this.chemicalTagLabel(tag)).join(" · "), {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: "11px",
         color: LABEL_COLOR,
-        wordWrap: { width: GRID_SIZE.width * CELL * 0.6 - 24 },
+        wordWrap: { width: resultBoxWidth - 24 },
       }),
     );
   }
@@ -614,6 +623,10 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: "20px",
         color: HEADER_COLOR,
+        // Sin wordWrap un nombre largo se salía de la caja de 520px (deuda #5 de
+        // PENDIENTES). Se envuelve dentro del ancho de la caja con margen.
+        wordWrap: { width: 460 },
+        align: "center",
       })
       .setOrigin(0.5)
       .setDepth(DEPTH);

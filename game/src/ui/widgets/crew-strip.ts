@@ -27,9 +27,37 @@ export interface CrewStripCardHit {
   readonly actorId: CrewActorId;
 }
 
+/** Objeto del retrato (imagen real o rectángulo placeholder) — centrado en origin 0.5 para poder sacudirlo/rotarlo (12c.2). */
+export type CrewPortraitObject = Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+
 export interface CrewStripHandle {
   readonly container: Phaser.GameObjects.Container;
   readonly cardHitAreas: ReadonlyArray<CrewStripCardHit>;
+  /** Retrato por tripulante, para que la escena le aplique reacciones de daño/muerte (12c.2). */
+  readonly portraits: ReadonlyMap<CrewActorId, CrewPortraitObject>;
+}
+
+/**
+ * Tinte multiplicativo del retrato según fracción de vida (12c.2): blanco (sin
+ * tinte) con vida llena, virando a rojo apagado a medida que baja. Es un
+ * reflejo EN REPOSO del estado de salud, redibujado con el HP vivo en cada
+ * `renderCrewStrip` — no depende de ningún tween, así que sobrevive al rebuild.
+ */
+function healthTint(fraction: number): number {
+  const f = Math.max(0, Math.min(1, fraction));
+  if (f >= 0.999) return 0xffffff;
+  // Interpola G y B hacia abajo (deja R alto) → el retrato se enrojece al herirse.
+  const g = Math.round(0x66 + (0xff - 0x66) * f);
+  const b = Math.round(0x5a + (0xff - 0x5a) * f);
+  return (0xff << 16) | (g << 8) | b;
+}
+
+/** Multiplica un color base por un tinte (ambos 0xRRGGBB), canal a canal — para el placeholder que no admite `setTint`. */
+function tintColor(base: number, tint: number): number {
+  const r = Math.round((((base >> 16) & 0xff) * ((tint >> 16) & 0xff)) / 0xff);
+  const g = Math.round((((base >> 8) & 0xff) * ((tint >> 8) & 0xff)) / 0xff);
+  const b = Math.round(((base & 0xff) * (tint & 0xff)) / 0xff);
+  return (r << 16) | (g << 8) | b;
 }
 
 /**
@@ -66,6 +94,7 @@ export function renderCrewStrip(
   );
 
   const cardHitAreas: CrewStripCardHit[] = [];
+  const portraits = new Map<CrewActorId, CrewPortraitObject>();
   const startX = x + 10;
   const cardHeight = height - 16;
   const cardTop = y + 8;
@@ -74,6 +103,7 @@ export function renderCrewStrip(
     const color = CREW_TOKEN_COLORS[index % CREW_TOKEN_COLORS.length]!;
     const selected = actor.id === selectedActorId;
     const cardX = startX + index * (CARD_WIDTH + CARD_GAP);
+    const hpFraction = actor.maxHp > 0 ? Math.max(0, Math.min(1, actor.hp / actor.maxHp)) : 0;
 
     // Caja de la tarjeta (separación visual entre tripulantes).
     container.add(
@@ -83,16 +113,24 @@ export function renderCrewStrip(
         .setStrokeStyle(selected ? 2 : 1, selected ? SELECTED_CELL_COLOR : 0x2a3040, 1),
     );
 
-    // Retrato a la izquierda (centrado verticalmente en la tarjeta).
+    // Retrato a la izquierda (centrado verticalmente en la tarjeta). Centrado en
+    // origin 0.5 (12c.2): así la escena puede sacudirlo/rotarlo/escalarlo ante el
+    // daño sin que el pivote quede en la esquina.
     const portraitX = cardX + CARD_PAD;
     const portraitY = cardTop + (cardHeight - PORTRAIT_SIZE) / 2;
+    const portraitCX = portraitX + PORTRAIT_SIZE / 2;
+    const portraitCY = portraitY + PORTRAIT_SIZE / 2;
+    // Tinte multiplicativo de salud (12c.2): blanco lleno → rojo apagado herido.
+    const tint = healthTint(hpFraction);
     if (hasCrewPortrait(scene, actor.name)) {
       const key = crewPortraitTextureKey(crewPortraitSlug(actor.name));
-      const img = scene.add.image(portraitX, portraitY, key).setOrigin(0, 0).setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE);
+      const img = scene.add.image(portraitCX, portraitCY, key).setOrigin(0.5).setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE);
       // Gris cuando NO está seleccionado (Phaser 3.90 preFX ColorMatrix); color
       // cuando sí. `preFX` es null bajo renderer Canvas → el `?.` degrada a color.
       if (!selected) img.preFX?.addColorMatrix().grayscale(1);
+      if (tint !== 0xffffff) img.setTint(tint);
       container.add(img);
+      portraits.set(actor.id, img);
       // Borde del retrato para recortarlo visualmente del fondo de la tarjeta.
       container.add(
         scene.add
@@ -101,13 +139,15 @@ export function renderCrewStrip(
           .setStrokeStyle(selected ? 2 : 1, selected ? SELECTED_CELL_COLOR : 0x2a3040, 1),
       );
     } else {
-      // Placeholder: color del tripulante si está seleccionado, gris si no.
-      container.add(
-        scene.add
-          .rectangle(portraitX, portraitY, PORTRAIT_SIZE, PORTRAIT_SIZE, selected ? color : PORTRAIT_GRAY, 1)
-          .setOrigin(0, 0)
-          .setStrokeStyle(selected ? 2 : 1, selected ? SELECTED_CELL_COLOR : 0x2a3040, 1),
-      );
+      // Placeholder: color del tripulante si está seleccionado, gris si no; el
+      // tinte de salud se aplica multiplicando el color base.
+      const baseColor = selected ? color : PORTRAIT_GRAY;
+      const rect = scene.add
+        .rectangle(portraitCX, portraitCY, PORTRAIT_SIZE, PORTRAIT_SIZE, tintColor(baseColor, tint), 1)
+        .setOrigin(0.5)
+        .setStrokeStyle(selected ? 2 : 1, selected ? SELECTED_CELL_COLOR : 0x2a3040, 1);
+      container.add(rect);
+      portraits.set(actor.id, rect);
     }
 
     // Bloque de texto a la derecha: nombre arriba, rol debajo.
@@ -137,7 +177,6 @@ export function renderCrewStrip(
     // Barra de HP al pie del bloque de texto: pista oscura + relleno coloreado por
     // fracción de vida, con la cifra `hp/maxHp` encima. Refleja el daño en vivo
     // cuando la escena redibuja la tira tras un evento `crew-damaged`.
-    const hpFraction = actor.maxHp > 0 ? Math.max(0, Math.min(1, actor.hp / actor.maxHp)) : 0;
     const hpBarY = cardTop + cardHeight - CARD_PAD - HP_BAR_HEIGHT;
     container.add(
       scene.add.rectangle(textX, hpBarY, TEXT_BLOCK_WIDTH, HP_BAR_HEIGHT, HP_BAR_TRACK_COLOR, 1).setOrigin(0, 0),
@@ -162,5 +201,5 @@ export function renderCrewStrip(
     cardHitAreas.push({ xMin: cardX, xMax: cardX + CARD_WIDTH, actorId: actor.id });
   });
 
-  return { container, cardHitAreas };
+  return { container, cardHitAreas, portraits };
 }

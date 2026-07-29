@@ -14,6 +14,7 @@ import { LABEL_COLOR, HEADER_COLOR } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { createKenneyButton } from "./kenney-button.js";
 import { createKenneyList } from "./kenney-list.js";
+import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
 
 export interface InstallOption {
@@ -171,7 +172,7 @@ export function renderMissionActionPanel(
           color: LABEL_COLOR,
         })
         .setOrigin(1, 0)
-        .setInteractive({ useHandCursor: true })
+        .setInteractive({ cursor: UI_POINTER_CURSOR_CSS })
         .on("pointerdown", () => callbacks.onClose()),
     );
   }
@@ -183,7 +184,10 @@ export function renderMissionActionPanel(
         fontSize: "14px",
         color: HEADER_COLOR,
         align: "center",
-        wordWrap: { width: width - 20 },
+        // `useAdvancedWrap`: el wrap básico no parte un token sin espacios, así
+        // que un nombre largo de una sola palabra se salía de la caja (obs de
+        // playtest). El avanzado sí corta la palabra al ancho disponible.
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
       })
       .setOrigin(0.5, 0),
   );

@@ -88,6 +88,7 @@ describe("capítulo 1 — variantes por arquetipo", () => {
         signalGraph: { nodes: [], edges: [] },
         sectionAtmospheres: [],
         unpoweredSectionIds: [],
+        overloadedRefs: [],
       };
 
       const triggered = evaluateCrisis(
@@ -151,6 +152,7 @@ describe("capítulo 1 — variantes por arquetipo", () => {
       },
       sectionAtmospheres: [],
       unpoweredSectionIds: [],
+      overloadedRefs: [],
     };
 
     const result = evaluateCrisis(

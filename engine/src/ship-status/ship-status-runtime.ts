@@ -3,6 +3,7 @@ import type { ChemicalSubstanceDefinition, ChemicalSubstanceId } from "../chemis
 import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
 import type { MissionAtmosphereRuntime } from "../mission/mission-atmosphere-runtime.js";
 import type { MutableShipState } from "../mission/mutable-ship-state.js";
 import {
@@ -10,8 +11,9 @@ import {
   aggregateEnergy,
   aggregateHullIntegrity,
   aggregateLifeSupport,
+  aggregateSectionHullIntegrity,
 } from "./ship-status-aggregation.js";
-import type { ShipStatusSnapshot } from "./ship-status.types.js";
+import type { ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status.types.js";
 
 /**
  * Consulta de estado agregado a nivel de nave (Subfase 11g). Pull-based, no
@@ -42,5 +44,15 @@ export class ShipStatusQuery {
       hullIntegrity: aggregateHullIntegrity(blueprint.placedComponents, this.componentRegistry),
       energy: aggregateEnergy(blueprint.unpoweredSectionIds.length, this.shipFloorplan.sections.length),
     };
+  }
+
+  /** Integridad de casco de UNA sección (Fase 12a, capa "estructural" del HUD del plano) — ver `aggregateSectionHullIntegrity`. */
+  sectionHullIntegrity(sectionId: SectionId): ShipStatusIndicator {
+    return aggregateSectionHullIntegrity(
+      this.shipState.get().placedComponents,
+      this.componentRegistry,
+      this.shipFloorplan,
+      sectionId,
+    );
   }
 }

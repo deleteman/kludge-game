@@ -4,6 +4,7 @@ import type { BarkEventType, CrewActor, CrewActorId } from "engine";
 import { t } from "../i18n/i18n.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
 import { showBarkBubble } from "./bark-bubble.js";
+import { playBarkSound } from "../audio/bark-sound.js";
 
 /** Silencio mínimo entre barks del MISMO tripulante, para que no se solapen. */
 const PER_ACTOR_COOLDOWN_MS = 600;
@@ -45,5 +46,6 @@ export class BarkController {
     const bubble = showBarkBubble(this.scene, x, y, text);
     bubble.setDepth(RENDER_DEPTH.problemMarker);
     this.markAsWorldObject(bubble);
+    playBarkSound(this.scene, eventType);
   }
 }

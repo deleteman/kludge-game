@@ -85,6 +85,18 @@ export const CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND = 1.5;
 /** Piezas aceptables para sellar la fuga — mismo criterio que la resolución de crisis (lista cerrada, sin tag genérico disponible). */
 export const CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS: ReadonlyArray<ComponentId> = ["junta-hermetica" as ComponentId];
 
+/**
+ * Conductor sobrecargado (Fase 12a, corrección post-playtest): un `cable-cobre` (catálogo atómico,
+ * `COND`/`E`/`maxCapacity: 100`) sembrado `condition: "ok"` en `ingenieria`, puramente decorativo — no
+ * toca `triggers`/`resolutions` de este capítulo, mismo criterio que la fuga de presión (attrezzo
+ * paralelo al puzzle). `scriptedOverloads` (ver `buildChapter01Definition`) le declara un `load: 150`
+ * fijo (> 100 de capacidad) para que `MissionOverloadRuntime` dispare `failureMode: "cut"` de forma
+ * determinística desde el primer tick de ejecución — la cicatriz visual (chispas + luz,
+ * `game/src/particles/effects/overloaded-conductor-effect.ts`) es la única forma de que el sistema de
+ * iluminación de 12a sea verificable jugando, no solo en tests.
+ */
+export const CHAPTER_01_OVERLOAD_INSTANCE_ID = "capitulo-1-cable-sobrecargado" as PlacedComponentInstanceId;
+
 interface Chapter01ArchetypeParams {
   readonly anchorPosition: GridPosition;
   readonly blockedSectionId: SectionId;
@@ -94,6 +106,14 @@ interface Chapter01ArchetypeParams {
   readonly gatePanelPosition: GridPosition;
   /** Junta hermética rota (Subfase 11h, fuga de presión) — junto a la válvula, sin solapar. */
   readonly sealPosition: GridPosition;
+  /**
+   * Conductor sobrecargado + sección sin energía (Fase 12a, corrección post-playtest: sin esto la
+   * iluminación dinámica de la fase quedaba construida pero invisible en partida real). Ambos
+   * opcionales, ausentes = ese arquetipo no siembra el escenario todavía — solo Exploración está
+   * verificado contra su mapa real, mismo criterio que el resto de este archivo.
+   */
+  readonly overloadedConductorPosition?: GridPosition;
+  readonly unpoweredSectionId?: SectionId;
 }
 
 /**
@@ -107,6 +127,14 @@ interface Chapter01ArchetypeParams {
  * (`{x:6,y:5}`, junto a la válvula sin solapar). Los otros 3 arquetipos:
  * posiciones de referencia (anclaje + offset), SIN verificación visual
  * (decisión del operador — solo Exploración se juega de punta a punta por ahora).
+ *
+ * `overloadedConductorPosition`/`unpoweredSectionId` (Fase 12a): SOLO Exploración por ahora — a
+ * diferencia del resto de posiciones de este archivo, un `SectionId` inválido para un arquetipo cuyo
+ * mapa no se leyó en esta sesión podría referenciar una sección inexistente; se prefiere dejarlos
+ * ausentes en guerra/investigación/médica antes que inventar un id sin verificar (ver
+ * PENDIENTES_OBSERVACIONES.md). `{x:22,y:12}` cae dentro de `ingenieria` (bounding box x:20-25,y:11-14
+ * en `nave-exploracion.json`), sin coincidir con ningún anclaje autorado de esa sección
+ * (`ingenieria-a1..a5`); `taller` es una sección de attrezzo sin ningún rol en el puzzle del capítulo.
  */
 const CHAPTER_01_PARAMS_BY_ARCHETYPE: Record<ShipArchetype, Chapter01ArchetypeParams> = {
   exploracion: {
@@ -115,6 +143,8 @@ const CHAPTER_01_PARAMS_BY_ARCHETYPE: Record<ShipArchetype, Chapter01ArchetypePa
     sensorPosition: { x: 7, y: 9 },
     gatePanelPosition: { x: 7, y: 6 },
     sealPosition: { x: 6, y: 5 },
+    overloadedConductorPosition: { x: 22, y: 12 },
+    unpoweredSectionId: "taller" as SectionId,
   },
   guerra: {
     anchorPosition: { x: 17, y: 6 },
@@ -193,6 +223,11 @@ function buildChapter01Definition(archetype: ShipArchetype): CrisisDefinition {
     ],
     // Sin `timer`: capítulo 1 no tiene amenaza real, solo introduce el loop.
     consequence: { kind: "time-loss", severity: "minor" },
+    // Fase 12a: `load: 150` fijo > `maxCapacity: 100` de catálogo del `cable-cobre` sembrado más abajo
+    // — dispara de forma determinística, sin depender de ningún otro estado de la misión.
+    ...(params.overloadedConductorPosition
+      ? { scriptedOverloads: [{ instanceId: CHAPTER_01_OVERLOAD_INSTANCE_ID, load: 150 }] }
+      : {}),
   };
 }
 
@@ -239,6 +274,13 @@ function buildChapter01SeededComponents(archetype: ShipArchetype): ReadonlyArray
       placement: { position: params.sealPosition, footprint: { width: 1, height: 1 }, rotation: 0 },
       condition: "jammed",
     },
+    // Conductor sobrecargado (Fase 12a) — sembrado `ok`; `scriptedOverloads`
+    // (`buildChapter01Definition`) es lo que lo hace fallar en vivo, no su
+    // `condition` inicial (a diferencia de la válvula/junta, que arrancan ya
+    // rotas). Solo si el arquetipo tiene la posición verificada.
+    ...(params.overloadedConductorPosition
+      ? [cell(params.overloadedConductorPosition, CHAPTER_01_OVERLOAD_INSTANCE_ID, "cable-cobre")]
+      : []),
   ];
 }
 
@@ -284,6 +326,12 @@ export const CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE: Record<ShipArchetype, Sect
 export const CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE: Record<ShipArchetype, GridPosition> = Object.fromEntries(
   SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].sealPosition]),
 ) as Record<ShipArchetype, GridPosition>;
+
+/** Sección sembrada sin energía (Fase 12a) — `undefined` en arquetipos sin posición verificada todavía. */
+export const CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE: Record<ShipArchetype, SectionId | undefined> =
+  Object.fromEntries(
+    SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].unpoweredSectionId]),
+  ) as Record<ShipArchetype, SectionId | undefined>;
 
 // --- Compatibilidad con 10a/10b (Exploración es el arquetipo de referencia) ---
 export const CHAPTER_01_PRIMER_AVISO = CHAPTER_01_BY_ARCHETYPE.exploracion;

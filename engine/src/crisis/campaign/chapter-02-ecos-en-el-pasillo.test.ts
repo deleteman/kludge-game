@@ -31,6 +31,7 @@ function shipWith(archetype: (typeof SHIP_ARCHETYPES)[number], edges: Blueprint[
     signalGraph: { nodes: [...CHAPTER_02_SEEDED_SIGNAL_NODES_BY_ARCHETYPE[archetype]], edges },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
+    overloadedRefs: [],
   };
 }
 

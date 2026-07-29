@@ -38,6 +38,7 @@ function shipWith(placedComponents: Blueprint["placedComponents"]): CrisisEvalCo
       signalGraph: { nodes: [], edges: [] },
       sectionAtmospheres: [],
       unpoweredSectionIds: [],
+      overloadedRefs: [],
     },
     tick: { dtSeconds: 1, elapsedSeconds: 0 },
   };

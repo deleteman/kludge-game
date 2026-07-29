@@ -3,10 +3,11 @@ import type { MapEntityRegistry } from "../composition/entity-registry.js";
 import type {
   AtomicComponentData,
   ComponentId,
+  CreationPart,
   CompositeComponentData,
   PhysicalComponentDefinition,
 } from "../components/physical-component.types.js";
-import { calculateFootprint } from "./footprint-calculator.js";
+import { calculateFootprint, calculateFootprintOrigin } from "./footprint-calculator.js";
 import { buildRecipeFromPieces } from "./creation-recipe-builder.js";
 import { WorkbenchError, type WorkbenchPiece } from "./workbench-state.types.js";
 
@@ -37,6 +38,21 @@ export function nameAndRegisterCreation(
   const footprint = calculateFootprint(pieces);
   const recipe = buildRecipeFromPieces(pieces);
 
+  // Disposición por-pieza (deuda #8, Fase 12c.5): offset relativo al origen del
+  // footprint + rotación, para que `/game` dibuje la creación con los sprites
+  // reales de sus partes. La receta deduplica y descarta posiciones, así que el
+  // layout conserva CADA pieza colocada (una entrada por pieza, no por tipo).
+  const origin = calculateFootprintOrigin(pieces);
+  const layout: ReadonlyArray<CreationPart> = pieces.map((piece) => ({
+    ref: piece.componentDefinitionId,
+    offset: {
+      x: piece.placement.position.x - origin.x,
+      y: piece.placement.position.y - origin.y,
+    },
+    footprint: piece.placement.footprint,
+    rotation: piece.placement.rotation,
+  }));
+
   // Agrega las propiedades funcionales de las piezas al compuesto (11c.1): sin
   // esto, `data.functional` quedaba vacío y una creación instalada en misión no
   // derivaba ningún `SignalNode` (`deriveSignalNodes`), así que era incableable
@@ -53,6 +69,7 @@ export function nameAndRegisterCreation(
     name: params.name,
     data: {
       footprint,
+      layout,
       ...(aggregatedFunctional.length > 0 ? { functional: aggregatedFunctional } : {}),
     },
     recipe,

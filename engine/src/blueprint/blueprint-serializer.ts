@@ -42,8 +42,15 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     throw new BlueprintParseError("Blueprint must be a JSON object");
   }
 
-  const { metadata, placedComponents, reservoirContents, signalGraph, sectionAtmospheres, unpoweredSectionIds } =
-    value;
+  const {
+    metadata,
+    placedComponents,
+    reservoirContents,
+    signalGraph,
+    sectionAtmospheres,
+    unpoweredSectionIds,
+    overloadedRefs,
+  } = value;
 
   if (!isPlainObject(metadata)) {
     throw new BlueprintParseError("Blueprint.metadata must be an object");
@@ -138,5 +145,13 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     unpoweredSectionIds.some((entry) => typeof entry !== "string")
   ) {
     throw new BlueprintParseError("Blueprint.unpoweredSectionIds must be an array of strings");
+  }
+
+  // schemaVersion < 5 no tenía cicatriz de sobrecarga (Fase 12a) — ausente =
+  // ningún conducto/reservorio en cortocircuito todavía.
+  if (overloadedRefs === undefined) {
+    (value as { overloadedRefs: unknown }).overloadedRefs = [];
+  } else if (!Array.isArray(overloadedRefs) || overloadedRefs.some((entry) => typeof entry !== "string")) {
+    throw new BlueprintParseError("Blueprint.overloadedRefs must be an array of strings");
   }
 }
