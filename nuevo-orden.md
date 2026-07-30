@@ -175,6 +175,28 @@ que otros ítems diferidos de este documento (ver Subfase 11h → 12a → "Poten
 
 
 
+#### Subfase 12f: Fixes de Playtest de 12d
+
+Bucket de fixes puntuales surgidos del playtest, siguiendo la convención de la Subfase 12c.7 ("Fixes de playtest"). Recoge observaciones abiertas de `PENDIENTES_OBSERVACIONES.md` (Obs 3, Obs 7, deuda #5).
+
+* **Tripulantes se mueven en pausa (Obs 3):** los saltos de tripulación usan tweens de Phaser (`hopMove`, `game/src/crew/hop-movement.ts`) y nada los pausa al entrar en modo planificación — `floorplan-scene.ts` no pausa/reanuda esos tweens con el cambio de `coreLoop.mode`. Pausar/reanudar los tweens de movimiento de tripulación (y enemigos) sincronizados con `execution`/`planning`, mismo criterio ya aplicado al flujo de conductos en 11f.7.
+
+* **Modo pantalla completa queda en negro (Obs 7):** el toggle de fullscreen deja la pantalla en negro sin errores en consola. Investigar el toggle (`options-scene.ts`, `scale.FIT` + `toggleFullscreen`, Fase 9.5) y el redimensionado de cámaras (mundo + `hudCamera`).
+
+* **Proyectil suelto pierde su sprite de catálogo (deuda #5):** `LooseFerromagneticPromoter` (`engine/src/mission/loose-ferromagnetic-promoter.ts`) registra el `ProjectileBody` con `ref: placedComponentInstanceId` en vez del `componentDefinitionId`, así que `projectile-renderer.ts` cae siempre al círculo placeholder aunque el sprite de la pieza exista. Conservar el `componentDefinitionId` accesible al renderer (mapa `ref→componentDefinitionId` en `MissionRuntime`) sin ensuciar `ProjectileBody`/`kinetics/`.
+
+
+
+#### Subfase 12g: Pulido de Pantallas de Selección
+
+Pulido de UI de meta-menú (pantallas de Fase 9.5), coherente con 12c (personalidad de la UI). Recoge los ítems de fine-tunning de `PENDIENTES_OBSERVACIONES.md` sobre las pantallas de arranque de campaña. Da personalidad y "sensación profesional" a los primeros minutos.
+
+* **Tarjetas de selección de tripulación (`crew-select-scene.ts`):** una tarjeta por tripulante con foto, nombre, personalidad (rasgo), rol/especialidad y descripción. Reutiliza el roster real (`CrewSpecialty`/`PersonalityTrait`/`CrewTier`, Fase 9). Si faltan sprites de retrato, avisar explícitamente con su ruta esperada (convención CLAUDE.md, `game/assets/sprites/crew/`).
+
+* **Datos de nave en selección de arquetipo (`archetype-select-scene.ts`):** por cada nave, nombre propio (no del arquetipo), imagen exterior para dar color a la elección, su arquetipo y una descripción con los + y los − (ej. + armamento, − sensores). Reutiliza `SHIP_ARCHETYPES`. Avisar de sprites de nave faltantes con su ruta esperada.
+
+
+
 ### Fase 13 — Gaps de Motor de las Comparativas de Género
 
 Estos cuatro sistemas de motor se detectaron *después* de cerrar la Fase 11, al evaluar Kludge contra los referentes del género (Barotrauma, Duskers, FTL, Shipbreaker — ver `docs/comparativas-juegos/`). No son pulido sensorial (eso es la Fase 12), sino infraestructura que los capítulos posteriores asumen — por eso se ubican **antes del Cap.2** y no como apéndice de la Fase 11 ya cerrada. El orden interno respeta las dependencias: 13a desbloquea la lógica de señales del Cap.2; 13d depende de 13b.
@@ -217,6 +239,8 @@ Cierra el hueco de "hardware frágil" de Duskers y refuerza el Pilar 2 (consecue
 
 * **Escritores de condición:** (1) desmontar+reinstalar baja un escalón, probabilístico por tier del Ingeniero (reusa la lógica de §6.5); (2) exposición a una sustancia `CORR` en el tiempo baja la condición (tick en el dominio químico/atmósfera). **No** por sobrecarga previa (descartado).
 
+* **Prerrequisito — agregación de material en creaciones (deuda `PENDIENTES_OBSERVACIONES.md` #6):** `nameAndRegisterCreation` (`engine/src/workbench/creation-naming.ts`) agrega hoy la unión de propiedades FUNCIONALES de las partes pero **no** las de MATERIAL (`RE`/`MAG`), así que una creación instalada no tiene `data.material` y no se corroe ni se detecta ferromagnética. Como el escritor de condición (2) depende de la exposición `CORR`, una creación necesita heredar material para poder degradarse. Al resolver, **decidir la regla de agregación** (¿RE = máximo/suma/armazón?, ¿MAG si CUALQUIER parte es MAG?) y testearla junto al caso correspondiente.
+
 * **UI:** tag `[DEGRADADO]` en ámbar en el inspector + tinte/ícono en el sprite.
 
 * Test unitario del modificador de RE + riesgo por condición; integración "canibalizar deja la pieza frágil".
@@ -232,6 +256,18 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
 * **Doble filo:** el mismo evento queda disponible como herramienta **deliberada** (provocar el chispazo, ligado a la trampa-de-chispa §5.5 / caso de validación 8).
 
 * Test: desmontar conductor energizado sin purga → evento de chispa/combustión; con purga previa → seguro.
+
+#### Subfase 13e: Destino Real de Sustancias — Reservorios, Extracción y Estación Química
+
+Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustancia sintetizada (11c.3) se resuelve y queda `available` pero no puede verterse en nada ni tiene ubicación propia en el plano. Es el mismo sistema — dar un destino real a las sustancias. Substrato del Cap.7 (Fase 20, neutralizante sintetizado en la mesa). **Pendiente de su propio ciclo de preguntas** antes de plan de implementación (mismo criterio que 12d / "Potenciar LED"): exige decidir si `ReservoirProperty` se extiende con sustancia+cantidad o si el estado vive en un runtime aparte paralelo a `MissionAtmosphereRuntime`.
+
+* **Estación química dedicada (Obs 4):** la síntesis deja de estar disponible libremente; se hace desde un aparato específico ("estación química", nombre a definir) cuyo menú contextual (panel de acciones de 11g) es "Fabricar sustancias" / "Desmontar".
+
+* **Reservorio con sustancia+cantidad y mecánica de extracción (deuda #9):** extender `ReservoirProperty` (`engine/src/properties/functional.types.ts`) — o un runtime aparte — con `substanceId`/`amount`; añadir la mecánica de extracción de elementos (GDD 5.4.1) en vez de ofrecer el `ELEMENT_CATALOG` completo sin restricción de inventario. Habilita verter la sustancia en un reservorio o aplicarla sobre una atmósfera/hazard.
+
+* **Caudal de fluido real (deuda #10):** la capa `fluido` del plano anima hoy con una heurística sin dato de caudal (`conduit-flow-heuristics.ts` reutiliza el booleano de energía). Al existir transporte de fluido/reservorios entre secciones, alimentar la capa con el dato real de caudal.
+
+* Test unitario del vertido/extracción antes de integrar; caso de validación ligado al Cap.7.
 
 
 
@@ -250,6 +286,8 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
 
 
 * **Estrategia de Captación:** Habilitar la importación/exportación de archivos JSON de Blueprints desde la mesa creativa para fomentar la viralización comunitaria. Redirigir el final de la demo a la página de Steam para acumular wishlists.
+
+* **Intro narrativa / reporte de incidente (Obs 0 de `PENDIENTES_OBSERVACIONES.md`):** un par de escenas con texto que se escribe contando lo que pasa ANTES de ver el plano (formato "reporte de incidente"), para dar contexto y mejorar la primera impresión / captación de wishlists. **Pendiente de su propio ciclo de diseño narrativo** (alcance, tono, formato, i18n — sin hardcodear strings, CLAUDE.md). Como no existe ningún sistema narrativo previo en el proyecto, no iniciar sin ese ciclo.
 
 
 
@@ -316,6 +354,7 @@ El trimestre final se enfoca en el aseguramiento de la calidad técnica, el sopo
 ### Fase 22 — Pulido General de Contenido e i18n
 
 * **Fase 22a (Soporte de Arquetipos):** Extender la verificación de los 8 capítulos jugables a las naves de Investigación, Guerra y Médica, resolviendo anomalías de anclaje visuales específicas de cada plano.
+   - **Autoría de conductos `senal`/`fluido` en los otros arquetipos (deudas #13/#14 de `PENDIENTES_OBSERVACIONES.md`):** hoy la capa `conductos` `senal` solo está autorada en `nave-exploracion` y no hay ningún conducto `fluido` en ningún mapa. Sin conductos `senal`, un cable de señal cross-section queda bloqueado (`assertSignalWiringReachable`), así que el Cap.1 de investigación/guerra/médica no se puede cablear. Autorar en Tiled (capa `conductos`, propiedades `kind`/`a`/`b`) los `senal` que cada arquetipo necesite y los `fluido` en general. Tarea de contenido/diseño de nivel, encaja con la extensión de capítulos a estos arquetipos.
 
 
 * **Fase 22b (Desbloqueos):** Integrar la UI del árbol de logros de GDD §6.8 para reclutar tripulantes nombrados con habilidades pasivas fijas basadas en el estilo de juego del jugador.
@@ -415,5 +454,23 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 
  |
 | **Comparativa Shipbreaker — Satisfacción de deconstrucción (visual)**<br> | **Fase 12c**<br> | Recolección visible de elementos + creación compuesta dibujada con los sprites reales de sus partes (deuda #8).
+
+ |
+| **Playtest 12d — Bugs (Obs 3 pausa, Obs 7 fullscreen, deuda #5 sprite proyectil)**<br> | **Fase 12f**<br> | Bucket de fixes: pausar tweens de tripulación en planificación, arreglar fullscreen en negro, conservar `componentDefinitionId` del proyectil suelto.
+
+ |
+| **Fine-tunning — Pantallas de selección con personalidad**<br> | **Fase 12g**<br> | Tarjetas de tripulación (foto/personalidad/rol/descripción) + datos de nave por arquetipo (imagen exterior + / −).
+
+ |
+| **UX — Destino real de sustancias sintetizadas (Obs 4, deudas #9/#10)**<br> | **Fase 13e**<br> | Estación química con menú contextual + reservorio con sustancia+cantidad + extracción + caudal de fluido real.
+
+ |
+| **Deuda #6 — Agregación de material en creaciones**<br> | **Fase 13c**<br> | Prerrequisito: una creación hereda `RE`/`MAG` de sus partes para poder corroerse/degradarse.
+
+ |
+| **Deudas #13/#14 — Conductos `senal`/`fluido` en otros arquetipos**<br> | **Fase 22a**<br> | Autoría de contenido en Tiled para desbloquear el cableado cross-section del Cap.1 en investigación/guerra/médica.
+
+ |
+| **Obs 0 — Historia / intro narrativa**<br> | **Fase 15 (Demo)**<br> | Escenas de intro tipo "reporte de incidente" antes del plano, pendientes de ciclo de diseño narrativo.
 
  |
