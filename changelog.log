@@ -2586,3 +2586,73 @@ Archivos: `game/src/render/{crt-pipeline,crt-settings}.ts`, `game/src/scenes/{fl
 `tsc --noEmit` limpio en `/game`; `vite build` limpio. Smoke test visual aprobado por el operador.
 Razón: hacer legible la lectura de componentes sin perder la estética retro y proteger a jugadores fotosensibles
 (feedback del operador + roadmap Duskers de estática localizada).
+
+[2026-07-30] Fase 12d.1 — Sombras dinámicas con oclusión real (pipeline mínimo).
+Detalle: nuevo subdominio `game/src/render/shadows/` con geometría PURA y unit-testeada:
+`visibility-polygon.ts` (raycast rayo-segmento + polígono de visibilidad por luz puntual, recortado al radio)
+y `occluder-edges.ts` (silueta de segmentos a partir de la grilla de oclusión con fusión de tramos colineales;
+`rectEdges`/`worldBorderEdges`; `extractOccluderGrid` = walls ∪ objects, mismo patrón que `extractWalkableGrid`).
+Glue Phaser en `dynamic-shadows.ts` (`DynamicShadowLayer`): una `RenderTexture` del tamaño del mundo rellena de
+oscuridad; por cada luz activa se borra (blend ERASE) su polígono de visibilidad → detrás de un oclusor la
+oscuridad queda = sombra arrojada con oclusión real. Integrado en `floorplan-scene.ts`: alta de la capa en
+`create()` (oclusores estáticos extraídos una vez), toda luz dinámica se registra vía el hook `registerLight` ya
+existente, y `redraw()` por frame en `update()`. Nuevo depth `RENDER_DEPTH.dynamicShadows` (1.7): sobre el
+suelo, debajo de componentes/paredes/tripulación (oscurece el suelo, no los sprites). 15 tests nuevos
+(`vitest`); se agregó script `test` al workspace `game`. `tsc --noEmit` limpio + `vite build` limpio.
+Pendiente 12d.2 (casters móviles: componentes/objetos Tiled/tripulación), 12d.3 (luz ambiental global),
+12d.4 (dirty-flags/culling + toggle de HUD). Smoke visual: pendiente de playtest del operador (no hay
+automatización de browser en este entorno para conducir la escena a Cap.1 y confirmar orientación de sombra).
+Razón: pedido del operador tras playtest de 12a ("no veo sombras de los elementos en el mapa"); ciclo de
+preguntas de 12d resuelto en esta sesión (técnica raycast/oclusión, casters = componentes+objetos+tripulación,
+fuentes = luces 12a + ambiental global).
+
+[2026-07-30] Fase 12d.2 + 12d.3 + LED emite luz — Casters móviles, ambiental global, y luz del LED.
+Detalle: (12d.2) `floorplan-scene.ts::collectDynamicOccluderEdges` suma al set de oclusores los footprints
+reales de los componentes colocados (`effectiveFootprintExtent`+`rectEdges`) y una caja chica por token de
+tripulante/enemigo, recalculado por frame (`setDynamicOccluders` antes de `redraw`). Los objetos de la capa
+Tiled `objects` ya eran oclusores estáticos desde 12d.1 (`extractOccluderGrid`). (12d.3) `DynamicShadowLayer`
+gana luz ambiental global: `makeGlobalAmbientLight` crea una pseudo-luz LEJANA arriba-izquierda (dirección de
+sombra fija, rayos casi paralelos) que ERASE PARCIAL (clearAlpha 0.32) la oscuridad → sombra base siempre
+presente; las luces dinámicas restan más encima (clearAlpha escala con su intensidad, así el parpadeo late en la
+sombra). Se quitó el marco del mundo de los oclusores estáticos (bloqueaba a la ambiental exterior; el recorte al
+radio ya cierra los rayos). Constante `DYNAMIC_SHADOW_AMBIENT_ALPHA` renombrada a `DYNAMIC_SHADOW_DARKNESS_ALPHA`
+(0.5, oscuridad plena) para no confundir con la ambiental. (LED) Pedido del operador en playtest: el Indicador LED
+encendido ahora EMITE luz real (`syncLedLight` en `updateLedIndicators`): crea una `PointLight` corta
+(`LED_LIGHT_RADIUS_PX`/`LED_LIGHT_INTENSITY` en palette) al encender, la destruye al apagar; registrada por el
+hook `registerLight`, así ilumina y proyecta sombras de lo cercano. `tsc`/`vite build` limpios, 15 tests siguen
+verdes. Smoke visual: pendiente de playtest del operador.
+Razón: completar el core visual de 12d (sombras de todos los casters + base ambiental) y cerrar el hueco del LED
+que no emitía luz (feedback del operador). Pendiente 12d.4 (dirty-flags/culling + toggle de accesibilidad).
+
+[2026-07-30] Fase 12d — Iteración post-playtest: luces focales autoradas + 4 fixes.
+Detalle: (A, puntos 2-3) se QUITÓ la luz ambiental global de 12d.3 (`makeGlobalAmbientLight`/`setAmbientLight`/
+`AmbientLight`/`AMBIENT_CLEAR_ALPHA` eliminados de `dynamic-shadows.ts`): borraba ~0.32 de oscuridad sobre todo el
+mapa y aplastaba el contraste → "desaparecieron las sombras". Ahora la oscuridad es el default y las salas se
+iluminan con LUCES FOCALES autoradas en Tiled: nueva capa de objetos `luces` (Point + props opcionales
+`color`/`radius`/`intensity` con defaults), cargada en `/game` por `game/src/render/shadows/authored-lights.ts`
+(`loadAuthoredLights`, mismo patrón que `extractOccluderGrid`; parseo puro `toAuthoredLightSpec` con 4 tests) e
+instanciada como `PointLight` reales vía `registerLight` (iluminan Y proyectan sombras). El motor sigue sin
+conocer luces. (B, punto 1) `syncLedLight` centraba la luz en la esquina sup-izq (sprite `setOrigin(0,0)`) — ahora
+la centra con medio display size; `LED_LIGHT_INTENSITY` 0.6→0.35 y `LED_LIGHT_RADIUS_PX` 44→52 (halo suave que
+sale del sprite sin quemar). (C, punto 4) `syncOverloadedConductorEffects` no hacía cleanup: al desmontar el
+conductor las partículas/luz quedaban colgadas + radio fantasma. Ahora hace `stop()` de cualquier efecto cuya
+instancia salió de `overloadedRefs`/`placedComponents` (destruye partículas + luz; `pruneDeadLights` la saca del
+set de sombras). Glow atenuado (`overloaded-conductor-effect.ts`: scale/quantity/frequency ↓ + alpha 0.7) y radio
+de luz 36→64 para que se lea el campo de luz. `tsc`/`vite build` limpios, 19 tests verdes (4 nuevos). Smoke:
+pendiente de playtest del operador tras autorar la capa `luces` en `nave-exploracion`.
+Razón: feedback de playtest de 12d.1-12d.3 (4 puntos). El operador autora las luces `luces` en Tiled.
+
+[2026-07-31] Fase 12d.4 — Slider de accesibilidad de sombras + optimización del redraw. CIERRA Fase 12d.
+Detalle: (Slider) `GameSettings.shadowIntensity` (0..1, default 1, clamp01 en deserialize); store vivo
+`game/src/render/shadows/shadow-settings.ts` (mismo patrón que `crt-settings.ts`); tercer slider en
+`options-scene.ts` ("Sombras", claves i18n `ui.menu.options.shadow-intensity` es/en, panel agrandado 420→470),
+hidratado y persistido junto con los de CRT; `floorplan-scene.ts` hidrata el store en `create()` y aplica
+`setIntensity(getShadowIntensity())` cada frame. 0 = sombras apagadas. (Perf) `DynamicShadowLayer`: (a)
+short-circuit si el alpha efectivo ≈0 (slider en 0 → sin raycast); (b) cache de polígono de visibilidad por luz,
+invalidado por `occludersVersion` (bumpea en `setStaticOccluders` y en `setDynamicOccluders` SOLO si las aristas
+cambiaron, vía `segmentsEqual`) — en reposo el `redraw` es solo re-erase, sin recomputar el raycast; (c) culling
+por viewport (`circleIntersectsRect` contra `cameras.main.worldView`) — una luz fuera de lo visible no gasta
+raycast/erase. `tsc`/`vite build` limpios, 19 tests verdes. Smoke: pendiente de playtest del operador (slider al
+instante + apagado a 0).
+Razón: cerrar 12d con el control de accesibilidad decidido (slider en Opciones, no botón de HUD) y la
+optimización que el plan marcaba como parte del alcance, no opcional.

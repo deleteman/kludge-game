@@ -261,6 +261,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.menu.options.fullscreen": "Fullscreen",
   "ui.menu.options.crt-intensity": "CRT intensity",
   "ui.menu.options.flicker-intensity": "Flicker / Failure",
+  "ui.menu.options.shadow-intensity": "Shadows",
   "ui.menu.options.on": "On",
   "ui.menu.options.off": "Off",
   "ui.menu.options.back": "Back",

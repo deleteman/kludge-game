@@ -17,6 +17,7 @@ import {
   setCrtIntensity,
   setFlickerIntensity,
 } from "../render/crt-settings.js";
+import { getShadowIntensity, hydrateShadowSettings, setShadowIntensity } from "../render/shadows/shadow-settings.js";
 import { SCENE_KEYS } from "../meta/scene-keys.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
@@ -49,7 +50,7 @@ export class OptionsScene extends Phaser.Scene {
   create(): void {
     const self = this as unknown as SceneWithRexUI;
     this.add.rectangle(640, 360, 1280, 720, 0x000000, 0.5);
-    createKenneyPanel(this, 640, 360, 460, 420, t("ui.menu.options.header"));
+    createKenneyPanel(this, 640, 370, 460, 470, t("ui.menu.options.header"));
 
     let currentLocale: Locale = getLocale();
     void loadSettings().then((settings) => {
@@ -62,6 +63,8 @@ export class OptionsScene extends Phaser.Scene {
       hydrateCrtSettings(settings);
       crtSlider.setValue(settings.crtIntensity);
       flickerSlider.setValue(settings.flickerIntensity);
+      hydrateShadowSettings(settings);
+      shadowSlider.setValue(settings.shadowIntensity);
     });
 
     let isFullscreenPreference = DEFAULT_SETTINGS.fullscreen;
@@ -125,7 +128,18 @@ export class OptionsScene extends Phaser.Scene {
       onChange: (v) => setFlickerIntensity(v),
     });
 
-    createKenneyButton(self, 640, 500, t("ui.menu.options.back"), {
+    // Intensidad de sombras dinámicas (12d.4): 0 = apagadas (accesibilidad /
+    // gusto / rendimiento). Mismo store vivo + persistencia que los de CRT.
+    this.add
+      .text(500, 450, t("ui.menu.options.shadow-intensity"), { fontSize: "14px", color: "#d8dce8" })
+      .setOrigin(0, 0.5);
+    const shadowSlider: KenneySliderHandle = createKenneySlider(this, 760, 450, {
+      width: 150,
+      value: getShadowIntensity(),
+      onChange: (v) => setShadowIntensity(v),
+    });
+
+    createKenneyButton(self, 640, 540, t("ui.menu.options.back"), {
       width: 260,
       onClick: () => {
         void saveSettings({
@@ -133,6 +147,7 @@ export class OptionsScene extends Phaser.Scene {
           fullscreen: isFullscreenPreference,
           crtIntensity: getCrtIntensity(),
           flickerIntensity: getFlickerIntensity(),
+          shadowIntensity: getShadowIntensity(),
         }).then(() => {
           metaGameStateMachine.transition(this.returnTo);
         });

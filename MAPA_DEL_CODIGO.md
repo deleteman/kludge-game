@@ -344,3 +344,57 @@
 ## `engine/src/mission/ship-task-effect.ts` (modificado, Fase 12c.7 — obs #4)
 
 - Desmontar una pieza ATÓMICA ahora la acredita al `atomicStock` y devuelve `obtained` con la propia pieza (antes se destruía sin acreditar) — habilita coleccionable + notificación como el compuesto.
+
+## `game/src/render/shadows/` (nuevo, Fase 12d.1)
+
+- `visibility-polygon.ts` — geometría PURA (sin Phaser): `raySegmentIntersection`, `castRay`, `computeVisibilityPolygon` (polígono iluminado por luz puntual, recortado al radio). Unit-testeado.
+- `occluder-edges.ts` — silueta de segmentos oclusores: `buildStaticOccluderEdges` (fusión de tramos colineales de la grilla walls∪objects), `rectEdges`/`worldBorderEdges`, y `extractOccluderGrid` (extracción del tilemap, mismo patrón que `walkable-grid.ts`).
+- `dynamic-shadows.ts` — `DynamicShadowLayer`: glue Phaser, dueño de una `RenderTexture` que se rellena de oscuridad y borra (ERASE) el polígono de visibilidad de cada luz → sombra arrojada con oclusión. Registro de luces (`addLight`), `setStaticOccluders`/`setDynamicOccluders`, `redraw()` por frame.
+
+## `game/src/render/render-depths.ts` (modificado, Fase 12d.1)
+
+- Nuevo `RENDER_DEPTH.dynamicShadows` (1.7): sobre suelo/decals, debajo de objetos/componentes/tripulación/paredes.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.1)
+
+- Alta de `DynamicShadowLayer` en `create()` (oclusores estáticos extraídos una vez); toda luz dinámica se registra vía el hook `registerLight` existente; `shadowLayer.redraw()` por frame en `update()`.
+
+## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.2 + 12d.3)
+
+- `setDynamicOccluders` (casters móviles) + luz ambiental global (`makeGlobalAmbientLight`, `AmbientLight`, `AMBIENT_CLEAR_ALPHA`): ERASE parcial para sombra base; clearAlpha de las dinámicas escala con su intensidad. `DYNAMIC_SHADOW_DARKNESS_ALPHA` (ex `_AMBIENT_ALPHA`). Sin marco del mundo en los oclusores estáticos.
+
+## `game/src/render/palette.ts` (modificado, Fase 12d)
+
+- `LED_LIGHT_RADIUS_PX` / `LED_LIGHT_INTENSITY`: parámetros de la luz que emite un LED encendido.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.2/12d.3 + LED)
+
+- `collectDynamicOccluderEdges` (componentes + tokens de tripulación/enemigos como casters); ambiental global en `create()`; `syncLedLight` en `updateLedIndicators` (el LED encendido emite `PointLight` real, participa de las sombras).
+
+## `game/src/render/shadows/authored-lights.ts` (nuevo, Fase 12d iteración post-playtest)
+
+- Loader de la capa de objetos Tiled `luces`: `loadAuthoredLights(scene, archetype)` (lee el object layer del tilemap efímero) + `toAuthoredLightSpec` puro (defaults + parseo de color hex, unit-testeado). Reemplaza la ambiental global de 12d.3.
+
+## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d iteración)
+
+- Eliminada la luz ambiental global (`makeGlobalAmbientLight`/`setAmbientLight`/`AmbientLight`/`AMBIENT_CLEAR_ALPHA`) — lavaba el contraste. La oscuridad vuelve a ser el default; solo la despejan luces reales.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d iteración)
+
+- Instancia las luces autoradas (`luces`) en `create()`; `syncLedLight` centra la luz en el sprite; `syncOverloadedConductorEffects` hace cleanup (`stop()`) al desmontar/desactivar el conductor.
+
+## `game/src/particles/effects/overloaded-conductor-effect.ts` + `game/src/render/palette.ts` (modificado, Fase 12d iteración)
+
+- Glow del conductor sobrecargado atenuado (scale/quantity/frequency/alpha) y radio de luz 36→64; LED atenuado (intensity 0.35, radio 52).
+
+## `game/src/render/shadows/shadow-settings.ts` (nuevo, Fase 12d.4)
+
+- Store vivo de `shadowIntensity` (0..1) — desacopla el slider de Opciones del `DynamicShadowLayer` que lo lee por frame. Mismo patrón que `crt-settings.ts`.
+
+## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.4)
+
+- `setIntensity` (aplica el slider, 0 = apagadas). Perf: cache de polígono por luz invalidado por `occludersVersion` (bump solo si los oclusores cambian, `segmentsEqual`), culling por viewport (`circleIntersectsRect`), short-circuit a intensidad 0.
+
+## `game/src/meta/game-settings.types.ts` + `options-scene.ts` + `i18n/{es,en}.ts` (modificado, Fase 12d.4)
+
+- `GameSettings.shadowIntensity` (default 1, clamp01); tercer slider "Sombras" en Opciones (clave `ui.menu.options.shadow-intensity`), hidratado/persistido con los de CRT.

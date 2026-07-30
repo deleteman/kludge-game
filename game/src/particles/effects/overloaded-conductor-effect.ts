@@ -42,12 +42,16 @@ export function createOverloadedConductorEffect(
     update(state: OverloadedConductorState): void {
       if (!scene) return;
       if (!emitter) {
+        // Chispas atenuadas (feedback de playtest: el glow tapaba el campo de
+        // luz): menos densas (frequency ↑, quantity 1), más chicas (scale ↓) y
+        // semitransparentes, para que se lea el titileo sin quemar.
         emitter = scene.add.particles(px, py, pickTexture(SPARK_TEXTURES), {
-          lifespan: 220,
-          speed: { min: 40, max: 110 },
-          scale: { start: textureScale(9), end: 0 },
+          lifespan: 200,
+          speed: { min: 30, max: 90 },
+          scale: { start: textureScale(6), end: 0 },
+          alpha: { start: 0.7, end: 0 },
           quantity: 1,
-          frequency: 160,
+          frequency: 240,
           tint: OVERLOADED_CONDUCTOR_LIGHT_COLOR,
           x: spreadRange(4),
           y: spreadRange(4),

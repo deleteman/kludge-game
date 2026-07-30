@@ -77,6 +77,16 @@ export const COMPONENT_CONDITION_TINT: Readonly<Partial<Record<ComponentConditio
 export const LED_ACTIVE_TINT = 0xe0a33f;
 export const LED_INACTIVE_TINT = 0x3a3f4a;
 
+/**
+ * Luz que emite un LED encendido (Fase 12d): un halo suave que apenas rebasa el
+ * sprite para leerse como "encendido" sin quemar (feedback de playtest: antes
+ * quedaba centrado en la esquina y demasiado fuerte). Radio un poco mayor que
+ * la celda para que el halo salga del sprite; intensidad baja y estable (un LED
+ * de estado no titila).
+ */
+export const LED_LIGHT_RADIUS_PX = 52;
+export const LED_LIGHT_INTENSITY = 0.35;
+
 /** Colores de token de tripulante (Fase 10d), asignados cíclicamente por índice de actor activo. */
 export const CREW_TOKEN_COLORS: readonly number[] = [
   0xf0f2f8, 0x64dc78, 0x4a7bd4, 0xf2d24b, 0xe0483f, 0xb47bd4,
@@ -283,7 +293,10 @@ export function sectionScarFlickerAlpha(elapsedSeconds: number): number {
  * confundirse con la cicatriz de sección sin energía).
  */
 export const OVERLOADED_CONDUCTOR_LIGHT_COLOR = 0xf2d24b;
-export const OVERLOADED_CONDUCTOR_LIGHT_RADIUS_PX = 36;
+// Radio ampliado (feedback de playtest): con 36px la luz apenas rebasaba las
+// chispas y no se leía como "campo de luz"; con más radio ilumina el entorno y
+// proyecta sombras de lo cercano.
+export const OVERLOADED_CONDUCTOR_LIGHT_RADIUS_PX = 64;
 export const OVERLOADED_CONDUCTOR_LIGHT_MIN_INTENSITY = 0.25;
 export const OVERLOADED_CONDUCTOR_LIGHT_MAX_INTENSITY = 0.65;
 /** Parpadeo errático de chispa, mucho más rápido que la cicatriz de energía (0.35s vs. 1.6s) — un cortocircuito no respira, titila. */

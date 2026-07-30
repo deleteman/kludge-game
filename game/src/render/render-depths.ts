@@ -22,6 +22,8 @@ export const RENDER_DEPTH = {
   bloodDecal: 1,
   /** Tinte parpadeante de sección sin energía (Fase 11b, cicatriz) — encima del suelo, debajo de objetos/paredes/tripulantes, igual que `bloodDecal`: es una marca de superficie, no un objeto. */
   sectionScar: 1.5,
+  /** RenderTexture de sombras dinámicas con oclusión (Fase 12d) — sobre el suelo/decals, DEBAJO de objetos/componentes/tripulación/paredes: oscurece el suelo, no los sprites que la proyectan (criterio de sombra top-down). */
+  dynamicShadows: 1.7,
   /** Tile layer "objects" (containerizada en el base) y overlay de componentes colocados (top-level): encima del suelo, debajo de paredes. */
   objects: 2,
   /** Resaltado de la celda bajo el cursor (post-playtest #4) — objeto de MUNDO, encima del suelo/objetos, debajo de tripulación y paredes. */

@@ -83,6 +83,8 @@ import {
   LABEL_COLOR,
   LED_ACTIVE_TINT,
   LED_INACTIVE_TINT,
+  LED_LIGHT_RADIUS_PX,
+  LED_LIGHT_INTENSITY,
   OBJECTIVE_DONE_COLOR,
   screenAlertFlickerAlpha,
   SCREEN_ALERT_TINT,
@@ -122,6 +124,12 @@ import { cadenceForCrewHp } from "../crew/crew-hp-to-cadence.js";
 import { BarkController } from "../crew/bark-controller.js";
 import { findPath } from "../crew/floorplan-pathfinding.js";
 import { extractWalkableGrid, type WalkableGrid } from "../render/walkable-grid.js";
+import { extractOccluderGrid } from "../render/shadows/occluder-edges.js";
+import { DynamicShadowLayer, DYNAMIC_SHADOW_DARKNESS_ALPHA, DYNAMIC_SHADOW_COLOR } from "../render/shadows/dynamic-shadows.js";
+import { loadAuthoredLights } from "../render/shadows/authored-lights.js";
+import { rectEdges } from "../render/shadows/occluder-edges.js";
+import { effectiveFootprintExtent } from "engine";
+import type { Segment } from "../render/shadows/visibility-polygon.js";
 import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
@@ -129,6 +137,7 @@ import { createScrollableText } from "../ui/widgets/scrollable-text.js";
 import { CustomCursor } from "../ui/custom-cursor.js";
 import { registerCrtPipeline, type CrtPostFxPipeline } from "../render/crt-pipeline.js";
 import { getCrtIntensity, getFlickerIntensity, hydrateCrtSettings } from "../render/crt-settings.js";
+import { getShadowIntensity, hydrateShadowSettings } from "../render/shadows/shadow-settings.js";
 import { firePhosphorStatic } from "../particles/effects/phosphor-static-effect.js";
 import { NotificationCenter } from "../ui/widgets/notification-center.js";
 import { renderCrewQueue, type CrewQueueHandle, type UnifiedQueueTask } from "../ui/widgets/crew-queue-panel.js";
@@ -272,6 +281,8 @@ export class FloorplanScene extends Phaser.Scene {
   private signalGraphics?: Phaser.GameObjects.Graphics;
   /** Sprites de Indicador LED por instancia (Subfase 11h) — retinte por tick, ver `updateLedIndicators`. */
   private ledIndicators: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle> = new Map();
+  /** Luz emitida por cada LED activo (Fase 12d) — creada cuando enciende, destruida cuando apaga; participa de las sombras vía `registerLight`. */
+  private readonly ledLights = new Map<PlacedComponentInstanceId, Phaser.GameObjects.PointLight>();
   /** Texto de Pantalla LCD por instancia (Subfase 11h) — actualizado con throttle, ver `updateLcdDisplays`. */
   private lcdDisplays: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Text> = new Map();
   /** Throttle de `updateLcdDisplays` (Subfase 11h, doc fuente §2: 250-500ms, no por frame). */
@@ -384,6 +395,8 @@ export class FloorplanScene extends Phaser.Scene {
   private unpoweredSectionOverlay?: Phaser.GameObjects.Graphics;
   /** Luz ambiental de sección sin energía (Fase 12a, corrección post-playtest) — creada una vez por sección, nunca removida. */
   private readonly unpoweredSectionLights = new Map<SectionId, Phaser.GameObjects.PointLight>();
+  /** Capa de sombras dinámicas con oclusión real (Fase 12d) — repintada cada frame en `update()`. */
+  private shadowLayer?: DynamicShadowLayer;
   /** Chispas + luz de conductor sobrecargado (Fase 12a, cicatriz `overloadedRefs`) — creado una vez por instancia, nunca removido (consecuencias permanentes). */
   private readonly overloadedConductorEffects = new Map<
     PlacedComponentInstanceId,
@@ -505,7 +518,10 @@ export class FloorplanScene extends Phaser.Scene {
     this.crtPipelines = [registerCrtPipeline(this, this.cameras.main), registerCrtPipeline(this, this.hudCamera)].filter(
       (p): p is CrtPostFxPipeline => p !== null,
     );
-    void loadSettings().then((settings) => hydrateCrtSettings(settings));
+    void loadSettings().then((settings) => {
+      hydrateCrtSettings(settings);
+      hydrateShadowSettings(settings);
+    });
 
     this.interaction = new MissionInteractionController(
       this.rex,
@@ -581,6 +597,30 @@ export class FloorplanScene extends Phaser.Scene {
     // Zoom mínimo = "encajar todo el plano" (nunca por encima de 1: si el mundo
     // ya cabe en el viewport, no se fuerza un zoom mayor al normal).
     this.minZoom = Math.min(1, MAP_VIEWPORT_WIDTH / worldWidth, MAP_VIEWPORT_HEIGHT / worldHeight);
+
+    // --- Sombras dinámicas con oclusión (Fase 12d.1) ------------------------
+    // Objeto de MUNDO (panea con el mapa, la hudCamera lo ignora). Los
+    // oclusores estáticos (paredes ∪ objetos Tiled) se extraen una vez; las
+    // luces se enchufan por el hook `registerLight`.
+    this.shadowLayer = new DynamicShadowLayer(this, worldWidth, worldHeight, {
+      darknessColor: DYNAMIC_SHADOW_COLOR,
+      darknessAlpha: DYNAMIC_SHADOW_DARKNESS_ALPHA,
+      depth: RENDER_DEPTH.dynamicShadows,
+    });
+    this.shadowLayer.setStaticOccluders(
+      extractOccluderGrid(this, this.mission.shipFloorplan.archetype, this.mission.shipFloorplan.gridSize),
+      CELL,
+    );
+    this.markAsWorldObject(this.shadowLayer.renderTexture);
+
+    // Luces focales autoradas en Tiled (capa `luces`, iteración post-playtest
+    // de 12d): reemplazan la ambiental global de 12d.3 (que lavaba el contraste
+    // de las sombras). Son `PointLight` reales → iluminan las salas Y proyectan
+    // sombras vía el hook `registerLight`. Creadas una vez, persistentes.
+    for (const spec of loadAuthoredLights(this, this.mission.shipFloorplan.archetype)) {
+      createDynamicLight(this, spec.x, spec.y, spec.color, spec.radius, spec.intensity, this.registerLight);
+    }
+
     if (this.mission.problemMarkerPosition) {
       const marker = this.mission.problemMarkerPosition;
       this.cameras.main.centerOn((marker.x + 0.5) * CELL, (marker.y + 0.5) * CELL);
@@ -907,6 +947,16 @@ export class FloorplanScene extends Phaser.Scene {
     // Chispas + luz de conductor sobrecargado (Fase 12a): misma cicatriz
     // permanente que la de arriba, parpadea siempre, sin importar el modo.
     this.syncOverloadedConductorEffects(time / 1000, delta / 1000);
+    // Sombras dinámicas (Fase 12d): recorta la oscuridad con el polígono de
+    // visibilidad de cada luz activa + la ambiental global. Se repinta siempre
+    // (las luces parpadean aun en pausa, igual que las cicatrices de arriba).
+    // Los casters móviles (componentes, tripulación, enemigos) se recalculan
+    // acá cada frame — barato para el conteo actual; 12d.4 lo hará por dirty.
+    if (this.shadowLayer) {
+      this.shadowLayer.setIntensity(getShadowIntensity());
+      this.shadowLayer.setDynamicOccluders(this.collectDynamicOccluderEdges());
+      this.shadowLayer.redraw();
+    }
     // Capa "estructural" del HUD (Fase 12a): tiñe cada sección por su peor RE
     // agregado — barata de recalcular (pocas secciones), se redibuja siempre,
     // igual que la cicatriz de energía.
@@ -2063,6 +2113,9 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly registerLight: LightHook = (light: Phaser.GameObjects.PointLight): void => {
     light.setDepth(RENDER_DEPTH.effect);
     this.markAsWorldObject(light);
+    // Toda luz dinámica proyecta sombras (Fase 12d): la capa de sombras la
+    // enumera para recortar la oscuridad con su polígono de visibilidad.
+    this.shadowLayer?.addLight(light);
   };
 
   private updateSectionAtmosphereEffects(deltaSeconds: number): void {
@@ -2191,6 +2244,32 @@ export class FloorplanScene extends Phaser.Scene {
       } else {
         sprite.setTint(color);
       }
+      this.syncLedLight(instanceId, sprite, active);
+    }
+  }
+
+  /**
+   * El LED encendido emite una luz real (Fase 12d): antes solo cambiaba de
+   * tinte. Al encender crea una `PointLight` (registrada vía `registerLight`,
+   * así entra al sistema de sombras); al apagar la destruye. Consecuente con
+   * el resto de luces del proyecto — un `PointLight` autocontenido, sin setup.
+   */
+  private syncLedLight(
+    instanceId: PlacedComponentInstanceId,
+    sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle,
+    active: boolean,
+  ): void {
+    const existing = this.ledLights.get(instanceId);
+    if (active && !existing) {
+      // El sprite del LED es `setOrigin(0,0)` (su x/y es la esquina sup-izq),
+      // así que la luz se centra sobre el sprite con medio display size.
+      const cx = sprite.x + sprite.displayWidth / 2;
+      const cy = sprite.y + sprite.displayHeight / 2;
+      const light = createDynamicLight(this, cx, cy, LED_ACTIVE_TINT, LED_LIGHT_RADIUS_PX, LED_LIGHT_INTENSITY, this.registerLight);
+      this.ledLights.set(instanceId, light);
+    } else if (!active && existing) {
+      existing.destroy();
+      this.ledLights.delete(instanceId);
     }
   }
 
@@ -2255,6 +2334,33 @@ export class FloorplanScene extends Phaser.Scene {
    * que el tinte), centrada en `sectionCentroidPx`, con intensidad
    * parpadeante (`unpoweredSectionLightIntensity`).
    */
+  /**
+   * Casters móviles que proyectan sombra (Fase 12d.2): componentes colocados
+   * (footprint real) + tokens de tripulación y enemigos (caja chica centrada).
+   * Los objetos estáticos de Tiled ya son oclusores estáticos (`extractOccluderGrid`
+   * incluye la capa `objects`), no hace falta re-agregarlos acá.
+   */
+  private collectDynamicOccluderEdges(): Segment[] {
+    const edges: Segment[] = [];
+
+    for (const instance of this.mission.blueprint.placedComponents) {
+      const { width, height } = effectiveFootprintExtent(instance.placement);
+      const minX = instance.placement.position.x * CELL;
+      const minY = instance.placement.position.y * CELL;
+      edges.push(...rectEdges(minX, minY, minX + width * CELL, minY + height * CELL));
+    }
+
+    const TOKEN_HALF = CELL * 0.3;
+    for (const { dot } of this.crewTokens.values()) {
+      edges.push(...rectEdges(dot.x - TOKEN_HALF, dot.y - TOKEN_HALF, dot.x + TOKEN_HALF, dot.y + TOKEN_HALF));
+    }
+    for (const { shape } of this.enemyTokens.values()) {
+      edges.push(...rectEdges(shape.x - TOKEN_HALF, shape.y - TOKEN_HALF, shape.x + TOKEN_HALF, shape.y + TOKEN_HALF));
+    }
+
+    return edges;
+  }
+
   private syncUnpoweredSectionLights(elapsedSeconds: number): void {
     for (const sectionId of this.mission.blueprint.unpoweredSectionIds) {
       if (this.unpoweredSectionLights.has(sectionId)) continue;
@@ -2288,13 +2394,25 @@ export class FloorplanScene extends Phaser.Scene {
    * cada frame sí sería costoso.
    */
   private syncOverloadedConductorEffects(elapsedSeconds: number, deltaSeconds: number): void {
-    for (const instanceId of this.mission.blueprint.overloadedRefs) {
+    const placedById = new Map(this.mission.blueprint.placedComponents.map((entry) => [entry.instanceId, entry]));
+    const overloaded = new Set(this.mission.blueprint.overloadedRefs);
+
+    for (const instanceId of overloaded) {
       if (this.overloadedConductorEffects.has(instanceId)) continue;
-      const instance = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId);
+      const instance = placedById.get(instanceId);
       if (!instance) continue;
       const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
       effect.start(this, instance.placement.position);
       this.overloadedConductorEffects.set(instanceId, effect);
+    }
+    // Cleanup (feedback de playtest): al desmontar el conductor (o si deja de
+    // estar sobrecargado) el efecto quedaba colgado — partículas + luz que no
+    // se iban, más un radio de luz fantasma. `stop()` destruye ambos y
+    // `pruneDeadLights` saca la luz del set de sombras.
+    for (const [instanceId, effect] of this.overloadedConductorEffects) {
+      if (overloaded.has(instanceId) && placedById.has(instanceId)) continue;
+      effect.stop();
+      this.overloadedConductorEffects.delete(instanceId);
     }
     for (const effect of this.overloadedConductorEffects.values()) {
       effect.update({ elapsedSeconds }, deltaSeconds);

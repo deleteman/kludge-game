@@ -22,6 +22,12 @@ export interface GameSettings {
    * CRT base.
    */
   readonly flickerIntensity: number;
+  /**
+   * Intensidad de las sombras dinámicas (0..1, Fase 12d.4): escala el alpha de
+   * oscuridad del `DynamicShadowLayer`. 0 = sombras apagadas (accesibilidad /
+   * gusto / rendimiento). 1 = oscuridad plena.
+   */
+  readonly shadowIntensity: number;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -29,6 +35,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   fullscreen: false,
   crtIntensity: 0.7,
   flickerIntensity: 1,
+  shadowIntensity: 1,
 };
 
 /** Recorta un valor a [0,1]; NaN/ausente cae al default dado. */
@@ -47,5 +54,6 @@ export function deserializeSettings(json: string): GameSettings {
     fullscreen: parsed.fullscreen === true,
     crtIntensity: clamp01(parsed.crtIntensity, DEFAULT_SETTINGS.crtIntensity),
     flickerIntensity: clamp01(parsed.flickerIntensity, DEFAULT_SETTINGS.flickerIntensity),
+    shadowIntensity: clamp01(parsed.shadowIntensity, DEFAULT_SETTINGS.shadowIntensity),
   };
 }

@@ -2604,3 +2604,40 @@ Riesgo anotado a vigilar en playtest: posible costura de barrel en la frontera d
 ≤2%, mínima) — fallback documentado en el plan = compositar en un `RenderTexture` full-screen y aplicar el pipeline una vez.
 Razón: feedback del operador para hacer legible la lectura de componentes sin perder la estética retro, y proteger a
 jugadores fotosensibles.
+
+### Fase 12d — Sombras Dinámicas 🚧 (en curso, 2026-07-30)
+
+Ciclo de preguntas de 12d resuelto con el operador: técnica **raycast/oclusión real**; casters = componentes
+colocados + objetos de la capa Tiled `objects` + tripulación/enemigos; fuentes = luces dinámicas de 12a +
+luz ambiental global. Plan phaseado 12d.1→12d.4 en `~/.claude/plans/revisa-12d-y-dame-logical-charm.md`.
+
+- **12d.1 — Pipeline mínimo (paredes estáticas + luces 12a) ✅:** nuevo subdominio `game/src/render/shadows/`.
+  Geometría PURA unit-testeada: `visibility-polygon.ts` (raycast rayo-segmento + polígono de visibilidad por luz,
+  recorte al radio) y `occluder-edges.ts` (silueta de segmentos con fusión de tramos colineales, `rectEdges`/
+  `worldBorderEdges`, `extractOccluderGrid` = walls ∪ objects). Glue Phaser `dynamic-shadows.ts`
+  (`DynamicShadowLayer`): `RenderTexture` del tamaño del mundo rellena de oscuridad, se borra (ERASE) el polígono
+  de visibilidad de cada luz → sombra arrojada con oclusión. Integrado en `floorplan-scene.ts` (alta en `create()`,
+  registro de luces por el hook `registerLight`, `redraw()` por frame). Depth nuevo `RENDER_DEPTH.dynamicShadows`
+  (1.7). 15 tests (`vitest`), script `test` agregado al workspace `game`. `tsc`/`vite build` limpios.
+  Smoke visual: **pendiente de playtest del operador** (sin automatización de browser en el entorno).
+- **12d.2 — Casters móviles ✅:** `collectDynamicOccluderEdges` suma componentes colocados (footprint real) +
+  tokens de tripulación/enemigos (caja chica), recalculado por frame. Objetos Tiled ya eran oclusores estáticos.
+- **12d.3 — Luz ambiental global ✅:** `makeGlobalAmbientLight` (pseudo-luz lejana, dirección fija) hace un
+  ERASE parcial → sombra base siempre presente; dinámicas restan más encima (clearAlpha ∝ intensidad). Se quitó
+  el marco del mundo de los oclusores (bloqueaba a la ambiental exterior). `DYNAMIC_SHADOW_DARKNESS_ALPHA` = 0.5.
+- **LED emite luz ✅ (feedback del operador):** `syncLedLight` crea/destruye una `PointLight` corta según el
+  estado ON/OFF del LED; registrada por `registerLight`, ilumina y proyecta sombras. Antes solo cambiaba de tinte.
+- **Iteración post-playtest (2026-07-30) ✅ código / ⏳ contenido:** el operador jugó 12d.1-12d.3 y reportó 4
+  puntos. Se **quitó la ambiental global** (lavaba el contraste → "desaparecieron las sombras") a favor de
+  **luces focales autoradas en Tiled**: capa de objetos `luces` (Point + props `color`/`radius`/`intensity`),
+  loader `game/src/render/shadows/authored-lights.ts`, instanciadas como `PointLight` reales. Fixes: LED centrado
+  y atenuado; conductor sobrecargado con cleanup al desmontar + glow bajado. Falta que el operador **autore la
+  capa `luces`** en `nave-exploracion` (esquema comunicado) y haga el smoke.
+- **12d.4 — Rendimiento + accesibilidad ✅ (2026-07-31):** slider "Sombras" en Opciones (`GameSettings.shadowIntensity`,
+  store vivo `shadow-settings.ts`, persistido, 0 = apagadas) — mismo patrón que los sliders CRT de 12c.8. Perf en
+  `DynamicShadowLayer`: cache de polígono de visibilidad por luz (invalidado por `occludersVersion`, que solo
+  bumpea cuando los oclusores de verdad cambian → en reposo el redraw es solo re-erase), culling por viewport, y
+  short-circuit con el slider en 0. Falta smoke del operador.
+
+**Cierre Fase 12d:** código completo (12d.1–12d.4 + iteración post-playtest). Pendiente de cierre total: que el
+operador autore la capa `luces` en los 4 arquetipos y corra el smoke visual final.
