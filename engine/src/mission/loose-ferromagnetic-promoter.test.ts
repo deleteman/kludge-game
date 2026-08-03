@@ -147,6 +147,17 @@ describe("mission: LooseFerromagneticPromoter (Fase 11a.3, ASA 3 — el efecto e
     expect(projectiles.all).toHaveLength(1);
   });
 
+  it("conserva el componentDefinitionId de catálogo accesible por ref tras promover (Fase 12f, deuda #5)", () => {
+    const ship = new MutableShipState(blueprintOf([placed("hierro-1", "pieza-hierro", 5, 5)]));
+    const projectiles = new ProjectileSimulation(new NoopWorld());
+    const promoter = new LooseFerromagneticPromoter(ship, projectiles, registryOf(IRON_PIECE));
+
+    promoter.promote();
+
+    expect(promoter.definitionIdForRef("hierro-1")).toBe("pieza-hierro");
+    expect(promoter.definitionIdForRef("inexistente")).toBeUndefined();
+  });
+
   it("conserva otras piezas fijas intactas al promover una suelta entre ellas", () => {
     const ship = new MutableShipState(
       blueprintOf([placed("panel-1", "panel", 0, 0), placed("hierro-1", "pieza-hierro", 5, 5)]),

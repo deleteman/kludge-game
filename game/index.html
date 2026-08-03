@@ -15,12 +15,25 @@
         display: grid;
         place-items: center;
       }
+      /*
+       * Fase 12f (Obs 7): el juego queda en negro al activar fullscreen porque
+       * Phaser, sin `scale.parent`, inserta el canvas directo en `<body>` — el
+       * elemento que el navegador expande en fullscreen y el que Phaser usa
+       * como referencia de tamaño (`FIT`) no coinciden de forma confiable.
+       * Este contenedor con tamaño explícito es el `parent`/`fullscreenTarget`
+       * de `main.ts`.
+       */
+      #game-root {
+        width: 100%;
+        height: 100%;
+      }
       canvas {
         image-rendering: pixelated;
       }
     </style>
   </head>
   <body>
+    <div id="game-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

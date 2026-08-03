@@ -81,9 +81,9 @@ export function hopEnemyToken(
   scene: Phaser.Scene,
   token: EnemyToken,
   toPx: { readonly x: number; readonly y: number },
-): void {
+): Phaser.Tweens.Tween {
   const from = { x: token.shape.x, y: token.shape.y };
-  hopMove(scene, token.shape, from, toPx, "normal", SIGNATURE_BY_ARCHETYPE[token.archetype]);
+  return hopMove(scene, token.shape, from, toPx, "normal", SIGNATURE_BY_ARCHETYPE[token.archetype]);
 }
 
 /** Feedback corto de "este enemigo acaba de conectar un ataque" — pulso de escala + flash sobre su propio token. */

@@ -431,3 +431,25 @@
 ## `game/src/ui/widgets/crew-strip.ts` (modificado, 2026-08-03)
 
 - Cada tarjeta gana una franja de identidad de color (`IDENTITY_BAR_WIDTH`) en el borde izquierdo, siempre visible, con el mismo `CREW_TOKEN_COLORS[index]` que el token del mapa — para distinguir quién es quién sin depender del retrato.
+
+## Fase 12f — Fixes de playtest de 12d (2026-08-03)
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12f)
+
+- `activeHopTweens` (`Set<Phaser.Tweens.Tween>`) + `trackHopTween`: tracking de los tweens de salto de tripulación/enemigos en vuelo, pausados/reanudados en `update()` según `coreLoop.mode` (Obs 3). `redrawProjectileTokens` pasa un resolver `ref → componentDefinitionId` (vía `mission.loosePromoter`) a `renderProjectileTokens` (deuda #5).
+
+## `game/src/enemies/enemy-tokens.ts` (modificado, Fase 12f)
+
+- `hopEnemyToken` pasa de `void` a devolver el `Phaser.Tweens.Tween` de `hopMove`, para que el llamador pueda trackearlo y pausarlo en modo `planning` (Obs 3).
+
+## `game/index.html` + `game/src/main.ts` + `game/src/scenes/boot-scene.ts` (modificado, Fase 12f)
+
+- Fix de fullscreen en negro (Obs 7): contenedor `#game-root` con tamaño explícito como `scale.parent`/`scale.fullscreenTarget`; `BootScene` fuerza `scale.refresh()` en `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN`.
+
+## `engine/src/mission/loose-ferromagnetic-promoter.ts` (modificado, Fase 12f)
+
+- `definitionByRef` (`Map<ref, ComponentId>`) + `definitionIdForRef(ref)`: conserva el `componentDefinitionId` de catálogo de cada pieza promovida a proyectil suelto, sin tocar `ProjectileBody`/`kinetics/` (deuda #5).
+
+## `game/src/render/projectile-renderer.ts` (modificado, Fase 12f)
+
+- `renderProjectileTokens` recibe un resolver `(ref) => componentDefinitionId | undefined` y dibuja el sprite real de la pieza (`componentTextureKey`/`hasComponentSprite`) antes de caer al círculo placeholder (deuda #5).

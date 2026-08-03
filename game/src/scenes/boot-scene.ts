@@ -21,6 +21,12 @@ export class BootScene extends Phaser.Scene {
     // Se registra a sí mismo vía el constructor (Observer sobre metaGameStateMachine).
     const flowManager = new SceneFlowManager(this.scene, metaGameStateMachine);
     void flowManager;
+    // Fase 12f (Obs 7, fullscreen en negro): el recálculo automático de `FIT`
+    // al entrar/salir de fullscreen no siempre dispara solo contra el nuevo
+    // `fullscreenTarget` — forzar `refresh()` en ambas transiciones cubre ese
+    // caso. Registrado una sola vez acá (única escena que auto-arranca).
+    this.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, () => this.scale.refresh());
+    this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, () => this.scale.refresh());
     this.scene.start(SCENE_KEYS.title);
   }
 }

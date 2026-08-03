@@ -366,6 +366,17 @@ export class FloorplanScene extends Phaser.Scene {
     }
   >();
 
+  /**
+   * Tweens de salto (`hopMove`) de tripulación/enemigos actualmente en vuelo
+   * (Fase 12f, Obs 3). Sin este tracking los tokens seguían animándose en modo
+   * `planning` — mismo criterio que 11f.7 aplicó al flujo de conductos, pero
+   * ahí bastaba con no redibujar; acá el tween ya está corriendo y hay que
+   * pausarlo/reanudarlo explícitamente. Se puebla en `chainHops`/
+   * `stepAsideCrewToken`/el fallback `hopEnemyToken` y se limpia solo al
+   * completar (`tween.once("complete", ...)`), nunca por el chequeo de modo.
+   */
+  private readonly activeHopTweens = new Set<Phaser.Tweens.Tween>();
+
   /** Tokens visuales de enemigo (Fase 11d.3) — sin contenido de capítulo todavía (11d.4), así que arranca vacío en misión real. */
   private readonly enemyTokens = new Map<EnemyActorId, EnemyToken>();
 
@@ -924,6 +935,15 @@ export class FloorplanScene extends Phaser.Scene {
     // así que la etiqueta debe seguirlo cada frame, no solo fijarse al llegar.
     for (const token of this.enemyTokens.values()) {
       token.label.setPosition(token.shape.x, token.shape.y - token.shape.width);
+    }
+    // Tweens de salto de tripulación/enemigos (Fase 12f, Obs 3): sin este
+    // chequeo un salto en curso seguía animándose visualmente en `planning`
+    // aunque el reloj de simulación estuviera congelado. `pause`/`resume` de
+    // Phaser son idempotentes, así que repetir la llamada cada frame es seguro.
+    if (this.mission.coreLoop.mode === "execution") {
+      this.activeHopTweens.forEach((tween) => tween.resume());
+    } else {
+      this.activeHopTweens.forEach((tween) => tween.pause());
     }
     // Proyectiles (Fase 11a.3): posición continua, no animada por evento
     // discreto — se redibuja cada frame mientras el reloj corre. En pausa no
@@ -2034,7 +2054,9 @@ export class FloorplanScene extends Phaser.Scene {
   /** Redibujo por frame en ejecución — la posición del proyectil es continua, no animada por evento discreto. */
   private redrawProjectileTokens(): void {
     this.projectileContainer?.destroy(true);
-    this.projectileContainer = renderProjectileTokens(this, this.mission.projectiles.all);
+    this.projectileContainer = renderProjectileTokens(this, this.mission.projectiles.all, (ref) =>
+      this.mission.loosePromoter.definitionIdForRef(ref),
+    );
     this.markAsWorldObject(this.projectileContainer);
   }
 
@@ -2597,7 +2619,7 @@ export class FloorplanScene extends Phaser.Scene {
       const perHopMs = Math.max(60, durationMs / waypoints.length);
       this.chainHops({ dot: token.shape }, waypoints, perHopMs, "normal", 0, enemyJumpSignature(token));
     } else {
-      hopEnemyToken(this, token, toPx);
+      this.trackHopTween(hopEnemyToken(this, token, toPx));
     }
   }
 
@@ -2777,7 +2799,18 @@ export class FloorplanScene extends Phaser.Scene {
       this.faceHopTarget(token.dot, next.x);
     }
     const tween = hopMove(this, token.dot, { x: token.dot.x, y: token.dot.y }, next, cadence, signature, perHopMs);
+    this.trackHopTween(tween);
     tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
+  }
+
+  /**
+   * Registra un tween de salto para que `update()` pueda pausarlo/reanudarlo
+   * según `coreLoop.mode` (Fase 12f, Obs 3). Se auto-remueve al completar —
+   * no depende de que el llamador lo saque explícitamente.
+   */
+  private trackHopTween(tween: Phaser.Tweens.Tween): void {
+    this.activeHopTweens.add(tween);
+    tween.once("complete", () => this.activeHopTweens.delete(tween));
   }
 
   /**
@@ -2820,7 +2853,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
     const asidePx = this.cellCenterPx(aside);
     this.faceHopTarget(token.dot, asidePx.x);
-    hopMove(this, token.dot, from, asidePx, this.cadenceForActor(actorId), CREW_SIGNATURE);
+    this.trackHopTween(hopMove(this, token.dot, from, asidePx, this.cadenceForActor(actorId), CREW_SIGNATURE));
   }
 
   /** Primer vecino ortogonal transitable de `cell`, o `undefined` si no hay grilla / ninguno lo es. */

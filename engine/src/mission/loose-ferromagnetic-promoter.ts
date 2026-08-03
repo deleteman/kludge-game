@@ -25,6 +25,16 @@ import type { MutableShipState } from "./mutable-ship-state.js";
  * impacto, se queda viviendo en `ProjectileSimulation`.
  */
 export class LooseFerromagneticPromoter implements Tickable {
+  /**
+   * `ProjectileBody.ref` (`placedComponentInstanceId`) → `componentDefinitionId`
+   * de catálogo (Fase 12f, deuda #5). `ProjectileBody`/`kinetics/` se
+   * mantienen puros a propósito (sin concepto de catálogo) — este mapa vive
+   * acá, en la capa que ya conoce blueprint + catálogo, para que el renderer
+   * (`projectile-renderer.ts`) pueda resolver el sprite real de la pieza en
+   * vez de caer siempre al placeholder.
+   */
+  private readonly definitionByRef = new Map<string, ComponentId>();
+
   constructor(
     private readonly shipState: MutableShipState,
     private readonly projectiles: ProjectileSimulation,
@@ -33,6 +43,11 @@ export class LooseFerromagneticPromoter implements Tickable {
 
   tick(): void {
     this.promote();
+  }
+
+  /** `componentDefinitionId` de catálogo de la pieza que se promovió con `ref` como `instanceId`, si la hubo. */
+  definitionIdForRef(ref: string): ComponentId | undefined {
+    return this.definitionByRef.get(ref);
   }
 
   /**
@@ -58,6 +73,7 @@ export class LooseFerromagneticPromoter implements Tickable {
         footprint: placed.placement.footprint,
         re: definition.data.material?.RE,
       };
+      this.definitionByRef.set(placed.instanceId, placed.componentDefinitionId);
       this.projectiles.register(body, placed.placement.position);
       return false;
     });

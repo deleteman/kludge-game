@@ -177,15 +177,18 @@ que otros ítems diferidos de este documento (ver Subfase 11h → 12a → "Poten
 
 
 
-#### Subfase 12f: Fixes de Playtest de 12d
+#### Subfase 12f: Fixes de Playtest de 12d ✅ CERRADA (2026-08-03)
 
 Bucket de fixes puntuales surgidos del playtest, siguiendo la convención de la Subfase 12c.7 ("Fixes de playtest"). Recoge observaciones abiertas de `PENDIENTES_OBSERVACIONES.md` (Obs 3, Obs 7, deuda #5).
 
 * **Tripulantes se mueven en pausa (Obs 3):** los saltos de tripulación usan tweens de Phaser (`hopMove`, `game/src/crew/hop-movement.ts`) y nada los pausa al entrar en modo planificación — `floorplan-scene.ts` no pausa/reanuda esos tweens con el cambio de `coreLoop.mode`. Pausar/reanudar los tweens de movimiento de tripulación (y enemigos) sincronizados con `execution`/`planning`, mismo criterio ya aplicado al flujo de conductos en 11f.7.
+  **Resuelto:** `FloorplanScene.activeHopTweens` (`Set<Phaser.Tweens.Tween>`) trackea cada salto en vuelo (poblado en `chainHops`/`stepAsideCrewToken`/el fallback `hopEnemyToken`, auto-removido al completar); `update()` lo pausa/reanuda cada frame según `coreLoop.mode`.
 
 * **Modo pantalla completa queda en negro (Obs 7):** el toggle de fullscreen deja la pantalla en negro sin errores en consola. Investigar el toggle (`options-scene.ts`, `scale.FIT` + `toggleFullscreen`, Fase 9.5) y el redimensionado de cámaras (mundo + `hudCamera`).
+  **Resuelto:** faltaba `scale.parent`/`scale.fullscreenTarget` en `main.ts` — Phaser insertaba el canvas suelto en `<body>`. Contenedor `#game-root` con tamaño explícito (`index.html`) como referencia estable; `BootScene` fuerza `scale.refresh()` en `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN`.
 
 * **Proyectil suelto pierde su sprite de catálogo (deuda #5):** `LooseFerromagneticPromoter` (`engine/src/mission/loose-ferromagnetic-promoter.ts`) registra el `ProjectileBody` con `ref: placedComponentInstanceId` en vez del `componentDefinitionId`, así que `projectile-renderer.ts` cae siempre al círculo placeholder aunque el sprite de la pieza exista. Conservar el `componentDefinitionId` accesible al renderer (mapa `ref→componentDefinitionId` en `MissionRuntime`) sin ensuciar `ProjectileBody`/`kinetics/`.
+  **Resuelto:** `definitionByRef`/`definitionIdForRef(ref)` en el propio `LooseFerromagneticPromoter` (expuesto vía `MissionRuntime.loosePromoter`, ya público). `renderProjectileTokens` recibe el resolver y dibuja el sprite real (`componentTextureKey`/`hasComponentSprite`) antes de caer al placeholder. Test unitario nuevo en `loose-ferromagnetic-promoter.test.ts`.
 
 
 

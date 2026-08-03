@@ -36,6 +36,13 @@ async function bootstrap(): Promise<void> {
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      // Fase 12f (Obs 7, fullscreen en negro): sin `parent`/`fullscreenTarget`
+      // explícitos, Phaser inserta el canvas suelto en `<body>` y el elemento
+      // que el navegador expande en fullscreen deja de coincidir con lo que
+      // `FIT` recalcula. `#game-root` (game/index.html) tiene tamaño
+      // explícito para servir de referencia estable en ambos casos.
+      parent: "game-root",
+      fullscreenTarget: "game-root",
     },
     scene: [
       BootScene,

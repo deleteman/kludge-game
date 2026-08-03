@@ -2708,3 +2708,31 @@ fiel, se genera la base gris por código en runtime (no hay ImageMagick/sharp; `
 operador aprobó que yo arme la versión gris.
 Razón: dar identidad visual real a la tripulación en el plano (sprite + color por personaje) y feedback de
 dirección de marcha, reemplazando el placeholder de círculo.
+
+2026-08-03 — Fase 12f: fixes de playtest de 12d (Obs 3, Obs 7, deuda #5).
+Detalle: (1) Obs 3 — los saltos de tripulación/enemigos (`hopMove`, `game/src/crew/hop-movement.ts`) seguían
+animándose visualmente en modo `planning` porque `chainHops`/`stepAsideCrewToken`/el fallback
+`hopEnemyToken` (`game/src/scenes/floorplan-scene.ts`, `game/src/enemies/enemy-tokens.ts`) descartaban el
+`Phaser.Tweens.Tween` devuelto sin guardar referencia. Se agregó `FloorplanScene.activeHopTweens`
+(`Set<Phaser.Tweens.Tween>`, poblado por un helper `trackHopTween` que se auto-remueve al completar) y
+`update()` lo pausa/reanuda cada frame según `coreLoop.mode`, mismo criterio que 11f.7 aplicó al flujo de
+conductos. `hopEnemyToken` pasó de `void` a devolver el `Tween` para poder trackearlo también. Gap aceptado:
+el tween interno de `landingSquash` (aterrizaje, dentro de `hopMove`) queda fuera del tracking, es corto y
+cosmético.
+(2) Obs 7 — el fullscreen quedaba en negro porque `game/src/main.ts` no definía `scale.parent`/
+`scale.fullscreenTarget`, así que Phaser insertaba el canvas suelto en `<body>`, sin coincidir de forma
+confiable con el elemento que el navegador expande en fullscreen. Se agregó un contenedor `#game-root` con
+tamaño explícito (`game/index.html`) como `parent`/`fullscreenTarget`, y `BootScene` (única escena que
+auto-arranca) suscribe `Phaser.Scale.Events.ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN` para forzar
+`this.scale.refresh()` en ambas transiciones.
+(3) Deuda #5 — un proyectil suelto perdía su sprite de catálogo (`LooseFerromagneticPromoter` solo guardaba
+`ref: instanceId` en `ProjectileBody`, sin `componentDefinitionId`). Se agregó un `Map` privado
+`definitionByRef` en `LooseFerromagneticPromoter` (poblado en `promote()`) expuesto vía
+`definitionIdForRef(ref)`, sin tocar `ProjectileBody`/`kinetics/` (se mantienen sin concepto de catálogo).
+`renderProjectileTokens` (`game/src/render/projectile-renderer.ts`) recibe ahora un resolver de
+`componentDefinitionId` y dibuja el sprite real (`componentTextureKey`/`hasComponentSprite`, mismo patrón
+que `mission-overlay-renderer.ts`) antes de caer al círculo placeholder. Test unitario nuevo en
+`loose-ferromagnetic-promoter.test.ts` (7/7 verdes). Suite completa: 570 tests de /engine y 29 de /game
+verdes, `tsc --noEmit` limpio en ambos workspaces.
+Razón: cerrar el bucket de fixes puntuales surgidos del playtest de la Fase 12d, según lo planificado en
+`nuevo-orden.md` (Subfase 12f).

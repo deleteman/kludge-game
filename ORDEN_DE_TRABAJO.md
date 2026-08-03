@@ -2641,3 +2641,21 @@ luz ambiental global. Plan phaseado 12d.1→12d.4 en `~/.claude/plans/revisa-12d
 
 **Cierre Fase 12d:** código completo (12d.1–12d.4 + iteración post-playtest). Pendiente de cierre total: que el
 operador autore la capa `luces` en los 4 arquetipos y corra el smoke visual final.
+
+### Fase 12f — Fixes de Playtest de 12d ✅ (2026-08-03)
+
+Bucket de 3 fixes puntuales (`nuevo-orden.md`, convención de 12c.7), recogiendo Obs 3 / Obs 7 / deuda #5 de
+`PENDIENTES_OBSERVACIONES.md`:
+
+- **Obs 3 (tripulantes se mueven en pausa):** `FloorplanScene.activeHopTweens` trackea los tweens de salto de
+  `chainHops`/`stepAsideCrewToken`/el fallback `hopEnemyToken`, pausados/reanudados en `update()` según
+  `coreLoop.mode` — mismo criterio que 11f.7 aplicó al flujo de conductos.
+- **Obs 7 (fullscreen en negro):** faltaba `scale.parent`/`scale.fullscreenTarget` en `main.ts`. Contenedor
+  `#game-root` con tamaño explícito (`index.html`) + `BootScene` forzando `scale.refresh()` en
+  `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN`.
+- **Deuda #5 (proyectil suelto sin sprite):** `LooseFerromagneticPromoter.definitionByRef`/`definitionIdForRef`
+  conserva el `componentDefinitionId` de catálogo sin ensuciar `ProjectileBody`/`kinetics/`; `projectile-renderer.ts`
+  dibuja el sprite real cuando existe.
+
+Test unitario nuevo en `loose-ferromagnetic-promoter.test.ts`. Suite completa: 570 tests de `/engine` y 29 de
+`/game` verdes, `tsc --noEmit` limpio en ambos workspaces. Detalle completo en `changelog.log` (2026-08-03).

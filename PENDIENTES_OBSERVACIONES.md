@@ -42,7 +42,15 @@
    scroll del `ScrollablePanel` de rexUI entre rebuilds (`initialScrollT`/`onListReady` en
    `install-picker-modal.ts`, captura de `panel.t` en `mission-interaction-controller.ts`). La paleta de química
    no tenía el bug (no se recrea al seleccionar un elemento).
-3. Los tripulantes siguen moviendose incluso si a mitad de camino se pausa el juego.
+3. ✅ RESUELTO (Fase 12f). Los tripulantes siguen moviendose incluso si a mitad de camino se pausa el juego.
+   Resuelto: `hopMove` (`game/src/crew/hop-movement.ts`) devuelve un `Phaser.Tweens.Tween` real, pero
+   `chainHops`/`stepAsideCrewToken`/el fallback `hopEnemyToken` (`game/src/scenes/floorplan-scene.ts`) lo
+   descartaban sin guardar referencia — nada lo pausaba al entrar en modo `planning`. Ahora
+   `FloorplanScene.activeHopTweens` (`Set<Phaser.Tweens.Tween>`) trackea cada salto en vuelo (auto-removido
+   al completar) y `update()` lo pausa/reanuda cada frame según `coreLoop.mode`, mismo criterio que 11f.7
+   aplicó al flujo de conductos. `hopEnemyToken` (`game/src/enemies/enemy-tokens.ts`) pasó de `void` a
+   devolver el `Tween` para poder trackearlo también. Gap aceptado: el tween interno de `landingSquash`
+   (aterrizaje, dentro de `hopMove`) queda fuera del tracking por ser corto y cosmético.
 
 4. Las sustancias quimicas deberían poder sintetizarse solamente desde un aparato especifico. al hacerle click a la "estación quimica" (nombre que se puede mejorar) el menú contextual debería ser "Fabricar sustancias" y "Desmontar".
 
@@ -54,7 +62,13 @@
 6. ✅ RESUELTO (Fase 12c.7). No hay feedback sonoro para los clicks cuando estamos en modo cableado.
    Resuelto: `handleWireModeClick` (`mission-interaction-controller.ts`) reproduce `AUDIO_KEYS.mapCellSelect` al
    clickear un nodo válido (seleccionar origen, deseleccionar o confirmar destino).
-7. El modo pantalla completa queda en negro sin errores en la consola.
+7. ✅ RESUELTO (Fase 12f). El modo pantalla completa queda en negro sin errores en la consola.
+   Resuelto: `game/src/main.ts` no definía `scale.parent`/`scale.fullscreenTarget`, así que Phaser insertaba
+   el canvas suelto en `<body>` — el elemento que el navegador expande en fullscreen no coincidía de forma
+   confiable con lo que `FIT` recalculaba. Se agregó un contenedor `#game-root` con tamaño explícito
+   (`game/index.html`) como `parent`/`fullscreenTarget` de la config de `scale`, y `BootScene` (única escena
+   que auto-arranca) suscribe `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN` para forzar `this.scale.refresh()` en
+   ambas transiciones, por si el recálculo automático de `FIT` no dispara solo.
 
 
 
@@ -106,16 +120,20 @@ dónde, y qué costaría arreglarlo.
    (`sectionCentroidCell`) y lo persiste en `toUpdatedSave`; `game/src/scenes/floorplan-scene.ts::syncCrewCell`
    lo mantiene al día en cada `go-to` completado.
 
-5. **Un proyectil suelto pierde su sprite de catálogo al promoverse** (Fase 11a.3).
+5. ✅ RESUELTO (Fase 12f). **Un proyectil suelto pierde su sprite de catálogo al promoverse** (Fase 11a.3).
    `LooseFerromagneticPromoter` (`engine/src/mission/loose-ferromagnetic-promoter.ts`) registra el
    `ProjectileBody` con `ref: placedComponentInstanceId`, no con el `componentDefinitionId` del
    catálogo — así que `projectile-renderer.ts` (`game/src/render/`) no tiene forma de volver a
    `componentTextureKey`/`hasComponentSprite` para dibujar el sprite real de la pieza (ej.
    `pieza-hierro.png`, que SÍ existe en `game/assets/sprites/components/`) y cae siempre en un
-   círculo placeholder por código, incluso cuando el sprite de esa pieza está disponible. Arreglo
-   estimado: que `LooseFerromagneticPromoter` conserve el `componentDefinitionId` en algún lado
-   accesible al renderer (¿un mapa aparte en `MissionRuntime`, ref→componentDefinitionId?) sin
-   ensuciar `ProjectileBody`/`kinetics/` con un concepto de catálogo que no le corresponde.
+   círculo placeholder por código, incluso cuando el sprite de esa pieza está disponible.
+   Resuelto: `LooseFerromagneticPromoter` gana un `Map<ref, ComponentId>` privado (`definitionByRef`),
+   poblado en `promote()` junto a la creación del `ProjectileBody`, expuesto vía
+   `definitionIdForRef(ref)` — sin tocar `ProjectileBody`/`kinetics/`, que se mantienen sin concepto de
+   catálogo. `MissionRuntime.loosePromoter` ya era público, así que no hizo falta wiring nuevo:
+   `renderProjectileTokens` (`projectile-renderer.ts`) recibe ahora un resolver
+   `(ref) => componentDefinitionId | undefined` y dibuja el sprite real vía `componentTextureKey`/
+   `hasComponentSprite` (mismo patrón que `mission-overlay-renderer.ts`) antes de caer al placeholder.
 
 6. **Una creación de la mesa no hereda las propiedades de material de sus partes** (Fase 11c.1).
    `nameAndRegisterCreation` (`engine/src/workbench/creation-naming.ts`) agrega al compuesto la unión
