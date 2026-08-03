@@ -296,6 +296,15 @@ export class FloorplanScene extends Phaser.Scene {
   private lcdRedrawAccumulatorMs = 0;
   /** Tokens de proyectiles ferromagnéticos en vuelo (Fase 11a.3) — redibujado cada frame en ejecución. */
   private projectileContainer?: Phaser.GameObjects.Container;
+  /**
+   * `ref`s de proyectil conocidos en el último frame (Fase 12f, fix post-playtest): la promoción de una
+   * pieza ferromagnética suelta (`LooseFerromagneticPromoter`) pasa dentro del mismo tick que completa la
+   * tarea de instalación, DESPUÉS de que `redrawOverlay()` ya la dibujó como componente fijo — nada
+   * volvía a redibujar el overlay tras esa promoción silenciosa, así que quedaba un sprite "fantasma" del
+   * tamaño de la celda pegado encima del token real (pequeño) del proyectil. Comparar este Set contra
+   * `mission.projectiles.all` cada frame de ejecución detecta la promoción y dispara un `redrawOverlay()`.
+   */
+  private knownProjectileRefs = new Set<string>();
   /** Trayectoria fantasma en pausa táctica (Fase 11a.3, ASA 3) — calculada una vez al entrar en pausa, destruida al reanudar. */
   private trajectoryGhostContainer?: Phaser.GameObjects.Container;
   /** Cola unificada de tareas (playtest #16b) — objetos planos + hit-test a nivel de escena. */
@@ -583,6 +592,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.markAsWorldObject(floorplanRender.base);
     if (floorplanRender.walls) this.markAsWorldObject(floorplanRender.walls);
     this.redrawOverlay();
+    this.knownProjectileRefs = new Set(this.mission.projectiles.all.map((state) => state.ref));
     this.redrawProjectileTokens();
     this.redrawTrajectoryGhost();
     this.initCrewTokens();
@@ -949,6 +959,7 @@ export class FloorplanScene extends Phaser.Scene {
     // discreto — se redibuja cada frame mientras el reloj corre. En pausa no
     // hace falta (el reloj congelado no mueve nada; el fantasma ya lo cubre).
     if (this.mission.coreLoop.mode === "execution") {
+      this.syncNewlyPromotedProjectiles();
       this.redrawProjectileTokens();
     }
     // Redibujo del panel de cola con throttle durante la ejecución, para que
@@ -2050,6 +2061,21 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   // --- Proyectiles ferromagnéticos y trayectoria fantasma (Fase 11a.3) ----
+
+  /**
+   * Detecta una promoción NUEVA a proyectil suelto (`LooseFerromagneticPromoter`, dentro del mismo tick
+   * que instala la pieza) y fuerza un `redrawOverlay()` para borrar el sprite fantasma que quedaría
+   * pegado en la celda — el overlay solo se redibuja por defecto ante eventos de tarea (`task-completed`),
+   * que ya corrieron ANTES de que el promoter la sacara de `placedComponents` en el mismo tick.
+   */
+  private syncNewlyPromotedProjectiles(): void {
+    const currentRefs = this.mission.projectiles.all.map((state) => state.ref);
+    const hasNewRef = currentRefs.some((ref) => !this.knownProjectileRefs.has(ref));
+    this.knownProjectileRefs = new Set(currentRefs);
+    if (hasNewRef) {
+      this.redrawOverlay();
+    }
+  }
 
   /** Redibujo por frame en ejecución — la posición del proyectil es continua, no animada por evento discreto. */
   private redrawProjectileTokens(): void {

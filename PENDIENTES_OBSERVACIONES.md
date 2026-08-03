@@ -134,6 +134,17 @@ dónde, y qué costaría arreglarlo.
    `renderProjectileTokens` (`projectile-renderer.ts`) recibe ahora un resolver
    `(ref) => componentDefinitionId | undefined` y dibuja el sprite real vía `componentTextureKey`/
    `hasComponentSprite` (mismo patrón que `mission-overlay-renderer.ts`) antes de caer al placeholder.
+   **Fix post-QA del operador (mismo día)**: al probarlo en partida real, la pieza quedaba VISIBLE DOBLE
+   — un sprite de tamaño completo "pegado" en la celda (fantasma, sin poder seleccionarlo ni desmontarlo)
+   además del token pequeño correcto del proyectil. Causa: la promoción a proyectil pasa en el MISMO tick
+   que completa la tarea de instalación, pero DESPUÉS de que `redrawOverlay()` ya la dibujó como
+   componente fijo (`task-completed` dispara el redraw antes de que `LooseFerromagneticPromoter.tick()`
+   la saque de `placedComponents` en ese mismo tick, `mission-runtime.ts:374-389`) — nada volvía a
+   redibujar el overlay tras esa promoción silenciosa. Resuelto: `FloorplanScene.knownProjectileRefs`
+   compara los `ref` de `mission.projectiles.all` cada frame de ejecución contra el set del frame
+   anterior; ante un `ref` nuevo (promoción recién ocurrida) dispara `redrawOverlay()` para borrar el
+   fantasma. No poder seleccionar/desmontar la pieza promovida SÍ es comportamiento esperado (principio 5
+   de CLAUDE.md: una vez proyectil, no vuelve a `placedComponents`).
 
 6. **Una creación de la mesa no hereda las propiedades de material de sus partes** (Fase 11c.1).
    `nameAndRegisterCreation` (`engine/src/workbench/creation-naming.ts`) agrega al compuesto la unión

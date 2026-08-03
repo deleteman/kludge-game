@@ -2736,3 +2736,20 @@ que `mission-overlay-renderer.ts`) antes de caer al círculo placeholder. Test u
 verdes, `tsc --noEmit` limpio en ambos workspaces.
 Razón: cerrar el bucket de fixes puntuales surgidos del playtest de la Fase 12d, según lo planificado en
 `nuevo-orden.md` (Subfase 12f).
+
+2026-08-03 — Fase 12f (fix post-QA): sprite fantasma duplicado del proyectil suelto recién promovido.
+Detalle: al validar en partida real la deuda #5 (sprite real de proyectil suelto), el operador reportó ver
+la pieza DOBLE — un sprite de tamaño completo pegado en la celda, imposible de seleccionar/desmontar, además
+del token pequeño correcto flotando encima. Causa: `LooseFerromagneticPromoter.tick()` corre DESPUÉS del
+`TaskScheduler` en el mismo tick del core loop (`mission-runtime.ts:374-389`) — el evento `task-completed`
+de la instalación ya había disparado `redrawOverlay()` (mostrando la pieza como componente fijo) ANTES de
+que el promoter la sacara de `placedComponents` en ese mismo tick, y nada volvía a redibujar el overlay tras
+esa promoción silenciosa. Se agregó `FloorplanScene.knownProjectileRefs` (`Set<string>`), comparado cada
+frame de ejecución contra `mission.projectiles.all` (`syncNewlyPromotedProjectiles`); ante un `ref` nuevo
+dispara `redrawOverlay()` para borrar el fantasma. No poder seleccionar/desmontar la pieza promovida es
+comportamiento esperado (una vez proyectil, no vuelve a `placedComponents`, principio 5 CLAUDE.md), no parte
+del bug. Suite completa (570 tests `/engine`, 29 `/game`) y `tsc --noEmit` verdes en ambos workspaces tras
+el fix. Se revirtió el stock temporal de QA (`pieza-hierro: 1` en `CHAPTER_01_INITIAL_ATOMIC_STOCK`,
+Cap.1) agregado para poder instalar la pieza desde el flujo normal — confirmado por el operador.
+Razón: cierre real de la deuda #5 de `PENDIENTES_OBSERVACIONES.md` — el fix del sprite por sí solo dejaba
+un bug visual nuevo expuesto al validarlo en juego, corregido en la misma sesión antes de cerrar la fase.

@@ -437,6 +437,7 @@
 ## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12f)
 
 - `activeHopTweens` (`Set<Phaser.Tweens.Tween>`) + `trackHopTween`: tracking de los tweens de salto de tripulación/enemigos en vuelo, pausados/reanudados en `update()` según `coreLoop.mode` (Obs 3). `redrawProjectileTokens` pasa un resolver `ref → componentDefinitionId` (vía `mission.loosePromoter`) a `renderProjectileTokens` (deuda #5).
+- `knownProjectileRefs` (`Set<string>`) + `syncNewlyPromotedProjectiles` (fix post-QA, deuda #5): detecta una promoción nueva a proyectil suelto (mismo tick que la instalación) y fuerza `redrawOverlay()` para borrar el sprite fantasma que quedaba pegado en la celda.
 
 ## `game/src/enemies/enemy-tokens.ts` (modificado, Fase 12f)
 

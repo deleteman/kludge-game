@@ -2656,6 +2656,10 @@ Bucket de 3 fixes puntuales (`nuevo-orden.md`, convención de 12c.7), recogiendo
 - **Deuda #5 (proyectil suelto sin sprite):** `LooseFerromagneticPromoter.definitionByRef`/`definitionIdForRef`
   conserva el `componentDefinitionId` de catálogo sin ensuciar `ProjectileBody`/`kinetics/`; `projectile-renderer.ts`
   dibuja el sprite real cuando existe.
+- **Fix post-QA (mismo día):** el operador reportó la pieza duplicada al validar deuda #5 en partida real (sprite
+  fantasma de celda completa + token pequeño). `FloorplanScene.knownProjectileRefs`/`syncNewlyPromotedProjectiles`
+  detecta la promoción a proyectil dentro del mismo tick de instalación y fuerza `redrawOverlay()`.
 
 Test unitario nuevo en `loose-ferromagnetic-promoter.test.ts`. Suite completa: 570 tests de `/engine` y 29 de
-`/game` verdes, `tsc --noEmit` limpio en ambos workspaces. Detalle completo en `changelog.log` (2026-08-03).
+`/game` verdes, `tsc --noEmit` limpio en ambos workspaces tras ambos fixes. Detalle completo en `changelog.log`
+(2026-08-03).
