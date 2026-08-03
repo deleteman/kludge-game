@@ -193,13 +193,15 @@ Bucket de fixes puntuales surgidos del playtest, siguiendo la convención de la 
 
 
 
-#### Subfase 12g: Pulido de Pantallas de Selección
+#### Subfase 12g: Pulido de Pantallas de Selección ✅ CERRADA (2026-08-03)
 
 Pulido de UI de meta-menú (pantallas de Fase 9.5), coherente con 12c (personalidad de la UI). Recoge los ítems de fine-tunning de `PENDIENTES_OBSERVACIONES.md` sobre las pantallas de arranque de campaña. Da personalidad y "sensación profesional" a los primeros minutos.
 
 * **Tarjetas de selección de tripulación (`crew-select-scene.ts`):** una tarjeta por tripulante con foto, nombre, personalidad (rasgo), rol/especialidad y descripción. Reutiliza el roster real (`CrewSpecialty`/`PersonalityTrait`/`CrewTier`, Fase 9). Si faltan sprites de retrato, avisar explícitamente con su ruta esperada (convención CLAUDE.md, `game/assets/sprites/crew/`).
 
 * **Datos de nave en selección de arquetipo (`archetype-select-scene.ts`):** por cada nave, nombre propio (no del arquetipo), imagen exterior para dar color a la elección, su arquetipo y una descripción con los + y los − (ej. + armamento, − sensores). Reutiliza `SHIP_ARCHETYPES`. Avisar de sprites de nave faltantes con su ruta esperada.
+
+  **Cerrada:** tarjetas de tripulación (`crew-select-card.ts`, grilla 2 columnas) reutilizando los retratos de `crew-portrait-registry.ts` y las descripciones i18n `crew.<slug>.description` que ya existían sin consumidor; nuevas claves `crew.specialty.*`/`crew.trait.*`/`crew.tier.*`. Tarjetas de arquetipo (`ship-archetype-card.ts`, grilla 2×2) con nombre propio/descripción/pros-cons redactados como placeholder por Claude (`SHIP_ARCHETYPE_METADATA` + claves `ship.<archetype>.properName/.description/.pro.N/.con.N`), imagen exterior con fallback de color (`ship-image-registry.ts`, carpeta `game/assets/sprites/ships/` creada vacía — **faltan los 4 sprites reales**, uno por arquetipo, ruta `game/assets/sprites/ships/<archetype>.png`). Alcance ampliado con aprobación del operador: `title-scene.ts` gana entrada escalonada (`popIn`) en sus 6 botones + `fadeIn` de cámara; de paso corrigió un bug preexistente donde el botón "Continuar" (creado dentro de una promesa) quedaba dibujado encima de "Salir". Verificado visualmente con Playwright headless (3 pantallas + interacción de selección), sin errores de consola; 570 tests de `/engine` y 29 de `/game` verdes, `tsc --noEmit` limpio.
 
 
 

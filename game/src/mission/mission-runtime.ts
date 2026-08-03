@@ -10,6 +10,7 @@ import {
   MissionAtmosphereRuntime,
   MissionProjectileWorld,
   MissionOverloadRuntime,
+  MissionReactionRuntime,
   MissionSignalRuntime,
   MissionStructuralRuntime,
   ShipStatusQuery,
@@ -24,6 +25,7 @@ import {
   TaskScheduler,
   allEmittersActive,
   pressureAwareEmitterInputs,
+  motionAwareEmitterInputs,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
   CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
   CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE,
@@ -47,6 +49,7 @@ import {
   MapEntityRegistry,
 } from "engine";
 import type {
+  CellBlockedQuery,
   EmitterInputSource,
   MixtureHazardPreview,
   PhysicalComponentDefinition,
@@ -77,6 +80,7 @@ import type {
   GridPosition,
   KineticDomainEvent,
   ReactantSubstance,
+  ReactionDomainEvent,
   ScriptedRoute,
   SignalDomainEvent,
   PlacedComponentInstanceId,
@@ -131,9 +135,20 @@ export class MissionRuntime {
    * que un `sensor-presion` se resuelva contra la atmósfera real de su
    * sección en vez de darse siempre por activo. Guardada como campo (no
    * recreada en cada llamado) para que ambos consumidores compartan el mismo
-   * criterio.
+   * criterio. Fase 13a: además envuelve `motionAwareEmitterInputs` para el
+   * sensor óptico (`fotorreceptor`), leyendo `motionBlockedQuery` a través de
+   * una indirección.
    */
   private readonly emitterInputs: EmitterInputSource;
+  /**
+   * Bloqueo de línea de visión para el sensor óptico simulado (Fase 13a,
+   * deuda #3): `/engine` no conoce paredes, así que arranca en "nada
+   * bloqueado" (mismo fallback que el pathing sin tile art) hasta que
+   * `FloorplanScene` construya el `WalkableGrid` real del arquetipo y lo
+   * inyecte vía `setMotionBlockedQuery`. Mutable a propósito: `emitterInputs`
+   * lo lee por indirección en cada tick, no lo captura por valor al construir.
+   */
+  private motionBlockedQuery: CellBlockedQuery = { isBlocked: () => false };
   /** Proyectiles ferromagnéticos sueltos sobre el plano (Fase 11a). */
   readonly projectiles: ProjectileSimulation;
   /**
@@ -149,10 +164,14 @@ export class MissionRuntime {
   readonly structuralRuntime: MissionStructuralRuntime;
   /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
   readonly overloadRuntime: MissionOverloadRuntime;
+  /** Química viva scripteada por contenido (Fase 13a, deuda #16) — primer llamador de `ReactionResolver` en misión. */
+  readonly reactionRuntime: MissionReactionRuntime;
   /** Estado agregado a nivel de nave (Subfase 11g) — consultado por el HUD permanente de `/game`. */
   private readonly shipStatusQuery: ShipStatusQuery;
   /** Eventos de fallo estructural (degradado/fallo, Fase 11b) — `/game` los pinta. */
   readonly failureEvents = new EventEmitter<FailureDomainEvent>();
+  /** Eventos de reacción química en vivo (Fase 13a: combustión/neutralización/ignición espontánea) — `/game` los pinta. */
+  readonly reactionEvents = new EventEmitter<ReactionDomainEvent>();
   /** Stock vivo de piezas atómicas (rework "sin stock → desarmar → reutilizar") — leído/mutado por `ship-task-effect.ts`. */
   readonly atomicStock: MutableAtomicStock;
 
@@ -210,7 +229,18 @@ export class MissionRuntime {
       this.shipState,
       this.shipFloorplan,
       (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
-      allEmittersActive(this.shipState),
+      motionAwareEmitterInputs(
+        this.shipState,
+        () => [
+          ...this.crewState
+            .all()
+            .filter((actor) => actor.hp > 0 && actor.currentCell !== undefined)
+            .map((actor) => actor.currentCell!),
+          ...this.enemyState.all().filter((enemy) => enemy.hp > 0).map((enemy) => enemy.cell),
+        ],
+        { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
+        allEmittersActive(this.shipState),
+      ),
     );
     this.signalRuntime = new MissionSignalRuntime(
       this.shipState,
@@ -343,6 +373,20 @@ export class MissionRuntime {
       definition.scriptedOverloads ?? [],
       this.failureEvents,
     );
+    // Fase 13a: química viva scripteada por contenido — sin fuente real de
+    // sustancias/reservorios todavía (deuda #9/#10, Fase 13e), el guion de la
+    // crisis (`scriptedReactions`, ausente = ninguna todavía en ningún
+    // capítulo) es la única fuente de reactivos; oxígeno e ignición (vía
+    // puente a `failureEvents`) sí son reales.
+    this.reactionRuntime = new MissionReactionRuntime(
+      this.shipState,
+      this.shipFloorplan,
+      definition.scriptedReactions ?? [],
+      this.reactionResolver,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      this.reactionEvents,
+      this.failureEvents,
+    );
     this.crisisRuntime = new CrisisRuntime({
       definition,
       shipState: this.shipState,
@@ -395,6 +439,10 @@ export class MissionRuntime {
     // load/capacity fijos), el orden respecto a atmósfera/estructura no
     // importa — se registra al final de este bloque por prolijidad.
     this.coreLoop.registerTickable(this.overloadRuntime);
+    // Fase 13a: sin dependencia de dato vivo de otro runtime más allá del
+    // puente a `failureEvents` (ya suscrito en el constructor, no en el
+    // tick), se registra al final junto a `overloadRuntime`.
+    this.coreLoop.registerTickable(this.reactionRuntime);
 
     const spawnSectionId = this.shipFloorplan.sections[0]?.id;
     for (const actor of this.activeCrew) {
@@ -412,6 +460,18 @@ export class MissionRuntime {
         if (live) this.crewState.set({ ...live, currentCell: sectionCentroidCell(section) });
       }
     }
+  }
+
+  /**
+   * Inyecta el bloqueo de línea de visión real (Fase 13a, deuda #3) una vez
+   * que `FloorplanScene` construye el `WalkableGrid` del arquetipo — el
+   * motor no puede tenerlo en el constructor porque `MissionRuntime` no
+   * conoce Phaser/Tiled. Sin llamar a esto, el sensor óptico ve a través de
+   * cualquier pared (fallback "nada bloqueado", igual criterio que el
+   * pathing de tripulación sin tile art).
+   */
+  setMotionBlockedQuery(query: CellBlockedQuery): void {
+    this.motionBlockedQuery = query;
   }
 
   get crisisState(): CrisisState {

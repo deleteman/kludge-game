@@ -529,6 +529,7 @@ export type {
   MotionSensorsActiveTriggerSpec,
   ReplacementInstalledConnectedResolutionSpec,
   ScriptedOverloadSubject,
+  ScriptedReactionSubject,
   SignalNodesWiredResolutionSpec,
   SignalOutputCase,
   SignalOutputMatchesResolutionSpec,
@@ -612,6 +613,10 @@ export {
   PRESSURE_SENSOR_TRIGGER_KPA,
   pressureAwareEmitterInputs,
 } from "./mission/pressure-emitter-input-source.js";
+// Fase 13a — sensor óptico/de presencia real (deuda #3), por línea de visión + rango.
+export { motionAwareEmitterInputs } from "./mission/motion-emitter-input-source.js";
+export { hasLineOfSight } from "./geometry/line-of-sight.js";
+export type { CellBlockedQuery } from "./geometry/line-of-sight.js";
 export { resolveLcdDisplayValue } from "./mission/lcd-display-value.js";
 export type { LcdDisplayValue } from "./mission/lcd-display-value.js";
 // Fase 11b — atmósfera viva de la misión (wireado por primera vez).
@@ -628,6 +633,8 @@ export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";
 export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.js";
 // Fase 12a — cicatriz de sobrecarga scripteada por contenido (primer llamador de OverloadRule).
 export { MissionOverloadRuntime } from "./mission/mission-overload-runtime.js";
+// Fase 13a — química viva de misión, scripteada por contenido (primer llamador de ReactionResolver en misión, deuda #16).
+export { MissionReactionRuntime } from "./mission/mission-reaction-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).
 export type { ShipStatusLevel, ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status/ship-status.types.js";
 export {

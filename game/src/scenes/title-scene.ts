@@ -3,6 +3,7 @@ import { t } from "../i18n/i18n.js";
 import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
 import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
+import { popIn } from "../ui/ui-effects.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
 import { listCampaignSaves, loadCampaignSave } from "../meta/save-adapter.js";
 import { campaignSession } from "../meta/campaign-session.js";
@@ -27,6 +28,16 @@ export class TitleScene extends Phaser.Scene {
 
   create(): void {
     const self = this as unknown as SceneWithRexUI;
+    this.cameras.main.fadeIn(220, 0, 0, 0);
+
+    /** Entrada escalonada de los botones del menú (12g, fine-tunning: título sin animación de entrada). */
+    let staggerIndex = 0;
+    const animateButtonIn = (button: ReturnType<typeof createKenneyButton>): void => {
+      button.alpha = 0;
+      const delay = staggerIndex * 60;
+      staggerIndex += 1;
+      this.time.delayedCall(delay, () => popIn(this, button, { duration: 180 }));
+    };
 
     const background = this.add
       .image(640, 360, UI_TEXTURE_KEYS.menuBackground)
@@ -77,46 +88,62 @@ export class TitleScene extends Phaser.Scene {
     let y = 290;
     const step = 56;
 
-    createKenneyButton(self, menuX, y, t("ui.menu.title.new-game"), {
-      onClick: () => metaGameStateMachine.transition("archetype-select"),
-    });
+    animateButtonIn(
+      createKenneyButton(self, menuX, y, t("ui.menu.title.new-game"), {
+        onClick: () => metaGameStateMachine.transition("archetype-select"),
+      }),
+    );
     y += step;
 
+    // Captura la Y de este botón AHORA: el callback corre en un microtask que
+    // dispara después de que el resto de los botones sync ya avanzó `y` (bug
+    // de playtest 12g: sin esto "Continuar" terminaba dibujado encima de "Salir").
+    const continueY = y;
     void listCampaignSaves().then((saves) => {
       // Simplificación: "Continuar" carga la primera partida listada, sin
       // selector por fecha (`list()` no trae metadata, solo ids). Suficiente
       // para el smoke test de guardar→cerrar→continuar del plan de Fase 9.5.
       const hasSaves = saves.length > 0;
-      createKenneyButton(self, menuX, y, t("ui.menu.title.continue"), {
-        enabled: hasSaves,
-        onClick: () => {
-          if (!hasSaves) return;
-          void loadCampaignSave(saves[0]!).then((state) => {
-            campaignSession.load(state);
-            metaGameStateMachine.transition("in-mission");
-          });
-        },
-      });
+      animateButtonIn(
+        createKenneyButton(self, menuX, continueY, t("ui.menu.title.continue"), {
+          enabled: hasSaves,
+          onClick: () => {
+            if (!hasSaves) return;
+            void loadCampaignSave(saves[0]!).then((state) => {
+              campaignSession.load(state);
+              metaGameStateMachine.transition("in-mission");
+            });
+          },
+        }),
+      );
     });
     y += step;
 
-    createKenneyButton(self, menuX, y, t("ui.menu.title.creative-mode"), {
-      onClick: () => metaGameStateMachine.transition("creative-hub"),
-    });
+    animateButtonIn(
+      createKenneyButton(self, menuX, y, t("ui.menu.title.creative-mode"), {
+        onClick: () => metaGameStateMachine.transition("creative-hub"),
+      }),
+    );
     y += step;
 
-    createKenneyButton(self, menuX, y, t("ui.menu.title.options"), {
-      onClick: () => metaGameStateMachine.transition("options"),
-    });
+    animateButtonIn(
+      createKenneyButton(self, menuX, y, t("ui.menu.title.options"), {
+        onClick: () => metaGameStateMachine.transition("options"),
+      }),
+    );
     y += step;
 
-    createKenneyButton(self, menuX, y, t("ui.menu.title.credits"), {
-      onClick: () => metaGameStateMachine.transition("credits"),
-    });
+    animateButtonIn(
+      createKenneyButton(self, menuX, y, t("ui.menu.title.credits"), {
+        onClick: () => metaGameStateMachine.transition("credits"),
+      }),
+    );
     y += step;
 
-    createKenneyButton(self, menuX, y, t("ui.menu.title.quit"), {
-      onClick: () => window.close(),
-    });
+    animateButtonIn(
+      createKenneyButton(self, menuX, y, t("ui.menu.title.quit"), {
+        onClick: () => window.close(),
+      }),
+    );
   }
 }

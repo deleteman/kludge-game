@@ -454,3 +454,63 @@
 ## `game/src/render/projectile-renderer.ts` (modificado, Fase 12f)
 
 - `renderProjectileTokens` recibe un resolver `(ref) => componentDefinitionId | undefined` y dibuja el sprite real de la pieza (`componentTextureKey`/`hasComponentSprite`) antes de caer al círculo placeholder (deuda #5).
+
+## `game/src/ui/widgets/crew-select-card.ts` (nuevo, Fase 12g)
+
+- `renderCrewSelectCard`: tarjeta de selección de tripulante (retrato con fallback de color, nombre, especialidad/tier, rasgo, descripción). Hermana de `crew-strip.ts` (10b) pero sin barra de HP y con bloque de descripción — layout de grilla vertical, no tira horizontal.
+
+## `game/src/ui/widgets/ship-archetype-card.ts` (nuevo, Fase 12g)
+
+- `renderShipArchetypeCard`: tarjeta de selección de arquetipo (imagen exterior con fallback de color + id de arquetipo, nombre propio, nombre de arquetipo, descripción, pros/cons en columna única con wrap dinámico — evita el solape que dejaba un offset fijo o dos columnas lado a lado con texto largo en español).
+
+## `game/src/meta/ship-archetype-metadata.ts` (nuevo, Fase 12g)
+
+- `SHIP_ARCHETYPE_METADATA`: mapa `ShipArchetype → { properNameKey, descriptionKey, proKeys, conKeys }` (claves i18n, no texto). Vive en `/game` porque es flavor/presentación, no dato de motor.
+
+## `game/src/render/ship-image-registry.ts` (nuevo, Fase 12g)
+
+- `hasShipImage`/`shipImageTextureKey`/`preloadShipImages`: registro de imagen exterior por arquetipo, mismo patrón `import.meta.glob` que `crew-portrait-registry.ts`. Carpeta `game/assets/sprites/ships/` creada vacía en esta fase — sin sprites reales todavía, cae siempre al placeholder de color.
+
+## `game/src/scenes/crew-select-scene.ts` (modificado, Fase 12g)
+
+- Reemplaza la lista de botones de texto por una grilla de `renderCrewSelectCard` (2 columnas), con entrada escalonada (`popIn`).
+
+## `game/src/scenes/archetype-select-scene.ts` (modificado, Fase 12g)
+
+- Reemplaza los botones de texto por una grilla de `renderShipArchetypeCard` (2×2), con entrada escalonada (`popIn`).
+
+## `game/src/scenes/title-scene.ts` (modificado, Fase 12g)
+
+- `cameras.main.fadeIn` al entrar + `popIn` escalonado en los 6 botones del menú (antes aparecían sin animación). Fix de paso: el botón "Continuar" (creado dentro de un `.then()`) capturaba la `y` compartida con el resto de botones sync, que para cuando el microtask corría ya había avanzado hasta el valor final — quedaba dibujado encima de "Salir"; ahora se captura en una constante antes del `await`.
+
+## `game/src/i18n/es.ts` + `game/src/i18n/en.ts` (modificado, Fase 12g)
+
+- Claves nuevas `crew.specialty.*`/`crew.trait.*`/`crew.tier.*` (etiquetas legibles) y `ship.<archetype>.properName`/`.description`/`.pro.N`/`.con.N` (placeholder redactado por Claude, reemplazable por el operador). Las descripciones de tripulante (`crew.<slug>.description`) ya existían de una fase anterior, sin usar hasta ahora.
+
+## `engine/src/geometry/line-of-sight.ts` (nuevo, Fase 13a)
+
+- `hasLineOfSight(from, to, blocked: CellBlockedQuery)`: raycast tipo Bresenham entre dos celdas, lógica pura sin Phaser/Tiled. `CellBlockedQuery` es el puerto mínimo de "¿esta celda está bloqueada?" que `/game` implementa concretamente sobre su `WalkableGrid`.
+
+## `engine/src/mission/motion-emitter-input-source.ts` (nuevo, Fase 13a)
+
+- `motionAwareEmitterInputs(shipState, actorPositions, blocked, base)`: `EmitterInputSource` que resuelve `triggerType: "optical"` (`fotorreceptor`, reusado como sensor de presencia) contra la posición real de tripulación/enemigos vivos, por rango Manhattan + `hasLineOfSight`. Mismo patrón de envoltorio parcial que `pressure-emitter-input-source.ts` (Subfase 11h).
+
+## `engine/src/mission/mission-reaction-runtime.ts` (nuevo, Fase 13a)
+
+- `MissionReactionRuntime` (`Tickable`): primer llamador de producción de `ReactionResolver` fuera de la mesa de creación. Evalúa `CrisisDefinition.scriptedReactions` cada tick con `oxygen` real de sección y `ignitionPresent` real para el trigger `"overload-bridge"` (se suscribe a `failureEvents`, resuelve `OverloadEvent.ref` → sección). Cicatriz sin retorno: un `subject.id` que combustiona no se re-evalúa.
+
+## `engine/src/crisis/crisis-definition.types.ts` (modificado, Fase 13a)
+
+- `ScriptedReactionSubject` (reactivos + `sectionId` + `ignitionTrigger`) y `CrisisDefinition.scriptedReactions?`, mismo criterio narrativo/data-driven que `ScriptedOverloadSubject` (Fase 12a).
+
+## `engine/src/chemistry/reaction/reaction-events.types.ts` (modificado, Fase 13a)
+
+- `CombustionEvent.sectionId?: SectionId` opcional — lo llena `MissionReactionRuntime` al emitir (no `CombustionRule`, que sigue sin noción de mundo), para que `/game` sepa dónde posicionar el efecto/overlay.
+
+## `game/src/mission/mission-runtime.ts` (modificado, Fase 13a)
+
+- `setMotionBlockedQuery(query)` + composición de `motionAwareEmitterInputs` en `emitterInputs` (junto a `pressureAwareEmitterInputs` ya existente). `reactionEvents`/`reactionRuntime` nuevos, mismo patrón que `failureEvents`/`overloadRuntime` (Fase 12a).
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13a)
+
+- Llama `mission.setMotionBlockedQuery(...)` tras `extractWalkableGrid` (adapta `WalkableGrid` al `CellBlockedQuery` del motor). Nuevo listener de `reactionEvents` (mismo patrón que `failureEvents`): dispara `combustionEffect`/`combustionSound` (ya existían, sin llamador real hasta ahora) y extiende el overlay de alerta de pantalla completa a combustión no-débil.

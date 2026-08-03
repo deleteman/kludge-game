@@ -2663,3 +2663,86 @@ Bucket de 3 fixes puntuales (`nuevo-orden.md`, convención de 12c.7), recogiendo
 Test unitario nuevo en `loose-ferromagnetic-promoter.test.ts`. Suite completa: 570 tests de `/engine` y 29 de
 `/game` verdes, `tsc --noEmit` limpio en ambos workspaces tras ambos fixes. Detalle completo en `changelog.log`
 (2026-08-03).
+
+### Fase 12g — Pulido de Pantallas de Selección ✅ (2026-08-03)
+
+Pulido de UI de meta-menú (`nuevo-orden.md`), coherente con 12c. Recoge los ítems de fine-tunning de
+`PENDIENTES_OBSERVACIONES.md` sobre las pantallas de selección de tripulación y arquetipo, con alcance
+ampliado a `title-scene.ts` (aprobado por el operador).
+
+- **`crew-select-scene.ts`:** reemplaza la lista de botones de texto por una grilla de tarjetas
+  (`crew-select-card.ts`, nuevo) — retrato (reutiliza `crew-portrait-registry.ts`), nombre, especialidad/tier,
+  rasgo de personalidad, descripción. Las descripciones (`crew.<slug>.description`) ya existían en i18n de una
+  fase anterior sin consumidor; se agregaron las claves nuevas `crew.specialty.*`/`crew.trait.*`/`crew.tier.*`.
+- **`archetype-select-scene.ts`:** reemplaza los botones por una grilla 2×2 de tarjetas
+  (`ship-archetype-card.ts`, nuevo) — nombre propio, arquetipo, descripción, pros/cons. Metadata nueva en
+  `game/src/meta/ship-archetype-metadata.ts` (mapa a claves i18n, no texto embebido); copy placeholder
+  redactado por Claude (`ship.<archetype>.properName/.description/.pro.N/.con.N`), a reemplazar por el
+  operador. Imagen exterior con fallback de color vía `ship-image-registry.ts` (mismo patrón
+  `import.meta.glob` que los retratos) — **faltan los 4 sprites reales**, carpeta
+  `game/assets/sprites/ships/` creada vacía, ruta esperada `game/assets/sprites/ships/<archetype>.png`.
+- **`title-scene.ts` (alcance ampliado):** entrada escalonada (`popIn`) en los 6 botones + `fadeIn` de cámara
+  al entrar — antes aparecían sin animación, inconsistente con el resto de la UI ya pulida en 12c. De paso
+  corrigió un bug preexistente encontrado en la verificación visual: el botón "Continuar" se crea dentro de un
+  `.then()` (necesita `listCampaignSaves()`) y capturaba la variable `y` compartida con el resto de botones
+  síncronos — para cuando el microtask corría, `y` ya había avanzado hasta su valor final, así que "Continuar"
+  quedaba dibujado encima de "Salir". Se captura ahora en una constante (`continueY`) antes del `await`.
+- Ajustes de layout descubiertos en la verificación visual: la tarjeta de arquetipo posicionaba pros/cons con
+  un offset fijo (se solapaba con descripciones largas) y en dos columnas lado a lado (una línea larga en
+  español desbordaba la mitad del ancho); se cambió a una sola columna vertical con avance dinámico según la
+  altura real de cada línea. Altura de tarjeta de tripulante ajustada (130→148px) porque la descripción más
+  larga del roster (Kade) se recortaba contra el borde inferior.
+
+Verificado con Playwright headless (Chromium cacheado, sin `chromium-cli` disponible en este entorno): 3
+pantallas navegadas de punta a punta (título → arquetipo → tripulación) + interacción de selección múltiple
+de tripulantes, sin errores de consola. Suite completa: 570 tests de `/engine` y 29 de `/game` verdes,
+`tsc --noEmit` limpio en `/game`. Detalle completo en `changelog.log` (2026-08-03).
+
+## Fase 13 — Gaps de Motor de las Comparativas de Género
+
+### Subfase 13a — Simulación de Emisores y Cascada de Fallas Emergente ✅ (2026-08-04)
+
+Cierra deuda #3 (emisores siempre disparados) y deuda #16 (química sin llamador de producción en misión) de
+`PENDIENTES_OBSERVACIONES.md`. Investigación previa reescaló el alcance original de `nuevo-orden.md`: no
+existe todavía ninguna fuente real de sustancias químicas vivas en misión (reservorios sin sustancia+cantidad,
+ninguna fuga real inserta un `ChemicalSubstanceId` en la atmósfera — bloqueado detrás de Fase 13e), y no
+existía ni sensor de movimiento en el catálogo ni línea de visión/raycast en todo el repo. Alcance acordado con
+el operador en un ciclo de preguntas: reusar `fotorreceptor`/`triggerType: "optical"` como sensor de presencia,
+LOS real con paredes (no solo Manhattan sin bloqueo), y química como infraestructura data-driven (mismo
+criterio que `MissionOverloadRuntime`) en vez de esperar a la Fase 13e.
+
+- **Deuda #3 (emisores):** `engine/src/geometry/line-of-sight.ts` (`hasLineOfSight`/`CellBlockedQuery`, raycast
+  tipo Bresenham, lógica pura sin Phaser/Tiled) + `engine/src/mission/motion-emitter-input-source.ts`
+  (`motionAwareEmitterInputs`, mismo patrón que `pressureAwareEmitterInputs`): un nodo `EM` con
+  `triggerType: "optical"` se dispara si algún tripulante/enemigo vivo está a `range` celdas (Manhattan) Y
+  tiene línea de visión real. `/game` (`mission-runtime.ts::setMotionBlockedQuery`, llamado desde
+  `floorplan-scene.ts` tras `extractWalkableGrid`) inyecta el bloqueo de paredes real del tilemap sin que
+  `/engine` conozca Phaser — arranca en "nada bloqueado" (fallback, nave sin tile art) hasta que la escena lo
+  setea.
+- **Deuda #16 (química):** `CrisisDefinition.scriptedReactions` (`ScriptedReactionSubject`: reactivos +
+  `ignitionTrigger`, dato de guion igual que `ScriptedOverloadSubject`) + `engine/src/mission/mission-reaction-runtime.ts`
+  (`MissionReactionRuntime`, primer llamador de producción de `ReactionResolver` fuera de la mesa de creación).
+  `oxygen` sale de la atmósfera real de la sección (`sectionCombustionAtmosphere`); `ignitionPresent` es real
+  para `ignitionTrigger: "overload-bridge"` (el runtime se suscribe a `failureEvents` y resuelve
+  `OverloadEvent.ref` → instancia → sección para abrir una ventana de ignición). `CombustionEvent` ganó
+  `sectionId?: SectionId` opcional (mismo precedente que `OverloadEvent.ref`) para que `/game` sepa dónde
+  pintar el efecto — `CombustionRule` en sí sigue sin conocer el mundo, lo enriquece el runtime al emitir.
+- **Cascada emergente:** test de integración (`mission-reaction-cascade.integration.test.ts`) prueba que un
+  `ScriptedOverloadSubject` con `failureMode: "fire"` enciende, sin ningún código que los conecte
+  explícitamente, un `ScriptedReactionSubject` `"overload-bridge"` en la misma sección — la cascada emerge del
+  estado compartido (evento → ventana de ignición → reacción), no de una secuencia scripteada a mano.
+- **Wiring en `/game`:** `mission-runtime.ts` gana `reactionEvents`/`reactionRuntime` (mismo patrón que
+  `failureEvents`/`overloadRuntime`); `floorplan-scene.ts` suscribe `reactionEvents` — `combustionEffect`/
+  `combustionSound` ya existían completos (registrados por `kind: "combustion"`) pero sin llamador real en
+  misión, solo demostrados en la galería de partículas; ahora también disparan el overlay de alerta de
+  pantalla completa (hueco que el propio texto de la Fase 12a había dejado pendiente).
+- **Fuera de alcance, documentado:** reactivos derivados de estado real del mundo (depende de 13e); pieza de
+  catálogo "sensor de movimiento" dedicada (se reusa `fotorreceptor`); `EmitterProperty.frequency` sigue sin
+  consumidor; `thermalRegulatorOverloaded` sigue fijo en `false` (sin fuente real); el `PointLight` de
+  `combustion-effect.ts` sigue sin `LightHook`/`hudCamera.ignore()` — arreglarlo requeriría extender la firma
+  de `EventDrivenEffect.trigger` para los ~10 efectos ya registrados, desproporcionado para esta subfase; la
+  propia deuda #16 ya lo documentaba como riesgo menor mientras el burst sea corto (300-2000ms), queda abierto.
+
+19 tests nuevos en `/engine` (8 de `line-of-sight`, 5 de `motion-emitter-input-source`, 4 de
+`mission-reaction-runtime`, 2 de integración de cascada). Suite completa: 589 tests de `/engine` y 29 de
+`/game` verdes, `tsc --noEmit` limpio en ambos workspaces. Detalle completo en `changelog.log` (2026-08-04).

@@ -77,14 +77,26 @@
 * ✅ RESUELTO (Fase 12c.1). El botón de MESA y el botón de creaciones quimicas podría tener un icono junto al nombre, tengo iconos en game/assets/ui/ui-components/BUTTON-ICONS que podriamos usar
   Resuelto: botón MESA con `construction-table.png` y toggle Física/Química con `mixer.png` (ruta real
   `game/assets/sprites/ui/ui-components/BUTTON-ICONS/`), vía el nuevo `iconTextureKey` de `createKenneyButton`.
-* El menú de la pantalla inicial se ve y se siente profesional? Qué le falta?
+* ⚠️ PARCIALMENTE RESUELTO (Fase 12g). El menú de la pantalla inicial se ve y se siente profesional? Qué le falta?
+  Resuelto en parte: los 6 botones del menú (`title-scene.ts`) no tenían ninguna animación de entrada, a
+  diferencia del logo (flotación + partículas + blur ya resueltos) — se agregó `popIn` escalonado + `fadeIn`
+  de cámara al entrar. Sigue abierta la pregunta original de fondo (qué más le falta al menú para sentirse
+  profesional) — es una pregunta abierta de diseño, no una tarea puntual cerrable.
 * Los primeros 10 minutos de gameplay, son adictivos? Le dan algún reward al jugador?
 * ✅ RESUELTO (Fase 12c.1). Falta efectos hover en los botones de la UI. Ahora mismo hay sonidos al hacerle hover, lo cual es genial, pero falta un efecto visual que corresponda con la acción.
   Resuelto: `attachHoverJuice` (`game/src/ui/ui-effects.ts`) engancha un tween sutil de escala en
   `pointerover`/`pointerout` + pulso al `pointerdown`, aplicado en el único punto `createKenneyButton`, así que
   todos los botones de menú y de misión lo heredan.
-* La pantalla de selección de tripulantes al inicio de la campaña debe mejorarse. Debemos mostrar fotos de los tripulantes en una tarjeta por cada uno, donde también damos su nombre, personalidad, role, y una descripción. Esto es flavor, pero le da personalidad al juego.
-* La pantalla de selección de arquetipo de nave debe mostrar datos de cada nave, por cada una deberiamos tener: nombre (no del arquetipo, sino de la nave), una pequeña imagen exterior para darle color a la elección, su arquetipo y una descripción del arquetipo con los + y los - (ej: + armamento, - sensores, etc)
+* ✅ RESUELTO (Fase 12g). La pantalla de selección de tripulantes al inicio de la campaña debe mejorarse. Debemos mostrar fotos de los tripulantes en una tarjeta por cada uno, donde también damos su nombre, personalidad, role, y una descripción. Esto es flavor, pero le da personalidad al juego.
+  Resuelto: `crew-select-scene.ts` usa una grilla de tarjetas (`crew-select-card.ts`) con retrato (reutiliza
+  `crew-portrait-registry.ts`), nombre, especialidad/tier, rasgo y descripción (`crew.<slug>.description`,
+  ya existía en i18n sin consumidor).
+* ✅ RESUELTO (Fase 12g). La pantalla de selección de arquetipo de nave debe mostrar datos de cada nave, por cada una deberiamos tener: nombre (no del arquetipo, sino de la nave), una pequeña imagen exterior para darle color a la elección, su arquetipo y una descripción del arquetipo con los + y los - (ej: + armamento, - sensores, etc)
+  Resuelto: `archetype-select-scene.ts` usa una grilla 2×2 de tarjetas (`ship-archetype-card.ts`) con nombre
+  propio, arquetipo, descripción y pros/cons (`ship-archetype-metadata.ts`, copy placeholder redactado por
+  Claude, a reemplazar por el operador). Imagen exterior cae a placeholder de color: faltan los 4 sprites
+  reales, carpeta `game/assets/sprites/ships/` creada vacía, ruta esperada
+  `game/assets/sprites/ships/<archetype>.png`.
 * Los componentes cableables tienen un punto arriba cuando se ve la capa de señales, que los tapa por completo. Ese punto no parece tener ningún sentido, por lo que habría que removerlo.
 * Las capas deberían comenzar todas en off y al estar en off no deberían verse, sin transparentes como se ven ahora.
 * El cuadro contextual de acción que aparece cuando se clickea en una celda del mapa debe poder cerrarse con ESC y al hacerle click en el fondo del mapa (fuera de la nave).
@@ -94,7 +106,7 @@
 Hallazgos anotados al pasar, sin fase asignada. Cada entrada dice qué está mal,
 dónde, y qué costaría arreglarlo.
 
-3. **Los emisores no se simulan: un sensor cableado está siempre disparado** (Fase 11a).
+3. ✅ RESUELTO (Fase 13a). **Los emisores no se simulan: un sensor cableado está siempre disparado** (Fase 11a).
    `allEmittersActive` (`engine/src/mission/mission-signal-runtime.ts`) activa TODOS los nodos
    emisores en cada tick, porque nada evalúa `EmitterProperty` (`range`/`triggerType`/`frequency`,
    `engine/src/properties/functional.types.ts`) contra el mundo: ningún sensor de movimiento
@@ -102,6 +114,15 @@ dónde, y qué costaría arreglarlo.
    entradas por inyección (`EmitterInputSource`), así que el día que exista la simulación de
    sensores se enchufa ahí sin tocar el runtime. Lo necesita cualquier capítulo cuya lógica
    dependa de que un sensor se dispare de verdad y no de que esté cableado.
+   Resuelto: no existía ningún sensor de movimiento dedicado en el catálogo (solo `fotorreceptor`,
+   `triggerType: "optical"`) ni línea de visión/raycast en todo el repo — `engine/src/geometry/line-of-sight.ts`
+   (`hasLineOfSight`, Bresenham puro sobre un `CellBlockedQuery` inyectado, sin Phaser/Tiled) +
+   `engine/src/mission/motion-emitter-input-source.ts` (`motionAwareEmitterInputs`, mismo patrón que
+   `pressureAwareEmitterInputs`): un nodo óptico se dispara si algún tripulante/enemigo vivo está a
+   `range` celdas (Manhattan) con LOS real. `/game` (`mission-runtime.ts::setMotionBlockedQuery`,
+   invocado desde `floorplan-scene.ts` tras `extractWalkableGrid`) inyecta el bloqueo de paredes real
+   del tilemap sin que `/engine` conozca Phaser — fallback "nada bloqueado" si no hay tile art.
+   `frequency` sigue sin consumidor (ninguna deuda lo pedía). Detalle completo: `changelog.log` (2026-08-04).
 
 4. ✅ RESUELTO (Fase 11d.1 + 11d.2 + 11d.4). **La tripulación no tiene posición por celda, así que un proyectil no puede golpearla en misión** (Fase 11a).
    `CrewActor` (`engine/src/crew/crew-actor.types.ts`) solo modela `currentSectionId`; la celda
@@ -285,20 +306,33 @@ dónde, y qué costaría arreglarlo.
     `schemaVersion` y UI de configuración) y que el LED lea el valor numérico real por umbral — 12e mantuvo el
     LED binario ON(ámbar)/OFF(gris) a propósito, solo re-etiquetando su color dentro del contrato.
 
-16. **`CombustionEvent`/reacciones químicas no tienen ningún llamador de producción en `MissionRuntime`
-    (detectado en Fase 12a).** Igual que `OverloadRule` antes de esta fase, `ReactionResolver`/las reglas de
-    combustión (`engine/src/chemistry/reaction/rules/combustion.ts`) solo se ejercitan en tests — no hay
-    ningún runtime de misión que evalúe reacciones químicas en vivo, así que `combustionEffect`
-    (`game/src/particles/effects/combustion-effect.ts`) sigue siendo un efecto demostrado únicamente en
-    `particle-gallery-scene.ts`, nunca disparado en partida real. Consecuencia directa para 12a: el overlay
-    de alerta de pantalla completa (`redrawScreenAlertOverlay`, `floorplan-scene.ts`) NO reacciona a
-    "combustión violenta" pese a que el texto de la fase lo pedía — solo a `overload` (fire/explosion) y al
+16. ⚠️ PARCIALMENTE RESUELTO (Fase 13a). **`CombustionEvent`/reacciones químicas no tienen ningún llamador de
+    producción en `MissionRuntime` (detectado en Fase 12a).** Igual que `OverloadRule` antes de esta fase,
+    `ReactionResolver`/las reglas de combustión (`engine/src/chemistry/reaction/rules/combustion.ts`) solo se
+    ejercitan en tests — no hay ningún runtime de misión que evalúe reacciones químicas en vivo, así que
+    `combustionEffect` (`game/src/particles/effects/combustion-effect.ts`) sigue siendo un efecto demostrado
+    únicamente en `particle-gallery-scene.ts`, nunca disparado en partida real. Consecuencia directa para 12a:
+    el overlay de alerta de pantalla completa (`redrawScreenAlertOverlay`, `floorplan-scene.ts`) NO reacciona
+    a "combustión violenta" pese a que el texto de la fase lo pedía — solo a `overload` (fire/explosion) y al
     agregado crítico de `ShipStatusSnapshot` (que sí cubre la fuga crítica, vía el dominio atmósfera). Lo
     necesita cualquier capítulo cuyo caso de validación dependa de que un incendio real ocurra en misión, no
     solo en la mesa de creación/reacciones aisladas. Al resolverlo, revisar también si el `PointLight` de
     `combustion-effect.ts:116-130` necesita el `LightHook` de 12a (`game/src/particles/particle-effect.types.ts`)
     — hoy ese burst no registra su luz contra `hudCamera.ignore()`, un riesgo menor mientras sea un burst
     corto (300-2000ms) pero a revisar si algún día se vuelve más largo.
+    Resuelto (llamador de producción): `MissionReactionRuntime` (`engine/src/mission/mission-reaction-runtime.ts`)
+    evalúa `CrisisDefinition.scriptedReactions` (`ScriptedReactionSubject`, dato de guion — no existe todavía
+    ninguna fuente real de sustancias vivas en misión, ver Fase 13e) cada tick, con `oxygen` real de sección
+    (`sectionCombustionAtmosphere`) e `ignitionPresent` real para `"overload-bridge"` (puente a `failureEvents`,
+    resuelve `OverloadEvent.ref` → sección). `game/src/mission/mission-runtime.ts`/`floorplan-scene.ts` cablean
+    `reactionEvents` a `combustionEffect`/`combustionSound` (ya existían, sin llamador real hasta ahora) y
+    extienden el overlay de alerta a combustión no-débil — el hueco de 12a queda cerrado. `CombustionEvent`
+    ganó `sectionId?: SectionId` opcional para que `/game` sepa dónde pintar.
+    Sigue SIN resolver, evaluado y descartado a propósito en esta fase: el `LightHook`/`hudCamera.ignore()` de
+    `combustion-effect.ts` — arreglarlo exigiría extender la firma de `EventDrivenEffect.trigger` para los ~10
+    efectos ya registrados en `effect-registry.ts`, desproporcionado para 13a; con el burst disparándose ahora
+    en partida real (antes solo en la galería), este es el momento de revisar si el riesgo dejó de ser menor.
+    Detalle completo: `changelog.log` (2026-08-04).
     **Ampliado en Fase 12b**: el mismo hueco existe para `HazardEvent` (`toxic-threshold`/`corrosive-exposure`,
     umbral de exposición atmosférica a tripulante) — tampoco tiene llamador real en `floorplan-scene.ts`, solo
     se demuestra en `particle-gallery-scene.ts`. El sonido de corrosión (`game/src/audio/effects/

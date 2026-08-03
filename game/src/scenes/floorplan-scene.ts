@@ -584,6 +584,13 @@ export class FloorplanScene extends Phaser.Scene {
       this.mission.shipFloorplan.archetype,
       this.mission.shipFloorplan.gridSize,
     );
+    // Fase 13a (deuda #3): el sensor óptico simulado necesita línea de visión
+    // real contra paredes — sin este grid disponible (nave sin tile art), el
+    // motor se queda en el fallback "nada bloqueado" ya seteado por defecto.
+    if (this.walkableGrid) {
+      const grid = this.walkableGrid;
+      this.mission.setMotionBlockedQuery({ isBlocked: (cell) => !grid.isWalkable(cell.x, cell.y) });
+    }
     // El plano vuelve DOS objetos por profundidad: `base` (suelo/objetos/
     // etiquetas, debajo de tripulación y componentes) y `walls` (paredes, por
     // encima). Ambos se registran en la cámara de mundo (post-playtest #7).
@@ -864,6 +871,30 @@ export class FloorplanScene extends Phaser.Scene {
         // propia cicatriz local (chispas + luz, `syncOverloadedConductorEffects`),
         // sin necesidad de alarmar toda la pantalla.
         if (event.kind === "overload" && (event.failureMode === "fire" || event.failureMode === "explosion")) {
+          this.violentAlertUntilSeconds = this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS;
+          this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
+          this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "error" });
+        }
+      }),
+      // Fase 13a (deuda #16): `combustionEffect`/`combustionSound` ya existían
+      // completos, registrados por `kind: "combustion"`, pero sin llamador
+      // real en misión (solo demostrados en la galería de partículas) —
+      // `MissionReactionRuntime` es el primer emisor real. El evento no trae
+      // celda propia (`CombustionRule` es lógica de reacción pura, sin mundo),
+      // así que se posiciona en el centroide de `event.sectionId`.
+      this.mission.reactionEvents.onAny((event) => {
+        const section =
+          event.kind === "combustion" && event.sectionId
+            ? this.mission.shipFloorplan.sections.find((entry) => entry.id === event.sectionId)
+            : undefined;
+        const cell = section && sectionCentroidCell(section);
+        if (cell) fireEventEffect(this, cell, event);
+        fireEventSound(this, event);
+        // Mismo overlay de alerta de pantalla completa que ya reacciona a
+        // overload fire/explosion (Fase 12a) — cierra el hueco que el propio
+        // texto de esa fase dejó pendiente ("NO reacciona a combustión
+        // violenta").
+        if (event.kind === "combustion" && event.intensity !== "weak") {
           this.violentAlertUntilSeconds = this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS;
           this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
           this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "error" });

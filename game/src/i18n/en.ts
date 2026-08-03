@@ -345,4 +345,54 @@ export const EN: Readonly<Record<string, string>> = {
   "crew.petra.sex": "Female",
   "crew.petra.description":
     "A veteran medic around 45, fair skin, silver hair pulled into a tight, neat bun. Serene features, soft lines of experience, a calm and compassionate but firm gaze. Spotless grey-and-white medical uniform with a command insignia and gloves. A stoic expression, motherly yet professional.",
+
+  // Readable specialty/personality/tier labels (Phase 12g, crew-select cards).
+  "crew.specialty.ingeniero": "Engineer",
+  "crew.specialty.medico": "Medic",
+  "crew.specialty.piloto": "Pilot",
+  "crew.specialty.seguridad": "Security",
+
+  "crew.trait.estoico": "Stoic",
+  "crew.trait.ansioso": "Anxious",
+  "crew.trait.sarcastico": "Sarcastic",
+  "crew.trait.temerario": "Reckless",
+  "crew.trait.disciplinado": "Disciplined",
+
+  "crew.tier.novato": "Rookie",
+  "crew.tier.veterano": "Veteran",
+  "crew.tier.experto": "Expert",
+
+  // Ship data per archetype (Phase 12g, archetype-select card).
+  // Proper name distinct from the archetype name (already covered by "ship.<archetype>.name").
+  "ship.investigacion.properName": "RSV Deep Threshold",
+  "ship.investigacion.description":
+    "A science vessel built for analysis and chemical synthesis, with fine sensors and a dense logic-node layout — but almost no direct damage capability.",
+  "ship.investigacion.pro.0": "+ Analysis and chemical synthesis",
+  "ship.investigacion.pro.1": "+ Precision sensors",
+  "ship.investigacion.con.0": "− Nearly no weaponry",
+  "ship.investigacion.con.1": "− Light armor",
+
+  "ship.guerra.properName": "ANS Iron Fist",
+  "ship.guerra.description":
+    "A militarized vessel with an abundance of high-power actuators and reinforced armor — but very limited medical and fluid support.",
+  "ship.guerra.pro.0": "+ Weaponry and high-power actuators",
+  "ship.guerra.pro.1": "+ Reinforced structural armor",
+  "ship.guerra.con.0": "− Almost no medical support",
+  "ship.guerra.con.1": "− Scarce precision sensors",
+
+  "ship.exploracion.properName": "MSV Long Current",
+  "ship.exploracion.description":
+    "A long-range generalist vessel, balanced in almost everything — but with no fine sensors, only low-resolution long-range detection.",
+  "ship.exploracion.pro.0": "+ Balanced systems across the board",
+  "ship.exploracion.pro.1": "+ Good resource autonomy",
+  "ship.exploracion.con.0": "− Low-precision sensors",
+  "ship.exploracion.con.1": "− No strong specialization in any area",
+
+  "ship.medica.properName": "HSV White Refuge",
+  "ship.medica.description":
+    "A hospital ship with life support and medical equipment to spare — but no armor and no high-amperage power components.",
+  "ship.medica.pro.0": "+ Abundant medical and life-support gear",
+  "ship.medica.pro.1": "+ Good containment of toxic crises",
+  "ship.medica.con.0": "− No armor or high-amperage power",
+  "ship.medica.con.1": "− Almost no combat capability",
 };

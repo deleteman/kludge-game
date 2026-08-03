@@ -345,4 +345,54 @@ export const ES: Readonly<Record<string, string>> = {
   "crew.petra.sex": "Femenino",
   "crew.petra.description":
     "Médica veterana de unos 45 años, piel clara, pelo plateado recogido en un moño tirante y pulcro. Rasgos serenos, arrugas suaves de experiencia, mirada tranquila y compasiva pero firme. Uniforme médico impecable gris y blanco con insignia de mando y guantes. Expresión estoica, maternal pero profesional.",
+
+  // Etiquetas legibles de especialidad/personalidad/tier (Fase 12g, tarjetas de selección de tripulación).
+  "crew.specialty.ingeniero": "Ingeniero",
+  "crew.specialty.medico": "Médico",
+  "crew.specialty.piloto": "Piloto",
+  "crew.specialty.seguridad": "Seguridad",
+
+  "crew.trait.estoico": "Estoico",
+  "crew.trait.ansioso": "Ansioso",
+  "crew.trait.sarcastico": "Sarcástico",
+  "crew.trait.temerario": "Temerario",
+  "crew.trait.disciplinado": "Disciplinado",
+
+  "crew.tier.novato": "Novato",
+  "crew.tier.veterano": "Veterano",
+  "crew.tier.experto": "Experto",
+
+  // Datos de nave por arquetipo (Fase 12g, tarjeta de selección de arquetipo).
+  // Nombre propio distinto del nombre de arquetipo (ya cubierto por "ship.<archetype>.name").
+  "ship.investigacion.properName": "RSV Umbral Profundo",
+  "ship.investigacion.description":
+    "Nave de ciencia orientada a análisis y síntesis química, con sensores finos y buena densidad de nodos lógicos — pero apenas capacidad de daño directo.",
+  "ship.investigacion.pro.0": "+ Análisis y síntesis química",
+  "ship.investigacion.pro.1": "+ Sensores de precisión",
+  "ship.investigacion.con.0": "− Armamento casi inexistente",
+  "ship.investigacion.con.1": "− Blindaje ligero",
+
+  "ship.guerra.properName": "ANS Puño de Hierro",
+  "ship.guerra.description":
+    "Nave militarizada con abundancia de actuadores de alta potencia y blindaje reforzado — pero con soporte médico y de fluidos muy limitado.",
+  "ship.guerra.pro.0": "+ Armamento y actuadores de alta potencia",
+  "ship.guerra.pro.1": "+ Blindaje estructural reforzado",
+  "ship.guerra.con.0": "− Soporte médico casi nulo",
+  "ship.guerra.con.1": "− Sensores de precisión escasos",
+
+  "ship.exploracion.properName": "MSV Corriente Larga",
+  "ship.exploracion.description":
+    "Nave generalista de largo alcance, equilibrada en casi todo — pero sin sensores de precisión, solo detección de largo alcance de baja resolución.",
+  "ship.exploracion.pro.0": "+ Equilibrio general de sistemas",
+  "ship.exploracion.pro.1": "+ Buena autonomía de recursos",
+  "ship.exploracion.con.0": "− Sensores de baja precisión",
+  "ship.exploracion.con.1": "− Sin especialización fuerte en ningún área",
+
+  "ship.medica.properName": "HSV Refugio Blanco",
+  "ship.medica.description":
+    "Nave hospital con soporte vital y equipamiento médico de sobra — pero sin blindaje ni componentes de energía de alto amperaje.",
+  "ship.medica.pro.0": "+ Soporte médico y vital abundante",
+  "ship.medica.pro.1": "+ Buena capacidad de contención de crisis tóxicas",
+  "ship.medica.con.0": "− Sin blindaje ni energía de alto amperaje",
+  "ship.medica.con.1": "− Capacidad de combate casi nula",
 };

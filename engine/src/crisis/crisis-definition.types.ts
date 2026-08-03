@@ -7,6 +7,7 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import type { ShipArchetype } from "../floorplan/floorplan.types.js";
 import type { CrewDamageCause } from "../crew/crew-events.types.js";
 import type { FunctionalProperty } from "../properties/functional.types.js";
+import type { ReactantSubstance } from "../chemistry/reaction/reaction-context.types.js";
 
 export type CrisisDefinitionId = Brand<string, "CrisisDefinitionId">;
 
@@ -188,6 +189,33 @@ export interface ScriptedOverloadSubject {
 }
 
 /**
+ * Reacción química scripteada por contenido (Fase 13a, `MissionReactionRuntime`,
+ * deuda #16). Mismo criterio narrativo que `ScriptedOverloadSubject`: no
+ * existe todavía ninguna simulación real de sustancias vivas en misión (los
+ * reservorios no tienen sustancia+cantidad, ninguna fuga inserta un
+ * `ChemicalSubstanceId` en la atmósfera — eso depende de la Fase 13e), así
+ * que `reactants` es dato de guion, no derivado del mundo. Lo que SÍ es real:
+ * `oxygen` (de la atmósfera viva de `subject.sectionId`) e `ignitionPresent`
+ * cuando `ignitionTrigger` es `"overload-bridge"` (puente al último
+ * `OverloadEvent` fire/explosion de esa sección). `ReactionResolver` sigue
+ * siendo la única lógica que decide el resultado — el guion solo aporta
+ * reactivos y disparador de ignición, igual que el overload solo aporta
+ * `load`/`capacity`.
+ */
+export interface ScriptedReactionSubject {
+  /** Identidad estable del subject — no se re-evalúa una vez disparado (cicatriz sin retorno, principio 5). */
+  readonly id: string;
+  readonly sectionId: SectionId;
+  readonly reactants: ReadonlyArray<ReactantSubstance>;
+  /**
+   * `"always"`: hay ignición desde el inicio (casos de validación deterministas).
+   * `"overload-bridge"`: hay ignición solo tras un `OverloadEvent` con
+   * `failureMode` "fire"/"explosion" reciente en `sectionId`.
+   */
+  readonly ignitionTrigger: "always" | "overload-bridge";
+}
+
+/**
  * Castigo progresivo por dilación (capítulo 2): mientras la crisis está activa y
  * el timer corre, a partir de `startFraction` del `softDeadlineSeconds` el
  * sistema automatizado electrocuta a un tripulante cada `intervalSeconds`.
@@ -236,4 +264,6 @@ export interface CrisisDefinition {
   readonly hazard?: CrisisHazardSchedule;
   /** Conductos/reservorios que entran en sobrecarga por guion (Fase 12a). Opcional, default ninguno. */
   readonly scriptedOverloads?: ReadonlyArray<ScriptedOverloadSubject>;
+  /** Reacciones químicas scripteadas por guion (Fase 13a). Opcional, default ninguna. */
+  readonly scriptedReactions?: ReadonlyArray<ScriptedReactionSubject>;
 }

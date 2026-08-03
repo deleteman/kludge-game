@@ -1,4 +1,5 @@
 import type { DomainEventBase } from "../../simulation/domain-event.types.js";
+import type { SectionId } from "../../atmosphere/section.types.js";
 
 /**
  * Eventos de dominio de las reacciones químicas (Observer, para Fase 8).
@@ -31,6 +32,14 @@ export interface CombustionEvent extends DomainEventBase {
   readonly intensity: CombustionIntensity;
   readonly radius: CombustionRadius;
   readonly crewDamage: CrewDamageSeverity;
+  /**
+   * Dónde ocurrió, para que `/game` sepa qué sección iluminar/alertar (Fase
+   * 13a). `CombustionRule.apply` no lo conoce — es lógica de reacción pura,
+   * sin noción de mundo — así que solo lo llenan los llamadores de producción
+   * con contexto de misión (`MissionReactionRuntime`); la mesa de creación
+   * (`synthesizeSubstance`) lo deja `undefined` a propósito.
+   */
+  readonly sectionId?: SectionId;
 }
 
 export interface SpontaneousIgnitionEvent extends DomainEventBase {
