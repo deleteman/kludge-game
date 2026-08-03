@@ -1,7 +1,7 @@
 import type Phaser from "phaser";
 import type { ComponentCondition, FunctionalProperty, MaterialProperties } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { HEADER_COLOR, LABEL_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS } from "../../render/palette.js";
+import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import { COMPONENT_CONDITION_TINT } from "../../render/palette.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
@@ -82,7 +82,7 @@ export function renderMissionTooltip(
         .text(PADDING, y, `• ${labels.functionalDescription(property.tag)}`, {
           fontFamily: "sans-serif",
           fontSize: "11px",
-          color: LABEL_COLOR,
+          color: TAG_CATEGORY_CSS.functional, // Eje B, categoría funcional (Fase 12e)
           wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
         })
         .setOrigin(0, 0);
@@ -94,7 +94,7 @@ export function renderMissionTooltip(
         .text(PADDING, y, `• ${labels.structuralResistance(content.material.RE)}`, {
           fontFamily: "sans-serif",
           fontSize: "11px",
-          color: LABEL_COLOR,
+          color: TAG_CATEGORY_CSS.material, // Eje B, categoría material (Fase 12e)
           wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
         })
         .setOrigin(0, 0);

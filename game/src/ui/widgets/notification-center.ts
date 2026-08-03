@@ -1,7 +1,14 @@
 import type Phaser from "phaser";
 
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { HEADER_COLOR, LABEL_COLOR } from "../../render/palette.js";
+import {
+  HEADER_COLOR,
+  LABEL_COLOR,
+  CRISIS_FATAL_COLOR,
+  CRISIS_WARNING_COLOR,
+  CRISIS_SAFE_COLOR,
+  INFO_NEUTRAL_COLOR,
+} from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { popIn } from "../ui-effects.js";
 import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
@@ -25,11 +32,12 @@ export interface NotificationInput {
   readonly type?: NotificationType;
 }
 
+/** Acento por tipo — deriva del contrato de color de crisis (Fase 12e), no una tabla local paralela. */
 const ACCENT_COLOR: Readonly<Record<NotificationType, number>> = {
-  info: 0x9fd8ff,
-  success: 0x64dc78,
-  warning: 0xe0a33f,
-  error: 0xe0483f,
+  info: INFO_NEUTRAL_COLOR,
+  success: CRISIS_SAFE_COLOR,
+  warning: CRISIS_WARNING_COLOR,
+  error: CRISIS_FATAL_COLOR,
 };
 
 /** Clave de sonido por tipo (`AUDIO_KEYS`) — feedback diegético coherente con 12b. */

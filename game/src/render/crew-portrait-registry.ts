@@ -17,9 +17,19 @@ const portraitModules = import.meta.glob("../../assets/sprites/crew/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+/**
+ * Basename del sprite genérico compartido (no un retrato por-nombre): lo carga
+ * `crew-sprite.ts` para los tokens del plano. El glob de esta carpeta lo
+ * matchea igual, así que se excluye aquí para no crear una textura de retrato
+ * `crew:tripulante` inútil ni confundirlo con un tripulante llamado así.
+ */
+const GENERIC_SPRITE_SLUG = "tripulante";
+
 /** `slug → url`, con el slug derivado del basename del archivo (sin `.png`). */
 export const CREW_PORTRAIT_URLS: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(portraitModules).map(([path, url]) => [basename(path), url]),
+  Object.entries(portraitModules)
+    .map(([path, url]) => [basename(path), url] as const)
+    .filter(([slug]) => slug !== GENERIC_SPRITE_SLUG),
 );
 
 /**

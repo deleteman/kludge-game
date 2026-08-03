@@ -17,6 +17,8 @@ const HP_BAR_HEIGHT = 7;
 const HP_BAR_TRACK_COLOR = 0x1a2030;
 const CARD_GAP = 16;
 const CARD_PAD = 8;
+/** Ancho de la franja de identidad de color a la izquierda de cada tarjeta (mismo color que el token del mapa). */
+const IDENTITY_BAR_WIDTH = 6;
 const TEXT_BLOCK_WIDTH = 108;
 const INNER_GAP = 8;
 const CARD_WIDTH = CARD_PAD * 2 + PORTRAIT_SIZE + INNER_GAP + TEXT_BLOCK_WIDTH;
@@ -111,6 +113,14 @@ export function renderCrewStrip(
         .rectangle(cardX, cardTop, CARD_WIDTH, cardHeight, selected ? 0x16202c : 0x11151d, 0.9)
         .setOrigin(0, 0)
         .setStrokeStyle(selected ? 2 : 1, selected ? SELECTED_CELL_COLOR : 0x2a3040, 1),
+    );
+
+    // Franja de identidad de color en el borde izquierdo: SIEMPRE visible (no
+    // depende de la selección), con el MISMO color que el token del mapa
+    // (`CREW_TOKEN_COLORS[index]`), para saber de un vistazo qué tarjeta es qué
+    // tripulante — el retrato genérico gris no lo distingue por sí solo.
+    container.add(
+      scene.add.rectangle(cardX, cardTop, IDENTITY_BAR_WIDTH, cardHeight, color, 1).setOrigin(0, 0),
     );
 
     // Retrato a la izquierda (centrado verticalmente en la tarjeta). Centrado en

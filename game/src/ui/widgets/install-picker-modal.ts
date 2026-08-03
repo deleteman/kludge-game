@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
 import type { ComponentId, Footprint, FunctionalProperty, MaterialProperties } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { HEADER_COLOR, LABEL_COLOR } from "../../render/palette.js";
+import { HEADER_COLOR, LABEL_COLOR, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { componentTextureKey, hasComponentSprite } from "../../render/component-sprite-registry.js";
 import { createKenneyButton } from "./kenney-button.js";
@@ -294,7 +294,7 @@ function renderSelectedComponentSheet(
         .text(x, lineY, `• ${labels.functionalDescription(property.tag)}`, {
           fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
           fontSize: "12px",
-          color: LABEL_COLOR,
+          color: TAG_CATEGORY_CSS.functional, // Eje B, categoría funcional (Fase 12e)
           wordWrap: { width: DESCRIPTION_WIDTH },
         })
         .setOrigin(0, 0),
@@ -308,7 +308,7 @@ function renderSelectedComponentSheet(
         .text(x, lineY, `• ${labels.structuralResistance(option.material.RE)}`, {
           fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
           fontSize: "12px",
-          color: LABEL_COLOR,
+          color: TAG_CATEGORY_CSS.material, // Eje B, categoría material (Fase 12e)
           wordWrap: { width: DESCRIPTION_WIDTH },
         })
         .setOrigin(0, 0),

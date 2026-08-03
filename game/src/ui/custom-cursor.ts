@@ -2,7 +2,7 @@ import type Phaser from "phaser";
 
 import pointerDefaultUrl from "../../assets/sprites/ui/cursor/pointer_c_shaded.png?url";
 import handPointUrl from "../../assets/sprites/ui/cursor/pointer_c_shaded.png?url";
-import targetUrl from "../../assets/sprites/ui/cursor/target_a.png?url";
+import targetUrl from "../../assets/sprites/ui/cursor/target_round_b.png?url";
 import wrenchUrl from "../../assets/sprites/ui/cursor/tool_wrench.png?url";
 import disabledUrl from "../../assets/sprites/ui/cursor/cursor_disabled.png?url";
 import busyUrl from "../../assets/sprites/ui/cursor/cursor_busy.png?url";

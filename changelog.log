@@ -2656,3 +2656,55 @@ raycast/erase. `tsc`/`vite build` limpios, 19 tests verdes. Smoke: pendiente de 
 instante + apagado a 0).
 Razón: cerrar 12d con el control de accesibilidad decidido (slider en Opciones, no botón de HUD) y la
 optimización que el plan marcaba como parte del alcance, no opcional.
+
+[2026-07-31] Fase 12e — Contrato de semántica de color de diagnóstico. CIERRA Fase 12e.
+Detalle: `game/src/render/palette.ts` gana el contrato canónico de color de crisis (Eje A):
+`CRISIS_FATAL_COLOR` (rojo 0xe0483f) / `CRISIS_WARNING_COLOR` (ámbar 0xe0a33f) / `CRISIS_SAFE_COLOR`
+(verde 0x64dc78) / `INFO_NEUTRAL_COLOR` (cian 0x9fd8ff), con espejos CSS y helper `hexToCss`. Consolida
+los 3 hex de rojo y el ámbar reusado 7+ veces: `healthFractionColor`, `LED_ACTIVE_TINT`,
+`CORE_LOOP_MODE_COLORS`, `COMPONENT_CONDITION_TINT.jammed`, `STRUCTURAL_LAYER_COLOR`, `TIMER_TEXT_COLORS`,
+`SELECTED_CELL_COLOR`, `OBJECTIVE_DONE_COLOR` y `SEALED_VALVE_COLOR` ahora derivan del contrato.
+`SCREEN_ALERT_TINT` (0x8a0f0f) se conserva y re-documenta como variante oscura de relleno de `CRISIS_FATAL`.
+Segundo eje ortogonal (categoría de tag): `TAG_CATEGORY_COLORS`/`_CSS` (funcional azul-acero / material
+bronce), aplicado en `mission-tooltip.ts` e `install-picker-modal.ts` (antes texto plano). El químico ya
+vivía en `CHEMICAL_TAG_COLORS`. `notification-center.ts` deja su tabla local y consume el contrato. Nuevo
+`palette.contract.test.ts` (7 tests) como guardia de regresión: el LED nunca vuelve a verde (regresión raíz
+de la deuda #15), los dos ejes no colisionan. `tsc --noEmit` limpio, 26 tests de /game verdes. Smoke visual
+in-game: pendiente de playtest del operador (hover de tags coloreados, HUD/LED/notificaciones/timer bajo el
+contrato).
+Decisiones (ciclo de preguntas con el operador): (1) el verde SIGUE siendo "seguro" — no se adopta el
+cian/blanco literal de FTL para "seguro" (recolor invasivo descartado); cian/blanco queda como canal
+informativo frío. (2) Contrato + consolidación de hex, no solo corregir inversiones. (3) El LED solo se
+re-etiqueta (ámbar=WARNING), sin estado rojo ni lectura de umbral — eso sigue diferido a la deuda #15
+(configurabilidad por instancia, ciclo propio). (4) Sí se colorean los tags funcional/material (Eje B),
+como categoría de propiedad, sin reusar los colores del Eje A.
+Razón: cerrar la deuda #15 (semántica de color) y el hallazgo del reporte de comparativas
+(FTL/Barotrauma) con un lenguaje de color único y trazable, evitando la divergencia futura de hex sueltos.
+
+[2026-08-03] Sprite de tripulante en el plano (tinte por personaje + volteo por dirección).
+Detalle: los tokens de tripulación del mapa dejan de ser círculos placeholder y usan el sprite genérico
+`game/assets/sprites/crew/tripulante.png` (128×246, mira a la izquierda). Nuevo módulo
+`game/src/render/crew-sprite.ts`: `preloadCrewSprite` carga el PNG crudo; `ensureCrewTintTexture` genera UNA
+vez una versión GRIS CLARA en un `CanvasTexture` (luminancia Rec.601 empujada a ~[96,255], alfa preservado)
+para que `setTint` multiplicativo rinda el color de cada personaje NÍTIDO — sobre el amarillo original del
+traje el tinte salía apagado. `initCrewTokens` (`floorplan-scene.ts`) instancia un `Image` teñido con
+`CREW_TOKEN_COLORS[index]` (misma identidad por índice que antes) a `CREW_TOKEN_HEIGHT_PX=30` conservando
+aspecto. El campo `dot` del mapa `crewTokens` pasa de `Arc` a `Image`; `flashCrewToken` deja de usar `.radius`
+(usa `displayHeight`) y el pulso de escala pasa a RELATIVO (×1.4 sobre la escala fraccional de `setDisplaySize`,
+no 1.4 absoluto que reventaría el sprite). Volteo "mira hacia donde camina": función pura `faceX` (sprite mira
+a la izquierda ⇒ ir a la derecha voltea) aplicada por `faceHopTarget` en `chainHops` y `stepAsideCrewToken`,
+solo sobre tokens con `setFlipX` (los enemigos `Rectangle` quedan no-op) y sin tocar `hop-movement.ts` (flipX
+es independiente del stretch de `scaleX`). `crew-portrait-registry.ts` excluye `tripulante` del glob de
+retratos por-nombre para no crear una textura de retrato inútil.
+Seguimiento (mismo día): el operador reemplazó el PNG por una versión en escala de grises (la generación gris de
+`ensureCrewTintTexture` sigue aplicando su realce de brillo, robusta ante fuente color o gris). Además, como el
+retrato genérico no distingue quién es quién en la TIRA de tripulantes, `crew-strip.ts` gana una FRANJA de
+identidad de color (`IDENTITY_BAR_WIDTH=6`) en el borde izquierdo de cada tarjeta, SIEMPRE visible y con el mismo
+`CREW_TOKEN_COLORS[index]` que el token del mapa — tira y plano quedan ligados por color.
+Test `crew-sprite.test.ts` (3 casos de `faceX`). `tsc --noEmit` limpio, 29 tests de /game verdes, `vite build` OK.
+Smoke visual in-game (tinte vívido + volteo al mover der/izq + franja de color en la tira): pendiente de playtest.
+Decisiones (ciclo de preguntas con el operador): (1) alcance solo mapa, sin tocar la tira UI. (2) para el tinte
+fiel, se genera la base gris por código en runtime (no hay ImageMagick/sharp; `sips` no desatura con alfa) — el
+operador aprobó que yo arme la versión gris.
+Razón: dar identidad visual real a la tripulación en el plano (sprite + color por personaje) y feedback de
+dirección de marcha, reemplazando el placeholder de círculo.

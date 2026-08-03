@@ -55,7 +55,7 @@
    Resuelto: `handleWireModeClick` (`mission-interaction-controller.ts`) reproduce `AUDIO_KEYS.mapCellSelect` al
    clickear un nodo válido (seleccionar origen, deseleccionar o confirmar destino).
 7. El modo pantalla completa queda en negro sin errores en la consola.
-8. 
+
 
 
 ## Fine-tunning
@@ -69,6 +69,11 @@
   Resuelto: `attachHoverJuice` (`game/src/ui/ui-effects.ts`) engancha un tween sutil de escala en
   `pointerover`/`pointerout` + pulso al `pointerdown`, aplicado en el único punto `createKenneyButton`, así que
   todos los botones de menú y de misión lo heredan.
+* La pantalla de selección de tripulantes al inicio de la campaña debe mejorarse. Debemos mostrar fotos de los tripulantes en una tarjeta por cada uno, donde también damos su nombre, personalidad, role, y una descripción. Esto es flavor, pero le da personalidad al juego.
+* La pantalla de selección de arquetipo de nave debe mostrar datos de cada nave, por cada una deberiamos tener: nombre (no del arquetipo, sino de la nave), una pequeña imagen exterior para darle color a la elección, su arquetipo y una descripción del arquetipo con los + y los - (ej: + armamento, - sensores, etc)
+* Los componentes cableables tienen un punto arriba cuando se ve la capa de señales, que los tapa por completo. Ese punto no parece tener ningún sentido, por lo que habría que removerlo.
+* Las capas deberían comenzar todas en off y al estar en off no deberían verse, sin transparentes como se ven ahora.
+* El cuadro contextual de acción que aparece cuando se clickea en una celda del mapa debe poder cerrarse con ESC y al hacerle click en el fondo del mapa (fuera de la nave).
 
 ## Deuda técnica detectada (fuera de alcance de la fase en curso)
 
@@ -225,7 +230,8 @@ dónde, y qué costaría arreglarlo.
     sin verificación visual, `chapter-01-primer-aviso.ts`). Autorar los `senal` de esos arquetipos cuando
     entren en testeo real. Intra-sección nunca requiere conducto.
 
-15. **MVP de "componentes configurables" pedido explícitamente por el operador — fuera de alcance de la
+15. ⚠️ PARCIALMENTE RESUELTO (Fase 12e: semántica de color; configurabilidad por instancia SIGUE diferida).
+    **MVP de "componentes configurables" pedido explícitamente por el operador — fuera de alcance de la
     Subfase 11h, se planifica en otra sesión.** Playtest de la fuga de Cap.1: el Indicador LED se enciende
     en verde (`LED_ACTIVE_TINT`) al detectar la fuga, mismo verde que el resto de la paleta reserva para
     "todo bien" — semánticamente al revés para una alarma. El fix acotado de esta subfase fue cambiar el
@@ -243,6 +249,12 @@ dónde, y qué costaría arreglarlo.
     `VelocityLevel` del dominio kinetics/MAG, Fase 11a), así que graduar el LED requiere antes decidir de
     dónde sale ese nivel para el caso general, no solo para fuentes cinéticas. 12a sí entregó el sistema de
     luces aditivas (`game/src/particles/effects/dynamic-light.ts`) que un LED graduado futuro reutilizaría.
+    **Resuelto en Fase 12e (solo la semántica de color)**: el LED activo ahora deriva de `CRISIS_WARNING_COLOR`
+    del contrato de color único (`game/src/render/palette.ts`, Eje A), y un test de regresión
+    (`palette.contract.test.ts`) impide que vuelva a verde. Lo que SIGUE diferido a su propio ciclo de preguntas:
+    la configurabilidad por instancia (elegir color y condición de disparo `>`/`<`/`=`, con bump de
+    `schemaVersion` y UI de configuración) y que el LED lea el valor numérico real por umbral — 12e mantuvo el
+    LED binario ON(ámbar)/OFF(gris) a propósito, solo re-etiquetando su color dentro del contrato.
 
 16. **`CombustionEvent`/reacciones químicas no tienen ningún llamador de producción en `MissionRuntime`
     (detectado en Fase 12a).** Igual que `OverloadRule` antes de esta fase, `ReactionResolver`/las reglas de

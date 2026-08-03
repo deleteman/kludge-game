@@ -52,6 +52,13 @@ import { SHIP_MAP_URLS, TILESET_IMAGE_KEY } from "../render/tile-layer-registry.
 import { PARTICLE_TEXTURE_URLS } from "../particles/particle-texture-registry.js";
 import { preloadComponentSprites } from "../render/component-sprite-registry.js";
 import { preloadCrewPortraits } from "../render/crew-portrait-registry.js";
+import {
+  preloadCrewSprite,
+  ensureCrewTintTexture,
+  faceX,
+  CREW_SPRITE_TINT_TEXTURE,
+  CREW_TOKEN_HEIGHT_PX,
+} from "../render/crew-sprite.js";
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
 import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
@@ -351,7 +358,7 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly crewTokens = new Map<
     CrewActorId,
     {
-      readonly dot: Phaser.GameObjects.Arc;
+      readonly dot: Phaser.GameObjects.Image;
       readonly label: Phaser.GameObjects.Text;
       readonly workingRing: Phaser.GameObjects.Arc;
       /** Anillo estático que marca al tripulante SELECCIONADO en el panel (playtest #11) — distinto del `workingRing` pulsante. */
@@ -463,6 +470,7 @@ export class FloorplanScene extends Phaser.Scene {
     }
     preloadComponentSprites(this);
     preloadCrewPortraits(this);
+    preloadCrewSprite(this);
     preloadUiAssets(this);
     preloadAudioAssets(this);
   }
@@ -2477,19 +2485,21 @@ export class FloorplanScene extends Phaser.Scene {
   // --- Tokens de tripulación (persistentes, para poder animar el salto) ---
 
   private initCrewTokens(): void {
+    // Base gris tint-ready del sprite genérico (idempotente): sin ella los
+    // tokens caerían a la textura cruda amarilla sin identidad por personaje.
+    ensureCrewTintTexture(this);
     this.mission.activeCrew.forEach((actor, index) => {
       const color = CREW_TOKEN_COLORS[index % CREW_TOKEN_COLORS.length]!;
       const sectionId = this.mission.scheduler.getActor(actor.id)?.currentSectionId;
       const pos = this.pixelPositionForSection(sectionId);
 
-      // Token más grande y con borde de contraste fijo (ajuste post-playtest
-      // #3): un círculo de relleno plano de 7px podía perderse contra tiles
-      // de color parecido — el stroke oscuro garantiza contraste sin
-      // depender de la paleta de fondo.
-      const dot = this.add
-        .circle(pos.x, pos.y, 11, color)
-        .setStrokeStyle(2, 0x0a0a0f, 1)
-        .setDepth(RENDER_DEPTH.crewEntity);
+      // Sprite genérico de tripulante teñido con el color del personaje
+      // (reemplaza el círculo placeholder). El PNG mira a la izquierda; el
+      // volteo por dirección de marcha lo maneja `chainHops`/`stepAside` con
+      // `faceX`. Ancho derivado de la altura conservando el aspecto del PNG.
+      const dot = this.add.image(pos.x, pos.y, CREW_SPRITE_TINT_TEXTURE).setDepth(RENDER_DEPTH.crewEntity);
+      dot.setDisplaySize(CREW_TOKEN_HEIGHT_PX * (dot.width / dot.height), CREW_TOKEN_HEIGHT_PX);
+      dot.setTint(color);
       this.markAsWorldObject(dot);
 
       // Anillo de "trabajando" (ajuste post-playtest #3): visible mientras
@@ -2764,9 +2774,22 @@ export class FloorplanScene extends Phaser.Scene {
     // para el resto de llamadas a `chainHops`).
     if (signature === CREW_SIGNATURE) {
       this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
+      this.faceHopTarget(token.dot, next.x);
     }
     const tween = hopMove(this, token.dot, { x: token.dot.x, y: token.dot.y }, next, cadence, signature, perHopMs);
     tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
+  }
+
+  /**
+   * Voltea el token para que "mire hacia donde camina" (`faceX`): el sprite de
+   * tripulante mira a la izquierda por defecto → al ir a la derecha se voltea.
+   * No-op en tokens sin `setFlipX` (enemigos = `Rectangle`), así que es seguro
+   * llamarlo sobre el `HopTarget` genérico.
+   */
+  private faceHopTarget(target: HopTarget, toX: number): void {
+    const flippable = target as { flipX?: boolean; setFlipX?: (value: boolean) => unknown };
+    if (typeof flippable.setFlipX !== "function") return;
+    flippable.setFlipX(faceX(target.x, toX, flippable.flipX ?? false));
   }
 
   private cellCenterPx(cell: GridPosition): { x: number; y: number } {
@@ -2795,7 +2818,9 @@ export class FloorplanScene extends Phaser.Scene {
     const aside = this.adjacentWalkableCell(currentCell);
     if (!aside) return;
     this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
-    hopMove(this, token.dot, from, this.cellCenterPx(aside), this.cadenceForActor(actorId), CREW_SIGNATURE);
+    const asidePx = this.cellCenterPx(aside);
+    this.faceHopTarget(token.dot, asidePx.x);
+    hopMove(this, token.dot, from, asidePx, this.cadenceForActor(actorId), CREW_SIGNATURE);
   }
 
   /** Primer vecino ortogonal transitable de `cell`, o `undefined` si no hay grilla / ninguno lo es. */
@@ -3205,11 +3230,19 @@ export class FloorplanScene extends Phaser.Scene {
     const token = this.crewTokens.get(actorId);
     if (!token) return;
     const flash = this.add
-      .circle(token.dot.x, token.dot.y, token.dot.radius + 4, 0xe0483f, 0.6)
+      .circle(token.dot.x, token.dot.y, token.dot.displayHeight / 2 + 4, 0xe0483f, 0.6)
       .setDepth(RENDER_DEPTH.effect);
     this.markAsWorldObject(flash);
     this.tweens.add({ targets: flash, alpha: 0, scale: 1.8, duration: 320, onComplete: () => flash.destroy() });
-    this.tweens.add({ targets: token.dot, scale: 1.4, duration: 90, yoyo: true });
+    // Pulso RELATIVO a la escala en reposo (el sprite usa una escala fraccional
+    // de `setDisplaySize`, no 1): multiplicar por 1.4, no fijar 1.4 absoluto.
+    this.tweens.add({
+      targets: token.dot,
+      scaleX: token.dot.scaleX * 1.4,
+      scaleY: token.dot.scaleY * 1.4,
+      duration: 90,
+      yoyo: true,
+    });
   }
 
   /**

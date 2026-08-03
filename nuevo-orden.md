@@ -167,11 +167,13 @@ que otros ítems diferidos de este documento (ver Subfase 11h → 12a → "Poten
 
 
 
-#### Subfase 12e: Contrato de Semántica de Color de Diagnóstico
+#### Subfase 12e: Contrato de Semántica de Color de Diagnóstico ✅ CERRADA (2026-07-31)
 
 Ítem de pulido sensorial surgido de la evaluación de comparativas (deuda `PENDIENTES_OBSERVACIONES.md` #15). Es su propia subfase porque 12a ya está cerrada y este es un contrato transversal, no un ajuste puntual de una pieza.
 
 * **Contrato de color único:** Definir un lenguaje de color coherente para el estado de crisis (rojo = fatal/sin O2, ámbar = escalable, cian/blanco = seguro — la tabla de diagnóstico de FTL/Barotrauma) y auditar `palette.ts`, el Indicador LED (11h, hoy parcheado a ámbar caso por caso), el HUD de estado (11g) y los tags contra ese contrato. Hoy el verde reservado a "todo bien" se reusaba para alarmas — semánticamente al revés. Al ser transversal, toca varias superficies ya entregadas (LED, HUD, tags), de ahí que sea un cierre de consistencia y no obra nueva de una pieza.
+
+  **Cerrada:** contrato canónico en `palette.ts` (Eje A: `CRISIS_FATAL/WARNING/SAFE_COLOR` + `INFO_NEUTRAL_COLOR`, con espejos CSS); consolidados los 3 rojos y el ámbar reusado; `healthFractionColor`/LED/core-loop/condición/estructura/timer/válvula derivan del contrato; `notification-center` deja su tabla local. Segundo eje ortogonal de categoría de tag (`TAG_CATEGORY_COLORS`) aplicado a tags funcional/material (antes texto plano). Test de regresión `palette.contract.test.ts` (el LED nunca vuelve a verde). Decisión: el verde SIGUE siendo "seguro" (no se adopta el cian/blanco literal de FTL); el LED solo se re-etiqueta, su estado rojo/umbral sigue diferido a la deuda #15. Smoke visual in-game pendiente de playtest del operador.
 
 
 

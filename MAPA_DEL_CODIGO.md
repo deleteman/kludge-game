@@ -398,3 +398,36 @@
 ## `game/src/meta/game-settings.types.ts` + `options-scene.ts` + `i18n/{es,en}.ts` (modificado, Fase 12d.4)
 
 - `GameSettings.shadowIntensity` (default 1, clamp01); tercer slider "Sombras" en Opciones (clave `ui.menu.options.shadow-intensity`), hidratado/persistido con los de CRT.
+
+## `game/src/render/palette.ts` (modificado, Fase 12e)
+
+- Contrato de semántica de color de crisis (Eje A): `CRISIS_FATAL/WARNING/SAFE_COLOR` + `INFO_NEUTRAL_COLOR` (rojo/ámbar/verde/cian) como fuente canónica, con espejos CSS (`*_CSS`) y helper `hexToCss`. Consolida los 3 hex de rojo y el ámbar reusado; `healthFractionColor`, `LED_ACTIVE_TINT`, `CORE_LOOP_MODE_COLORS`, `COMPONENT_CONDITION_TINT.jammed`, `STRUCTURAL_LAYER_COLOR`, `TIMER_TEXT_COLORS`, `SELECTED_CELL_COLOR`, `OBJECTIVE_DONE_COLOR`, `SEALED_VALVE_COLOR` derivan de él.
+- Color por categoría de tag (Eje B, ortogonal): `TAG_CATEGORY_COLORS`/`TAG_CATEGORY_CSS` (funcional azul-acero / material bronce) — antes texto plano. El químico ya vivía en `CHEMICAL_TAG_COLORS`.
+
+## `game/src/render/palette.contract.test.ts` (nuevo, Fase 12e)
+
+- Guardia de regresión del contrato: los cortes de `healthFractionColor`, el LED activo (nunca verde — regresión #15), core-loop, condición/estructura/timer/válvula derivan del Eje A; el Eje B no colisiona con el A ni consigo mismo.
+
+## `game/src/ui/widgets/notification-center.ts` + `mission-tooltip.ts` + `install-picker-modal.ts` (modificado, Fase 12e)
+
+- `notification-center` consume el contrato (info/success/warning/error → `INFO_NEUTRAL`/`CRISIS_SAFE`/`CRISIS_WARNING`/`CRISIS_FATAL`) en vez de su tabla local. Tooltip y modal de instalación colorean las líneas de tag funcional/material con `TAG_CATEGORY_CSS` (Eje B).
+
+## `game/src/render/crew-sprite.ts` (nuevo, 2026-08-03)
+
+- Sprite genérico de tripulante para los tokens del PLANO (no la tira UI). `preloadCrewSprite` carga el PNG crudo (`crew/tripulante.png`, amarillo, mira a la izquierda); `ensureCrewTintTexture` deriva una vez una base GRIS CLARA en `CanvasTexture` (luminancia empujada a claro, alfa preservado) para que `setTint` rinda el color por personaje nítido. `faceX` (pura, testeada) resuelve el `flipX` de "mira hacia donde camina". `CREW_TOKEN_HEIGHT_PX` fija la altura del token.
+
+## `game/src/render/crew-sprite.test.ts` (nuevo, 2026-08-03)
+
+- 3 casos de `faceX`: derecha ⇒ voltea, izquierda ⇒ no, vertical puro ⇒ conserva la cara.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 2026-08-03)
+
+- `initCrewTokens` usa el `Image` teñido de `crew-sprite.ts` en vez del círculo placeholder; `dot` del mapa `crewTokens` pasa de `Arc` a `Image`. `faceHopTarget` aplica el volteo por dirección en `chainHops`/`stepAsideCrewToken` (no-op en enemigos). `flashCrewToken` adaptado a `Image` (displayHeight en vez de radius, pulso de escala relativo).
+
+## `game/src/render/crew-portrait-registry.ts` (modificado, 2026-08-03)
+
+- Excluye el basename `tripulante` del glob de retratos por-nombre: es el sprite genérico compartido, no un retrato de un tripulante llamado así.
+
+## `game/src/ui/widgets/crew-strip.ts` (modificado, 2026-08-03)
+
+- Cada tarjeta gana una franja de identidad de color (`IDENTITY_BAR_WIDTH`) en el borde izquierdo, siempre visible, con el mismo `CREW_TOKEN_COLORS[index]` que el token del mapa — para distinguir quién es quién sin depender del retrato.
