@@ -50,6 +50,7 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     sectionAtmospheres,
     unpoweredSectionIds,
     overloadedRefs,
+    powerState,
   } = value;
 
   if (!isPlainObject(metadata)) {
@@ -153,5 +154,44 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     (value as { overloadedRefs: unknown }).overloadedRefs = [];
   } else if (!Array.isArray(overloadedRefs) || overloadedRefs.some((entry) => typeof entry !== "string")) {
     throw new BlueprintParseError("Blueprint.overloadedRefs must be an array of strings");
+  }
+
+  // schemaVersion < 6 no tenía presupuesto de energía (Fase 13b) — ausente =
+  // sin asignación/prioridad/cicatriz permanente todavía.
+  if (powerState === undefined) {
+    (value as { powerState: unknown }).powerState = {
+      sectionAllocations: [],
+      instancePriorities: [],
+      permanentlyDisconnectedSectionIds: [],
+    };
+  } else {
+    if (!isPlainObject(powerState)) {
+      throw new BlueprintParseError("Blueprint.powerState must be an object");
+    }
+    const { sectionAllocations, instancePriorities, permanentlyDisconnectedSectionIds } = powerState;
+    if (
+      !Array.isArray(sectionAllocations) ||
+      sectionAllocations.some(
+        (entry) => !isPlainObject(entry) || typeof entry.sectionId !== "string" || typeof entry.units !== "number",
+      )
+    ) {
+      throw new BlueprintParseError("Blueprint.powerState.sectionAllocations must be an array of {sectionId, units}");
+    }
+    if (
+      !Array.isArray(instancePriorities) ||
+      instancePriorities.some(
+        (entry) => !isPlainObject(entry) || typeof entry.instanceId !== "string" || typeof entry.priority !== "number",
+      )
+    ) {
+      throw new BlueprintParseError(
+        "Blueprint.powerState.instancePriorities must be an array of {instanceId, priority}",
+      );
+    }
+    if (
+      !Array.isArray(permanentlyDisconnectedSectionIds) ||
+      permanentlyDisconnectedSectionIds.some((entry) => typeof entry !== "string")
+    ) {
+      throw new BlueprintParseError("Blueprint.powerState.permanentlyDisconnectedSectionIds must be an array of strings");
+    }
   }
 }

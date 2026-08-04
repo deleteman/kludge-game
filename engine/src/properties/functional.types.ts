@@ -25,6 +25,13 @@ export interface ActuatorProperty {
   readonly power: number;
   readonly cadence: number;
   readonly directional: boolean;
+  /**
+   * Costo eléctrico en unidades de presupuesto de energía (Fase 13b,
+   * `engine/src/power/`), distinto de `power` (intensidad mecánica de la
+   * actuación) — ambos coexisten. Ausente o `0` = no consume del presupuesto,
+   * siempre alimentado (retrocompatible con todo el catálogo anterior a 13b).
+   */
+  readonly powerDraw?: number;
 }
 
 /**
@@ -41,6 +48,13 @@ export interface ReservoirProperty {
   readonly resourceType: ResourceType;
   readonly capacity: number;
   readonly dischargeRate: number;
+  /**
+   * Unidades discretas de presupuesto que aporta esta fuente al sistema de
+   * energía (Fase 13b, `engine/src/power/`), solo relevante cuando
+   * `resourceType === "E"` — distinto de `capacity` (reservorio físico).
+   * Ausente = no aporta al presupuesto (ej. reservorios de G/L/T).
+   */
+  readonly powerUnits?: number;
 }
 
 export interface ConductorProperty {

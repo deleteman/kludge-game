@@ -1,8 +1,9 @@
 import type { ShipArchetype } from "../floorplan/floorplan.types.js";
 import { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "../floorplan/initial-ship-state.js";
+import { CANONICAL_SHIP_FLOORPLANS } from "../floorplan/canonical-ships.js";
 import { CREW_CAPACITY_BY_ARCHETYPE, selectActiveCrew, type CrewRoster } from "../crew/crew-roster.js";
 import type { CrewActor } from "../crew/crew-actor.types.js";
-import type { Blueprint } from "../blueprint/blueprint.types.js";
+import type { Blueprint, PlacedComponentInstance } from "../blueprint/blueprint.types.js";
 import {
   CHAPTER_01_BY_ARCHETYPE,
   CHAPTER_01_INITIAL_ATOMIC_STOCK,
@@ -10,6 +11,12 @@ import {
 } from "../crisis/campaign/chapter-01-primer-aviso.js";
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { totalPowerBudget } from "../power/power-source.js";
+import { distributeBudgetEvenly } from "../power/power-allocation.js";
+
+/** Registro de definiciones para resolver `powerUnits` al sembrar la asignación inicial (Fase 13b). */
+const COMPONENT_REGISTRY = buildComponentCatalog().registry;
 
 export interface CreateNewCampaignSaveInput {
   readonly id: CampaignSaveId;
@@ -44,37 +51,57 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
   // la construcción del estado inicial en dos sitios.
   const chapter01Seed = CHAPTER_SEED_BY_ID.get(CHAPTER_01_BY_ARCHETYPE[input.archetype].id);
 
+  const placedComponents: ReadonlyArray<PlacedComponentInstance> = [
+    ...INITIAL_SHIP_STATE_BY_ARCHETYPE[input.archetype],
+    // Attrezzo ambiental de la nave (capa Tiled `semillas`, sin `chapterId`):
+    // objetos compuestos desarmables presentes desde el arranque, algunos
+    // resuelven crisis futuras, otros son solo exploración libre.
+    ...BASE_COMPONENT_SEEDS_BY_ARCHETYPE[input.archetype],
+    // Válvula atascada + sensor + panel de compuerta (dueños de los nodos del 2º paso).
+    ...(chapter01Seed?.components ?? []),
+  ];
+
+  // Fase 13b: toda campaña nueva arranca con la nave totalmente alimentada
+  // (decisión del operador) — se reparte a partes iguales entre las secciones
+  // reales el presupuesto total que aportan las fuentes RES(E) ya sembradas,
+  // en vez de dejar `sectionAllocations` vacío (lo que dejaría toda sección a
+  // oscuras desde el primer tick, un cambio de dificultad no solicitado sobre
+  // Cap.1/2 ya jugables). El jugador retriagea con el dial cuando la crisis
+  // se lo exija, no desde el arranque.
+  const initialSectionAllocations = distributeBudgetEvenly(
+    totalPowerBudget(placedComponents, COMPONENT_REGISTRY),
+    CANONICAL_SHIP_FLOORPLANS[input.archetype].sections.map((section) => section.id),
+  );
+
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 5,
+      schemaVersion: 6,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
       createdAt: now,
       updatedAt: now,
     },
-    placedComponents: [
-      ...INITIAL_SHIP_STATE_BY_ARCHETYPE[input.archetype],
-      // Attrezzo ambiental de la nave (capa Tiled `semillas`, sin `chapterId`):
-      // objetos compuestos desarmables presentes desde el arranque, algunos
-      // resuelven crisis futuras, otros son solo exploración libre.
-      ...BASE_COMPONENT_SEEDS_BY_ARCHETYPE[input.archetype],
-      // Válvula atascada + sensor + panel de compuerta (dueños de los nodos del 2º paso).
-      ...(chapter01Seed?.components ?? []),
-    ],
+    placedComponents,
     reservoirContents: [],
     // Nodos emisor/receptor SIN cable — el jugador los conecta con el modo cableado.
     signalGraph: { nodes: [...(chapter01Seed?.signalNodes ?? [])], edges: [] },
     // Sin snapshot todavía: `MissionAtmosphereRuntime` siembra aire estándar por
     // sección al no encontrar una entrada (Fase 11b).
     sectionAtmospheres: [],
-    // Fase 12a: sección sembrada sin energía (attrezzo, solo Exploración por
-    // ahora) — cicatriz REAL desde el arranque, para que la luz ambiental de
-    // "sección sin energía" sea verificable jugando, no solo en tests.
-    unpoweredSectionIds: CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]
-      ? [CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]!]
-      : [],
+    // Fase 13b: `unpoweredSectionIds` pasa a ser un campo DERIVADO, recalculado
+    // por `MissionPowerRuntime` en la primera pasada síncrona al arrancar la
+    // misión — se siembra vacío aquí. La cicatriz REAL (attrezzo, solo
+    // Exploración por ahora) vive en `powerState.permanentlyDisconnectedSectionIds`.
+    unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: {
+      sectionAllocations: initialSectionAllocations,
+      instancePriorities: [],
+      permanentlyDisconnectedSectionIds: CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]
+        ? [CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]!]
+        : [],
+    },
   };
 
   return {

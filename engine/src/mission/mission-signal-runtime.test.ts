@@ -37,6 +37,7 @@ function blueprintWith(graph: SignalGraph<PlacedComponentInstanceId>): Blueprint
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
   };
 }
 
@@ -169,6 +170,33 @@ describe("mission: MissionSignalRuntime", () => {
 
     runtime.tick(tickOf(1));
     expect(runtime.outputOf(id("sensor"))).toBe(true);
+  });
+
+  it("fuerza output=false para una instancia sin alimentación por triaje de prioridad (Fase 13b), aunque su sección tenga presupuesto", () => {
+    const sensor = node("sensor", "emitter");
+    const ship = new MutableShipState(blueprintWith({ nodes: [sensor], edges: [] }));
+    const SECTION = "bahia-carga" as SectionId;
+    const shipFloorplan: ShipFloorplan = {
+      id: "fixture",
+      archetype: "investigacion",
+      nameKey: "ship.fixture",
+      gridSize: { width: 1, height: 1 },
+      sections: [{ id: SECTION, nameKey: "section.fixture", cells: [{ x: 0, y: 0 }] }],
+      conduits: [],
+      anchors: [],
+      componentSeeds: [],
+    };
+    const runtime = new MissionSignalRuntime(
+      ship,
+      allEmittersActive(ship),
+      undefined,
+      { shipFloorplan, unpoweredSections: () => new Set() },
+      { isInstancePowered: (instanceId) => instanceId !== owner("sensor") },
+    );
+
+    runtime.tick(tickOf(1));
+
+    expect(runtime.outputOf(id("sensor"))).toBe(false);
   });
 
   it("allEmittersActive activa todos los emisores y ningún receptor", () => {

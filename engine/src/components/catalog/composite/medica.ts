@@ -284,7 +284,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "bateria-respaldo-bajo-consumo" as ComponentId,
     name: "Batería de respaldo bajo consumo",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 60, dischargeRate: 5 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 60, dischargeRate: 5, powerUnits: 1 }],
       material: { CE: "A" },
     },
     recipe: {

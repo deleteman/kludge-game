@@ -17,6 +17,8 @@ import type { WalkableGrid } from "./walkable-grid.js";
 import {
   ANCHOR_COLOR,
   CONDUIT_COLORS,
+  ENERGY_LAYER_ALPHA,
+  ENERGY_LAYER_COLOR,
   GRID_LINE_COLOR,
   SEALED_VALVE_COLOR,
   SECTION_FILL_ALPHA,
@@ -28,12 +30,12 @@ import {
 
 /**
  * Capas togglables del HUD del plano (Fase 11f, GDD §10): las 4 `ConduitKind`
- * reales + `"estructural"` — desde la Fase 12a, `"estructural"` tiñe cada
- * sección según su peor RE agregado (`drawStructuralLayer`); antes era un
- * botón sin overlay real (ver `PENDIENTES_OBSERVACIONES.md`, punto 11).
+ * reales + `"estructural"` (Fase 12a, tiñe cada sección según su peor RE
+ * agregado, `drawStructuralLayer`) + `"energia"` (Fase 13b, heatmap de
+ * demanda vs. suministro del presupuesto de energía, `drawEnergyLayer`).
  */
-export type FloorplanLayerId = ConduitKind | "estructural";
-export const FLOORPLAN_LAYER_IDS: readonly FloorplanLayerId[] = [...CONDUIT_KINDS, "estructural"];
+export type FloorplanLayerId = ConduitKind | "estructural" | "energia";
+export const FLOORPLAN_LAYER_IDS: readonly FloorplanLayerId[] = [...CONDUIT_KINDS, "estructural", "energia"];
 
 /**
  * Render del plano físico: tile layers reales (Fase 8, `tile-layers.ts`)
@@ -227,6 +229,34 @@ export function drawStructuralLayer(
     const color = STRUCTURAL_LAYER_COLOR[indicator.level];
     if (color === undefined) continue;
     graphics.fillStyle(color, STRUCTURAL_LAYER_ALPHA);
+    for (const cell of section.cells) {
+      graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
+    }
+  }
+}
+
+/**
+ * Capa "energia" (Fase 13b): mismo patrón que `drawStructuralLayer` — función
+ * pura, `clear()` + iterar secciones + `fillRect` por celda. `isDark`/`isDeficit`
+ * son callbacks inyectados por el llamador (mismo desacople de datos que
+ * `indicatorForSection`), en vez de que este módulo de render conozca
+ * `MissionPowerRuntime`.
+ */
+export function drawEnergyLayer(
+  graphics: Phaser.GameObjects.Graphics,
+  floorplan: ShipFloorplan,
+  isDark: (sectionId: SectionId) => boolean,
+  isDeficit: (sectionId: SectionId) => boolean,
+): void {
+  graphics.clear();
+  for (const section of floorplan.sections) {
+    const color = isDark(section.id)
+      ? ENERGY_LAYER_COLOR.dark
+      : isDeficit(section.id)
+        ? ENERGY_LAYER_COLOR.deficit
+        : undefined;
+    if (color === undefined) continue;
+    graphics.fillStyle(color, ENERGY_LAYER_ALPHA);
     for (const cell of section.cells) {
       graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
     }

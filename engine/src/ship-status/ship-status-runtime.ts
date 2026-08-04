@@ -42,6 +42,8 @@ export class ShipStatusQuery {
       atmosphere: aggregateAtmosphere(sections, this.chemicalRegistry),
       lifeSupport: aggregateLifeSupport(sections),
       hullIntegrity: aggregateHullIntegrity(blueprint.placedComponents, this.componentRegistry),
+      // Fase 13b: `unpoweredSectionIds` es ahora un valor real (recalculado
+      // cada tick por `MissionPowerRuntime`), no el flag estático de 11b.
       energy: aggregateEnergy(blueprint.unpoweredSectionIds.length, this.shipFloorplan.sections.length),
     };
   }

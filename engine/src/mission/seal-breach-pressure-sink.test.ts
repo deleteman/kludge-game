@@ -40,6 +40,7 @@ function buildBlueprint(
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
   };
 }
 

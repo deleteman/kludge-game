@@ -179,7 +179,7 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "panel-solar-alta-eficiencia" as ComponentId,
     name: "Panel solar de alta eficiencia",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 150, dischargeRate: 10 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 150, dischargeRate: 10, powerUnits: 3 }],
       material: { CE: "A" },
     },
     recipe: {

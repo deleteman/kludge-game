@@ -71,6 +71,7 @@ function blueprintOf(placedComponents: PlacedComponentInstance[]): Blueprint {
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
   };
 }
 

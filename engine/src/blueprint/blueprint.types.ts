@@ -6,6 +6,7 @@ import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
+import type { PowerState } from "../power/power.types.js";
 
 /**
  * Blueprint schema — PRIMER INTENTO, PROVISIONAL (GDD sección 17: "formato
@@ -62,6 +63,20 @@ import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapsho
  * el motor — `load`/`capacity` son datos scripteados por la crisis
  * (`CrisisDefinition.scriptedOverloads`), mismo criterio narrativo que
  * `condition: "jammed"` sembrado en el capítulo 1.
+ *
+ * Fase 13b: `schemaVersion` 5→6 — se añade `Blueprint.powerState` (dominio
+ * `power/`, presupuesto de energía estilo FTL en unidades discretas). Con
+ * esto, `unpoweredSectionIds` deja de ser la cicatriz autoritativa en sí
+ * misma y pasa a ser un campo DERIVADO: `MissionPowerRuntime` lo recalcula y
+ * reescribe cada tick como la unión de `powerState.permanentlyDisconnectedSectionIds`
+ * (cicatriz real, ej. sacrificio del Cap.5) y las secciones con déficit de
+ * asignación viva en la sesión actual. Se mantiene un único campo público
+ * (decisión explícita del operador) para no duplicar la superficie que ya
+ * consumen `MissionSignalRuntime`/UI — la distinción entre cicatriz
+ * permanente y triaje táctico de sesión vive puertas adentro, en
+ * `powerState.permanentlyDisconnectedSectionIds`, para que un apagón elegido
+ * por el jugador en una misión no se filtre como cicatriz definitiva del
+ * guardado de campaña.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -114,8 +129,17 @@ export interface Blueprint {
   readonly signalGraph: SignalGraph<PlacedComponentInstanceId>;
   /** Atmósfera viva por sección al momento de guardar (Fase 11b). */
   readonly sectionAtmospheres: ReadonlyArray<SectionAtmosphereSnapshot>;
-  /** Cicatriz de energía (Fase 11b): secciones sin suministro, ver `MissionSignalRuntime`. */
+  /**
+   * Secciones sin suministro eléctrico, ver `MissionSignalRuntime`. Desde la
+   * Fase 13b es un campo DERIVADO: `MissionPowerRuntime` lo recalcula cada
+   * tick como `powerState.permanentlyDisconnectedSectionIds` ∪ secciones con
+   * déficit de asignación viva — no escribir este campo directamente fuera
+   * de ese runtime (para cicatrices permanentes, escribir
+   * `powerState.permanentlyDisconnectedSectionIds`).
+   */
   readonly unpoweredSectionIds: ReadonlyArray<SectionId>;
   /** Cicatriz de sobrecarga (Fase 12a): refs de conducto/reservorio en cortocircuito permanente, ver `MissionOverloadRuntime`. */
   readonly overloadedRefs: ReadonlyArray<PlacedComponentInstanceId>;
+  /** Presupuesto de energía y prioridades del jugador (Fase 13b), ver `power/power.types.ts`. */
+  readonly powerState: PowerState;
 }

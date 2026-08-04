@@ -32,6 +32,7 @@ function shipWith(archetype: (typeof SHIP_ARCHETYPES)[number], edges: Blueprint[
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
   };
 }
 

@@ -514,3 +514,63 @@
 ## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13a)
 
 - Llama `mission.setMotionBlockedQuery(...)` tras `extractWalkableGrid` (adapta `WalkableGrid` al `CellBlockedQuery` del motor). Nuevo listener de `reactionEvents` (mismo patrón que `failureEvents`): dispara `combustionEffect`/`combustionSound` (ya existían, sin llamador real hasta ahora) y extiende el overlay de alerta de pantalla completa a combustión no-débil.
+
+## `engine/src/power/power.types.ts` (nuevo, Fase 13b)
+
+- `PowerState`/`SectionPowerAllocation`/`InstancePowerPriority`/`emptyPowerState()`. Estado dinámico del presupuesto de energía: asignación de unidades por sección, prioridad manual por instancia, y `permanentlyDisconnectedSectionIds` (cicatriz real, distinta del déficit táctico de sesión).
+
+## `engine/src/power/power-source.ts` (nuevo, Fase 13b)
+
+- `totalPowerBudget(placedComponents, componentRegistry)`: suma `powerUnits` de toda instancia RES(E) instalada. "Conectada" = instalada (mismo MVP sin simulación de cableado físico que el resto del dominio de misión).
+
+## `engine/src/power/power-allocation.ts` (nuevo, Fase 13b)
+
+- Reparto en dos niveles, funciones puras testeadas antes de integrar: `allocateSectionBudget` (global→sección), `allocateComponentPower` (sección→componentes, ordena por prioridad con desempate determinista por `instanceId`, consume por `powerDraw`), `reconcilePowerScars` (unión cicatriz permanente + déficit vivo), `distributeBudgetEvenly` (siembra inicial a partes iguales, usada por `campaign-save-factory.ts`).
+
+## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b)
+
+- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`): recalcula el presupuesto cada tick y reescribe `Blueprint.unpoweredSectionIds` solo si cambia. Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`) — reemplaza el objeto inline que antes leía la cicatriz estática directo.
+
+## `engine/src/properties/functional.types.ts` (modificado, Fase 13b)
+
+- `ReservoirProperty.powerUnits?` (unidades de presupuesto de una fuente RES(E)) y `ActuatorProperty.powerDraw?` (costo eléctrico), ambos opcionales/retrocompatibles.
+
+## `engine/src/blueprint/blueprint.types.ts` + `blueprint-serializer.ts` (modificado, Fase 13b)
+
+- `Blueprint.powerState: PowerState` nuevo (`schemaVersion` 5→6). `unpoweredSectionIds` pasa de cicatriz autoritativa a campo DERIVADO (recalculado por `MissionPowerRuntime`); sigue siendo el único campo público que consumen `MissionSignalRuntime`/UI. Serializer valida/defaultea `powerState` para saves pre-v6.
+
+## `engine/src/mission/mission-signal-runtime.ts` (modificado, Fase 13b)
+
+- Nueva interfaz `InstancePowerSource` (gating por instancia, más fino que `PowerScarSource` por sección) — `outputOf()` fuerza `false` si la instancia dueña del nodo no está alimentada, aunque su sección sí tenga presupuesto.
+
+## `engine/src/save/campaign-save-factory.ts` (modificado, Fase 13b)
+
+- Siembra `powerState.sectionAllocations` con `distributeBudgetEvenly` (reparto a partes iguales del presupuesto real) en vez de vacío — decisión del operador para no dejar toda sección sin energía desde el arranque de una partida nueva, antes de que exista la UI del dial. `permanentlyDisconnectedSectionIds` reemplaza la siembra directa de `unpoweredSectionIds` para la cicatriz del Cap.1.
+
+## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b)
+
+- Comentarios actualizados: `aggregateEnergy` ya no es MVP-stub, la fórmula no cambió pero `unpoweredSectionIds` ahora es un valor real derivado, no un flag estático.
+
+## `engine/src/components/catalog/{atomic-component-catalog,composite/*}.ts` (modificado, Fase 13b)
+
+- `powerUnits` autorado en las 8 fuentes `RES(E)` reales del catálogo (atomic + 4 composite por arquetipo).
+
+## `game/src/render/palette.ts` + `floorplan-renderer.ts` (modificado, Fase 13b)
+
+- `ENERGY_LAYER_COLOR`/`ENERGY_LAYER_ALPHA` (deriva del Eje A de color). `FloorplanLayerId` gana `"energia"`; `drawEnergyLayer()` (plantilla de `drawStructuralLayer`) pinta rojo/ámbar por sección según déficit.
+
+## `game/src/ui/widgets/power-allocation-dial.ts` (nuevo, Fase 13b)
+
+- `renderPowerAllocationDial`: dial +1/-1 por sección, primer control tipo stepper del proyecto (par de `createKenneyButton` + texto central), gateado a modo pausa.
+
+## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
+
+- `renderPowerPriorityList`: inspector de prioridad de una sección, lista con botones ↑/↓ por fila — opción más simple del diseño cerrado, sin drag-and-drop.
+
+## `game/src/mission/mission-runtime.ts` (modificado, Fase 13b)
+
+- `powerRuntime: MissionPowerRuntime` nuevo, registrado en el core loop antes de `signalRuntime`. Getters/setters para la UI: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13b)
+
+- Redibuja la capa "energia" cada frame (mismo criterio que "estructural"). Dial/inspector de prioridad se reconstruyen bajo demanda (toggle de capa, cambio de modo, cada click) en vez de por frame — `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`.

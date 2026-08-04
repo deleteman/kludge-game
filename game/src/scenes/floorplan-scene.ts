@@ -28,6 +28,7 @@ import type {
 
 import { t } from "../i18n/i18n.js";
 import {
+  drawEnergyLayer,
   drawStructuralLayer,
   FLOORPLAN_LAYER_IDS,
   renderFloorplan,
@@ -140,6 +141,8 @@ import type { Segment } from "../render/shadows/visibility-polygon.js";
 import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
+import { renderPowerAllocationDial } from "../ui/widgets/power-allocation-dial.js";
+import { renderPowerPriorityList } from "../ui/widgets/power-priority-list.js";
 import { createScrollableText } from "../ui/widgets/scrollable-text.js";
 import { CustomCursor } from "../ui/custom-cursor.js";
 import { registerCrtPipeline, type CrtPostFxPipeline } from "../render/crt-pipeline.js";
@@ -358,6 +361,11 @@ export class FloorplanScene extends Phaser.Scene {
   private layersButton?: Phaser.GameObjects.GameObject;
   private layerTogglePanel?: Phaser.GameObjects.Container;
   private layerTogglePanelOpen = false;
+  /** Dial +1/-1 por sección (Fase 13b) — visible solo con la capa "energia" activa y en pausa. */
+  private readonly energyDialContainers = new Map<SectionId, Phaser.GameObjects.Container>();
+  /** Inspector de prioridad de energía de UNA sección (Fase 13b) — abierto a la vez, como los demás modales. */
+  private energyPriorityPanel?: Phaser.GameObjects.Container;
+  private energyPriorityPanelSectionId?: SectionId;
   private floorplanRender!: FloorplanRender;
   /** Efecto de flujo animado por conducto (Fase 11f), clave `${a}-${b}-${kind}` — no hay id propio en `ConduitConnection`. */
   private readonly conduitFlowEffects = new Map<string, StateDrivenEffect<ConduitPathFlowState>>();
@@ -718,6 +726,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.createObjectivesButton();
     this.createWorkbenchButton();
     this.createLayersButton();
+    this.redrawEnergyControls();
 
     // El fondo del strip lateral ya NO es un rectángulo único: cada panel (cola
     // de tripulación, acciones) trae su propia caja delimitada (playtest #16),
@@ -1032,6 +1041,14 @@ export class FloorplanScene extends Phaser.Scene {
     // igual que la cicatriz de energía.
     drawStructuralLayer(this.floorplanRender.conduitLayers.estructural, this.mission.shipFloorplan, (sectionId) =>
       this.mission.sectionHullIntegrity(sectionId),
+    );
+    // Capa "energia" del HUD (Fase 13b): heatmap de demanda vs. suministro por
+    // sección — mismo criterio "barata, se redibuja siempre" que estructural.
+    drawEnergyLayer(
+      this.floorplanRender.conduitLayers.energia,
+      this.mission.shipFloorplan,
+      (sectionId) => this.mission.blueprint.unpoweredSectionIds.includes(sectionId),
+      (sectionId) => this.mission.sectionPowerDemand(sectionId) > this.mission.sectionPowerAllocation(sectionId),
     );
     // Overlay de alerta de pantalla completa (Fase 12a): dominio del HUD de
     // estado en crítico, un `overload` violento reciente, o el INICIO de la
@@ -1707,6 +1724,8 @@ export class FloorplanScene extends Phaser.Scene {
     // quedó corto a propósito para no desbordar sobre el vecino, así que el
     // aviso "próximamente" se comunica acá en vez de en el texto del botón.
     if (layer === "estructural") this.setStatus(t("ui.floorplan.layer.estructural-hint"));
+    // Fase 13b: el dial/inspector de energía solo se muestran con esta capa activa.
+    if (layer === "energia") this.redrawEnergyControls();
   }
 
   private applyLayerAlpha(layer: FloorplanLayerId): void {
@@ -1716,6 +1735,106 @@ export class FloorplanScene extends Phaser.Scene {
     // El grafo de señal (nodos + cables) es parte de la capa `señales` (Fase 11f.3):
     // se atenúa con el mismo toggle, junto a los conductos `senal`.
     if (layer === "senal") this.signalGraphics?.setAlpha(alpha);
+  }
+
+  /**
+   * Dial +1/-1 por sección (Fase 13b): visible solo con la capa "energia"
+   * activa Y en modo pausa (mismo criterio de gating que `createWorkbenchButton`).
+   * Se reconstruye bajo demanda (toggle de capa, cambio de modo, cada click
+   * del propio dial) en vez de cada frame — a diferencia de los redibujos de
+   * `Graphics` (baratos), estos son objetos interactivos reales.
+   */
+  private redrawEnergyControls(): void {
+    for (const container of this.energyDialContainers.values()) {
+      container.destroy();
+    }
+    this.energyDialContainers.clear();
+
+    const shouldShow = this.activeFloorplanLayers.has("energia") && this.mission.coreLoop.mode === "planning";
+    if (!shouldShow) {
+      this.closeEnergyPriorityPanel();
+      return;
+    }
+
+    for (const section of this.mission.shipFloorplan.sections) {
+      const { x, y } = sectionCentroidPx(section);
+      const dial = renderPowerAllocationDial(this.rex, {
+        x,
+        y: y - 14,
+        units: this.mission.sectionPowerAllocation(section.id),
+        enabled: true,
+        onIncrement: () => {
+          this.mission.setSectionPowerUnits(section.id, this.mission.sectionPowerAllocation(section.id) + 1);
+          this.redrawEnergyControls();
+        },
+        onDecrement: () => {
+          this.mission.setSectionPowerUnits(section.id, this.mission.sectionPowerAllocation(section.id) - 1);
+          this.redrawEnergyControls();
+        },
+      });
+      const priorityButton = createKenneyButton(
+        this.rex,
+        x,
+        y + 14,
+        t("ui.floorplan.layer.energia-priority-button"),
+        {
+          width: 90,
+          height: 20,
+          fontSize: "10px",
+          onClick: () => this.openEnergyPriorityPanel(section.id),
+        },
+      );
+      const container = this.add.container(0, 0, [dial, priorityButton]);
+      this.floorplanRender.base.add(container);
+      this.energyDialContainers.set(section.id, container);
+    }
+
+    // Si el panel de prioridad de una sección estaba abierto y esa sección ya
+    // no es visible (capa apagada/salió de pausa), cerrarlo con el resto.
+    if (this.energyPriorityPanelSectionId) {
+      this.openEnergyPriorityPanel(this.energyPriorityPanelSectionId);
+    }
+  }
+
+  private closeEnergyPriorityPanel(): void {
+    this.energyPriorityPanel?.destroy();
+    this.energyPriorityPanel = undefined;
+    this.energyPriorityPanelSectionId = undefined;
+  }
+
+  /** Inspector de prioridad de UNA sección (Fase 13b) — reordenar componentes ↑/↓ fija su prioridad de energía. */
+  private openEnergyPriorityPanel(sectionId: SectionId): void {
+    this.energyPriorityPanel?.destroy();
+    this.energyPriorityPanelSectionId = sectionId;
+
+    const order = this.mission.instancePowerPriorityOrder(sectionId);
+    const rows = order.map((instanceId) => {
+      const instance = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId);
+      const label = (instance && this.nameByComponentId.get(instance.componentDefinitionId as string)) ?? String(instanceId);
+      return { instanceId, label, powered: this.mission.powerRuntime.isInstancePowered(instanceId) };
+    });
+
+    this.energyPriorityPanel = renderPowerPriorityList(
+      this.rex,
+      640,
+      360,
+      rows,
+      {
+        title: t("ui.floorplan.layer.energia-priority-title"),
+        close: t("ui.floorplan.layer.energia-priority-close"),
+        hint: t("ui.floorplan.layer.energia-priority-hint"),
+      },
+      (instanceId) => {
+        this.mission.reorderInstancePriority(sectionId, instanceId, -1);
+        this.openEnergyPriorityPanel(sectionId);
+      },
+      (instanceId) => {
+        this.mission.reorderInstancePriority(sectionId, instanceId, 1);
+        this.openEnergyPriorityPanel(sectionId);
+      },
+      () => this.closeEnergyPriorityPanel(),
+    ).setDepth(RENDER_DEPTH.hudModal);
+    this.markAsHudObject(this.energyPriorityPanel);
   }
 
   private createWorkbenchButton(): void {
@@ -3119,6 +3238,7 @@ export class FloorplanScene extends Phaser.Scene {
       case "core-loop-mode-changed": {
         this.updatePlayPauseButton();
         this.createWorkbenchButton();
+        this.redrawEnergyControls();
         this.updateHeader();
         // Fase 11a.3: el fantasma se calcula UNA vez al entrar en pausa (el
         // reloj congelado garantiza que nada de lo que alimenta la

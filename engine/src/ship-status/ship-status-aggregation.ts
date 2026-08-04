@@ -182,9 +182,12 @@ export function aggregateSectionHullIntegrity(
 
 /**
  * Agregación a nivel de nave de energía (Subfase 11g): fracción de secciones
- * CON suministro, derivada del flag existente `Blueprint.unpoweredSectionIds`
- * — MVP explícito, sin simulación de producción/consumo/flujo (no existe
- * ningún `PowerGrid`/`EnergyGrid` en el motor todavía).
+ * CON suministro, derivada de `Blueprint.unpoweredSectionIds`. Fórmula sin
+ * cambios desde 11g — lo que cambió en la Fase 13b es de dónde sale el dato:
+ * `unpoweredSectionIds` dejó de ser un flag estático y ahora es un valor real
+ * recalculado cada tick por `MissionPowerRuntime` (dominio `power/`,
+ * presupuesto de energía en unidades discretas + reparto por prioridad), no
+ * un MVP sin simulación.
  */
 export function aggregateEnergy(unpoweredSectionCount: number, totalSectionCount: number): ShipStatusIndicator {
   if (totalSectionCount === 0) {

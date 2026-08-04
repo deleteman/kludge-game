@@ -80,6 +80,11 @@ function buildFixtureBlueprint(): Blueprint {
     ],
     unpoweredSectionIds: ["invernadero" as SectionId],
     overloadedRefs: ["panel-bahia-carga" as PlacedComponentInstanceId],
+    powerState: {
+      sectionAllocations: [{ sectionId: "bahia-carga" as SectionId, units: 3 }],
+      instancePriorities: [{ instanceId: INSTANCE_A, priority: 0 }],
+      permanentlyDisconnectedSectionIds: ["taller" as SectionId],
+    },
   };
 }
 
@@ -130,6 +135,26 @@ describe("blueprint: serialize/deserialize round-trip", () => {
     expect(restored.sectionAtmospheres).toEqual([]);
     expect(restored.unpoweredSectionIds).toEqual([]);
     expect(restored.placedComponents[1]!.structuralResistanceOverride).toBeUndefined();
+  });
+
+  it("defaults powerState when loading a pre-13b (schema v5) save", () => {
+    const v5 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    delete v5.powerState;
+    (v5.metadata as Record<string, unknown>).schemaVersion = 5;
+
+    const restored = deserializeBlueprint(JSON.stringify(v5));
+    expect(restored.powerState).toEqual({
+      sectionAllocations: [],
+      instancePriorities: [],
+      permanentlyDisconnectedSectionIds: [],
+    });
+  });
+
+  it("rejects a powerState with a malformed sectionAllocations entry", () => {
+    const broken = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    broken.powerState = { ...(broken.powerState as object), sectionAllocations: [{ sectionId: "x" }] };
+
+    expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(BlueprintParseError);
   });
 
   it("rejects an invalid structuralResistanceOverride value", () => {

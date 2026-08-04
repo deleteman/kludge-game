@@ -71,7 +71,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Célula fotovoltaica",
     data: {
       footprint: { width: 1, height: 2 },
-      functional: [{ tag: "RES", resourceType: "E", capacity: 60, dischargeRate: 5 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 60, dischargeRate: 5, powerUnits: 2 }],
       material: { CE: "A" },
     },
     // Nota: reservorio pequeño, regenerable (GDD 7.2).
@@ -81,7 +81,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Batería celda simple",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "RES", resourceType: "E", capacity: 40, dischargeRate: 5 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 40, dischargeRate: 5, powerUnits: 1 }],
       material: { CE: "A" },
     },
     // Nota: reservorio pequeño, no regenerable.

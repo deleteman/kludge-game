@@ -606,6 +606,7 @@ export {
 export type {
   EmitterInputSource,
   PowerScarSource,
+  InstancePowerSource,
   SignalOutputReader,
 } from "./mission/mission-signal-runtime.js";
 // Subfase 11h — sensor de presión real (Indicador LED / Pantalla LCD) + resolución de valor del LCD.
@@ -635,6 +636,18 @@ export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.j
 export { MissionOverloadRuntime } from "./mission/mission-overload-runtime.js";
 // Fase 13a — química viva de misión, scripteada por contenido (primer llamador de ReactionResolver en misión, deuda #16).
 export { MissionReactionRuntime } from "./mission/mission-reaction-runtime.js";
+// Fase 13b — presupuesto de energía estilo FTL (dominio nuevo `power/`).
+export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "./power/power.types.js";
+export { emptyPowerState } from "./power/power.types.js";
+export { totalPowerBudget } from "./power/power-source.js";
+export {
+  allocateSectionBudget,
+  allocateComponentPower,
+  distributeBudgetEvenly,
+  reconcilePowerScars,
+} from "./power/power-allocation.js";
+export type { SectionBudgetResult, ComponentPowerResult } from "./power/power-allocation.js";
+export { MissionPowerRuntime } from "./power/mission-power-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).
 export type { ShipStatusLevel, ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status/ship-status.types.js";
 export {

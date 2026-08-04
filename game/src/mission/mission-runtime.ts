@@ -10,6 +10,7 @@ import {
   MissionAtmosphereRuntime,
   MissionProjectileWorld,
   MissionOverloadRuntime,
+  MissionPowerRuntime,
   MissionReactionRuntime,
   MissionSignalRuntime,
   MissionStructuralRuntime,
@@ -46,6 +47,7 @@ import {
   sectionContainingCell,
   synthesizeSubstance,
   toReactant,
+  totalPowerBudget,
   MapEntityRegistry,
 } from "engine";
 import type {
@@ -79,9 +81,11 @@ import type {
   Footprint,
   GridPosition,
   KineticDomainEvent,
+  InstancePowerPriority,
   ReactantSubstance,
   ReactionDomainEvent,
   ScriptedRoute,
+  SectionPowerAllocation,
   SignalDomainEvent,
   PlacedComponentInstanceId,
   SectionId,
@@ -164,6 +168,8 @@ export class MissionRuntime {
   readonly structuralRuntime: MissionStructuralRuntime;
   /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
   readonly overloadRuntime: MissionOverloadRuntime;
+  /** Presupuesto de energía en vivo (Fase 13b) — reemplaza el flag estático de `unpoweredSectionIds` de 11b. */
+  readonly powerRuntime: MissionPowerRuntime;
   /** Química viva scripteada por contenido (Fase 13a, deuda #16) — primer llamador de `ReactionResolver` en misión. */
   readonly reactionRuntime: MissionReactionRuntime;
   /** Estado agregado a nivel de nave (Subfase 11g) — consultado por el HUD permanente de `/game`. */
@@ -225,6 +231,15 @@ export class MissionRuntime {
     const enemySeed: EnemySeed | undefined = ENEMY_SEED_BY_CHAPTER_ID.get(save.chapterProgress.currentChapterId);
     this.enemyState = new MutableEnemyState(enemySeed?.enemies ?? []);
     this.enemyRoutes = enemySeed?.routes ?? new Map();
+    // `componentRegistry` y `powerRuntime` deben existir ANTES de `signalRuntime`
+    // (Fase 13b): el presupuesto de energía en vivo reemplaza el objeto inline
+    // de `PowerScarSource` que aquí se pasaba antes, y además gatea por
+    // instancia (`InstancePowerSource`) — ver comentario en `MissionSignalRuntime`.
+    this.componentRegistry = buildComponentCatalog().registry as MapEntityRegistry<
+      ComponentId,
+      PhysicalComponentDefinition
+    >;
+    this.powerRuntime = new MissionPowerRuntime(this.shipState, this.shipFloorplan, this.componentRegistry);
     this.emitterInputs = pressureAwareEmitterInputs(
       this.shipState,
       this.shipFloorplan,
@@ -242,23 +257,18 @@ export class MissionRuntime {
         allEmittersActive(this.shipState),
       ),
     );
+    // Fase 13b: `powerRuntime` reemplaza el objeto inline de `PowerScarSource`
+    // (antes leía `unpoweredSectionIds` directo) y además gatea por instancia
+    // (`InstancePowerSource`) — el propio `MissionPowerRuntime` relee el
+    // `Blueprint` vivo en cada tick, mismo criterio de "no congelar al
+    // construir la misión" que regía antes.
     this.signalRuntime = new MissionSignalRuntime(
       this.shipState,
       this.emitterInputs,
       this.signalEvents,
-      {
-        shipFloorplan: this.shipFloorplan,
-        // Cicatriz de energía (Fase 11b): se relee del `Blueprint` vivo en cada
-        // consulta, no se congela al construir la misión — un re-cableado no
-        // levanta la cicatriz, pero el save actualizado sí puede traer una
-        // lista distinta si el capítulo la modifica.
-        unpoweredSections: () => new Set(this.shipState.get().unpoweredSectionIds),
-      },
+      this.powerRuntime,
+      this.powerRuntime,
     );
-    this.componentRegistry = buildComponentCatalog().registry as MapEntityRegistry<
-      ComponentId,
-      PhysicalComponentDefinition
-    >;
     const chemicalCatalog = buildChemicalCatalog();
     this.chemicalRegistry = chemicalCatalog.registry;
     this.chemicalFactory = chemicalCatalog.factory;
@@ -408,6 +418,13 @@ export class MissionRuntime {
     // planificación, no recién cuando el jugador aprieta Play por primera vez.
     this.crisisRuntime.tick({ dtSeconds: 0.001, elapsedSeconds: 0 });
 
+    // Pasada síncrona (Fase 13b), mismo criterio que `crisisRuntime.tick`
+    // arriba: el presupuesto de energía debe estar resuelto (cicatriz
+    // permanente ∪ déficit de la asignación sembrada) ANTES de que
+    // `signalRuntime`/la UI lean `unpoweredSectionIds` por primera vez, sin
+    // esperar al primer tick de ejecución.
+    this.powerRuntime.tick({ dtSeconds: 0.001, elapsedSeconds: 0 });
+
     // Pasada síncrona (Fase 11a.3), mismo criterio que `crisisRuntime.tick`
     // arriba: promueve piezas ferromagnéticas sueltas que ya vinieran en el
     // `Blueprint` inicial de la nave/capítulo, sin esperar al primer tick de
@@ -422,6 +439,10 @@ export class MissionRuntime {
     // tripulante en el mismo tick, ambos se acumulan sobre el HP más reciente
     // en vez de que uno pise al otro.
     this.coreLoop.registerTickable(this.enemyThreatRuntime);
+    // Fase 13b: el presupuesto de energía debe resolverse ANTES que las
+    // señales lean `unpoweredSections()`/`isInstancePowered()` este mismo
+    // tick — mismo criterio que atmósfera→estructura más abajo.
+    this.coreLoop.registerTickable(this.powerRuntime);
     // Fase 11a: señales vivas + promoción de piezas sueltas + proyectiles. El
     // orden importa — las señales se evalúan ANTES que los proyectiles para
     // que una bobina que se energiza en este tick ya pulse en este tick, y no
@@ -854,6 +875,97 @@ export class MissionRuntime {
   /** Integridad de casco de UNA sección (Fase 12a, capa "estructural" del HUD del plano). */
   sectionHullIntegrity(sectionId: SectionId): ShipStatusIndicator {
     return this.shipStatusQuery.sectionHullIntegrity(sectionId);
+  }
+
+  /** Presupuesto total de unidades de energía de la nave (Fase 13b, capa "energia" del HUD del plano). */
+  totalPowerBudget(): number {
+    return totalPowerBudget(this.blueprint.placedComponents, this.componentRegistry);
+  }
+
+  /** Unidades asignadas por el jugador a una sección (Fase 13b); 0 si no tiene asignación explícita. */
+  sectionPowerAllocation(sectionId: SectionId): number {
+    return (
+      this.blueprint.powerState.sectionAllocations.find((entry) => entry.sectionId === sectionId)?.units ?? 0
+    );
+  }
+
+  /** Suma de `powerDraw` de los componentes de una sección (Fase 13b, heatmap de la capa "energia"). */
+  sectionPowerDemand(sectionId: SectionId): number {
+    let demand = 0;
+    for (const instance of this.blueprint.placedComponents) {
+      if (this.sectionIdAt(instance.placement.position) !== sectionId) {
+        continue;
+      }
+      const definition = this.componentRegistry.get(instance.componentDefinitionId);
+      const actuator = definition?.data.functional?.find((property) => property.tag === "ACT");
+      if (actuator && actuator.tag === "ACT") {
+        demand += actuator.powerDraw ?? 0;
+      }
+    }
+    return demand;
+  }
+
+  /**
+   * Fija en bloque la asignación de unidades del jugador a una sección
+   * (dial +1/-1, Fase 13b, UI en modo pausa). `MissionPowerRuntime` recalcula
+   * el resultado en el siguiente tick — este método solo escribe la entrada
+   * de datos, no decide qué queda alimentado.
+   */
+  setSectionPowerUnits(sectionId: SectionId, units: number): void {
+    const blueprint = this.shipState.get();
+    const clamped = Math.max(0, Math.round(units));
+    const withoutSection = blueprint.powerState.sectionAllocations.filter((entry) => entry.sectionId !== sectionId);
+    const sectionAllocations: SectionPowerAllocation[] =
+      clamped === 0 ? withoutSection : [...withoutSection, { sectionId, units: clamped }];
+    this.shipState.set({ ...blueprint, powerState: { ...blueprint.powerState, sectionAllocations } });
+  }
+
+  /**
+   * Prioridad manual de las instancias de una sección, ordenadas de más a
+   * menos prioritaria (Fase 13b, lista de reordenamiento del inspector de la
+   * capa). Instancias sin prioridad explícita aparecen al final, en el mismo
+   * orden determinista (`instanceId`) que usa `allocateComponentPower`.
+   */
+  instancePowerPriorityOrder(sectionId: SectionId): ReadonlyArray<PlacedComponentInstanceId> {
+    const blueprint = this.shipState.get();
+    const priorityByInstance = new Map(
+      blueprint.powerState.instancePriorities.map((entry) => [entry.instanceId, entry.priority]),
+    );
+    return blueprint.placedComponents
+      .filter((instance) => this.sectionIdAt(instance.placement.position) === sectionId)
+      .map((instance) => instance.instanceId)
+      .sort((a, b) => {
+        const priorityA = priorityByInstance.get(a) ?? Number.POSITIVE_INFINITY;
+        const priorityB = priorityByInstance.get(b) ?? Number.POSITIVE_INFINITY;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+  }
+
+  /**
+   * Mueve una instancia un puesto arriba/abajo en la prioridad de su sección
+   * (botones ↑/↓, Fase 13b, UI). Reescribe la tabla completa de prioridades
+   * de la sección con valores 0..n-1 en el nuevo orden — mantiene el dato
+   * compacto en vez de acumular huecos entre reordenamientos sucesivos.
+   */
+  reorderInstancePriority(sectionId: SectionId, instanceId: PlacedComponentInstanceId, direction: -1 | 1): void {
+    const order = [...this.instancePowerPriorityOrder(sectionId)];
+    const index = order.indexOf(instanceId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= order.length) {
+      return;
+    }
+    [order[index], order[target]] = [order[target]!, order[index]!];
+
+    const blueprint = this.shipState.get();
+    const otherSectionsPriorities = blueprint.powerState.instancePriorities.filter(
+      (entry) => !order.includes(entry.instanceId),
+    );
+    const instancePriorities: InstancePowerPriority[] = [
+      ...otherSectionsPriorities,
+      ...order.map((id, priority) => ({ instanceId: id, priority })),
+    ];
+    this.shipState.set({ ...blueprint, powerState: { ...blueprint.powerState, instancePriorities } });
   }
 
   /**

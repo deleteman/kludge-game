@@ -24,6 +24,18 @@ export interface PowerScarSource {
 }
 
 /**
+ * Gating fino por instancia (Fase 13b): más específico que `PowerScarSource`
+ * (que solo cubre sección entera). Una instancia puede quedar sin
+ * alimentación por triaje de prioridad DENTRO de una sección que sí tiene
+ * presupuesto asignado — interfaz separada (no un método más en
+ * `PowerScarSource`) para no forzarla a otros implementadores futuros de esa
+ * interfaz que no modelen consumo por instancia.
+ */
+export interface InstancePowerSource {
+  isInstancePowered(instanceId: PlacedComponentInstanceId): boolean;
+}
+
+/**
  * De dónde salen las entradas del mundo a los emisores en cada tick (un sensor
  * que detecta movimiento, un botón pulsado). El evaluador no lo sabe: la salida
  * de un emisor "la fija el mundo, no la topología" (`signal-node.types.ts`).
@@ -69,6 +81,7 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
     private readonly emitterInputs: EmitterInputSource,
     private readonly emitter?: EventEmitter<SignalDomainEvent>,
     private readonly powerScars?: PowerScarSource,
+    private readonly instancePower?: InstancePowerSource,
   ) {
     this.graph = shipState.get().signalGraph;
     this.evaluator = new SignalEvaluator(this.graph, this.emitter);
@@ -82,21 +95,35 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
 
   /**
    * Salida actual de un nodo. `false` si el nodo no existe (cableado a
-   * medias) o si su sección quedó marcada sin energía (Fase 11b, cicatriz) —
-   * en ese caso la salida se fuerza a `false` sin importar cableado/reservorio.
+   * medias), si su sección quedó marcada sin energía (Fase 11b, cicatriz;
+   * Fase 13b, ahora también consecuencia del presupuesto en vivo) o si la
+   * instancia dueña del nodo se quedó sin alimentación por triaje de
+   * prioridad DENTRO de una sección que sí tiene presupuesto (Fase 13b,
+   * gating más fino que el de sección) — en cualquiera de los tres casos la
+   * salida se fuerza a `false` sin importar cableado/reservorio.
    */
   outputOf(nodeId: SignalNodeId): boolean {
     const raw = this.state.get(nodeId)?.output ?? false;
-    if (!raw || !this.powerScars) {
+    if (!raw) {
       return raw;
     }
-    const unpowered = this.powerScars.unpoweredSections();
-    if (unpowered.size === 0) {
-      return raw;
+    if (this.powerScars) {
+      const unpowered = this.powerScars.unpoweredSections();
+      if (unpowered.size > 0) {
+        const node = this.nodeById.get(nodeId);
+        const section = node && sectionContainingCell(this.powerScars.shipFloorplan, node.position);
+        if (section && unpowered.has(section.id)) {
+          return false;
+        }
+      }
     }
-    const node = this.nodeById.get(nodeId);
-    const section = node && sectionContainingCell(this.powerScars.shipFloorplan, node.position);
-    return section && unpowered.has(section.id) ? false : raw;
+    if (this.instancePower) {
+      const node = this.nodeById.get(nodeId);
+      if (node && !this.instancePower.isInstancePowered(node.ownerRef)) {
+        return false;
+      }
+    }
+    return raw;
   }
 
   tick(ctx: TickContext): void {

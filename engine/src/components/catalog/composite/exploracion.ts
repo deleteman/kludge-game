@@ -66,7 +66,7 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "panel-solar-desplegable" as ComponentId,
     name: "Panel solar desplegable",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 180, dischargeRate: 15 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 180, dischargeRate: 15, powerUnits: 3 }],
       material: { CE: "A" },
     },
     recipe: {
@@ -168,7 +168,7 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "bateria-gran-capacidad" as ComponentId,
     name: "Batería de gran capacidad",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 250, dischargeRate: 30 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 250, dischargeRate: 30, powerUnits: 4 }],
       material: { CE: "A" },
     },
     recipe: {

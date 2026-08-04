@@ -42,6 +42,7 @@ function fixtureShip(overrides: Partial<Blueprint> = {}): Blueprint {
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
     ...overrides,
   };
 }

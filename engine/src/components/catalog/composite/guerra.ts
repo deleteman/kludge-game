@@ -93,7 +93,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "reactor-alto-amperaje" as ComponentId,
     name: "Reactor de alto amperaje",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 300, dischargeRate: 50 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 300, dischargeRate: 50, powerUnits: 6 }],
       material: { CE: "A", CT: "B" },
     },
     recipe: {
@@ -147,7 +147,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "celda-energia-municion" as ComponentId,
     name: "Celda de energía de munición",
     data: {
-      functional: [{ tag: "RES", resourceType: "E", capacity: 120, dischargeRate: 20 }],
+      functional: [{ tag: "RES", resourceType: "E", capacity: 120, dischargeRate: 20, powerUnits: 2 }],
       material: { CE: "A" },
     },
     recipe: {

@@ -386,6 +386,22 @@ export const STRUCTURAL_LAYER_COLOR: Readonly<Partial<Record<ShipStatusLevel, nu
 export const STRUCTURAL_LAYER_ALPHA = 0.35;
 
 /**
+ * Capa "energia" del HUD del plano (Fase 13b): heatmap de demanda vs.
+ * suministro por sección. `"dark"` = sección sin ninguna unidad asignada
+ * (fuera de la grilla, `Blueprint.unpoweredSectionIds`) — mismo rojo fatal
+ * que el resto del contrato. `"deficit"` = con suministro pero insuficiente
+ * para todos sus componentes (triaje interno en curso) — mismo ámbar de
+ * "escalable/degradado". Sección con superávit/exacto no se dibuja (principio
+ * 6: nominal no compite visualmente). NO reusa `CONDUIT_COLORS.electrico`
+ * (identidad de recurso, no estado) — deriva del Eje A como `STRUCTURAL_LAYER_COLOR`.
+ */
+export const ENERGY_LAYER_COLOR: Readonly<Partial<Record<"dark" | "deficit", number>>> = {
+  dark: CRISIS_FATAL_COLOR,
+  deficit: CRISIS_WARNING_COLOR,
+};
+export const ENERGY_LAYER_ALPHA = 0.35;
+
+/**
  * Overlay de alerta de pantalla completa (Fase 12a): crisis crítica en curso
  * (dominio del HUD de estado de nave en `"critical"`, o un evento violento de
  * `overload`/`combustion`/fuga). Fase 12e: variante OSCURA de `CRISIS_FATAL`

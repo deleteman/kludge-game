@@ -2839,3 +2839,61 @@ Razón: la Fase 13 (`nuevo-orden.md`) agrupa infraestructura de motor detectada 
 Barotrauma/Duskers/FTL/Shipbreaker, ubicada antes del Cap.2 (Fase 14) porque esa fase asume que las señales del
 motor son reales — sin emisores simulados ni química viva, cualquier cascada de fallas es una secuencia
 scripteada en la `CrisisDefinition`, no propagación real entre sistemas.
+
+2026-08-04 — Fase 13b: Presupuesto de Energía de la Nave (Gap ③, estilo FTL).
+Detalle: dominio nuevo `engine/src/power/` (tipos, `power-source.ts::totalPowerBudget`, `power-allocation.ts`
+con `allocateSectionBudget`/`allocateComponentPower`/`reconcilePowerScars`/`distributeBudgetEvenly`, todas
+funciones puras testeadas antes de integrar) + `MissionPowerRuntime` (Tickable, molde de
+`MissionOverloadRuntime`) que implementa `PowerScarSource` y la nueva interfaz `InstancePowerSource`
+(`mission-signal-runtime.ts`) — gating por SECCIÓN (ya existía) y ahora también por INSTANCIA (nuevo: una pieza
+puede quedar sin alimentar por triaje de prioridad interno aunque su sección tenga presupuesto).
+Nuevos campos de catálogo: `ReservoirProperty.powerUnits` (unidades que aporta una fuente RES(E), distinto de
+`capacity`) y `ActuatorProperty.powerDraw` (costo eléctrico, distinto de `power`), ambos opcionales/retrocompat.
+Reconciliación cicatriz-permanente vs. déficit-vivo (decisión del operador, ciclo de preguntas de esta sesión):
+`Blueprint.unpoweredSectionIds` sigue siendo el ÚNICO campo público, recalculado cada tick por
+`MissionPowerRuntime` como `powerState.permanentlyDisconnectedSectionIds ∪ déficit-de-sesión` — la cicatriz real
+(Cap.5) vive aparte en el nuevo `Blueprint.powerState` para que un apagón táctico de una misión no se filtre
+como cicatriz permanente del guardado entre partidas. Bump de schema 5→6 (`powerState: PowerState`, default
+vacío en el deserializador); ~30 fixtures de test migradas en el mismo commit.
+Decisión del operador (ciclo de preguntas): sin asignación inicial sembrada, el diseño cerrado ("lo no asignado
+deja la sección a oscuras") habría dejado TODA sección sin energía desde el primer tick de cualquier partida
+nueva — antes de que exista la UI del dial. `campaign-save-factory.ts` siembra ahora `sectionAllocations` con
+`distributeBudgetEvenly` (reparto a partes iguales del presupuesto real entre secciones), preservando el
+comportamiento "todo alimentado" de antes de esta fase; el jugador retriagea con el dial recién cuando una
+crisis lo exige. `powerUnits` autorado en las 8 fuentes RES(E) reales del catálogo (atomic + 4 composite,
+valores 1-6 proporcionales a `capacity`). `powerDraw` deliberadamente SIN autorar en ningún componente todavía
+— ningún capítulo jugable depende hoy de gating por energía, y fabricar valores de balance sin diseño de
+contenido que los use habría sido una asunción no pedida; queda pendiente para cuando el Cap.5 (Fase 18) lo
+necesite.
+UI (`/game`): nueva capa `"energia"` del toggle de capas (11f) con heatmap (`drawEnergyLayer` en
+`floorplan-renderer.ts`, rojo=sin energía/ámbar=déficit interno, `ENERGY_LAYER_COLOR` en `palette.ts` derivado
+del Eje A de color, sin reusar `CONDUIT_COLORS.electrico`). Dial +1/-1 por sección
+(`game/src/ui/widgets/power-allocation-dial.ts`, primer control tipo stepper del proyecto, sin plantilla
+directa) anclado al centroide de cada sección en el plano — no un panel de barras abstracto, gateado a modo
+pausa (mismo criterio que `createWorkbenchButton`). Inspector de prioridad por sección
+(`game/src/ui/widgets/power-priority-list.ts`, lista con botones ↑/↓ por fila — opción más simple del diseño
+cerrado, sin drag-and-drop, sin precedente de reordenamiento en la UI del proyecto). `MissionRuntime` gana
+getters/setters (`sectionPowerAllocation`, `setSectionPowerUnits`, `instancePowerPriorityOrder`,
+`reorderInstancePriority`, `sectionPowerDemand`, `totalPowerBudget`) para que la UI no dependa del runtime
+completo.
+Fuera de alcance, documentado: el gating fino por instancia solo se consume en `MissionSignalRuntime` en este
+alcance (`MissionProjectileWorld`/`MissionStructuralRuntime`/task effects quedan para 13c/13d, que ya pueden
+reusar `MissionPowerRuntime.isInstancePowered` para definir "pieza viva"); `powerDraw` sin autorar (ver
+arriba); smoke visual de capa/dial/inspector pendiente de playtest manual del operador (sin infraestructura de
+test visual automatizado en el proyecto, mismo criterio que 11f/12a/12g).
+Archivos: nuevos `engine/src/power/{power.types,power-source,power-allocation,mission-power-runtime}.ts` +
+tests; modificados `engine/src/properties/functional.types.ts`, `engine/src/blueprint/{blueprint.types,
+blueprint-serializer}.ts`, `engine/src/mission/mission-signal-runtime.ts`, `engine/src/save/campaign-save-factory.ts`,
+`engine/src/ship-status/{ship-status-aggregation,ship-status-runtime}.ts`, `engine/src/components/catalog/
+{atomic-component-catalog,composite/{exploracion,guerra,investigacion,medica}}.ts`, `engine/src/index.ts`; en
+`/game` nuevos `game/src/ui/widgets/{power-allocation-dial,power-priority-list}.ts`, modificados
+`game/src/render/{palette,floorplan-renderer}.ts`, `game/src/scenes/floorplan-scene.ts`,
+`game/src/mission/mission-runtime.ts`, `game/src/i18n/{es,en}.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 606 tests de `/engine` (antes 589, +17:
+10 de `power-allocation`, 4 de `mission-power-runtime`, 1 de gating fino de señales, 2 de round-trip/default de
+`powerState`), 29 de `/game` sin cambios.
+Verificación manual: sin playtest del operador todavía — queda pendiente de confirmación visual (capa, dial,
+inspector) en la próxima sesión de juego.
+Razón: `nuevo-orden.md`, Subfase 13b — cierra el Gap ③ de la comparativa con FTL (triaje de energía zero-sum),
+sustrato declarado de la Fase 18 (Cap.5, sacrificio de energía) y prerrequisito de la Fase 13d (define "pieza
+viva" con precisión).
