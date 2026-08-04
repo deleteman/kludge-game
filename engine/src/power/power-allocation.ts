@@ -22,12 +22,30 @@ export interface SectionBudgetResult {
  * disponible" la mantiene el dial de UI en la fuente, no este consumidor.
  * Si de todos modos se excede (dato corrupto, fixture de test, etc.), recorta
  * proporcionalmente en vez de crashear — clamp defensivo, no la ruta normal.
+ *
+ * `totalUnits <= 0` (sin ninguna fuente RES(E) instalada todavía — ej. el
+ * kit inicial de una partida nueva arranca vacío por diseño, GDD/
+ * `initial-ship-state.ts`) es un caso especial: NINGUNA sección se marca a
+ * oscuras. No hay economía de energía que modelar todavía, así que "cero
+ * presupuesto" no es lo mismo que "déficit" — mismo criterio de retrocompat
+ * ya aplicado a componentes sin `powerDraw` (sin dato, no se gatea nada). El
+ * sistema se activa recién cuando el jugador instala/canibaliza una fuente
+ * real; hasta entonces se comporta como si no existiera (evita el bug real
+ * detectado en playtest: presupuesto 0 → todas las secciones "críticas" →
+ * dispara el overlay de alerta y el CRT a máxima intensidad desde el arranque).
  */
 export function allocateSectionBudget(
   totalUnits: number,
   sectionAllocations: ReadonlyArray<SectionPowerAllocation>,
   sectionIds: ReadonlyArray<SectionId>,
 ): SectionBudgetResult {
+  if (totalUnits <= 0) {
+    return {
+      grantedBySectionId: new Map(sectionIds.map((sectionId) => [sectionId, 0])),
+      darkSectionIds: new Set(),
+    };
+  }
+
   const requested = new Map<SectionId, number>();
   for (const allocation of sectionAllocations) {
     requested.set(allocation.sectionId, Math.max(0, allocation.units));

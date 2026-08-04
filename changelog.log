@@ -2897,3 +2897,31 @@ inspector) en la próxima sesión de juego.
 Razón: `nuevo-orden.md`, Subfase 13b — cierra el Gap ③ de la comparativa con FTL (triaje de energía zero-sum),
 sustrato declarado de la Fase 18 (Cap.5, sacrificio de energía) y prerrequisito de la Fase 13d (define "pieza
 viva" con precisión).
+
+2026-08-04 — Fase 13b: fixes de playtest (4 observaciones del operador).
+Detalle: (1+2, causa raíz compartida) el operador reportó el indicador de energía del HUD en 0% y el CRT a
+máxima intensidad apenas arranca la partida. Causa: `allocateSectionBudget` marcaba TODAS las secciones "a
+oscuras" cuando el presupuesto total es 0 — y el presupuesto SIEMPRE arranca en 0 en una partida nueva
+(`initial-ship-state.ts` siembra el kit vacío por diseño, ninguna fuente RES(E) está instalada de fábrica), así
+que la siembra "a partes iguales" del fix anterior repartía 0 unidades entre secciones igual. Con
+`unpoweredSectionIds` = todas las secciones, `aggregateEnergy` daba fracción 0 → `energy.level: "critical"` →
+disparaba tanto el overlay de alerta de pantalla completa como el driver del CRT (`updateCrtDriver`, atado a la
+misma condición `screenAlertActive`) desde el primer frame. Corregido: `allocateSectionBudget` trata
+`totalUnits <= 0` como caso especial — sin ninguna fuente de energía real instalada todavía no hay economía que
+modelar, así que NINGUNA sección se marca a oscuras (mismo criterio de retrocompat que un componente sin
+`powerDraw`: sin dato, no se gatea nada). El sistema queda dormido hasta que el jugador instala/canibaliza una
+fuente real. Test nuevo en `power-allocation.test.ts`.
+(3) los controles de energía (dial +1/-1, botón de prioridad) quedaban casi invisibles, tapados por las
+sombras dinámicas/luces/paredes. Causa: el contenedor se agregaba como hijo de `floorplanRender.base`
+(`RENDER_DEPTH.background`, 0) en vez de fijar su propio depth — todo lo que cuelga de `base` hereda ese nivel
+más bajo del plano. Corregido: el contenedor ya no se reparenta a `base`, queda top-level con
+`setDepth(RENDER_DEPTH.effect)` (mismo nivel que otros controles interactivos de mundo) + `markAsWorldObject`
+explícito (necesario ahora que no hereda el ignore-list de `base` por herencia de contenedor).
+(4) el listado de botones de capas del HUD se salía de su panel. Causa: `LAYER_PANEL_WIDTH` (700px) estaba
+dimensionado para 5 capas; al sumar "energia" como 6ª capa el ancho real de fila subió a 786px. Corregido:
+`LAYER_PANEL_WIDTH` a 830px.
+Archivos: `engine/src/power/power-allocation.ts` (+test), `game/src/scenes/floorplan-scene.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 607 tests de `/engine` (antes 606, +1),
+29 de `/game` sin cambios.
+Verificación manual: pendiente de una segunda ronda de playtest del operador confirmando los 4 puntos.
+Razón: playtest manual del operador sobre el cierre de la Subfase 13b.

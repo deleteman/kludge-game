@@ -174,7 +174,11 @@ const PLAY_PAUSE_BUTTON_X = 1190;
  */
 const LAYER_PANEL_CENTER_X = 640;
 const LAYER_PANEL_CENTER_Y = 118;
-const LAYER_PANEL_WIDTH = 700;
+// Ancho fijo pensado para 5 capas (700px); la Fase 13b sumó "energia" como
+// 6ª capa y el panel quedó angosto (el listado de botones se salía por los
+// bordes, playtest post-13b) — recalculado con margen sobre el ancho real de
+// fila (`FLOORPLAN_LAYER_IDS.length * 126 + (length-1) * 6` = 786px con 6).
+const LAYER_PANEL_WIDTH = 830;
 const LAYER_PANEL_HEIGHT = 74;
 
 // Franja lateral fija (ajuste post-playtest): NUNCA se mueve, vive en la
@@ -1784,8 +1788,14 @@ export class FloorplanScene extends Phaser.Scene {
           onClick: () => this.openEnergyPriorityPanel(section.id),
         },
       );
-      const container = this.add.container(0, 0, [dial, priorityButton]);
-      this.floorplanRender.base.add(container);
+      // Depth explícito (fix post-playtest): sin esto, el contenedor heredaba
+      // el depth `background` (0) de `floorplanRender.base` y quedaba oculto
+      // detrás de las sombras dinámicas/paredes/luces (`RENDER_DEPTH.effect`
+      // es el mismo nivel que usan otros controles interactivos de mundo,
+      // ej. `fireLocalStatic`). NO se reparenta a `floorplanRender.base`
+      // (ese container fija el depth de TODOS sus hijos a `background`).
+      const container = this.add.container(0, 0, [dial, priorityButton]).setDepth(RENDER_DEPTH.effect);
+      this.markAsWorldObject(container);
       this.energyDialContainers.set(section.id, container);
     }
 

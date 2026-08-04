@@ -2803,3 +2803,14 @@ Tests nuevos: 10 de `power-allocation.test.ts`, 4 de `mission-power-runtime.test
 `mission-signal-runtime.test.ts`, 2 de round-trip/default de `powerState` en `blueprint.test.ts` — 606 tests en
 `/engine` (desde 589), 29 en `/game` sin cambios. `tsc --noEmit` limpio y `vite build` limpio en ambos
 workspaces. Detalle completo en `changelog.log` (2026-08-04).
+
+**Fix post-playtest del operador (mismo día):** 4 observaciones. (1+2, misma causa) presupuesto 0 al arrancar
+(ninguna fuente RES(E) instalada de fábrica) marcaba TODAS las secciones a oscuras → `energy.level: "critical"`
+→ disparaba el overlay de alerta Y el CRT a máxima intensidad desde el primer frame — corregido:
+`allocateSectionBudget` no marca ninguna sección a oscuras cuando `totalUnits <= 0` (sin economía de energía
+real que modelar todavía, mismo criterio de retrocompat que `powerDraw` ausente). (3) dial/botón de prioridad
+casi invisibles, tapados por sombras/luces/paredes — el contenedor heredaba el depth `background` (0) de
+`floorplanRender.base`; corregido con `setDepth(RENDER_DEPTH.effect)` + `markAsWorldObject` explícito, sin
+reparentar a `base`. (4) el listado de botones de capas se salía del panel — `LAYER_PANEL_WIDTH` (700px)
+estaba dimensionado para 5 capas, no para las 6 desde que "energia" se sumó; subido a 830px. Test nuevo en
+`power-allocation.test.ts`. 607 tests en `/engine` (antes 606, +1), `tsc --noEmit`/`vite build` limpios.

@@ -60,6 +60,13 @@ describe("allocateSectionBudget (Fase 13b, nivel 1: global→sección)", () => {
     expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
   });
 
+  it("sin ninguna fuente de energía instalada (presupuesto 0), ninguna sección se marca a oscuras", () => {
+    const result = allocateSectionBudget(0, [], [SECTION_A, SECTION_B]);
+    expect(result.darkSectionIds.size).toBe(0);
+    expect(result.grantedBySectionId.get(SECTION_A)).toBe(0);
+    expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
+  });
+
   it("recorta proporcionalmente ante déficit global (pedido total > presupuesto total)", () => {
     const result = allocateSectionBudget(
       5,
