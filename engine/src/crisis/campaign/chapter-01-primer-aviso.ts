@@ -107,13 +107,12 @@ interface Chapter01ArchetypeParams {
   /** Junta hermética rota (Subfase 11h, fuga de presión) — junto a la válvula, sin solapar. */
   readonly sealPosition: GridPosition;
   /**
-   * Conductor sobrecargado + sección sin energía (Fase 12a, corrección post-playtest: sin esto la
-   * iluminación dinámica de la fase quedaba construida pero invisible en partida real). Ambos
-   * opcionales, ausentes = ese arquetipo no siembra el escenario todavía — solo Exploración está
-   * verificado contra su mapa real, mismo criterio que el resto de este archivo.
+   * Conductor sobrecargado (Fase 12a, corrección post-playtest: sin esto la iluminación dinámica de
+   * la fase quedaba construida pero invisible en partida real). Opcional, ausente = ese arquetipo no
+   * siembra el escenario todavía — solo Exploración está verificado contra su mapa real, mismo
+   * criterio que el resto de este archivo.
    */
   readonly overloadedConductorPosition?: GridPosition;
-  readonly unpoweredSectionId?: SectionId;
 }
 
 /**
@@ -128,13 +127,13 @@ interface Chapter01ArchetypeParams {
  * posiciones de referencia (anclaje + offset), SIN verificación visual
  * (decisión del operador — solo Exploración se juega de punta a punta por ahora).
  *
- * `overloadedConductorPosition`/`unpoweredSectionId` (Fase 12a): SOLO Exploración por ahora — a
- * diferencia del resto de posiciones de este archivo, un `SectionId` inválido para un arquetipo cuyo
- * mapa no se leyó en esta sesión podría referenciar una sección inexistente; se prefiere dejarlos
- * ausentes en guerra/investigación/médica antes que inventar un id sin verificar (ver
+ * `overloadedConductorPosition` (Fase 12a): SOLO Exploración por ahora — a diferencia del resto de
+ * posiciones de este archivo, una posición inválida para un arquetipo cuyo mapa no se leyó en esta
+ * sesión podría referenciar una celda inexistente; se prefiere dejarla ausente en
+ * guerra/investigación/médica antes que inventar una posición sin verificar (ver
  * PENDIENTES_OBSERVACIONES.md). `{x:22,y:12}` cae dentro de `ingenieria` (bounding box x:20-25,y:11-14
  * en `nave-exploracion.json`), sin coincidir con ningún anclaje autorado de esa sección
- * (`ingenieria-a1..a5`); `taller` es una sección de attrezzo sin ningún rol en el puzzle del capítulo.
+ * (`ingenieria-a1..a5`).
  */
 const CHAPTER_01_PARAMS_BY_ARCHETYPE: Record<ShipArchetype, Chapter01ArchetypeParams> = {
   exploracion: {
@@ -144,7 +143,6 @@ const CHAPTER_01_PARAMS_BY_ARCHETYPE: Record<ShipArchetype, Chapter01ArchetypePa
     gatePanelPosition: { x: 7, y: 6 },
     sealPosition: { x: 6, y: 5 },
     overloadedConductorPosition: { x: 22, y: 12 },
-    unpoweredSectionId: "taller" as SectionId,
   },
   guerra: {
     anchorPosition: { x: 17, y: 6 },
@@ -326,12 +324,6 @@ export const CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE: Record<ShipArchetype, Sect
 export const CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE: Record<ShipArchetype, GridPosition> = Object.fromEntries(
   SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].sealPosition]),
 ) as Record<ShipArchetype, GridPosition>;
-
-/** Sección sembrada sin energía (Fase 12a) — `undefined` en arquetipos sin posición verificada todavía. */
-export const CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE: Record<ShipArchetype, SectionId | undefined> =
-  Object.fromEntries(
-    SHIP_ARCHETYPES.map((archetype) => [archetype, CHAPTER_01_PARAMS_BY_ARCHETYPE[archetype].unpoweredSectionId]),
-  ) as Record<ShipArchetype, SectionId | undefined>;
 
 // --- Compatibilidad con 10a/10b (Exploración es el arquetipo de referencia) ---
 export const CHAPTER_01_PRIMER_AVISO = CHAPTER_01_BY_ARCHETYPE.exploracion;

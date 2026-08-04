@@ -640,12 +640,7 @@ export { MissionReactionRuntime } from "./mission/mission-reaction-runtime.js";
 export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "./power/power.types.js";
 export { emptyPowerState } from "./power/power.types.js";
 export { totalPowerBudget } from "./power/power-source.js";
-export {
-  allocateSectionBudget,
-  allocateComponentPower,
-  distributeBudgetEvenly,
-  reconcilePowerScars,
-} from "./power/power-allocation.js";
+export { allocateSectionBudget, allocateComponentPower } from "./power/power-allocation.js";
 export type { SectionBudgetResult, ComponentPowerResult } from "./power/power-allocation.js";
 export { MissionPowerRuntime } from "./power/mission-power-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).

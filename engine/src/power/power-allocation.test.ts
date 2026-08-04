@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  allocateComponentPower,
-  allocateSectionBudget,
-  distributeBudgetEvenly,
-  reconcilePowerScars,
-} from "./power-allocation.js";
+import { allocateComponentPower, allocateSectionBudget } from "./power-allocation.js";
 import { MapEntityRegistry } from "../composition/entity-registry.js";
 import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -60,9 +55,9 @@ describe("allocateSectionBudget (Fase 13b, nivel 1: global→sección)", () => {
     expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
   });
 
-  it("sin ninguna fuente de energía instalada (presupuesto 0), ninguna sección se marca a oscuras", () => {
+  it("sin ninguna fuente de energía instalada (presupuesto 0), todas las secciones quedan a oscuras", () => {
     const result = allocateSectionBudget(0, [], [SECTION_A, SECTION_B]);
-    expect(result.darkSectionIds.size).toBe(0);
+    expect(result.darkSectionIds.size).toBe(2);
     expect(result.grantedBySectionId.get(SECTION_A)).toBe(0);
     expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
   });
@@ -125,32 +120,5 @@ describe("allocateComponentPower (Fase 13b, nivel 2: sección→componentes)", (
 
     expect(result.poweredInstanceIds.has("i-gratis" as PlacedComponentInstanceId)).toBe(true);
     expect(result.unpoweredInstanceIds.has("i-caro" as PlacedComponentInstanceId)).toBe(true);
-  });
-});
-
-describe("distributeBudgetEvenly (Fase 13b, siembra inicial de campaña)", () => {
-  it("reparte el presupuesto a partes iguales y el resto una unidad por sección", () => {
-    const result = distributeBudgetEvenly(7, [SECTION_A, SECTION_B]);
-    const total = result.reduce((sum, entry) => sum + entry.units, 0);
-    expect(total).toBe(7);
-    expect(result.find((entry) => entry.sectionId === SECTION_A)?.units).toBe(4);
-    expect(result.find((entry) => entry.sectionId === SECTION_B)?.units).toBe(3);
-  });
-
-  it("sin secciones o sin presupuesto, no asigna nada", () => {
-    expect(distributeBudgetEvenly(5, [])).toEqual([]);
-    expect(distributeBudgetEvenly(0, [SECTION_A])).toEqual([]);
-  });
-});
-
-describe("reconcilePowerScars (Fase 13b, reconciliación cicatriz permanente vs. déficit vivo)", () => {
-  it("une la cicatriz permanente con el déficit de la sesión sin duplicar", () => {
-    const result = reconcilePowerScars([SECTION_A], new Set([SECTION_A, SECTION_B]));
-    expect([...result].sort()).toEqual([SECTION_A, SECTION_B].sort());
-  });
-
-  it("sin déficit vivo, solo queda la cicatriz permanente", () => {
-    const result = reconcilePowerScars([SECTION_A], new Set());
-    expect(result).toEqual([SECTION_A]);
   });
 });

@@ -265,6 +265,13 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
 
 * Test: desmontar conductor energizado sin purga → evento de chispa/combustión; con purga previa → seguro.
 
+* **Extensión diferida (fuera de 13b/13d): `powerDraw` en `EmitterProperty`/`ReceptorProperty`.** Hoy solo
+  `ActuatorProperty` tiene costo eléctrico; un sensor/receptor nunca deja de funcionar por falta de energía.
+  Extenderlo exige decidir qué sensores lo requieren y balancear el presupuesto inicial de cada capítulo ya
+  jugable (Cap.1/2) para que sigan siendo resolubles — mismo criterio de "no re-balancear contenido validado
+  sin ciclo de preguntas propio" que otros ítems diferidos de este documento (ver 12d, 11h→12a). Surgió en la
+  revisión de la ronda 2 de playtest de 13b; el operador confirmó dejarlo diferido de ese plan.
+
 #### Subfase 13e: Destino Real de Sustancias — Reservorios, Extracción y Estación Química
 
 Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustancia sintetizada (11c.3) se resuelve y queda `available` pero no puede verterse en nada ni tiene ubicación propia en el plano. Es el mismo sistema — dar un destino real a las sustancias. Substrato del Cap.7 (Fase 20, neutralizante sintetizado en la mesa). **Pendiente de su propio ciclo de preguntas** antes de plan de implementación (mismo criterio que 12d / "Potenciar LED"): exige decidir si `ReservoirProperty` se extiende con sustancia+cantidad o si el estado vive en un runtime aparte paralelo a `MissionAtmosphereRuntime`.

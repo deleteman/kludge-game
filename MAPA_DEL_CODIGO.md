@@ -523,13 +523,13 @@
 
 - `totalPowerBudget(placedComponents, componentRegistry)`: suma `powerUnits` de toda instancia RES(E) instalada. "Conectada" = instalada (mismo MVP sin simulación de cableado físico que el resto del dominio de misión).
 
-## `engine/src/power/power-allocation.ts` (nuevo, Fase 13b)
+## `engine/src/power/power-allocation.ts` (nuevo, Fase 13b; modificado, fix post-playtest ronda 2)
 
-- Reparto en dos niveles, funciones puras testeadas antes de integrar: `allocateSectionBudget` (global→sección), `allocateComponentPower` (sección→componentes, ordena por prioridad con desempate determinista por `instanceId`, consume por `powerDraw`), `reconcilePowerScars` (unión cicatriz permanente + déficit vivo), `distributeBudgetEvenly` (siembra inicial a partes iguales, usada por `campaign-save-factory.ts`).
+- Reparto en dos niveles, funciones puras testeadas antes de integrar: `allocateSectionBudget` (global→sección — `darkSectionIds` es informativo, no gatea nada por sí solo), `allocateComponentPower` (sección→componentes, ordena por prioridad con desempate determinista por `instanceId`, consume por `powerDraw`). `reconcilePowerScars`/`distributeBudgetEvenly` (ronda 1) eliminados en la ronda 2 — sin caller tras desacoplar la cicatriz permanente del déficit vivo (ver `mission-power-runtime.ts`).
 
-## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b)
+## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b; modificado, fix post-playtest ronda 2)
 
-- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`): recalcula el presupuesto cada tick y reescribe `Blueprint.unpoweredSectionIds` solo si cambia. Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`) — reemplaza el objeto inline que antes leía la cicatriz estática directo.
+- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`): recalcula el presupuesto cada tick. Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`). `Blueprint.unpoweredSectionIds` refleja SOLO `powerState.permanentlyDisconnectedSectionIds` (ronda 2 — ya no unión con déficit vivo). Nuevo `sectionHasNoPowerGranted(sectionId)`, señal puramente cosmética (déficit vivo, sin excepciones) para el efecto visual ambiental, desacoplada del gating real.
 
 ## `engine/src/properties/functional.types.ts` (modificado, Fase 13b)
 
@@ -543,9 +543,17 @@
 
 - Nueva interfaz `InstancePowerSource` (gating por instancia, más fino que `PowerScarSource` por sección) — `outputOf()` fuerza `false` si la instancia dueña del nodo no está alimentada, aunque su sección sí tenga presupuesto.
 
-## `engine/src/save/campaign-save-factory.ts` (modificado, Fase 13b)
+## `engine/src/save/campaign-save-factory.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
 
-- Siembra `powerState.sectionAllocations` con `distributeBudgetEvenly` (reparto a partes iguales del presupuesto real) en vez de vacío — decisión del operador para no dejar toda sección sin energía desde el arranque de una partida nueva, antes de que exista la UI del dial. `permanentlyDisconnectedSectionIds` reemplaza la siembra directa de `unpoweredSectionIds` para la cicatriz del Cap.1.
+- `powerState.sectionAllocations` arranca `[]` (ronda 2 — revierte el auto-reparto de la ronda 1, ya no hace falta como red de seguridad porque el gating real no depende del déficit vivo); `permanentlyDisconnectedSectionIds` arranca `[]` (se quitó la siembra de la demo "taller", ver `chapter-01-primer-aviso.ts`).
+
+## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, fix post-playtest ronda 2 de 13b)
+
+- Quitado `Chapter01ArchetypeParams.unpoweredSectionId` y el export `CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE` — la demo de "taller" (attrezzo de Fase 12a) no era contenido narrativo real; reemplazada por una fuente real sembrada en `initial-ship-state.ts`.
+
+## `engine/src/floorplan/initial-ship-state.ts` (modificado, fix post-playtest ronda 2 de 13b)
+
+- `starterKit(archetype)` gana el parámetro `archetype`: solo para `"exploracion"` siembra `bateria-celda-simple` (`powerUnits: 1`) en `{x:23,y:12}` (`ingenieria`, verificada libre contra `nave-exploracion.json`) — da presupuesto real de energía desde el arranque para que el slider de reparto tenga algo que distribuir.
 
 ## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b)
 
@@ -559,18 +567,18 @@
 
 - `ENERGY_LAYER_COLOR`/`ENERGY_LAYER_ALPHA` (deriva del Eje A de color). `FloorplanLayerId` gana `"energia"`; `drawEnergyLayer()` (plantilla de `drawStructuralLayer`) pinta rojo/ámbar por sección según déficit.
 
-## `game/src/ui/widgets/power-allocation-dial.ts` (nuevo, Fase 13b)
+## `game/src/ui/widgets/power-allocation-slider.ts` (nuevo, fix post-playtest ronda 2 de 13b — reemplaza `power-allocation-dial.ts`, borrado)
 
-- `renderPowerAllocationDial`: dial +1/-1 por sección, primer control tipo stepper del proyecto (par de `createKenneyButton` + texto central), gateado a modo pausa.
+- `renderPowerAllocationSlider`: slider entero de arrastre por sección (molde de `kenney-slider.ts`), consciente de cámara (`getWorldPoint`, objeto de mundo no HUD) y con `destroy()` explícito de sus propios listeners de `scene.input` — necesario porque se destruye/reconstruye muchas veces por sesión, a diferencia del slider de `options-scene.ts`.
 
 ## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
 
 - `renderPowerPriorityList`: inspector de prioridad de una sección, lista con botones ↑/↓ por fila — opción más simple del diseño cerrado, sin drag-and-drop.
 
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 13b)
+## `game/src/mission/mission-runtime.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
 
-- `powerRuntime: MissionPowerRuntime` nuevo, registrado en el core loop antes de `signalRuntime`. Getters/setters para la UI: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`.
+- `powerRuntime: MissionPowerRuntime` nuevo, registrado en el core loop antes de `signalRuntime`. Getters/setters para la UI: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`, y (ronda 2) `sectionHasNoPowerGranted`.
 
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13b)
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
 
-- Redibuja la capa "energia" cada frame (mismo criterio que "estructural"). Dial/inspector de prioridad se reconstruyen bajo demanda (toggle de capa, cambio de modo, cada click) en vez de por frame — `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`.
+- Redibuja la capa "energia" cada frame (mismo criterio que "estructural"). Slider/inspector de prioridad se reconstruyen bajo demanda (toggle de capa, cambio de modo) — `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`, usa `renderPowerAllocationSlider` (ronda 2). Nuevo campo `energyControlWorldBounds` + chequeo en `isOverFixedUi()` (ronda 2, fix de click bleed-through, mismo patrón que `actionPanelBounds`). `redrawUnpoweredSectionScar`/`syncUnpoweredSectionLights` consumen `mission.sectionHasNoPowerGranted()` en vez de `blueprint.unpoweredSectionIds` (ronda 2).

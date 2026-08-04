@@ -141,7 +141,7 @@ import type { Segment } from "../render/shadows/visibility-polygon.js";
 import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
-import { renderPowerAllocationDial } from "../ui/widgets/power-allocation-dial.js";
+import { renderPowerAllocationSlider, type PowerAllocationSliderHandle } from "../ui/widgets/power-allocation-slider.js";
 import { renderPowerPriorityList } from "../ui/widgets/power-priority-list.js";
 import { createScrollableText } from "../ui/widgets/scrollable-text.js";
 import { CustomCursor } from "../ui/custom-cursor.js";
@@ -366,7 +366,24 @@ export class FloorplanScene extends Phaser.Scene {
   private layerTogglePanel?: Phaser.GameObjects.Container;
   private layerTogglePanelOpen = false;
   /** Dial +1/-1 por sección (Fase 13b) — visible solo con la capa "energia" activa y en pausa. */
-  private readonly energyDialContainers = new Map<SectionId, Phaser.GameObjects.Container>();
+  private readonly energyDialContainers = new Map<
+    SectionId,
+    { readonly outer: Phaser.GameObjects.Container; readonly slider: PowerAllocationSliderHandle }
+  >();
+  /**
+   * Bounds de MUNDO de los controles de energía flotantes (fix post-playtest
+   * ronda 2, mismo criterio que `actionPanelBounds`): sin esto, el pointerup
+   * de un click/arrastre sobre el slider/botón de prioridad TAMBIÉN dispara
+   * `handleMapClick` sobre la celda de mundo detrás — Phaser no tiene
+   * `stopPropagation` automático entre un listener de objeto interactivo y
+   * los listeners globales de `scene.input`.
+   */
+  private energyControlWorldBounds: ReadonlyArray<{
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  }> = [];
   /** Inspector de prioridad de energía de UNA sección (Fase 13b) — abierto a la vez, como los demás modales. */
   private energyPriorityPanel?: Phaser.GameObjects.Container;
   private energyPriorityPanelSectionId?: SectionId;
@@ -1200,13 +1217,31 @@ export class FloorplanScene extends Phaser.Scene {
     // un click en uno de sus botones también dispararía `handleMapClick`
     // sobre la celda que hay debajo.
     const bounds = this.actionPanelBounds;
-    if (!bounds) return false;
-    return (
+    if (
+      bounds &&
       pointer.x >= bounds.x &&
       pointer.x <= bounds.x + bounds.width &&
       pointer.y >= bounds.y &&
       pointer.y <= bounds.y + bounds.height
-    );
+    ) {
+      return true;
+    }
+    // Controles de energía (slider + botón de prioridad, Fase 13b): a
+    // diferencia del panel de acciones (HUD, coordenadas de pantalla), estos
+    // son objetos de MUNDO — sus bounds están en espacio de mundo, así que el
+    // puntero se convierte con `getWorldPoint` antes de comparar (fix
+    // post-playtest ronda 2: sin esto, el pointerup de un click/arrastre
+    // sobre el slider también disparaba `handleMapClick` en la celda de
+    // abajo).
+    if (this.energyControlWorldBounds.length > 0) {
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      for (const b of this.energyControlWorldBounds) {
+        if (world.x >= b.x && world.x <= b.x + b.width && world.y >= b.y && world.y <= b.y + b.height) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** ¿El puntero está sobre la tira de tripulación (bajo el mapa)? */
@@ -1749,10 +1784,12 @@ export class FloorplanScene extends Phaser.Scene {
    * `Graphics` (baratos), estos son objetos interactivos reales.
    */
   private redrawEnergyControls(): void {
-    for (const container of this.energyDialContainers.values()) {
-      container.destroy();
+    for (const { outer, slider } of this.energyDialContainers.values()) {
+      slider.destroy();
+      outer.destroy();
     }
     this.energyDialContainers.clear();
+    this.energyControlWorldBounds = [];
 
     const shouldShow = this.activeFloorplanLayers.has("energia") && this.mission.coreLoop.mode === "planning";
     if (!shouldShow) {
@@ -1760,21 +1797,22 @@ export class FloorplanScene extends Phaser.Scene {
       return;
     }
 
+    const totalBudget = this.mission.totalPowerBudget();
+    const bounds: Array<{ x: number; y: number; width: number; height: number }> = [];
     for (const section of this.mission.shipFloorplan.sections) {
+      // Sin presupuesto total todavía (ningún arquetipo salvo Exploración por
+      // ahora), no hay nada que repartir — omitir el control en vez de
+      // mostrar un slider inerte de 0/0.
+      if (totalBudget <= 0) continue;
+
       const { x, y } = sectionCentroidPx(section);
-      const dial = renderPowerAllocationDial(this.rex, {
+      const slider = renderPowerAllocationSlider(this, {
         x,
         y: y - 14,
+        maxUnits: totalBudget,
         units: this.mission.sectionPowerAllocation(section.id),
         enabled: true,
-        onIncrement: () => {
-          this.mission.setSectionPowerUnits(section.id, this.mission.sectionPowerAllocation(section.id) + 1);
-          this.redrawEnergyControls();
-        },
-        onDecrement: () => {
-          this.mission.setSectionPowerUnits(section.id, this.mission.sectionPowerAllocation(section.id) - 1);
-          this.redrawEnergyControls();
-        },
+        onChange: (units) => this.mission.setSectionPowerUnits(section.id, units),
       });
       const priorityButton = createKenneyButton(
         this.rex,
@@ -1794,10 +1832,12 @@ export class FloorplanScene extends Phaser.Scene {
       // es el mismo nivel que usan otros controles interactivos de mundo,
       // ej. `fireLocalStatic`). NO se reparenta a `floorplanRender.base`
       // (ese container fija el depth de TODOS sus hijos a `background`).
-      const container = this.add.container(0, 0, [dial, priorityButton]).setDepth(RENDER_DEPTH.effect);
-      this.markAsWorldObject(container);
-      this.energyDialContainers.set(section.id, container);
+      const outer = this.add.container(0, 0, [slider.container, priorityButton]).setDepth(RENDER_DEPTH.effect);
+      this.markAsWorldObject(outer);
+      this.energyDialContainers.set(section.id, { outer, slider });
+      bounds.push({ x: x - 55, y: y - 30, width: 110, height: 68 });
     }
+    this.energyControlWorldBounds = bounds;
 
     // Si el panel de prioridad de una sección estaba abierto y esa sección ya
     // no es visible (capa apagada/salió de pausa), cerrarlo con el resto.
@@ -2512,28 +2552,31 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   /**
-   * Cicatriz de "sección sin energía" (Fase 11b, decisión del operador):
-   * tinte EXCLUSIVO (`UNPOWERED_SECTION_TINT`, nunca reutilizado) más un
-   * parpadeo sinusoidal continuo (`sectionScarFlickerAlpha`) — ninguno de los
-   * dos solo alcanzaría el principio 6 (un tinte fijo se confunde con la
-   * paleta ya oscura de `SECTION_FILL_COLORS`). Sigue parpadeando en pausa
-   * táctica a propósito: es una marca persistente de la nave, no un efecto
-   * de la simulación que la pausa deba congelar.
+   * Cicatriz visual de "sección sin energía" (Fase 11b, decisión del
+   * operador; desacoplada de `unpoweredSectionIds` en la ronda 2 de playtest
+   * de 13b): tinte EXCLUSIVO (`UNPOWERED_SECTION_TINT`, nunca reutilizado)
+   * más un parpadeo sinusoidal continuo (`sectionScarFlickerAlpha`) — ninguno
+   * de los dos solo alcanzaría el principio 6 (un tinte fijo se confunde con
+   * la paleta ya oscura de `SECTION_FILL_COLORS`). Fuente: `sectionHasNoPowerGranted`
+   * (déficit VIVO, honesto, sin excepciones) — NO `blueprint.unpoweredSectionIds`
+   * (que solo refleja la cicatriz permanente y gatea señales/HUD). Sigue
+   * parpadeando en pausa táctica a propósito: no es un efecto de la
+   * simulación que la pausa deba congelar.
    */
   private redrawUnpoweredSectionScar(elapsedSeconds: number): void {
     this.unpoweredSectionOverlay?.destroy();
     this.unpoweredSectionOverlay = undefined;
 
-    const unpoweredSectionIds = this.mission.blueprint.unpoweredSectionIds;
-    if (unpoweredSectionIds.length === 0) {
+    const darkSections = this.mission.shipFloorplan.sections.filter((section) =>
+      this.mission.sectionHasNoPowerGranted(section.id),
+    );
+    if (darkSections.length === 0) {
       return;
     }
 
     const graphics = this.add.graphics().setDepth(RENDER_DEPTH.sectionScar);
     graphics.fillStyle(UNPOWERED_SECTION_TINT, sectionScarFlickerAlpha(elapsedSeconds));
-    for (const sectionId of unpoweredSectionIds) {
-      const section = this.mission.shipFloorplan.sections.find((entry) => entry.id === sectionId);
-      if (!section) continue;
+    for (const section of darkSections) {
       for (const cell of section.cells) {
         graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
       }
@@ -2578,21 +2621,25 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   private syncUnpoweredSectionLights(elapsedSeconds: number): void {
-    for (const sectionId of this.mission.blueprint.unpoweredSectionIds) {
-      if (this.unpoweredSectionLights.has(sectionId)) continue;
-      const section = this.mission.shipFloorplan.sections.find((entry) => entry.id === sectionId);
-      if (!section) continue;
-      const { x, y } = sectionCentroidPx(section);
-      const light = createDynamicLight(
-        this,
-        x,
-        y,
-        UNPOWERED_SECTION_LIGHT_COLOR,
-        UNPOWERED_SECTION_LIGHT_RADIUS_PX,
-        unpoweredSectionLightIntensity(elapsedSeconds, sectionFlickerSeed(sectionId)),
-        this.registerLight,
-      );
-      this.unpoweredSectionLights.set(sectionId, light);
+    for (const section of this.mission.shipFloorplan.sections) {
+      const dark = this.mission.sectionHasNoPowerGranted(section.id);
+      const existing = this.unpoweredSectionLights.get(section.id);
+      if (dark && !existing) {
+        const { x, y } = sectionCentroidPx(section);
+        const light = createDynamicLight(
+          this,
+          x,
+          y,
+          UNPOWERED_SECTION_LIGHT_COLOR,
+          UNPOWERED_SECTION_LIGHT_RADIUS_PX,
+          unpoweredSectionLightIntensity(elapsedSeconds, sectionFlickerSeed(section.id)),
+          this.registerLight,
+        );
+        this.unpoweredSectionLights.set(section.id, light);
+      } else if (!dark && existing) {
+        existing.destroy();
+        this.unpoweredSectionLights.delete(section.id);
+      }
     }
     for (const [sectionId, light] of this.unpoweredSectionLights) {
       light.intensity = unpoweredSectionLightIntensity(elapsedSeconds, sectionFlickerSeed(sectionId));

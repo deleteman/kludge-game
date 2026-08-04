@@ -2814,3 +2814,34 @@ casi invisibles, tapados por sombras/luces/paredes — el contenedor heredaba el
 reparentar a `base`. (4) el listado de botones de capas se salía del panel — `LAYER_PANEL_WIDTH` (700px)
 estaba dimensionado para 5 capas, no para las 6 desde que "energia" se sumó; subido a 830px. Test nuevo en
 `power-allocation.test.ts`. 607 tests en `/engine` (antes 606, +1), `tsc --noEmit`/`vite build` limpios.
+
+**Fix post-playtest del operador, ronda 2 (2026-08-05):** 3 observaciones, el punto 3 exigió corrección de
+diseño (no solo bug puntual). (1) click bleed-through: el pointerup sobre el dial/botón de prioridad TAMBIÉN
+disparaba `handleMapClick` sobre la celda de mundo detrás — `isOverFixedUi()` no conocía sus bounds (mismo
+problema ya resuelto para `actionPanelBounds`, Subfase 11g). Corregido con `energyControlWorldBounds` (nuevo
+campo, poblado en `redrawEnergyControls()`, coordenadas de MUNDO vía `getWorldPoint`, ya que estos controles
+no son HUD). (2) UX incómoda del stepper +/-: reemplazado por un slider entero de arrastre —
+`power-allocation-slider.ts` (nuevo, reemplaza `power-allocation-dial.ts`, borrado), molde de
+`kenney-slider.ts` pero consciente de cámara (`getWorldPoint`, no `pointer.x` crudo) y con limpieza explícita
+de sus propios listeners de `scene.input` vía `destroy()` — necesario porque `redrawEnergyControls()`
+destruye/reconstruye estos controles muchas veces por sesión, a diferencia del slider de `options-scene.ts`
+que vive toda la escena. (3) la sección "taller" mostraba luz de "sin energía" mientras el resto, también en
+0, no la mostraba — causa raíz real: `Blueprint.unpoweredSectionIds` servía a la vez de gating conservador
+(señales/HUD) y de efecto visual honesto (cualquier sección en 0), dos requisitos incompatibles en un mismo
+campo. **Corrección de diseño** (ablanda parcialmente el cierre de la ronda 1, con acuerdo explícito del
+operador): `unpoweredSectionIds` pasa a reflejar SOLO `powerState.permanentlyDisconnectedSectionIds` (cicatriz
+permanente real, Cap.5 futuro); el déficit vivo por sección se expone aparte, puramente cosmético, vía
+`MissionPowerRuntime.sectionHasNoPowerGranted(sectionId)` / `MissionRuntime.sectionHasNoPowerGranted(sectionId)`
+— consumido por `redrawUnpoweredSectionScar`/`syncUnpoweredSectionLights` en vez del campo público. Con esto:
+se revierte el guard `totalUnits<=0` de `allocateSectionBudget` (ronda 1, ya no hace falta — su resultado dejó
+de alimentar nada gateado); se eliminan `reconcilePowerScars` y `distributeBudgetEvenly` (sin caller tras la
+corrección); se quita la demo de "taller" (`chapter-01-primer-aviso.ts`, attrezzo de Fase 12a, nunca contenido
+narrativo real) y se siembra en su lugar una fuente real (`bateria-celda-simple`, `powerUnits: 1`) en
+`initial-ship-state.ts`, SOLO Exploración, celda `{x:23,y:12}` verificada libre contra `nave-exploracion.json`
+— sin esto el presupuesto total arrancaba en 0 y el slider no tenía nada que repartir. Documentado en
+`nuevo-orden.md` (Subfase 13d) el alcance diferido de extender `powerDraw` a `EmitterProperty`/`ReceptorProperty`
+(surgió en la revisión de este fix; el operador confirmó dejarlo para más adelante, no reabrir el Cap.1).
+Tests: `power-allocation.test.ts` (quita los 3 tests de las funciones eliminadas), `mission-power-runtime.test.ts`
+(reescrito el test de reconciliación + nuevo test de `sectionHasNoPowerGranted`). 604 tests en `/engine`
+(antes 607, -3 netos por la eliminación de funciones), 29 en `/game` sin cambios. `tsc --noEmit`/`vite build`
+limpios en ambos workspaces.

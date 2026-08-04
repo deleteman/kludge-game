@@ -2925,3 +2925,67 @@ Archivos: `engine/src/power/power-allocation.ts` (+test), `game/src/scenes/floor
 29 de `/game` sin cambios.
 Verificación manual: pendiente de una segunda ronda de playtest del operador confirmando los 4 puntos.
 Razón: playtest manual del operador sobre el cierre de la Subfase 13b.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 2 (3 observaciones del operador).
+Detalle: (1) click bleed-through — el pointerup sobre el dial/botón de prioridad de energía TAMBIÉN disparaba
+`handleMapClick` sobre la celda de mundo detrás. Causa: `isOverFixedUi()` no conocía los bounds de estos
+controles (mismo problema ya resuelto para `actionPanelBounds`, Subfase 11g, pero nunca extendido a los
+controles nuevos de 13b). Corregido: nuevo campo `energyControlWorldBounds` (poblado en
+`redrawEnergyControls()`, coordenadas de MUNDO vía `this.cameras.main.getWorldPoint(...)`, ya que estos
+controles no son HUD fijo) + chequeo agregado en `isOverFixedUi()`.
+(2) UX incómoda del stepper +1/-1 — reemplazado por un slider entero de arrastre. Nuevo
+`game/src/ui/widgets/power-allocation-slider.ts` (reemplaza `power-allocation-dial.ts`, borrado), molde visual
+de `kenney-slider.ts` pero: consciente de cámara (`getWorldPoint` en vez de `pointer.x` crudo, porque el
+slider vive en espacio de mundo, no de pantalla); entero (redondea a unidades de `maxUnits`, solo llama
+`onChange` cuando el entero cambia); con limpieza EXPLÍCITA de sus propios listeners de `scene.input` vía
+`destroy()` — necesario porque `redrawEnergyControls()` destruye/reconstruye estos controles muchas veces por
+sesión (cada toggle de capa, cada cambio de modo), a diferencia del slider de `options-scene.ts` que vive toda
+la vida de la escena y solo limpia en el `SHUTDOWN`.
+(3) la sección "taller" mostraba la luz ambiental de "sin energía" en el arranque mientras el resto de
+secciones, también en 0 unidades, no la mostraban — reportado como inconsistencia visual, pero la causa raíz
+real era un error de diseño, no un bug puntual: `Blueprint.unpoweredSectionIds` (campo público único, decisión
+cerrada de la ronda 1) servía a la vez de (a) gating conservador de señales/HUD — necesita NO dispararse solo
+porque el sistema de energía es nuevo y sin economía real todavía — y (b) efecto visual honesto — necesita
+reflejar CUALQUIER sección con 0 unidades otorgadas ahora mismo. Un solo campo no puede satisfacer ambos
+requisitos a la vez: por eso "taller" (única sección con cicatriz permanente sembrada, un demo de Fase 12a, no
+contenido narrativo real — confirmado por el propio comentario del código) se veía distinta del resto, que
+quedaba protegido por el guard de la ronda 1.
+**Corrección de diseño** (acordada explícitamente con el operador, ablanda parcialmente el cierre de la ronda
+1): `unpoweredSectionIds` pasa a reflejar SOLO `powerState.permanentlyDisconnectedSectionIds` (cicatriz
+permanente real, Cap.5 futuro, hoy vacía) — sigue siendo el gating de `MissionSignalRuntime`/HUD. El déficit
+vivo por sección (0 unidades otorgadas EN VIVO, sin excepciones) se expone en un canal aparte, puramente
+cosmético: `MissionPowerRuntime.sectionHasNoPowerGranted(sectionId)` (cachea `darkSectionIds` del último tick)
+y `MissionRuntime.sectionHasNoPowerGranted(sectionId)` (delega al runtime). `redrawUnpoweredSectionScar`/
+`syncUnpoweredSectionLights` (`floorplan-scene.ts`) pasan a consumir esta señal en vez del campo público —
+`syncUnpoweredSectionLights` ahora también DESTRUYE la luz de una sección que recupera energía (antes solo
+agregaba, nunca quitaba, porque el campo que consumía era estrictamente creciente).
+Consecuencias de la corrección: se revierte el guard `if (totalUnits <= 0)` de `allocateSectionBudget`
+agregado en la ronda 1 (ya no hace falta — su resultado, `darkSectionIds`, dejó de alimentar nada gateado; con
+presupuesto 0 TODAS las secciones vuelven a marcarse a oscuras, que ahora es correcto porque solo mueve el
+efecto cosmético). Se eliminan `reconcilePowerScars` y `distributeBudgetEvenly` (`power-allocation.ts`), sin
+caller de producción tras la corrección — y sus tests. Se quita la demo de "taller"
+(`Chapter01ArchetypeParams.unpoweredSectionId`, `CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE`,
+`chapter-01-primer-aviso.ts`) y su uso en `campaign-save-factory.ts` (`permanentlyDisconnectedSectionIds` queda
+`[]` hasta que exista contenido real de Cap.5). Se siembra en su lugar una fuente de energía REAL
+(`bateria-celda-simple`, `powerUnits: 1`) en `initial-ship-state.ts`, SOLO para el arquetipo `exploracion`, en
+la celda `{x:23,y:12}` — verificada libre de paredes y sin colisión con el `cable-cobre` del demo de Fase 12a
+(`{x:22,y:12}`) decodificando directamente `nave-exploracion.json`. Sin esta fuente el presupuesto total
+arrancaba en 0 y el slider nuevo no tenía nada que repartir desde el primer segundo de juego. `campaign-save-factory.ts`
+también deja de auto-repartir `sectionAllocations` (ya no hace falta como red de seguridad, el gating real no
+depende del déficit vivo) — arranca `[]`, el jugador reparte su única unidad real con el slider.
+Documentación: agregado un bullet en `nuevo-orden.md` (Subfase 13d) anotando como alcance diferido extender
+`powerDraw` a `EmitterProperty`/`ReceptorProperty` — surgió en la revisión de este fix (¿deberían los
+sensores/emisores depender de energía real, no solo los actuadores?); el operador confirmó dejarlo para más
+adelante, ya que implementarlo ahora reabriría el mismo riesgo que motivó el punto 3 (el sensor del Cap.1
+necesitaría energía real para disparar, con Exploración arrancando con una sola unidad total).
+Archivos: `game/src/scenes/floorplan-scene.ts`, `game/src/ui/widgets/power-allocation-slider.ts` (nuevo,
+reemplaza `power-allocation-dial.ts` borrado), `game/src/mission/mission-runtime.ts`,
+`engine/src/power/mission-power-runtime.ts` (+test), `engine/src/power/power-allocation.ts` (+test),
+`engine/src/save/campaign-save-factory.ts`, `engine/src/crisis/campaign/chapter-01-primer-aviso.ts`,
+`engine/src/floorplan/initial-ship-state.ts`, `engine/src/index.ts` (exports), `nuevo-orden.md`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 604 tests de `/engine` (antes 607, -3
+netos por la eliminación de `distributeBudgetEvenly`/`reconcilePowerScars` y sus tests, +2 nuevos de
+`sectionHasNoPowerGranted`/reconciliación reescrita), 29 de `/game` sin cambios.
+Razón: segunda ronda de playtest manual del operador sobre la Subfase 13b, re-reportando los puntos 1 y 2 de
+la ronda 1 (no quedaron resueltos satisfactoriamente) más una inconsistencia visual nueva (punto 3) que
+resultó ser un error de diseño real, no un bug aislado.

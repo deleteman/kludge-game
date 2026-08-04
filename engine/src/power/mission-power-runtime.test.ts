@@ -99,7 +99,7 @@ function baseBlueprint(overrides: Partial<Blueprint> = {}): Blueprint {
 }
 
 describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () => {
-  it("una sección sin asignación queda a oscuras en unpoweredSectionIds", () => {
+  it("una sección sin asignación NO se refleja en unpoweredSectionIds (déficit vivo, no cicatriz)", () => {
     const shipState = new MutableShipState(
       baseBlueprint({
         powerState: {
@@ -113,7 +113,22 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
 
     runtime.tick(tickOf(0));
 
-    expect(shipState.get().unpoweredSectionIds).toEqual([SECTION_B]);
+    expect(shipState.get().unpoweredSectionIds).toEqual([]);
+  });
+
+  it("sectionHasNoPowerGranted: refleja el déficit vivo sin excepciones, incluso con presupuesto total 0", () => {
+    const shipState = new MutableShipState(
+      baseBlueprint({
+        placedComponents: [],
+        powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+      }),
+    );
+    const runtime = new MissionPowerRuntime(shipState, floorplan(), registry());
+
+    runtime.tick(tickOf(0));
+
+    expect(runtime.sectionHasNoPowerGranted(SECTION_A)).toBe(true);
+    expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(true);
   });
 
   it("triaje interno: prioridad decide qué instancia se apaga cuando el pool de la sección no alcanza", () => {
@@ -152,7 +167,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     expect(shipState.get()).toBe(afterFirst);
   });
 
-  it("reconciliación: la cicatriz permanente nunca se pierde ni el déficit táctico se vuelve permanente", () => {
+  it("unpoweredSectionIds refleja SOLO la cicatriz permanente — el déficit vivo de sesión no la contamina", () => {
     const shipState = new MutableShipState(
       baseBlueprint({
         powerState: {
@@ -165,7 +180,9 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     const runtime = new MissionPowerRuntime(shipState, floorplan(), registry());
 
     runtime.tick(tickOf(0));
-    expect([...shipState.get().unpoweredSectionIds].sort()).toEqual([SECTION_A, SECTION_B].sort());
+    // SECTION_B está en déficit vivo (sin asignación), pero eso NO aparece acá.
+    expect(shipState.get().unpoweredSectionIds).toEqual([SECTION_A]);
+    expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(true);
 
     // El jugador asigna presupuesto a B en la siguiente pasada de planificación.
     const withAllocation = {
@@ -179,5 +196,6 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     runtime.tick(tickOf(1));
 
     expect(shipState.get().unpoweredSectionIds).toEqual([SECTION_A]);
+    expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(false);
   });
 });

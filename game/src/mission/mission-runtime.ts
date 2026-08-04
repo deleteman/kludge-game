@@ -889,6 +889,17 @@ export class MissionRuntime {
     );
   }
 
+  /**
+   * Señal puramente cosmética (Fase 13b, ronda 2 de playtest): la sección
+   * tiene 0 unidades otorgadas EN VIVO, sin excepciones — a diferencia de
+   * `blueprint.unpoweredSectionIds`, que refleja solo la cicatriz permanente
+   * y alimenta gating de señales/HUD. Usada exclusivamente por el efecto
+   * visual ambiental de sección (`floorplan-scene.ts`).
+   */
+  sectionHasNoPowerGranted(sectionId: SectionId): boolean {
+    return this.powerRuntime.sectionHasNoPowerGranted(sectionId);
+  }
+
   /** Suma de `powerDraw` de los componentes de una sección (Fase 13b, heatmap de la capa "energia"). */
   sectionPowerDemand(sectionId: SectionId): number {
     let demand = 0;

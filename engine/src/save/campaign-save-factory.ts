@@ -1,22 +1,11 @@
 import type { ShipArchetype } from "../floorplan/floorplan.types.js";
 import { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "../floorplan/initial-ship-state.js";
-import { CANONICAL_SHIP_FLOORPLANS } from "../floorplan/canonical-ships.js";
 import { CREW_CAPACITY_BY_ARCHETYPE, selectActiveCrew, type CrewRoster } from "../crew/crew-roster.js";
 import type { CrewActor } from "../crew/crew-actor.types.js";
 import type { Blueprint, PlacedComponentInstance } from "../blueprint/blueprint.types.js";
-import {
-  CHAPTER_01_BY_ARCHETYPE,
-  CHAPTER_01_INITIAL_ATOMIC_STOCK,
-  CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE,
-} from "../crisis/campaign/chapter-01-primer-aviso.js";
+import { CHAPTER_01_BY_ARCHETYPE, CHAPTER_01_INITIAL_ATOMIC_STOCK } from "../crisis/campaign/chapter-01-primer-aviso.js";
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
-import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
-import { totalPowerBudget } from "../power/power-source.js";
-import { distributeBudgetEvenly } from "../power/power-allocation.js";
-
-/** Registro de definiciones para resolver `powerUnits` al sembrar la asignación inicial (Fase 13b). */
-const COMPONENT_REGISTRY = buildComponentCatalog().registry;
 
 export interface CreateNewCampaignSaveInput {
   readonly id: CampaignSaveId;
@@ -61,18 +50,6 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     ...(chapter01Seed?.components ?? []),
   ];
 
-  // Fase 13b: toda campaña nueva arranca con la nave totalmente alimentada
-  // (decisión del operador) — se reparte a partes iguales entre las secciones
-  // reales el presupuesto total que aportan las fuentes RES(E) ya sembradas,
-  // en vez de dejar `sectionAllocations` vacío (lo que dejaría toda sección a
-  // oscuras desde el primer tick, un cambio de dificultad no solicitado sobre
-  // Cap.1/2 ya jugables). El jugador retriagea con el dial cuando la crisis
-  // se lo exija, no desde el arranque.
-  const initialSectionAllocations = distributeBudgetEvenly(
-    totalPowerBudget(placedComponents, COMPONENT_REGISTRY),
-    CANONICAL_SHIP_FLOORPLANS[input.archetype].sections.map((section) => section.id),
-  );
-
   const shipState: Blueprint = {
     metadata: {
       schemaVersion: 6,
@@ -91,16 +68,17 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     sectionAtmospheres: [],
     // Fase 13b: `unpoweredSectionIds` pasa a ser un campo DERIVADO, recalculado
     // por `MissionPowerRuntime` en la primera pasada síncrona al arrancar la
-    // misión — se siembra vacío aquí. La cicatriz REAL (attrezzo, solo
-    // Exploración por ahora) vive en `powerState.permanentlyDisconnectedSectionIds`.
+    // misión — refleja únicamente `powerState.permanentlyDisconnectedSectionIds`
+    // (cicatriz permanente real, ninguna sembrada todavía — Cap.5 futuro). El
+    // déficit vivo por sección (0 unidades otorgadas ahora) es puramente
+    // cosmético y se consulta vía `MissionPowerRuntime.sectionHasNoPowerGranted`,
+    // no a través de este campo (ver `power-allocation.ts`).
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: {
-      sectionAllocations: initialSectionAllocations,
+      sectionAllocations: [],
       instancePriorities: [],
-      permanentlyDisconnectedSectionIds: CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]
-        ? [CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE[input.archetype]!]
-        : [],
+      permanentlyDisconnectedSectionIds: [],
     },
   };
 

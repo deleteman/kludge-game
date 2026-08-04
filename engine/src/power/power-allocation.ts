@@ -19,33 +19,23 @@ export interface SectionBudgetResult {
 /**
  * Nivel 1: global→sección. Refleja `sectionAllocations` tal cual mientras el
  * total pedido no exceda `totalUnits` — la invariante "no asignar más de lo
- * disponible" la mantiene el dial de UI en la fuente, no este consumidor.
+ * disponible" la mantiene el slider de UI en la fuente, no este consumidor.
  * Si de todos modos se excede (dato corrupto, fixture de test, etc.), recorta
  * proporcionalmente en vez de crashear — clamp defensivo, no la ruta normal.
  *
- * `totalUnits <= 0` (sin ninguna fuente RES(E) instalada todavía — ej. el
- * kit inicial de una partida nueva arranca vacío por diseño, GDD/
- * `initial-ship-state.ts`) es un caso especial: NINGUNA sección se marca a
- * oscuras. No hay economía de energía que modelar todavía, así que "cero
- * presupuesto" no es lo mismo que "déficit" — mismo criterio de retrocompat
- * ya aplicado a componentes sin `powerDraw` (sin dato, no se gatea nada). El
- * sistema se activa recién cuando el jugador instala/canibaliza una fuente
- * real; hasta entonces se comporta como si no existiera (evita el bug real
- * detectado en playtest: presupuesto 0 → todas las secciones "críticas" →
- * dispara el overlay de alerta y el CRT a máxima intensidad desde el arranque).
+ * `darkSectionIds` (0 unidades otorgadas) es un resultado puramente
+ * informativo de esta función — no gatea nada por sí solo. Quién lo consume
+ * decide qué tan estricto ser: `MissionPowerRuntime.sectionHasNoPowerGranted`
+ * lo expone tal cual para el efecto visual ambiental (honesto, sin
+ * excepciones), mientras que la cicatriz real que gatea señales/HUD
+ * (`Blueprint.unpoweredSectionIds`) NO se deriva de acá — viene solo de
+ * `powerState.permanentlyDisconnectedSectionIds` (ver `mission-power-runtime.ts`).
  */
 export function allocateSectionBudget(
   totalUnits: number,
   sectionAllocations: ReadonlyArray<SectionPowerAllocation>,
   sectionIds: ReadonlyArray<SectionId>,
 ): SectionBudgetResult {
-  if (totalUnits <= 0) {
-    return {
-      grantedBySectionId: new Map(sectionIds.map((sectionId) => [sectionId, 0])),
-      darkSectionIds: new Set(),
-    };
-  }
-
   const requested = new Map<SectionId, number>();
   for (const allocation of sectionAllocations) {
     requested.set(allocation.sectionId, Math.max(0, allocation.units));
@@ -113,43 +103,4 @@ export function allocateComponentPower(
     }
   }
   return { poweredInstanceIds, unpoweredInstanceIds };
-}
-
-/**
- * Reparto inicial a partes iguales del presupuesto total entre las secciones
- * reales de la nave (Fase 13b, `campaign-save-factory.ts`): toda campaña
- * nueva arranca con la nave totalmente alimentada, como regía antes de esta
- * fase — el jugador recién retriagea cuando una crisis se lo exige, no desde
- * el primer segundo de juego (decisión del operador, evita romper Cap.1/2 ya
- * validados antes de que exista la UI del dial). El resto sobrante tras la
- * división entera se reparte una unidad por sección, en el orden dado.
- */
-export function distributeBudgetEvenly(
-  totalUnits: number,
-  sectionIds: ReadonlyArray<SectionId>,
-): ReadonlyArray<SectionPowerAllocation> {
-  if (sectionIds.length === 0 || totalUnits <= 0) {
-    return [];
-  }
-  const base = Math.floor(totalUnits / sectionIds.length);
-  let remainder = totalUnits - base * sectionIds.length;
-  return sectionIds.map((sectionId) => {
-    const extra = remainder > 0 ? 1 : 0;
-    remainder = Math.max(0, remainder - 1);
-    return { sectionId, units: base + extra };
-  });
-}
-
-/**
- * Unión de la cicatriz permanente (Cap.5, sacrificio) con el déficit vivo de
- * la sesión actual — la función que materializa la reconciliación cerrada
- * con el operador: un solo campo público (`Blueprint.unpoweredSectionIds`),
- * recalculado cada tick, sin que el triaje táctico de hoy se filtre como
- * cicatriz permanente del guardado.
- */
-export function reconcilePowerScars(
-  permanentlyDisconnectedSectionIds: ReadonlyArray<SectionId>,
-  deficitSectionIds: ReadonlySet<SectionId>,
-): ReadonlyArray<SectionId> {
-  return Array.from(new Set([...permanentlyDisconnectedSectionIds, ...deficitSectionIds]));
 }
