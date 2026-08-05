@@ -43,7 +43,7 @@ function fixtureShip(overrides: Partial<Blueprint> = {}): Blueprint {
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     ...overrides,
   };
 }
@@ -430,6 +430,7 @@ describe("createShipTaskEffect", () => {
           ],
           instancePriorities: [],
           permanentlyDisconnectedSectionIds: [],
+          dischargedSourceIds: [],
         },
       }),
     );
@@ -479,6 +480,24 @@ describe("createShipTaskEffect", () => {
     ]);
     // La sustancia se ventea: no vuelve al inventario (deuda #9 sigue en 13e).
     expect(atomicStock.get()).toEqual({});
+  });
+
+  it("discharge-source records the source and is idempotent (13d, fix ronda 1)", () => {
+    const instanceId = "bateria-1" as PlacedComponentInstanceId;
+    const shipState = new MutableShipState(fixtureShip());
+    const effect = createShipTaskEffect(shipState, EMPTY_REGISTRY, new MutableAtomicStock({}));
+    const task = createCrewTask({
+      id: "t1" as CrewTaskId,
+      actorId: ACTOR,
+      type: "discharge-source",
+      payload: { kind: "discharge-source", instanceId },
+    });
+
+    effect(task);
+    effect(task);
+
+    // Descargar dos veces no duplica la entrada (el jugador puede encolarla dos veces).
+    expect(shipState.get().powerState.dischargedSourceIds).toEqual([instanceId]);
   });
 
   it("analyze-substance reveals the substance id and touches nothing else (Fase 11e)", () => {

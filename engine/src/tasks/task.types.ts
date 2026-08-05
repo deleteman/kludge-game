@@ -33,7 +33,8 @@ export type TaskType =
   | "analyze-substance"
   // Subfase 13d — tareas de ASEGURADO previas a un desmontaje peligroso.
   | "cut-power"
-  | "purge-reservoir";
+  | "purge-reservoir"
+  | "discharge-source";
 
 /**
  * Máquina de estados explícita de una tarea (CLAUDE.md: "State machine
@@ -129,13 +130,27 @@ export interface PurgeReservoirTaskPayload {
   readonly instanceId: PlacedComponentInstanceId;
 }
 
+/**
+ * "Descargar fuente" (Subfase 13d, fix de playtest ronda 1): una batería o
+ * panel solar lleva su PROPIA carga, así que cortar la energía de la sección
+ * no la vuelve segura. Descargarla sí — al precio de que su aporte deja de
+ * contar en el presupuesto de la nave (`totalPowerBudget`), permanentemente
+ * (principio 5): asegurar una fuente para canibalizarla es un sacrificio de
+ * energía, no una casilla gratis.
+ */
+export interface DischargeSourceTaskPayload {
+  readonly kind: "discharge-source";
+  readonly instanceId: PlacedComponentInstanceId;
+}
+
 export type TaskPayload =
   | DismantleTaskPayload
   | InstallTaskPayload
   | ConnectTaskPayload
   | AnalyzeSubstanceTaskPayload
   | CutPowerTaskPayload
-  | PurgeReservoirTaskPayload;
+  | PurgeReservoirTaskPayload
+  | DischargeSourceTaskPayload;
 
 export interface CrewTask {
   readonly id: CrewTaskId;

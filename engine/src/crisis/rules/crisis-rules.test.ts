@@ -39,7 +39,7 @@ function shipWith(placedComponents: Blueprint["placedComponents"]): CrisisEvalCo
       sectionAtmospheres: [],
       unpoweredSectionIds: [],
       overloadedRefs: [],
-      powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+      powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     },
     tick: { dtSeconds: 1, elapsedSeconds: 0 },
   };

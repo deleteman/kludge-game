@@ -176,12 +176,14 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
       sectionAllocations: [],
       instancePriorities: [],
       permanentlyDisconnectedSectionIds: [],
+      dischargedSourceIds: [],
     };
   } else {
     if (!isPlainObject(powerState)) {
       throw new BlueprintParseError("Blueprint.powerState must be an object");
     }
-    const { sectionAllocations, instancePriorities, permanentlyDisconnectedSectionIds } = powerState;
+    const { sectionAllocations, instancePriorities, permanentlyDisconnectedSectionIds, dischargedSourceIds } =
+      powerState;
     if (
       !Array.isArray(sectionAllocations) ||
       sectionAllocations.some(
@@ -205,6 +207,16 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
       permanentlyDisconnectedSectionIds.some((entry) => typeof entry !== "string")
     ) {
       throw new BlueprintParseError("Blueprint.powerState.permanentlyDisconnectedSectionIds must be an array of strings");
+    }
+    // schemaVersion < 8 no tenía fuentes descargadas (Subfase 13d) — ausente =
+    // ninguna descargada todavía, mismo criterio tolerante que el resto.
+    if (dischargedSourceIds === undefined) {
+      (powerState as { dischargedSourceIds: unknown }).dischargedSourceIds = [];
+    } else if (
+      !Array.isArray(dischargedSourceIds) ||
+      dischargedSourceIds.some((entry) => typeof entry !== "string")
+    ) {
+      throw new BlueprintParseError("Blueprint.powerState.dischargedSourceIds must be an array of strings");
     }
   }
 }

@@ -80,7 +80,7 @@ function shipWithConductor(wear: "nuevo" | "usado" | "degradado" | "critico" = "
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
 }
 

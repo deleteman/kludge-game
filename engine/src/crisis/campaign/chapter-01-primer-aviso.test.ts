@@ -89,7 +89,7 @@ describe("capítulo 1 — variantes por arquetipo", () => {
         sectionAtmospheres: [],
         unpoweredSectionIds: [],
         overloadedRefs: [],
-        powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+        powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
       };
 
       const triggered = evaluateCrisis(
@@ -154,7 +154,7 @@ describe("capítulo 1 — variantes por arquetipo", () => {
       sectionAtmospheres: [],
       unpoweredSectionIds: [],
       overloadedRefs: [],
-      powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+      powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     };
 
     const result = evaluateCrisis(

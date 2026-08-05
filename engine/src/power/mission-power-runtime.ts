@@ -72,7 +72,11 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
    */
   recalculate(): void {
     const blueprint = this.shipState.get();
-    const totalUnits = totalPowerBudget(blueprint.placedComponents, this.componentRegistry);
+    const totalUnits = totalPowerBudget(
+      blueprint.placedComponents,
+      this.componentRegistry,
+      blueprint.powerState.dischargedSourceIds,
+    );
     const sectionIds = this.shipFloorplan.sections.map((section) => section.id);
     const { grantedBySectionId, darkSectionIds, shortfallUnits, shedSectionIds } = allocateSectionBudget(
       totalUnits,

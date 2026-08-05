@@ -37,6 +37,7 @@ import {
   composePressureSinks,
   TransientLeakPressureSink,
   dismantleHazardKinds,
+  isElectricSource,
   dismantleHazardContext,
   buildChemicalCatalog,
   buildComponentCatalog,
@@ -114,7 +115,8 @@ type ModulatedTaskType =
   | "analyze-substance"
   // Subfase 13d — tareas de asegurado, con afinidad de Ingeniero.
   | "cut-power"
-  | "purge-reservoir";
+  | "purge-reservoir"
+  | "discharge-source";
 
 /**
  * Orquestador de una misión en curso (Fase 10d) — el equivalente en `/game` de
@@ -394,7 +396,11 @@ export class MissionRuntime {
         // sección y el reloj — se inyectan desde acá; `/engine` no conoce
         // ninguno de esos runtimes por su cuenta.
         {
-          isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+          // Fix de playtest ronda 1: NO `isInstancePowered` (significa "su
+          // demanda está satisfecha" y da true para cualquier pieza sin
+          // `powerDraw`, incluso con la sección a 0 — ver `instance-energized.ts`).
+          // Este es el MISMO dato que pinta el efecto visual de zona oscura.
+          sectionHasGrantedPower: (sectionId) => !this.powerRuntime.sectionHasNoPowerGranted(sectionId),
           atmosphereOf: (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
           elapsedSecondsOf: () => this.lastElapsedSeconds,
           handler: {
@@ -708,11 +714,18 @@ export class MissionRuntime {
       return [];
     }
     return dismantleHazardKinds(
-      dismantleHazardContext(ship, instance, this.shipFloorplan, {
-        isInstancePowered: (id: PlacedComponentInstanceId) => this.powerRuntime.isInstancePowered(id),
-        atmosphereOf: (sectionId: SectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
-        elapsedSecondsOf: () => this.lastElapsedSeconds,
-      }),
+      dismantleHazardContext(
+        ship,
+        instance,
+        this.shipFloorplan,
+        {
+          sectionHasGrantedPower: (sectionId: SectionId) =>
+            !this.powerRuntime.sectionHasNoPowerGranted(sectionId),
+          atmosphereOf: (sectionId: SectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+          elapsedSecondsOf: () => this.lastElapsedSeconds,
+        },
+        this.componentRegistry,
+      ),
     );
   }
 
@@ -749,6 +762,41 @@ export class MissionRuntime {
         targetSectionId,
         payload: { kind: "purge-reservoir", instanceId },
         estimatedDurationSeconds: this.modulatedDuration("purge-reservoir", actorId),
+      }),
+    );
+  }
+
+  /**
+   * ¿Esta pieza es una fuente con carga propia todavía sin descargar? (13d,
+   * fix ronda 1). Lo consume el panel de acciones para ofrecer la tarea de
+   * descarga solo donde tiene sentido — la UI no conoce el catálogo.
+   */
+  canDischargeSource(instanceId: PlacedComponentInstanceId): boolean {
+    const ship = this.shipState.get();
+    const instance = ship.placedComponents.find((entry) => entry.instanceId === instanceId);
+    if (!instance || ship.powerState.dischargedSourceIds.includes(instanceId)) {
+      return false;
+    }
+    return isElectricSource(this.componentRegistry.get(instance.componentDefinitionId));
+  }
+
+  /**
+   * "Descargar fuente" (13d, fix ronda 1): una batería o panel solar no se
+   * asegura cortando la sección — lleva su propia carga. Descargarla la vuelve
+   * segura y le quita su aporte al presupuesto de la nave, para siempre.
+   */
+  queueDischargeSource(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
+    const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
+    const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
+    this.ensureAt(actorId, targetSectionId);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "discharge-source",
+        targetSectionId,
+        payload: { kind: "discharge-source", instanceId },
+        estimatedDurationSeconds: this.modulatedDuration("discharge-source", actorId),
       }),
     );
   }
@@ -1036,7 +1084,12 @@ export class MissionRuntime {
 
   /** Presupuesto total de unidades de energía de la nave (Fase 13b, capa "energia" del HUD del plano). */
   totalPowerBudget(): number {
-    return totalPowerBudget(this.blueprint.placedComponents, this.componentRegistry);
+    return totalPowerBudget(
+      this.blueprint.placedComponents,
+      this.componentRegistry,
+      // 13d: una fuente descargada para canibalizarla ya no aporta.
+      this.blueprint.powerState.dischargedSourceIds,
+    );
   }
 
   /** Unidades asignadas por el jugador a una sección (Fase 13b); 0 si no tiene asignación explícita. */

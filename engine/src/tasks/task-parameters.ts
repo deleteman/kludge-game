@@ -27,6 +27,7 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   // desmontaje, el jugador preferiría siempre comerse el chispazo.
   "cut-power": 5,
   "purge-reservoir": 6,
+  "discharge-source": 8,
 };
 
 /** Duración base de un tipo de tarea (segundos). Punto único de lectura de la tabla. */

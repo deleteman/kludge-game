@@ -5,6 +5,8 @@ import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import type { ComponentId as CatalogComponentId } from "../components/physical-component.types.js";
 import type { DismantleHazardContext } from "./dismantle-hazard-rules.js";
 import {
   HazardousAtmosphereHazardRule,
@@ -25,11 +27,17 @@ const INSTANCE: PlacedComponentInstance = {
   wear: "nuevo",
 };
 
+const REGISTRY = buildComponentCatalog().registry;
+/** Pieza eléctrica REAL del catálogo (COND-E + CE:A), no un doble sintético. */
+const ELECTRIC_DEFINITION = REGISTRY.get("cable-cobre" as CatalogComponentId);
+
 function contextOf(overrides: Partial<DismantleHazardContext> = {}): DismantleHazardContext {
   return {
     instance: INSTANCE,
     sectionId: SECTION_ID,
-    powered: false,
+    definition: ELECTRIC_DEFINITION,
+    sectionHasGrantedPower: false,
+    sourceDischarged: false,
     reservoirContents: [],
     atmosphere: standardSectionAtmosphere(),
     elapsedSeconds: 42,
@@ -43,11 +51,11 @@ function atmosphereWith(overrides: Partial<SectionAtmosphere>): SectionAtmospher
 
 describe("PoweredInstanceHazardRule (13d)", () => {
   it("does not apply to an unpowered instance", () => {
-    expect(PoweredInstanceHazardRule.appliesTo(contextOf({ powered: false }))).toBe(false);
+    expect(PoweredInstanceHazardRule.appliesTo(contextOf({ sectionHasGrantedPower: false }))).toBe(false);
   });
 
   it("emits a spark anchored to the instance cell and section", () => {
-    const ctx = contextOf({ powered: true });
+    const ctx = contextOf({ sectionHasGrantedPower: true });
     expect(PoweredInstanceHazardRule.appliesTo(ctx)).toBe(true);
     expect(PoweredInstanceHazardRule.build(ctx)).toEqual({
       kind: "dismantle-spark",
@@ -142,7 +150,7 @@ describe("assessDismantleHazards (13d)", () => {
   it("stacks the three hazards: they are orthogonal, not exclusive", () => {
     const kinds = dismantleHazardKinds(
       contextOf({
-        powered: true,
+        sectionHasGrantedPower: true,
         reservoirContents: [
           { componentInstanceId: INSTANCE_ID, substanceId: "acido" as ChemicalSubstanceId, amount: 3 },
         ],

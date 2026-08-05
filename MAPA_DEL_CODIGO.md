@@ -699,3 +699,12 @@
 ## `game/src/ui/widgets/mission-action-panel.ts` (modificado, Subfase 13d)
 
 - `ActionPanelContent.instance.dismantleHazards`: badge de riesgo en ámbar (contrato de 12e) + un botón de asegurado por hazard aplicable. El widget solo pinta: el riesgo lo evalúa el motor.
+
+## `engine/src/salvage/instance-energized.ts` (nuevo, 13d fix de playtest ronda 1)
+
+- `isElectricallyLive` / `isElectricSource` / `isInstanceEnergized`: el predicado de "pieza viva" propio de 13d. **No usar `MissionPowerRuntime.isInstancePowered` para esto** — significa "su demanda está satisfecha" y da `true` para cualquier pieza sin `powerDraw`, incluso con la sección a 0 (ver el docblock del módulo).
+- Se resuelve por propiedades (`COND`/`RES` de tipo E, `ACT`, `EM`, `REC`, `CE ≠ "N"`), no por identidad de componente. Una FUENTE (`RES(E)` con `powerUnits`) está viva hasta que se la descarga, sin depender de la red.
+
+## `engine/src/power/` (modificado, 13d fix de playtest ronda 1)
+
+- `PowerState.dischargedSourceIds` (schema 7→8): fuentes descargadas por la tarea `discharge-source`. `totalPowerBudget` deja de contarlas — asegurar una batería para canibalizarla cuesta presupuesto de nave, permanentemente.

@@ -98,7 +98,7 @@ function baseBlueprint(overrides: Partial<Blueprint> = {}): Blueprint {
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     ...overrides,
   };
 }
@@ -111,6 +111,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
           sectionAllocations: [{ sectionId: SECTION_A, units: 1 }],
           instancePriorities: [],
           permanentlyDisconnectedSectionIds: [],
+          dischargedSourceIds: [],
         },
       }),
     );
@@ -125,7 +126,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     const shipState = new MutableShipState(
       baseBlueprint({
         placedComponents: [],
-        powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+        powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
       }),
     );
     const runtime = new MissionPowerRuntime(shipState, floorplan(), registry());
@@ -149,6 +150,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
             { instanceId: SENSOR, priority: 1 },
           ],
           permanentlyDisconnectedSectionIds: [],
+          dischargedSourceIds: [],
         },
       }),
     );
@@ -203,6 +205,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
           ],
           instancePriorities: [],
           permanentlyDisconnectedSectionIds: [],
+          dischargedSourceIds: [],
         },
       }),
     );
@@ -240,6 +243,7 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
           sectionAllocations: [],
           instancePriorities: [],
           permanentlyDisconnectedSectionIds: [SECTION_A],
+          dischargedSourceIds: [],
         },
       }),
     );

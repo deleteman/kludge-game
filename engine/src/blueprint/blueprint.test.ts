@@ -86,6 +86,7 @@ function buildFixtureBlueprint(): Blueprint {
       sectionAllocations: [{ sectionId: "bahia-carga" as SectionId, units: 3 }],
       instancePriorities: [{ instanceId: INSTANCE_A, priority: 0 }],
       permanentlyDisconnectedSectionIds: ["taller" as SectionId],
+      dischargedSourceIds: [],
     },
   };
 }
@@ -149,7 +150,31 @@ describe("blueprint: serialize/deserialize round-trip", () => {
       sectionAllocations: [],
       instancePriorities: [],
       permanentlyDisconnectedSectionIds: [],
+      dischargedSourceIds: [],
     });
+  });
+
+  it("defaults dischargedSourceIds when loading a pre-13d (schema v7) save", () => {
+    const v7 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    delete (v7.powerState as Record<string, unknown>).dischargedSourceIds;
+    (v7.metadata as Record<string, unknown>).schemaVersion = 7;
+
+    const restored = deserializeBlueprint(JSON.stringify(v7));
+    expect(restored.powerState.dischargedSourceIds).toEqual([]);
+  });
+
+  it("round-trips discharged sources (13d)", () => {
+    const blueprint = buildFixtureBlueprint();
+    const withDischarged = {
+      ...blueprint,
+      powerState: {
+        ...blueprint.powerState,
+        dischargedSourceIds: [blueprint.placedComponents[0]!.instanceId],
+      },
+    };
+
+    const restored = deserializeBlueprint(serializeBlueprint(withDischarged));
+    expect(restored.powerState.dischargedSourceIds).toEqual([blueprint.placedComponents[0]!.instanceId]);
   });
 
   it("rejects a powerState with a malformed sectionAllocations entry", () => {

@@ -58,7 +58,7 @@ function blueprintWith(instanceId: PlacedComponentInstanceId, componentDefinitio
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] },
+    powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
 }
 

@@ -3472,3 +3472,59 @@ nuevos (queda uno PREEXISTENTE en `engine/src/tasks/task-events.types.ts`, impor
 ajeno a esta subfase).
 Razón: cerrar el Gap ② de las comparativas de género (Shipbreaker) — el riesgo de canibalizar, que es la
 tensión central de ese referente y el complemento del Pilar 2 que 13c dejó a medias.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-05 — Subfase 13d: fixes de playtest, ronda 1
+────────────────────────────────────────────────────────────────────────────────
+Feedback del operador sobre los pasos de prueba de 13d: (1) y (2) correctos; (3) "se corta la energía (se ve
+el efecto en la zona), pero se hace daño al tripulante igualmente"; (4) "no desaparece el badge de warning".
+
+UNA sola causa para los dos síntomas. `MissionPowerRuntime.isInstancePowered` NO significa "esta pieza está
+energizada": significa "su demanda eléctrica está satisfecha". `allocateComponentPower` (`power-allocation.ts`)
+marca como alimentada a toda instancia con `powerDraw` 0 o ausente SIN mirar las unidades de la sección —
+retrocompat deliberada de 13b, correcta para decidir si un actuador arranca. Como ninguna pieza del catálogo
+declara `powerDraw` todavía (extensión diferida), TODO se leía como vivo siempre. 13d eligió ese predicado como
+definición de "pieza viva" y heredó su semántica. Es el patrón 10 del checklist de playtest otra vez: al poner
+al jugador a mirar un dato viejo se heredan sus errores de modelado. `isInstancePowered` NO se tocó — lo
+consumen `MissionSignalRuntime` y el inspector de prioridad con su significado actual.
+
+Fix 1 — predicado propio (`engine/src/salvage/instance-energized.ts`), resuelto por PROPIEDADES y no por
+identidad de componente: `isElectricallyLive` (COND/RES de tipo E, ACT, EM, REC, o `material.CE ≠ "N"`),
+`isElectricSource` (RES(E) con `powerUnits`, mismo criterio que `totalPowerBudget`) e `isInstanceEnergized`.
+Regla decidida con el operador: sección con energía OTORGADA + pieza eléctricamente relevante; una FUENTE con
+carga propia está viva siempre, porque su carga no viene de la red. `DismantleHazardContext` dejó de traer un
+`powered: boolean` ya resuelto por el llamador (ahí fue donde se coló la semántica equivocada) y ahora recibe
+los datos crudos: la regla decide. `/game` inyecta el complemento de `sectionHasNoPowerGranted` — el MISMO dato
+que pinta el efecto visual de zona oscura, así que lo que se ve y lo que decide el motor no pueden divergir.
+
+Fix 2 — tarea "Descargar fuente" (`discharge-source`), decisión del operador: cortar la sección no vacía una
+batería. Estado persistido en `PowerState.dischargedSourceIds`, con bump de `schemaVersion` 7→8. Es el ÚNICO
+estado de 13d que se persiste, y la excepción está justificada: el resto del riesgo se deriva del mundo, pero
+la carga de una batería no tiene ninguna representación de la que derivarla — descargar es un hecho nuevo, no
+la lectura de uno existente. El precio es real: `totalPowerBudget` deja de contar las fuentes descargadas, así
+que asegurar una batería para canibalizarla BAJA el presupuesto de la nave, para siempre (principio 5). No es
+una casilla gratis, es el triaje de 13b y el Pilar 2 en el mismo gesto.
+
+Fix 3 — el badge se recalcula, no se hornea. `dismantleHazards` se fijaba al seleccionar la pieza y quedaba
+congelado en `actionPanelContent`; ahora `redrawActionPanel` lo re-deriva contra el motor en cada dibujo, y el
+dial de energía (`floorplan-scene.ts`) llama `refreshActionPanel()` tras escribir. Patrón 2 del checklist: todo
+control debe dar respuesta visible inmediata en pausa. Además, una fuente muestra su propio aviso
+("carga propia: cortar la sección no la vuelve segura") en vez del genérico, que habría mandado al jugador a
+cortar la sección — una salida que no arregla nada.
+
+Lección de test, la más importante de la ronda: los 3 tests de `dismantle-hazard.integration.test.ts` pasaban
+en verde CON el bug en producción, porque el fixture inyectaba su propio `isInstancePowered` derivado de
+`sectionAllocations` — es decir, implementaba la semántica que el runtime debería tener. Un doble que
+implementa lo correcto no prueba nada sobre el runtime real. Reescrito para montar un `MissionPowerRuntime` de
+verdad; los tests unitarios del predicado corren contra el CATÁLOGO real, no contra definiciones sintéticas.
+
+Archivos nuevos: `engine/src/salvage/instance-energized.ts` (+ test), `engine/src/power/power-source.test.ts`.
+Modificados: `salvage/dismantle-hazard-rules.ts`, `mission/ship-task-effect.ts`, `power/power.types.ts`,
+`power/power-source.ts`, `power/mission-power-runtime.ts`, `blueprint/blueprint.types.ts` (doc del schema),
+`blueprint/blueprint-serializer.ts`, `save/campaign-save-factory.ts`, `tasks/task.types.ts`,
+`tasks/task-parameters.ts`, `crew/crew-affinity.ts`, `index.ts`, `game/src/mission/mission-runtime.ts`,
+`game/src/mission/mission-interaction-controller.ts`, `game/src/ui/widgets/mission-action-panel.ts`,
+`game/src/scenes/floorplan-scene.ts`, `game/src/i18n/{es,en}.ts`, y 30 fixtures de test por el campo nuevo.
+Suite: `/engine` 707 → 733 tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos; `eslint` sin errores
+nuevos (sigue el preexistente de `tasks/task-events.types.ts`).
+Razón: primera ronda de playtest manual del operador sobre la Subfase 13d.

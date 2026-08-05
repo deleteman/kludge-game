@@ -685,6 +685,13 @@ export {
 } from "./salvage/dismantle-hazard-rules.js";
 export type { DismantleHazardContext, DismantleHazardRule } from "./salvage/dismantle-hazard-rules.js";
 export { assessDismantleHazards, dismantleHazardKinds } from "./salvage/dismantle-hazard-assessment.js";
+// 13d fix ronda 1: predicado propio de "pieza viva" (NO reusar `isInstancePowered`, ver el docblock).
+export {
+  isInstanceEnergized,
+  isElectricallyLive,
+  isElectricSource,
+} from "./salvage/instance-energized.js";
+export type { InstanceEnergizedInput } from "./salvage/instance-energized.js";
 export { handleDismantleHazards, applyDismantleHazardDamage } from "./salvage/dismantle-hazard-handler.js";
 export type { DismantleHazardHandlerDeps, DismantleHazardOutcome } from "./salvage/dismantle-hazard-handler.js";
 export { TransientLeakPressureSink } from "./salvage/transient-pressure-sink.js";

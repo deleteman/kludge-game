@@ -54,8 +54,15 @@ export class InsufficientStockError extends Error {}
  * de 13d — ningún hazard, ningún daño. Solo la misión real las cablea.
  */
 export interface SalvageHazardDeps {
-  /** `MissionPowerRuntime.isInstancePowered` (13b): la definición de "pieza viva". */
-  readonly isInstancePowered?: (instanceId: PlacedComponentInstanceId) => boolean;
+  /**
+   * ¿La sección tiene unidades OTORGADAS por el reparto de 13b? (fix de
+   * playtest ronda 1: antes se inyectaba `isInstancePowered`, que significa
+   * "su demanda está satisfecha" y daba `true` para cualquier pieza sin
+   * `powerDraw` incluso con la sección a 0 — ver `instance-energized.ts`).
+   * `/game` inyecta el complemento de `sectionHasNoPowerGranted`, el MISMO
+   * dato que pinta el efecto visual de zona oscura.
+   */
+  readonly sectionHasGrantedPower?: (sectionId: SectionId) => boolean;
   /** Atmósfera VIVA de la sección donde está la pieza (`MissionAtmosphereRuntime`). */
   readonly atmosphereOf?: (sectionId: SectionId) => SectionAtmosphere | undefined;
   /** Tiempo simulado del tick en que se completa la tarea, para los eventos de dominio. */
@@ -125,7 +132,7 @@ export function createShipTaskEffect(
         // tendría contenido, y todo desmontaje parecería seguro.
         const hazard = instance
           ? handleDismantleHazards(
-              dismantleHazardContext(shipState.get(), instance, floorplan, salvageDeps),
+              dismantleHazardContext(shipState.get(), instance, floorplan, salvageDeps, componentRegistry),
               salvageDeps.handler ?? {},
             )
           : undefined;
@@ -221,6 +228,24 @@ export function createShipTaskEffect(
         });
         return;
       }
+      case "discharge-source": {
+        // Asegurado de una FUENTE (13d, fix de playtest ronda 1): cortar la
+        // sección no vacía una batería, su carga es propia. Descargarla la
+        // vuelve segura, y el precio es real — deja de aportar al presupuesto
+        // de la nave (`totalPowerBudget`) para siempre (principio 5).
+        const ship = shipState.get();
+        if (ship.powerState.dischargedSourceIds.includes(payload.instanceId)) {
+          return;
+        }
+        shipState.set({
+          ...ship,
+          powerState: {
+            ...ship.powerState,
+            dischargedSourceIds: [...ship.powerState.dischargedSourceIds, payload.instanceId],
+          },
+        });
+        return;
+      }
       case "purge-reservoir": {
         // Purga CONTROLADA (13d): el contenido se ventea, no se derrama ni
         // vuelve al inventario — no existe todavía un destino real para las
@@ -249,6 +274,7 @@ export function dismantleHazardContext(
   instance: PlacedComponentInstance,
   floorplan: ShipFloorplan | undefined,
   deps: SalvageHazardDeps,
+  componentRegistry?: ComponentRegistry,
 ): DismantleHazardContext {
   const sectionId = floorplan
     ? sectionContainingCell(floorplan, instance.placement.position)?.id
@@ -256,7 +282,9 @@ export function dismantleHazardContext(
   return {
     instance,
     sectionId,
-    powered: deps.isInstancePowered?.(instance.instanceId) ?? false,
+    definition: componentRegistry?.get(instance.componentDefinitionId),
+    sectionHasGrantedPower: sectionId ? (deps.sectionHasGrantedPower?.(sectionId) ?? false) : false,
+    sourceDischarged: ship.powerState.dischargedSourceIds.includes(instance.instanceId),
     reservoirContents: ship.reservoirContents.filter(
       (entry) => entry.componentInstanceId === instance.instanceId,
     ),

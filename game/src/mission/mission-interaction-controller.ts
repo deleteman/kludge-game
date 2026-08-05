@@ -301,10 +301,9 @@ export class MissionInteractionController {
         instanceId: instance.instanceId,
         name: this.nameByComponentId.get(instance.componentDefinitionId) ?? instance.componentDefinitionId,
         condition: instance.condition,
-        // Subfase 13d: riesgo evaluado contra el mundo VIVO en el momento de
-        // seleccionar. Se recalcula en cada apertura del panel, así que cortar
-        // la energía (o volver a asignarla) se refleja al reabrirlo.
-        dismantleHazards: this.mission.dismantleHazardsFor(instance.instanceId),
+        // El riesgo NO se hornea acá (fix de playtest ronda 1): `redrawActionPanel`
+        // lo re-deriva contra el motor en cada dibujo, así que bajar el dial de
+        // energía apaga el badge en el acto, sin reabrir el panel.
       });
     } else {
       this.setActionPanelContent({ kind: "empty", position });
@@ -543,11 +542,22 @@ export class MissionInteractionController {
     // `idle` significa "sin panel" (Subfase 11g) — el panel contextual solo
     // existe ante una selección/interacción válida, no se renderiza más.
     if (this.actionPanelContent.kind === "idle") return;
+    // Riesgo de desmontaje re-evaluado en CADA dibujo contra el mundo vivo
+    // (13d, fix de playtest ronda 1): antes se fijaba al seleccionar la pieza y
+    // quedaba congelado, así que cortar la energía no apagaba el aviso.
+    const content: ActionPanelContent =
+      this.actionPanelContent.kind === "instance"
+        ? {
+            ...this.actionPanelContent,
+            dismantleHazards: this.mission.dismantleHazardsFor(this.actionPanelContent.instanceId),
+            canDischargeSource: this.mission.canDischargeSource(this.actionPanelContent.instanceId),
+          }
+        : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,
       this.geometry.actionPanelHeight,
-      this.actionPanelContent,
+      content,
       this.selectedActorIdValue !== undefined,
       {
         idleTitle: t("ui.floorplan.mission.inspector.idle-title"),
@@ -559,6 +569,8 @@ export class MissionInteractionController {
         hazardWarning: (kind) => t(`ui.floorplan.mission.inspector.hazard.${kind}`),
         cutPower: t("ui.floorplan.mission.inspector.cut-power"),
         purgeReservoir: t("ui.floorplan.mission.inspector.purge-reservoir"),
+        dischargeSource: t("ui.floorplan.mission.inspector.discharge-source"),
+        sourceChargeWarning: t("ui.floorplan.mission.inspector.hazard.source-charge"),
         installHere: t("ui.floorplan.mission.inspector.install-here"),
         noActorSelected: t("ui.floorplan.mission.no-actor-selected"),
         analyzeSubstance: (analyzed) =>
@@ -589,6 +601,11 @@ export class MissionInteractionController {
         onPurgeReservoir: (instanceId) => {
           if (!this.selectedActorIdValue) return;
           this.mission.queuePurgeReservoir(this.selectedActorIdValue, instanceId);
+          this.callbacks.onTaskQueued();
+        },
+        onDischargeSource: (instanceId) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queueDischargeSource(this.selectedActorIdValue, instanceId);
           this.callbacks.onTaskQueued();
         },
         onOpenInstallPicker: (position) => {

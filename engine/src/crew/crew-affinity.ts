@@ -23,7 +23,8 @@ export type AffinityAction =
   // Ingeniero, igual que desmontar/instalar; el GDD 6.6 no las lista porque no
   // existían, mismo caso que `combine`/`analyze-substance`.
   | "cut-power"
-  | "purge-reservoir";
+  | "purge-reservoir"
+  | "discharge-source";
 
 /** Especialidad afín a cada acción (GDD 6.6, columna "Afinidad"). */
 export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = {
@@ -42,6 +43,7 @@ export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = 
   "analyze-substance": "medico",
   "cut-power": "ingeniero",
   "purge-reservoir": "ingeniero",
+  "discharge-source": "ingeniero",
 };
 
 /**
@@ -65,6 +67,7 @@ export const AFFINITY_DURATION_MULTIPLIER: Record<AffinityAction, Record<CrewTie
   // del Ingeniero sobre la pieza (13d).
   "cut-power": { novato: 0.9, veterano: 0.75, experto: 0.6 },
   "purge-reservoir": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "discharge-source": { novato: 0.9, veterano: 0.75, experto: 0.6 },
 };
 
 /** Regla general fuera de afinidad (GDD 6.6): +20% de tiempo, sin importar el tier. */

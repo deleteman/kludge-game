@@ -1873,6 +1873,10 @@ export class FloorplanScene extends Phaser.Scene {
         onChange: (nextUnits) => {
           this.mission.setSectionPowerUnits(section.id, nextUnits);
           this.syncEnergySliderCaps(section.id);
+          // 13d (fix de playtest ronda 1): dejar una sección sin energía cambia
+          // el riesgo de desmontar lo que hay dentro — el badge del panel de
+          // acciones tiene que responder en el acto, no al reabrirlo.
+          this.interaction?.refreshActionPanel();
         },
       });
       const priorityButton = createKenneyButton(

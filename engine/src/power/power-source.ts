@@ -1,6 +1,6 @@
 import type { EntityRegistry } from "../composition/entity-registry.js";
 import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
-import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
+import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 
 /**
  * Presupuesto total de unidades de energía que aporta la nave (Fase 13b):
@@ -14,9 +14,17 @@ import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
 export function totalPowerBudget(
   placedComponents: ReadonlyArray<PlacedComponentInstance>,
   componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+  // Subfase 13d (fix de playtest ronda 1): una fuente que el jugador descargó
+  // para poder canibalizarla sin chispazo deja de aportar. Opcional para no
+  // romper a los llamadores previos a 13d.
+  dischargedSourceIds: ReadonlyArray<PlacedComponentInstanceId> = [],
 ): number {
+  const discharged = new Set(dischargedSourceIds);
   let total = 0;
   for (const instance of placedComponents) {
+    if (discharged.has(instance.instanceId)) {
+      continue;
+    }
     const definition = componentRegistry.get(instance.componentDefinitionId);
     const functional = definition?.data.functional;
     const source = functional?.find((property) => property.tag === "RES" && property.resourceType === "E");

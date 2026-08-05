@@ -43,9 +43,25 @@ export interface PowerState {
    * un apagón táctico de una misión "se vuelva permanente" en el guardado.
    */
   readonly permanentlyDisconnectedSectionIds: ReadonlyArray<SectionId>;
+  /**
+   * Fuentes (`RES(E)` con `powerUnits`) descargadas por una tarea
+   * `discharge-source` (Subfase 13d, fix de playtest ronda 1). Es el ÚNICO
+   * estado de 13d que se persiste: el resto del riesgo de desmontaje se deriva
+   * del mundo, pero la carga de una batería no tiene ninguna representación de
+   * la que derivarla — descargar es un hecho nuevo, no la lectura de uno que ya
+   * existía. Una fuente descargada deja de aportar al presupuesto
+   * (`totalPowerBudget`) y deja de ser peligrosa de desmontar. No se recarga
+   * (principio 5 de CLAUDE.md).
+   */
+  readonly dischargedSourceIds: ReadonlyArray<PlacedComponentInstanceId>;
 }
 
 /** `PowerState` vacío — usado como default de deserialización (saves pre-v6) y para nuevas partidas sin cicatrices. */
 export function emptyPowerState(): PowerState {
-  return { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [] };
+  return {
+    sectionAllocations: [],
+    instancePriorities: [],
+    permanentlyDisconnectedSectionIds: [],
+    dischargedSourceIds: [],
+  };
 }

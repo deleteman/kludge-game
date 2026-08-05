@@ -6,6 +6,7 @@ import type { Blueprint, PlacedComponentInstance } from "../blueprint/blueprint.
 import { CHAPTER_01_BY_ARCHETYPE, CHAPTER_01_INITIAL_ATOMIC_STOCK } from "../crisis/campaign/chapter-01-primer-aviso.js";
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
+import { emptyPowerState } from "../power/power.types.js";
 
 export interface CreateNewCampaignSaveInput {
   readonly id: CampaignSaveId;
@@ -52,7 +53,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 7,
+      schemaVersion: 8,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -75,11 +76,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // no a través de este campo (ver `power-allocation.ts`).
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: {
-      sectionAllocations: [],
-      instancePriorities: [],
-      permanentlyDisconnectedSectionIds: [],
-    },
+    powerState: emptyPowerState(),
   };
 
   return {

@@ -88,6 +88,14 @@ import type { ComponentWear } from "../wear/wear.types.js";
  * desgaste iba a modificar la RE efectiva: mantener ambos habría contado el
  * mismo daño dos veces sobre la misma pieza. Un solo eje, mapeado 1:1, así que
  * el ritmo de degradación por corrosión de la Espec. §1 no cambió.
+ *
+ * Subfase 13d (fix de playtest ronda 1): `schemaVersion` 7→8 — se añade
+ * `PowerState.dischargedSourceIds`. Es el único estado del riesgo de
+ * canibalización que se persiste: el resto se deriva del mundo (si la sección
+ * tiene energía, si el reservorio tiene contenido), pero la carga de una
+ * batería no tiene ninguna representación de la que derivarla. Una fuente
+ * descargada deja de aportar al presupuesto de energía y deja de ser peligrosa
+ * de desmontar; no se recarga (principio 5).
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;

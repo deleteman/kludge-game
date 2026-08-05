@@ -48,6 +48,8 @@ export type ActionPanelContent =
        * panel solo pinta: no sabe qué hace peligrosa a una pieza.
        */
       readonly dismantleHazards?: ReadonlyArray<DismantleHazardKind>;
+      /** La pieza es una fuente con carga propia todavía sin descargar (13d, fix ronda 1). */
+      readonly canDischargeSource?: boolean;
     }
   | { readonly kind: "empty"; readonly position: GridPosition }
   | {
@@ -107,6 +109,9 @@ export interface ActionPanelLabels {
   /** Tareas de asegurado que neutralizan el riesgo (13d). */
   readonly cutPower: string;
   readonly purgeReservoir: string;
+  readonly dischargeSource: string;
+  /** Aviso específico de una fuente con carga propia — el chispazo tiene otra causa y otra salida. */
+  readonly sourceChargeWarning: string;
   readonly noActorSelected: string;
   /** "Analizar Sustancia" (Fase 11e); el label ya refleja si se completó (ej. "Ya analizada"). */
   readonly analyzeSubstance: (analyzed: boolean) => string;
@@ -123,6 +128,8 @@ export interface ActionPanelCallbacks {
   readonly onCutPower: (instanceId: PlacedComponentInstanceId) => void;
   /** Encola "Purgar reservorio" (13d) sobre esta pieza. */
   readonly onPurgeReservoir: (instanceId: PlacedComponentInstanceId) => void;
+  /** Encola "Descargar fuente" (13d, fix ronda 1) sobre esta batería/panel. */
+  readonly onDischargeSource: (instanceId: PlacedComponentInstanceId) => void;
   readonly onOpenInstallPicker: (position: GridPosition) => void;
   readonly onAnalyzeSubstance: (substanceId: ChemicalSubstanceId) => void;
   readonly onSelectSubstance: (substanceId: ChemicalSubstanceId) => void;
@@ -269,9 +276,16 @@ export function renderMissionActionPanel(
     // Ámbar del contrato de color único de 12e — es escalable, no fatal.
     let cursorY = contentTop + 30;
     for (const hazard of hazards) {
+      // Una fuente chispea por su propia carga, no por la red: decirle al
+      // jugador "está energizada" lo mandaría a cortar la sección, que no la
+      // arregla (13d, fix ronda 1).
+      const warning =
+        hazard === "dismantle-spark" && content.canDischargeSource
+          ? labels.sourceChargeWarning
+          : labels.hazardWarning(hazard);
       container.add(
         scene.add
-          .text(width / 2, cursorY, `⚠ ${labels.hazardWarning(hazard)}`, {
+          .text(width / 2, cursorY, `⚠ ${warning}`, {
             fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
             fontSize: "10px",
             color: CRISIS_WARNING_CSS,
@@ -316,6 +330,21 @@ export function renderMissionActionPanel(
           fontSize: "11px",
           enabled: hasSelectedActor,
           onClick: () => callbacks.onPurgeReservoir(content.instanceId),
+        }),
+      );
+      cursorY += 36;
+    }
+    // Una FUENTE (batería, panel solar) no se asegura cortando la sección: su
+    // carga es propia (13d, fix de playtest ronda 1). El llamador marca cuándo
+    // corresponde ofrecer la descarga — el panel no conoce el catálogo.
+    if (content.canDischargeSource) {
+      container.add(
+        createKenneyButton(scene, width / 2, cursorY, labels.dischargeSource, {
+          width: width - 40,
+          height: 30,
+          fontSize: "11px",
+          enabled: hasSelectedActor,
+          onClick: () => callbacks.onDischargeSource(content.instanceId),
         }),
       );
     }

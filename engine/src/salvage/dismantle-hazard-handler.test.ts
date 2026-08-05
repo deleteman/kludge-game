@@ -8,6 +8,7 @@ import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.
 import type { SectionId } from "../atmosphere/section.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import type { SalvageDomainEvent } from "./salvage-hazard.types.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import type { DismantleHazardContext } from "./dismantle-hazard-rules.js";
 import { applyDismantleHazardDamage, handleDismantleHazards } from "./dismantle-hazard-handler.js";
 
@@ -40,7 +41,9 @@ function contextOf(overrides: Partial<DismantleHazardContext> = {}): DismantleHa
   return {
     instance: INSTANCE,
     sectionId: "pasillo-central" as SectionId,
-    powered: false,
+    definition: buildComponentCatalog().registry.get("cable-cobre" as ComponentId),
+    sectionHasGrantedPower: false,
+    sourceDischarged: false,
     reservoirContents: [],
     atmosphere: standardSectionAtmosphere(),
     elapsedSeconds: 10,
@@ -65,7 +68,7 @@ describe("handleDismantleHazards (13d)", () => {
     const seen: SalvageDomainEvent[] = [];
     emitter.onAny((event) => seen.push(event));
 
-    const outcome = handleDismantleHazards(contextOf({ powered: true }), { emitter });
+    const outcome = handleDismantleHazards(contextOf({ sectionHasGrantedPower: true }), { emitter });
 
     expect(seen.map((event) => event.kind)).toEqual(["dismantle-spark"]);
     expect(outcome.extraWearStep).toBe(true);
@@ -79,7 +82,7 @@ describe("applyDismantleHazardDamage (13d)", () => {
     crewEmitter.onAny((event) => seen.push(event));
     let stored: CrewActor | undefined;
 
-    const events = handleDismantleHazards(contextOf({ powered: true })).events;
+    const events = handleDismantleHazards(contextOf({ sectionHasGrantedPower: true })).events;
     applyDismantleHazardDamage(ACTOR_ID, events, 10, {
       crewEmitter,
       actorOf: () => actorFixture(),
@@ -94,7 +97,7 @@ describe("applyDismantleHazardDamage (13d)", () => {
 
   it("never kills: a hazard leaves the actor at 1 HP at worst", () => {
     let stored: CrewActor | undefined;
-    const events = handleDismantleHazards(contextOf({ powered: true })).events;
+    const events = handleDismantleHazards(contextOf({ sectionHasGrantedPower: true })).events;
 
     applyDismantleHazardDamage(ACTOR_ID, events, 10, {
       actorOf: () => actorFixture(5),
@@ -127,7 +130,7 @@ describe("applyDismantleHazardDamage (13d)", () => {
     let stored: CrewActor | undefined;
     const events = handleDismantleHazards(
       contextOf({
-        powered: true,
+        sectionHasGrantedPower: true,
         reservoirContents: [
           { componentInstanceId: INSTANCE_ID, substanceId: "acido" as ChemicalSubstanceId, amount: 2 },
         ],

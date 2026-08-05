@@ -1,6 +1,7 @@
 // GDD 9, caso 8 — "Sofocar sin extintor / Trampa de chispa": combustión modulada por la concentración de O2 de la sección, en ambas direcciones (GDD 5.5).
 import { describe, expect, it } from "vitest";
 import {
+  buildComponentCatalog,
   CombustionRule,
   createShipTaskEffect,
   createCrewTask,
@@ -17,9 +18,7 @@ import {
   type ComponentId,
   type CrewActorId,
   type CrewTaskId,
-  type EntityRegistry,
   type GasKey,
-  type PhysicalComponentDefinition,
   type PlacedComponentInstanceId,
   type ReactionContext,
   type ReactionDomainEvent,
@@ -43,6 +42,9 @@ function section(id: string, volume: number, gases: Record<GasKey, number>): Sec
     atmosphere: { gases: new Map(Object.entries(gases)), temperatureCelsius: 21, pressureKpa: 101 },
   };
 }
+
+/** Catálogo real: `cable-cobre` debe resolverse para que el predicado lo lea como eléctrico. */
+const REGISTRY = buildComponentCatalog().registry;
 
 const fuel = { id: "fuel" as ChemicalSubstanceId, name: "fuel", tags: [{ name: "COMB" as const }] };
 const rule = new CombustionRule();
@@ -111,11 +113,6 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
   it("13d: dismantling a live piece is the spark that detonates the O2-enriched room", () => {
     const SALA = sectionId("sala-cebada");
     const CONDUCTOR = "conductor-1" as PlacedComponentInstanceId;
-    const emptyRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition> = {
-      get: () => undefined,
-      has: () => false,
-      all: () => [],
-    };
     const floorplan: ShipFloorplan = {
       id: "fixture-floorplan",
       archetype: "exploracion",
@@ -153,6 +150,7 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
         sectionAllocations: [{ sectionId: SALA, units: 1 }],
         instancePriorities: [],
         permanentlyDisconnectedSectionIds: [],
+        dischargedSourceIds: [],
       },
     };
 
@@ -181,12 +179,14 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
 
     const effect = createShipTaskEffect(
       shipState,
-      emptyRegistry,
+      REGISTRY,
       new MutableAtomicStock({}),
       floorplan,
       {},
       {
-        isInstancePowered: () => true,
+        // El conductor está vivo porque su sección tiene energía otorgada — el
+        // mismo criterio que usa la misión real (`instance-energized.ts`).
+        sectionHasGrantedPower: () => true,
         atmosphereOf: () => enrichedAtmosphere,
         elapsedSecondsOf: () => 0,
         handler: { emitter: salvageEvents },

@@ -3155,3 +3155,35 @@ Diseño cerrado con el operador en ciclo de preguntas propio (2026-08-05):
 
 Suite: `/engine` 679 → **707** tests (25 nuevos de 13d), `/game` 36 sin cambios. `tsc --noEmit` limpio en
 ambos workspaces, `eslint` sin errores nuevos. Detalle completo en `changelog.log`.
+
+#### Fixes de playtest de 13d, ronda 1 ✅ (2026-08-05)
+
+Los pasos 1 y 2 de la receta de prueba dieron bien; fallaron los otros dos, **con una sola causa raíz**.
+
+* **Cortar la energía no evitaba el chispazo, y el badge no se apagaba nunca:** `isInstancePowered` (13b) no
+  significa "está energizada" sino "su demanda eléctrica está satisfecha" — `allocateComponentPower` marca
+  como alimentada a toda pieza con `powerDraw` 0 o ausente **sin mirar las unidades de la sección**. Como
+  ninguna pieza del catálogo declara `powerDraw` todavía, todo se leía como vivo siempre. **Error heredado de
+  13b, que 13d volvió visible** (patrón 10 del checklist de playtest, igual que la integridad de casco en 13c).
+  **Resuelto:** predicado propio en `engine/src/salvage/instance-energized.ts`, resuelto por propiedades y no
+  por identidad — sección con energía OTORGADA + pieza eléctricamente relevante (`COND`/`RES` de tipo E, `ACT`,
+  `EM`, `REC`, `CE ≠ "N"`). `isInstancePowered` queda intacto: lo consumen `MissionSignalRuntime` y el
+  inspector de prioridad. `DismantleHazardContext` dejó de recibir un `powered` ya resuelto por el llamador —
+  ahí era donde se colaba la semántica equivocada.
+
+* **Tarea "Descargar fuente"** (decisión del operador): una batería o panel solar lleva su propia carga, así
+  que cortar la sección no la asegura. Nueva `discharge-source` + `PowerState.dischargedSourceIds`, **bump de
+  `schemaVersion` 7→8**. Único estado de 13d que se persiste, y con justificación: la carga de una batería no
+  tiene representación en el mundo de la que derivarla. **Con precio real**: una fuente descargada deja de
+  aportar a `totalPowerBudget`, para siempre — asegurar para canibalizar cuesta energía de nave.
+
+* **El badge se re-deriva en cada dibujo**, no al seleccionar: bajar el dial de energía lo apaga en el acto
+  (patrón 2 del checklist). Una fuente muestra además su propio aviso, para no mandar al jugador a cortar la
+  sección — una salida que en su caso no arregla nada.
+
+* **Lección de test registrada en la memoria de patrones:** los 3 tests de integración de 13d pasaban en verde
+  CON el bug en producción, porque el fixture inyectaba su propia versión de `isInstancePowered` derivada de
+  las asignaciones — implementaba la semántica que el runtime *debería* tener. Reescritos contra un
+  `MissionPowerRuntime` real y contra el catálogo real.
+
+Suite: `/engine` 707 → **733** tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos.

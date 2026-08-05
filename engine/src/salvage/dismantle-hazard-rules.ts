@@ -1,4 +1,6 @@
 import type { PlacedComponentInstance, ReservoirContent } from "../blueprint/blueprint.types.js";
+import type { PhysicalComponentDefinition } from "../components/physical-component.types.js";
+import { isInstanceEnergized } from "./instance-energized.js";
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 import type { SalvageDomainEvent } from "./salvage-hazard.types.js";
@@ -15,8 +17,17 @@ import { SALVAGE_HAZARD_PARAMETERS } from "./salvage-parameters.js";
 export interface DismantleHazardContext {
   readonly instance: PlacedComponentInstance;
   readonly sectionId?: SectionId;
-  /** `MissionPowerRuntime.isInstancePowered` (13b): la definición de "pieza viva". */
-  readonly powered: boolean;
+  /**
+   * Definición de catálogo de la pieza. Fix de playtest ronda 1: el contexto
+   * traía un `powered: boolean` YA resuelto por el llamador, y ahí fue donde
+   * se coló la semántica equivocada de `isInstancePowered`. Ahora la regla
+   * recibe los datos crudos y decide ella (`instance-energized.ts`).
+   */
+  readonly definition: PhysicalComponentDefinition | undefined;
+  /** La sección de la pieza tiene ≥1 unidad OTORGADA (no la que el jugador pidió: la que el motor dio). */
+  readonly sectionHasGrantedPower: boolean;
+  /** La fuente ya fue descargada por una tarea `discharge-source`. */
+  readonly sourceDischarged: boolean;
   /** Contenido de reservorio DE ESTA instancia (`Blueprint.reservoirContents` filtrado). */
   readonly reservoirContents: ReadonlyArray<ReservoirContent>;
   readonly atmosphere?: SectionAtmosphere;
@@ -47,11 +58,17 @@ function anchorOf(ctx: DismantleHazardContext) {
 /**
  * Pieza energizada → chispazo. Evitable cortando la energía de la sección
  * (tarea `cut-power`, o el propio dial de reparto de 13b: el estado es
- * derivado del mundo, no un flag).
+ * derivado del mundo, no un flag) — salvo en una FUENTE con carga propia, que
+ * necesita su tarea `discharge-source`.
  */
 export const PoweredInstanceHazardRule: DismantleHazardRule = {
   id: "powered-instance",
-  appliesTo: (ctx) => ctx.powered,
+  appliesTo: (ctx) =>
+    isInstanceEnergized({
+      definition: ctx.definition,
+      sectionHasGrantedPower: ctx.sectionHasGrantedPower,
+      sourceDischarged: ctx.sourceDischarged,
+    }),
   build: (ctx) => ({ kind: "dismantle-spark", ...anchorOf(ctx) }),
 };
 
