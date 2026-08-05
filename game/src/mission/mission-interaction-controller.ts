@@ -28,6 +28,7 @@ import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
 import {
+  ACTION_PANEL_HEIGHT_KEY,
   renderMissionActionPanel,
   type ActionPanelContent,
   type AvailableSubstanceEntry,
@@ -161,6 +162,17 @@ export class MissionInteractionController {
    */
   get hasContextualSelection(): boolean {
     return this.actionPanelContent.kind !== "idle";
+  }
+
+  /**
+   * Alto REALMENTE ocupado por el panel montado (13d ronda 2): crece con los
+   * avisos de riesgo y sus botones, así que el nominal de `geometry` es solo un
+   * mínimo. La escena lo necesita para el clamp de borde y para los bounds que
+   * bloquean el click al mapa.
+   */
+  get actionPanelHeight(): number {
+    const measured = this.actionPanelContainer?.getData(ACTION_PANEL_HEIGHT_KEY) as number | undefined;
+    return measured ?? this.geometry.actionPanelHeight;
   }
 
   /** Reposiciona el panel de acciones flotante (Subfase 11g) — no-op si no hay panel montado (`idle`). Llamado cada frame por la escena. */

@@ -3187,3 +3187,22 @@ Los pasos 1 y 2 de la receta de prueba dieron bien; fallaron los otros dos, **co
   `MissionPowerRuntime` real y contra el catálogo real.
 
 Suite: `/engine` 707 → **733** tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos.
+
+#### Fixes de playtest de 13d, ronda 2 ✅ (2026-08-06)
+
+Dos observaciones de layout, **una sola causa**: el panel de acciones apilaba contenido de altura variable con
+posiciones fijas.
+
+* **El aviso "sin tripulante" se veía encima de los avisos de riesgo** (`contentTop + 26` vs `contentTop + 30`).
+* **El aviso de una fuente quedaba cortado debajo del botón "Desmontar"**: ocupa 2-3 líneas y el cursor
+  avanzaba 24px fijos por aviso.
+
+**Resuelto** pasando el panel a un layout de flujo real (cada elemento se posiciona midiendo `text.height` del
+anterior), incluido el título y las ramas `empty`/`substance`, que adivinaban el hueco del aviso con un
+`hasSelectedActor ? 26 : 50`. La auditoría de layout con números destapó dos problemas más: el fondo usaba el
+alto nominal como techo y recortaba el contenido (ahora es un mínimo, `backdrop.setSize`), y un panel más alto
+se salía de pantalla con sus **bounds de bloqueo de click desactualizados** — el panel publica su alto real y
+el clamp y los bounds lo consumen. Además, una FUENTE ya no ofrece "Cortar energía a la sección": esa salida
+no arregla su chispazo.
+
+Suite sin cambios (`/engine` 733, `/game` 36); `tsc --noEmit` limpio en ambos.

@@ -1191,6 +1191,10 @@ export class FloorplanScene extends Phaser.Scene {
     const cell = this.interaction.selectedCell;
     let x: number;
     let y: number;
+    // Alto REAL, no el nominal (13d ronda 2): con avisos de riesgo el panel es
+    // más alto, y con el nominal se salía por abajo de la pantalla y dejaba
+    // pasar al mapa los clicks sobre la parte que sobresalía.
+    const panelHeight = this.interaction.actionPanelHeight;
     if (cell) {
       const camera = this.cameras.main;
       const rawPoint = {
@@ -1198,7 +1202,7 @@ export class FloorplanScene extends Phaser.Scene {
         y: HEADER_HEIGHT + (cell.y * CELL + CELL / 2 - camera.scrollY) * camera.zoom,
       };
       const maxX = SIDE_PANEL_X - 10 - ACTION_PANEL_WIDTH - 20;
-      const maxY = 720 - ACTION_PANEL_HEIGHT - 8;
+      const maxY = 720 - panelHeight - 8;
       x = Phaser.Math.Clamp(rawPoint.x + ACTION_PANEL_ANCHOR_OFFSET_X, 10, maxX);
       y = Phaser.Math.Clamp(rawPoint.y + ACTION_PANEL_ANCHOR_OFFSET_Y, HEADER_HEIGHT + 8, maxY);
     } else {
@@ -1208,7 +1212,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.interaction.repositionActionPanel({ x, y });
     // Bounds reales del container (ver `mission-action-panel.ts`): el fondo
     // arranca en (-10,-8) relativo al origen del panel.
-    this.actionPanelBounds = { x: x - 10, y: y - 8, width: ACTION_PANEL_WIDTH + 20, height: ACTION_PANEL_HEIGHT };
+    this.actionPanelBounds = { x: x - 10, y: y - 8, width: ACTION_PANEL_WIDTH + 20, height: panelHeight };
   }
 
   private get rex(): SceneWithRexUI {

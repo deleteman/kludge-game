@@ -3528,3 +3528,39 @@ Modificados: `salvage/dismantle-hazard-rules.ts`, `mission/ship-task-effect.ts`,
 Suite: `/engine` 707 → 733 tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos; `eslint` sin errores
 nuevos (sigue el preexistente de `tasks/task-events.types.ts`).
 Razón: primera ronda de playtest manual del operador sobre la Subfase 13d.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-06 — Subfase 13d: fixes de playtest, ronda 2 (layout del panel de acciones)
+────────────────────────────────────────────────────────────────────────────────
+Dos observaciones del operador, misma causa: **el panel de acciones apilaba con posiciones FIJAS un contenido
+de altura VARIABLE**. (1) El aviso "sin tripulante seleccionado" se dibujaba en `contentTop + 26` y el primer
+aviso de riesgo en `contentTop + 30` — se pisaban. (2) El aviso de una fuente ("Fuente con carga propia:
+cortar la sección no la vuelve segura") ocupa 2-3 líneas a 10px en un panel de 260px, pero el cursor avanzaba
+24px fijos por aviso, así que las líneas siguientes quedaban debajo del botón "Desmontar".
+
+Resuelto pasando el panel a un LAYOUT DE FLUJO REAL: cada elemento se posiciona midiendo la altura del
+anterior (`text.height`), nunca sumando constantes. El alto de un texto envuelto depende del idioma y del
+ancho del panel — no es predecible con un número. Alcanza también al título (un nombre largo de pieza envuelve
+y empujaba al resto) y a las ramas `empty`/`substance`, que compensaban el aviso de "sin tripulante" con un
+`hasSelectedActor ? 26 : 50` adivinado.
+
+Tres consecuencias que aparecieron al auditar el layout con números (patrón 3 del checklist de playtest):
+ - Los botones de rexUI se anclan por su CENTRO, no por su borde superior. El cursor de flujo suma media
+   altura antes y media después; `contentTop + 68` se conserva como PISO para que el caso sin avisos se siga
+   viendo igual que antes (sin regresión visual en el camino común).
+ - La caja de fondo usaba el alto nominal del llamador (220px) como si fuera un techo. Con 3 avisos + sus
+   botones el contenido llega a ~254px y quedaba recortado: ahora el alto pedido es un MÍNIMO y el fondo se
+   dimensiona al contenido real (`backdrop.setSize`).
+ - Un panel más alto se salía por abajo de la pantalla y, peor, `actionPanelBounds` (que bloquea el click al
+   mapa) seguía midiendo 220px, así que los clicks sobre la parte que sobresalía se habrían filtrado al mapa
+   — la misma clase de bug que la Obs 11 de PENDIENTES. El panel publica su alto real
+   (`container.setData(ACTION_PANEL_HEIGHT_KEY)`), y el clamp de borde y los bounds lo consumen.
+
+De paso: para una FUENTE ya no se ofrece "Cortar energía a la sección". Su chispazo viene de su propia carga,
+así que ese botón mandaba al jugador a una salida que no arregla nada — coherente con el aviso específico que
+la ronda 1 ya le había puesto.
+
+Archivos: `game/src/ui/widgets/mission-action-panel.ts`, `game/src/mission/mission-interaction-controller.ts`,
+`game/src/scenes/floorplan-scene.ts`.
+Suite: `/game` 36 y `/engine` 733 sin cambios. `tsc --noEmit` limpio en ambos; `eslint` sin errores nuevos.
+Razón: segunda ronda de playtest manual del operador sobre la Subfase 13d.

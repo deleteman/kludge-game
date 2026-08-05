@@ -153,6 +153,9 @@ export interface ActionPanelCallbacks {
  * estado — vuelve el panel a `idle` (que ahora significa "sin panel
  * montado", ver el controller).
  */
+/** Clave de `container.getData()` con el alto realmente ocupado por el panel. */
+export const ACTION_PANEL_HEIGHT_KEY = "panelHeight";
+
 export function renderMissionActionPanel(
   scene: SceneWithRexUI,
   width: number,
@@ -165,13 +168,21 @@ export function renderMissionActionPanel(
   const container = scene.add.container(0, 0);
 
   // Caja de fondo delimitada (playtest #16), ahora relativa al origen local
-  // del container (antes anclada a la columna lateral fija).
-  container.add(
-    scene.add
-      .rectangle(-10, -8, width + 20, height, 0x0a0a0f, 0.72)
-      .setOrigin(0, 0)
-      .setStrokeStyle(1, 0x2a3040, 1),
-  );
+  // del container (antes anclada a la columna lateral fija). Se guarda la
+  // referencia porque su alto REAL no se conoce hasta terminar de apilar el
+  // contenido (13d ronda 2): con varios avisos de riesgo y sus botones, el
+  // alto fijo del llamador se queda corto.
+  const backdrop = scene.add
+    .rectangle(-10, -8, width + 20, height, 0x0a0a0f, 0.72)
+    .setOrigin(0, 0)
+    .setStrokeStyle(1, 0x2a3040, 1);
+  container.add(backdrop);
+
+  /** Punto más bajo ocupado por el contenido, para dimensionar el fondo al final. */
+  let contentBottom = 0;
+  const claim = (bottom: number): void => {
+    contentBottom = Math.max(contentBottom, bottom);
+  };
 
   const title =
     content.kind === "instance"
@@ -200,20 +211,30 @@ export function renderMissionActionPanel(
     );
   }
 
-  container.add(
-    scene.add
-      .text(width / 2, contentTop, title, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "14px",
-        color: HEADER_COLOR,
-        align: "center",
-        // `useAdvancedWrap`: el wrap básico no parte un token sin espacios, así
-        // que un nombre largo de una sola palabra se salía de la caja (obs de
-        // playtest). El avanzado sí corta la palabra al ancho disponible.
-        wordWrap: { width: width - 20, useAdvancedWrap: true },
-      })
-      .setOrigin(0.5, 0),
-  );
+  const titleText = scene.add
+    .text(width / 2, contentTop, title, {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "14px",
+      color: HEADER_COLOR,
+      align: "center",
+      // `useAdvancedWrap`: el wrap básico no parte un token sin espacios, así
+      // que un nombre largo de una sola palabra se salía de la caja (obs de
+      // playtest). El avanzado sí corta la palabra al ancho disponible.
+      wordWrap: { width: width - 20, useAdvancedWrap: true },
+    })
+    .setOrigin(0.5, 0);
+  container.add(titleText);
+  claim(contentTop + titleText.height);
+
+  /**
+   * Cursor de flujo vertical (13d ronda 2). Todo lo que sigue se apila midiendo
+   * la altura REAL del elemento anterior, en vez de sumar constantes: el aviso
+   * de "sin tripulante" y los avisos de riesgo se pisaban entre sí, y un aviso
+   * de dos líneas quedaba tapado por el botón de desmontar. El alto de un texto
+   * envuelto depende del idioma y del ancho del panel, así que no se puede
+   * predecir con un número fijo.
+   */
+  let flowY = contentTop + titleText.height + 10;
 
   if (content.kind === "idle") {
     container.add(
@@ -253,17 +274,18 @@ export function renderMissionActionPanel(
   }
 
   if (!hasSelectedActor) {
-    container.add(
-      scene.add
-        .text(width / 2, contentTop + 26, labels.noActorSelected, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "11px",
-          color: LABEL_COLOR,
-          align: "center",
-          wordWrap: { width: width - 20 },
-        })
-        .setOrigin(0.5, 0),
-    );
+    const notice = scene.add
+      .text(width / 2, flowY, labels.noActorSelected, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "11px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(notice);
+    flowY += notice.height + 6;
+    claim(flowY);
   }
 
   if (content.kind === "instance") {
@@ -274,7 +296,7 @@ export function renderMissionActionPanel(
     // Badge de riesgo (13d): el jugador tiene que poder decidir ANTES de
     // encolar, no descubrirlo con el chispazo (pilar de legibilidad total).
     // Ámbar del contrato de color único de 12e — es escalable, no fatal.
-    let cursorY = contentTop + 30;
+    let cursorY = flowY;
     for (const hazard of hazards) {
       // Una fuente chispea por su propia carga, no por la red: decirle al
       // jugador "está energizada" lo mandaría a cortar la sección, que no la
@@ -283,22 +305,28 @@ export function renderMissionActionPanel(
         hazard === "dismantle-spark" && content.canDischargeSource
           ? labels.sourceChargeWarning
           : labels.hazardWarning(hazard);
-      container.add(
-        scene.add
-          .text(width / 2, cursorY, `⚠ ${warning}`, {
-            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-            fontSize: "10px",
-            color: CRISIS_WARNING_CSS,
-            align: "center",
-            wordWrap: { width: width - 20, useAdvancedWrap: true },
-          })
-          .setOrigin(0.5, 0),
-      );
-      cursorY += 24;
+      const warningText = scene.add
+        .text(width / 2, cursorY, `⚠ ${warning}`, {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "10px",
+          color: CRISIS_WARNING_CSS,
+          align: "center",
+          wordWrap: { width: width - 20, useAdvancedWrap: true },
+        })
+        .setOrigin(0.5, 0);
+      container.add(warningText);
+      // Alto REAL: el aviso de una fuente ocupa 2-3 líneas y el fijo de 24px
+      // dejaba las siguientes debajo del botón (13d ronda 2).
+      cursorY += warningText.height + 6;
+      claim(cursorY);
     }
 
+    // Un botón de rexUI se ancla por su CENTRO, así que el cursor (que es el
+    // borde superior del flujo) suma media altura. `contentTop + 68` se
+    // conserva como piso para que el caso sin avisos se vea igual que antes.
+    const dismantleCenter = Math.max(cursorY + 17, contentTop + 68);
     container.add(
-      createKenneyButton(scene, width / 2, Math.max(cursorY, contentTop + 68), labels.dismantle, {
+      createKenneyButton(scene, width / 2, dismantleCenter, labels.dismantle, {
         width: width - 40,
         height: 34,
         fontSize: "12px",
@@ -306,51 +334,43 @@ export function renderMissionActionPanel(
         onClick: () => callbacks.onDismantle(content.instanceId),
       }),
     );
-    cursorY = Math.max(cursorY, contentTop + 68) + 40;
+    cursorY = dismantleCenter + 17 + 8;
+    claim(cursorY);
 
     // Un botón por tarea de asegurado APLICABLE — la fuga atmosférica no tiene
     // tarea propia (decisión del operador): se resuelve arreglando la sección.
-    if (hazards.includes("dismantle-spark")) {
+    const stackButton = (label: string, onClick: () => void): void => {
       container.add(
-        createKenneyButton(scene, width / 2, cursorY, labels.cutPower, {
+        createKenneyButton(scene, width / 2, cursorY + 15, label, {
           width: width - 40,
           height: 30,
           fontSize: "11px",
           enabled: hasSelectedActor,
-          onClick: () => callbacks.onCutPower(content.instanceId),
+          onClick,
         }),
       );
       cursorY += 36;
+      claim(cursorY);
+    };
+
+    // Cortar la energía de la sección no asegura una FUENTE con carga propia,
+    // así que para una batería se ofrece la descarga y no el corte.
+    if (hazards.includes("dismantle-spark") && !content.canDischargeSource) {
+      stackButton(labels.cutPower, () => callbacks.onCutPower(content.instanceId));
     }
     if (hazards.includes("dismantle-spill")) {
-      container.add(
-        createKenneyButton(scene, width / 2, cursorY, labels.purgeReservoir, {
-          width: width - 40,
-          height: 30,
-          fontSize: "11px",
-          enabled: hasSelectedActor,
-          onClick: () => callbacks.onPurgeReservoir(content.instanceId),
-        }),
-      );
-      cursorY += 36;
+      stackButton(labels.purgeReservoir, () => callbacks.onPurgeReservoir(content.instanceId));
     }
     // Una FUENTE (batería, panel solar) no se asegura cortando la sección: su
     // carga es propia (13d, fix de playtest ronda 1). El llamador marca cuándo
     // corresponde ofrecer la descarga — el panel no conoce el catálogo.
     if (content.canDischargeSource) {
-      container.add(
-        createKenneyButton(scene, width / 2, cursorY, labels.dischargeSource, {
-          width: width - 40,
-          height: 30,
-          fontSize: "11px",
-          enabled: hasSelectedActor,
-          onClick: () => callbacks.onDischargeSource(content.instanceId),
-        }),
-      );
+      stackButton(labels.dischargeSource, () => callbacks.onDischargeSource(content.instanceId));
     }
   } else if (content.kind === "empty") {
+    const installCenter = Math.max(flowY + 17, contentTop + 68);
     container.add(
-      createKenneyButton(scene, width / 2, contentTop + 68, labels.installHere, {
+      createKenneyButton(scene, width / 2, installCenter, labels.installHere, {
         width: width - 40,
         height: 34,
         fontSize: "12px",
@@ -358,20 +378,20 @@ export function renderMissionActionPanel(
         onClick: () => callbacks.onOpenInstallPicker(content.position),
       }),
     );
-    // Texto de contexto fijo (ajuste post-playtest #3): sin esto, nada en
-    // pantalla sugería que instalar un reemplazo se hace clickeando de
-    // nuevo la misma celda vacía — un jugador sin el GDD no podía deducirlo.
-    container.add(
-      scene.add
-        .text(width / 2, contentTop + 96, labels.emptyHint, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "10px",
-          color: LABEL_COLOR,
-          align: "center",
-          wordWrap: { width: width - 20 },
-        })
-        .setOrigin(0.5, 0),
-    );
+    // Texto de contexto (ajuste post-playtest #3): sin esto, nada en pantalla
+    // sugería que instalar un reemplazo se hace clickeando de nuevo la misma
+    // celda vacía — un jugador sin el GDD no podía deducirlo.
+    const hint = scene.add
+      .text(width / 2, installCenter + 28, labels.emptyHint, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(hint);
+    claim(installCenter + 28 + hint.height);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá
     // los valores exactos de riesgo (radio de combustión, segundos por nivel
@@ -381,7 +401,7 @@ export function renderMissionActionPanel(
     // revelado por el análisis se distinguen a simple vista).
     const detailX = 14;
     const detailWidth = width - 28;
-    let detailY = contentTop + (hasSelectedActor ? 26 : 50);
+    let detailY = flowY;
     for (const line of content.detailLines) {
       const lineText = scene.add
         .text(detailX, detailY, `${line.icon} ${line.text}`, {
@@ -403,7 +423,18 @@ export function renderMissionActionPanel(
         onClick: () => callbacks.onAnalyzeSubstance(content.substanceId),
       }),
     );
+    claim(detailY + 12 + 17);
   }
+
+  // El alto que pidió el llamador es un MÍNIMO, no un techo (13d ronda 2): con
+  // dos o tres avisos de riesgo y sus botones, el contenido pasa de largo y el
+  // fondo tiene que acompañar en vez de recortarlo.
+  const renderedHeight = Math.max(height, contentBottom + 16);
+  backdrop.setSize(width + 20, renderedHeight);
+  // El alto REAL, para que la escena pueda mantener el panel dentro de pantalla
+  // y bloquear los clicks sobre toda su superficie (si el clamp siguiera usando
+  // el alto nominal, la parte que sobresale dejaría pasar el click al mapa).
+  container.setData(ACTION_PANEL_HEIGHT_KEY, renderedHeight);
 
   return container;
 }

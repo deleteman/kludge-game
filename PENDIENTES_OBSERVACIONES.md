@@ -82,6 +82,8 @@
 
 13. el modal de instalación tiene ahora la sección derecha con fondo negro para solucionar el contraste horrible entre el texto y el fondo gris del modal. Esto es un parche temporal, se debe rediseñar este modal para que se lea mejor l ainformacion.
 
+14. el link de "x cerrar" de los modales de acción (al hacer click en un tile del mapa) son muy dificiles de clickear, casi siempre falla el click.
+
 
 ## Fine-tunning
 
