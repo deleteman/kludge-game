@@ -16,6 +16,7 @@ import {
   STRUCTURAL_LAYER_COLOR,
   TIMER_TEXT_COLORS,
   SEALED_VALVE_COLOR,
+  POWER_BLOCKED_FLASH_COLOR,
   hexToCss,
 } from "./palette.js";
 
@@ -49,6 +50,10 @@ describe("contrato de color de crisis (Eje A)", () => {
     expect(TIMER_TEXT_COLORS.warning).toBe(CRISIS_WARNING_CSS);
     expect(TIMER_TEXT_COLORS.danger).toBe(CRISIS_FATAL_CSS);
     expect(SEALED_VALVE_COLOR).toBe(CRISIS_FATAL_COLOR);
+  });
+
+  it("el destello de rechazo del slider de energía usa el rojo de bloqueo del contrato (Fase 13b)", () => {
+    expect(POWER_BLOCKED_FLASH_COLOR).toBe(CRISIS_FATAL_COLOR);
   });
 
   it("los espejos CSS coinciden con sus constantes numéricas", () => {

@@ -3159,3 +3159,53 @@ Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `engine/src/ship-sta
 `tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 615 tests de `/engine` (antes 612, +3),
 29 de `/game` sin cambios.
 Razón: quinta ronda de playtest manual del operador sobre la Subfase 13b.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 6 (feedback al chocar contra el tope del slider de energía).
+Detalle: último punto pendiente del sistema de energía. El operador reportó que al intentar mover el slider de
+una sección más allá de la energía libre disponible —o al no poder moverlo de 0 porque no queda nada libre— el
+control simplemente no se mueve, sin ninguna señal visual ni alerta, con lo que el slider "parece que no
+funciona". Causa: el tope SÍ funcionaba (`applyFromWorldX` clampeaba el objetivo a `cap` y hacía early-return
+con `if (next === units) return`), pero de forma completamente silenciosa; y aunque existía una barra de
+"tramo bloqueado", usaba `LOCKED_COLOR = 0x23262f`, un gris casi idéntico al `TRACK_COLOR = 0x3a4152` del track
+vacío, así que en la práctica no se leía. O sea: ni señal estática ni reactiva.
+Corregido con cuatro piezas.
+(1) Contraste del tramo bloqueado: `LOCKED_COLOR` pasa a `0x11131a`, claramente distinto del track vacío. Se
+mantiene NEUTRO (gris) y no rojo de forma deliberada: ese tramo aparece cada vez que una sección no puede
+llevarse todo el presupuesto, o sea prácticamente siempre, y pintarlo de rojo permanente llenaría el plano de
+alarma falsa además de romper el contrato de color (rojo = crítico). El rojo se reserva para el evento puntual
+de rechazo.
+(2) Detección del intento bloqueado: `applyFromWorldX` ahora calcula el objetivo SIN clampear (`rawTarget`) y
+lo compara contra el tope antes de aplicar el clampeado. Sin esto, un intento de pasarse era indistinguible de
+"no pasó nada", porque el early-return ya existente los colapsaba en el mismo camino. Arrastrar hacia abajo
+(reducir) nunca dispara la señal: bajar no está bloqueado.
+(3) Señal de rechazo, throttleada a 500ms — `pointermove` dispara decenas de veces por segundo mientras se
+empuja contra el tope, así que sin throttle serían ráfagas de sacudones y beeps por segundo. Tres partes:
+sacudón horizontal del thumb (reusa el mismo molde de tween ya establecido para el retrato de tripulante al
+recibir daño en `floorplan-scene.ts`: killTweensOf + x ±3, yoyo, repeat 2, Sine.easeInOut, y onComplete
+restaura la posición real); destello del tramo bloqueado (rectángulo temporal con alpha tween a 0 y destroy en
+onComplete, mismo patrón que los destellos que ya usa la escena) con `POWER_BLOCKED_FLASH_COLOR`, constante
+nueva en `palette.ts` derivada de `CRISIS_FATAL_COLOR` porque el contrato de color ya define el rojo como
+bloqueo (mismo criterio y mismo alias que `SEALED_VALVE_COLOR`), con su aserción agregada en
+`palette.contract.test.ts` que es el guardia de regresión contra hexes de estado sueltos; y sonido vía la clave
+nueva `uiDenied` en `audio-asset-registry.ts`, mapeada a los assets de error YA CARGADOS (`sfx-ui-error-0/1`,
+los mismos que usa `barkFailureOrInjury`) — no falta ningún asset nuevo. Que un widget reproduzca sonido ya
+tenía precedente (`kenney-button.ts`, `crew-select-card.ts`).
+(4) La etiqueta explica el porqué: durante ~1s el `Text` del propio slider muestra "Sin energía libre"
+(clave i18n nueva `ui.floorplan.energia.no-free-power` en es/en) en vez de "3/10 · 30%", y vuelve solo. Se
+eligió esto sobre un aviso en el `NotificationCenter` porque es donde el jugador ya tiene la vista puesta, no
+agranda el cluster de controles, y evita ensuciar el panel de notificaciones (reservado a eventos del mundo)
+con el resultado de una interacción de UI. `redraw()` no pisa la etiqueta mientras el mensaje está visible
+(flag `blockedLabelUntilMs`), y `destroy()` cancela el `TimerEvent` de restauración y mata los tweens del thumb
+y del destello: el widget se destruye y reconstruye seguido (`redrawEnergyControls`, en cada toggle de capa y
+cambio de modo) y un timer o tween huérfano tocaría objetos ya destruidos. `redraw()` además mata los tweens
+del thumb antes de reposicionarlo, para que un `setCap`/`setGranted` externo a mitad de sacudón no lo deje
+desalineado.
+Ronda de UI pura: la lógica nueva (throttle por tiempo, tweens de Phaser) vive dentro del widget y no tiene una
+porción pura que valga la pena aislar en un test, así que se cubre con la aserción del contrato de color y el
+resto se verifica a mano — mismo criterio que CLAUDE.md fija para `/game` (smoke test visual sobre cobertura
+exhaustiva).
+Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `game/src/render/palette.ts` (+test de contrato),
+`game/src/audio/audio-asset-registry.ts`, `game/src/i18n/{es,en}.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 30 tests de `/game` (antes 29, +1),
+615 de `/engine` sin cambios.
+Razón: sexta ronda de playtest manual del operador sobre la Subfase 13b; cierra el sistema de energía.

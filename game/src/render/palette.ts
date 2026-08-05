@@ -81,6 +81,16 @@ export const CONDUIT_COLORS: Readonly<Record<ConduitKind, number>> = {
  */
 export const SEALED_VALVE_COLOR = CRISIS_FATAL_COLOR;
 
+/**
+ * Destello del slider de energía al rechazar un arrastre que se pasa del
+ * presupuesto libre (Fase 13b, ronda 6). Mismo criterio que
+ * `SEALED_VALVE_COLOR`: el rojo del contrato marca bloqueo. Es un color de
+ * EVENTO (destello puntual), no de estado — el tramo bloqueado en reposo se
+ * pinta con un gris neutro, porque aparece casi siempre y en rojo permanente
+ * sería alarma falsa.
+ */
+export const POWER_BLOCKED_FLASH_COLOR = CRISIS_FATAL_COLOR;
+
 /** Opacidad de una capa del plano desactivada por el toggle de HUD (Fase 11f) — atenuada, nunca oculta del todo. */
 export const CONDUIT_LAYER_INACTIVE_ALPHA = 0.25;
 

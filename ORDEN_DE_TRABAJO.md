@@ -2959,3 +2959,33 @@ protege contra la regresión de la ronda 1; cicatriz y déficit simultáneos →
 migrados al parámetro objeto, y verificación de `grantedTotalUnits`/`requestedTotalUnits` en
 `mission-power-runtime.test.ts`. 615 tests en `/engine` (antes 612, +3), 29 en `/game` sin cambios.
 `tsc --noEmit`/`vite build` limpios en ambos workspaces.
+
+**Fix post-playtest del operador, ronda 6 (2026-08-05) — cierre del sistema de energía:** último punto
+pendiente. Al arrastrar el slider más allá de la energía libre (o al no poder moverlo de 0 porque no queda
+nada), el control no se movía **sin ninguna señal**, así que parecía roto. El tope funcionaba
+(`applyFromWorldX` clampeaba a `cap` y hacía early-return) pero era silencioso, y la barra de "tramo
+bloqueado" existente usaba un gris (`0x23262f`) casi idéntico al del track vacío (`0x3a4152`), o sea que en la
+práctica no se leía. Corregido con cuatro piezas:
+- **Contraste del tramo bloqueado** (`LOCKED_COLOR` a `0x11131a`): se mantiene **neutro y no rojo** a
+  propósito — ese tramo aparece cada vez que una sección no puede llevarse todo el presupuesto, o sea casi
+  siempre, y en rojo permanente sería alarma falsa y rompería el contrato de color. El rojo queda para el
+  evento puntual de rechazo.
+- **Detección del intento**: `applyFromWorldX` compara el objetivo **sin clampear** (`rawTarget`) contra el
+  tope, en vez de solo el clampeado — el early-return previo hacía que un intento bloqueado fuese
+  indistinguible de "no pasó nada". Bajar nunca dispara la señal.
+- **Señal de rechazo**, throttleada a 500 ms (`pointermove` dispara decenas de veces por segundo mientras se
+  empuja contra el tope, sin throttle serían ráfagas de sacudones y beeps): sacudón horizontal del thumb
+  (mismo molde de tween que el retrato de tripulante al recibir daño), destello del tramo bloqueado con
+  `POWER_BLOCKED_FLASH_COLOR` (constante nueva en `palette.ts` derivada de `CRISIS_FATAL_COLOR` — el contrato
+  ya define el rojo como bloqueo, mismo criterio que `SEALED_VALVE_COLOR`; con su aserción en
+  `palette.contract.test.ts`), y sonido con la clave nueva `uiDenied` sobre los assets de error **ya
+  cargados** (`sfx-ui-error-*`, los mismos de `barkFailureOrInjury`) — sin assets nuevos.
+- **La etiqueta explica el porqué**: durante ~1 s muestra "Sin energía libre" en vez del número y vuelve sola.
+  Sin cambios de layout (reusa el `Text` que ya existía). `redraw()` no pisa la etiqueta mientras el mensaje
+  está visible, y `destroy()` cancela el `TimerEvent` de restauración y mata los tweens del thumb y del
+  destello — el widget se destruye/reconstruye seguido (`redrawEnergyControls`) y un timer huérfano tocaría
+  objetos ya destruidos.
+Ronda de UI pura: la lógica nueva (throttle por tiempo, tweens) vive dentro de un widget de Phaser y no tiene
+porción pura que valga la pena aislar, así que se testea la aserción de contrato de color y el resto se
+verifica a mano — mismo criterio que CLAUDE.md fija para `/game`. 30 tests en `/game` (antes 29, +1), 615 en
+`/engine` sin cambios. `tsc --noEmit`/`vite build` limpios en ambos workspaces.

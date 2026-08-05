@@ -74,6 +74,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.layer.energia-priority-title": "Power priority",
   "ui.floorplan.layer.energia-priority-close": "Close",
   "ui.floorplan.layer.energia-priority-hint": "Lower number = higher priority. Amber: unpowered.",
+  "ui.floorplan.energia.no-free-power": "No free power",
   "ui.floorplan.hud.atmosphere": "Atmosphere",
   "ui.floorplan.hud.life-support": "Life support",
   "ui.floorplan.hud.hull-integrity": "Hull integrity",

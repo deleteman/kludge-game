@@ -1,15 +1,29 @@
 import Phaser from "phaser";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { ENERGY_LAYER_COLOR, LABEL_COLOR } from "../../render/palette.js";
+import { ENERGY_LAYER_COLOR, LABEL_COLOR, POWER_BLOCKED_FLASH_COLOR } from "../../render/palette.js";
 import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
+import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
+import { pickSoundKey } from "../../audio/audio-utils.js";
+import { t } from "../../i18n/i18n.js";
 
 const TRACK_WIDTH = 90;
 const TRACK_HEIGHT = 6;
 const THUMB_RADIUS = 8;
 const TRACK_COLOR = 0x3a4152;
 const FILL_COLOR = 0x6fb4ff;
-/** Tramo inasignable por falta de presupuesto global — distinto del track vacío (principio 6). */
-const LOCKED_COLOR = 0x23262f;
+/**
+ * Tramo inasignable por falta de presupuesto global. Debe distinguirse CLARO del
+ * track vacío (principio 6): el valor anterior (`0x23262f`) era un gris casi
+ * idéntico a `TRACK_COLOR` y en la práctica no se leía, así que el tope parecía
+ * un slider roto. Se mantiene neutro y NO rojo a propósito: este tramo aparece
+ * casi siempre (cualquier sección que no se lleve todo el presupuesto), y en
+ * rojo permanente sería alarma falsa. El rojo se reserva para el destello del
+ * rechazo, que sí es un evento puntual.
+ */
+const LOCKED_COLOR = 0x11131a;
+/** Cadencia máxima de la señal de rechazo: `pointermove` dispara decenas de veces por segundo. */
+const BLOCKED_FEEDBACK_THROTTLE_MS = 500;
+const BLOCKED_LABEL_MS = 1000;
 const THUMB_COLOR = 0xd8dce8;
 const DISABLED_ALPHA = 0.5;
 
@@ -111,6 +125,11 @@ export function renderPowerAllocationSlider(
     container.setAlpha(DISABLED_ALPHA);
   }
 
+  let blockedLabelUntilMs = 0;
+  let lastBlockedFeedbackMs = -Infinity;
+  let labelRestoreEvent: Phaser.Time.TimerEvent | undefined;
+  let blockedFlash: Phaser.GameObjects.Rectangle | undefined;
+
   const redraw = (): void => {
     granted = Math.min(granted, units);
     // Azul = otorgado; ámbar = lo pedido que la nave NO puede cubrir. Sin
@@ -119,18 +138,87 @@ export function renderPowerAllocationSlider(
     unmet.x = unitToX(granted);
     unmet.width = TRACK_WIDTH * ((units - granted) / safeMax);
     unmet.setVisible(units > granted);
+    // Un `setCap`/`setGranted` externo puede caer a mitad del sacudón de
+    // rechazo: sin matar el tween, el thumb quedaría desalineado al terminar.
+    scene.tweens.killTweensOf(thumb);
     thumb.x = unitToX(units);
     locked.x = unitToX(cap);
     locked.width = TRACK_WIDTH * (1 - cap / safeMax);
     locked.setVisible(cap < safeMax);
-    label.setText(labelOf(units));
+    // Mientras se muestra "Sin energía libre" la etiqueta no se pisa.
+    if (scene.time.now >= blockedLabelUntilMs) {
+      label.setText(labelOf(units));
+    }
   };
   redraw();
+
+  /**
+   * Señal de rechazo (Fase 13b, ronda 6): el tope funcionaba pero en silencio,
+   * así que el slider parecía roto. Sacudón + destello rojo + sonido de error,
+   * throttleado — `pointermove` dispara decenas de veces por segundo mientras
+   * se empuja contra el tope.
+   */
+  const signalBlocked = (): void => {
+    const now = scene.time.now;
+    if (now - lastBlockedFeedbackMs < BLOCKED_FEEDBACK_THROTTLE_MS) return;
+    lastBlockedFeedbackMs = now;
+
+    // Sacudón horizontal del thumb (mismo molde que el retrato de tripulante
+    // al recibir daño en `floorplan-scene.ts`).
+    const restX = unitToX(units);
+    scene.tweens.killTweensOf(thumb);
+    scene.tweens.add({
+      targets: thumb,
+      x: restX + 3,
+      duration: 45,
+      yoyo: true,
+      repeat: 2,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        thumb.x = unitToX(units);
+      },
+    });
+
+    // Destello del tramo bloqueado.
+    blockedFlash?.destroy();
+    const flashWidth = TRACK_WIDTH * (1 - cap / safeMax);
+    blockedFlash = scene.add
+      .rectangle(unitToX(cap), 0, Math.max(4, flashWidth), TRACK_HEIGHT, POWER_BLOCKED_FLASH_COLOR)
+      .setOrigin(0, 0.5);
+    container.add(blockedFlash);
+    scene.tweens.add({
+      targets: blockedFlash,
+      alpha: 0,
+      duration: 320,
+      onComplete: () => {
+        blockedFlash?.destroy();
+        blockedFlash = undefined;
+      },
+    });
+
+    scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
+
+    // La etiqueta explica el porqué (no queda energía libre en la nave).
+    label.setText(t("ui.floorplan.energia.no-free-power"));
+    blockedLabelUntilMs = now + BLOCKED_LABEL_MS;
+    labelRestoreEvent?.remove();
+    labelRestoreEvent = scene.time.delayedCall(BLOCKED_LABEL_MS, () => {
+      blockedLabelUntilMs = 0;
+      labelRestoreEvent = undefined;
+      label.setText(labelOf(units));
+    });
+  };
 
   const applyFromWorldX = (worldX: number): void => {
     const local = worldX - container.x - left;
     const fraction = Phaser.Math.Clamp(local / TRACK_WIDTH, 0, 1);
-    const next = Phaser.Math.Clamp(Math.round(fraction * safeMax), 0, cap);
+    // El objetivo SIN clampear detecta el intento de pasarse del tope; el
+    // clampeado es el que se aplica. Bajar nunca está bloqueado.
+    const rawTarget = Math.round(fraction * safeMax);
+    const next = Phaser.Math.Clamp(rawTarget, 0, cap);
+    if (rawTarget > cap) {
+      signalBlocked();
+    }
     if (next === units) return;
     units = next;
     // Optimista: arrastrar nunca puede generar déficit (el cap lo impide), así
@@ -178,6 +266,16 @@ export function renderPowerAllocationSlider(
       redraw();
     },
     destroy(): void {
+      // El widget se destruye y reconstruye seguido (`redrawEnergyControls`):
+      // un timer o un tween huérfano tocaría objetos ya destruidos.
+      labelRestoreEvent?.remove();
+      labelRestoreEvent = undefined;
+      scene.tweens.killTweensOf(thumb);
+      if (blockedFlash) {
+        scene.tweens.killTweensOf(blockedFlash);
+        blockedFlash.destroy();
+        blockedFlash = undefined;
+      }
       hitZone.off("pointerdown", onDown);
       scene.input.off("pointermove", onMove);
       scene.input.off("pointerup", onUp);

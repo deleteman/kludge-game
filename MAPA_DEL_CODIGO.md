@@ -575,6 +575,11 @@
 ## `game/src/render/palette.ts` + `floorplan-renderer.ts` (modificado, Fase 13b)
 
 - `ENERGY_LAYER_COLOR`/`ENERGY_LAYER_ALPHA` (deriva del Eje A de color). `FloorplanLayerId` gana `"energia"`; `drawEnergyLayer()` (plantilla de `drawStructuralLayer`) pinta rojo/ámbar por sección según déficit.
+- Ronda 6: `POWER_BLOCKED_FLASH_COLOR` (= `CRISIS_FATAL_COLOR`, rojo de bloqueo del contrato) para el destello de rechazo del slider, con aserción en `palette.contract.test.ts`.
+
+## `game/src/audio/audio-asset-registry.ts` (modificado, fix post-playtest ronda 6 de 13b)
+
+- Clave `uiDenied` (acción rechazada por la UI) mapeada a los assets de error YA cargados (`sfx-ui-error-*`, compartidos con `barkFailureOrInjury`) — sin assets nuevos.
 
 ## `game/src/ui/widgets/power-allocation-slider.ts` (nuevo, fix post-playtest ronda 2 de 13b — reemplaza `power-allocation-dial.ts`, borrado; modificado ronda 3)
 
@@ -582,6 +587,7 @@
 - Ronda 3: el track abarca `0..maxUnits` (presupuesto total, ancho con el mismo significado en todas las secciones) pero el arrastre se topa en `capUnits`; el tramo bloqueado se pinta con `LOCKED_COLOR` propio. Etiqueta `N/total · P%`. `setCap(capUnits)` reajusta el tope sin destruir el widget.
 - Ronda 4: relleno partido pedido vs. otorgado — azul hasta `grantedUnits`, ámbar (`ENERGY_LAYER_COLOR.deficit`) de ahí al pedido. `setGranted(n)` lo refresca sin destruir el widget. Sin déficit el tramo ámbar mide 0.
 - Ronda 5: el pedido ya NO se clampea al presupuesto (lo tapaba: dos zonas con 3 y 7 mostraban ambas "2/2"). La escala del track es `max(1, maxUnits, units)` — fijada al construir, no se recalcula en el arrastre. `capUnits` limita solo el arrastre. El `· P%` se muestra solo cuando el pedido entra en el presupuesto.
+- Ronda 6: señal de rechazo al chocar contra el tope (antes era silencioso y el slider parecía roto) — `signalBlocked()` throttleado a 500 ms: sacudón del thumb, destello con `POWER_BLOCKED_FLASH_COLOR` y sonido `uiDenied`; la etiqueta muestra "Sin energía libre" ~1s. `LOCKED_COLOR` con más contraste (neutro, no rojo: aparece casi siempre). `destroy()` cancela timer y tweens.
 
 ## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
 

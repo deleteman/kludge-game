@@ -69,6 +69,8 @@ export const AUDIO_KEYS = {
   barkFailureOrInjury: ["sfx-ui-error-0", "sfx-ui-error-1"],
   barkCrewDeath: ["sfx-ui-glitch-0", "sfx-ui-glitch-1"],
   barkUnstableSubstance: ["sfx-ui-question-0", "sfx-ui-question-1"],
+  /** Acción rechazada por la UI (Fase 13b: arrastrar el slider de energía más allá de lo disponible). Reusa los assets de error ya cargados. */
+  uiDenied: ["sfx-ui-error-0", "sfx-ui-error-1"],
   uiButtonHover: ["sfx-ui-pluck-0", "sfx-ui-pluck-1"],
   uiButtonClick: ["sfx-ui-click-0", "sfx-ui-click-1"],
   mapCellSelect: ["sfx-ui-select-0", "sfx-ui-select-1"],
