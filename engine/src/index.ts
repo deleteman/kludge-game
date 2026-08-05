@@ -654,7 +654,9 @@ export {
   aggregateSectionHullIntegrity,
   aggregateEnergy,
 } from "./ship-status/ship-status-aggregation.js";
+export type { EnergyAggregationInput } from "./ship-status/ship-status-aggregation.js";
 export { ShipStatusQuery } from "./ship-status/ship-status-runtime.js";
+export type { PowerSupplySource } from "./ship-status/ship-status-runtime.js";
 export {
   MissionProjectileWorld,
   ELECTRIC_CURRENT_PARAMETERS,

@@ -67,16 +67,29 @@ export function renderPowerAllocationSlider(
   options: PowerAllocationSliderOptions,
 ): PowerAllocationSliderHandle {
   const { x, y, maxUnits, enabled } = options;
-  const safeMax = Math.max(1, maxUnits);
+  // El PEDIDO no se clampea al presupuesto: si el jugador perdió fuentes, puede
+  // tener repartido más de lo que la nave entrega, y taparlo era justamente el
+  // bug (dos zonas que pidieron 3 y 7 mostraban ambas "2/2" con presupuesto 2).
+  let units = Math.max(0, Math.round(options.units));
+  // La escala abarca el pedido cuando este excede el presupuesto. Mientras
+  // entra, `safeMax === maxUnits` y el widget se ve exactamente como antes.
+  // Se fija al construir, NO se recalcula en el arrastre: cambiar la escala a
+  // mitad de un drag movería el mapeo puntero→unidades y lo volvería inestable.
+  // Los controles se reconstruyen al volver a pausa / togglear la capa.
+  const safeMax = Math.max(1, maxUnits, units);
   let cap = Phaser.Math.Clamp(options.capUnits, 0, safeMax);
-  let units = Phaser.Math.Clamp(Math.round(options.units), 0, cap);
   let granted = Phaser.Math.Clamp(Math.round(options.grantedUnits), 0, units);
 
   const left = -TRACK_WIDTH / 2;
   const unitToX = (value: number): number => left + TRACK_WIDTH * (value / safeMax);
   const container = scene.add.container(x, y);
 
-  const labelOf = (value: number): string => `${value}/${maxUnits} · ${Math.round((value / safeMax) * 100)}%`;
+  // Con sobre-asignación el porcentaje daría valores como 350%, que confunden
+  // más de lo que informan: ahí se muestran solo los números crudos ("7/2").
+  const labelOf = (value: number): string =>
+    value <= maxUnits
+      ? `${value}/${maxUnits} · ${Math.round((value / Math.max(1, maxUnits)) * 100)}%`
+      : `${value}/${maxUnits}`;
 
   const label = scene.add
     .text(0, -16, labelOf(units), {
@@ -155,11 +168,9 @@ export function renderPowerAllocationSlider(
   return {
     container,
     setCap(capUnits: number): void {
+      // Solo limita el ARRASTRE. No toca `units`: el pedido es dato autoritativo
+      // del blueprint, y recortarlo acá volvería a taparlo (el bug de la ronda 5).
       cap = Phaser.Math.Clamp(capUnits, 0, safeMax);
-      // El cap nunca debería bajar de lo ya asignado a ESTA sección (siempre se
-      // calcula como `units + restante`), pero se recorta por las dudas para no
-      // dejar el thumb fuera del tramo permitido si el llamador se equivoca.
-      units = Math.min(units, cap);
       redraw();
     },
     setGranted(grantedUnits: number): void {

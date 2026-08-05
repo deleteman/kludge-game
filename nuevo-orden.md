@@ -272,6 +272,15 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
   sin ciclo de preguntas propio" que otros ítems diferidos de este documento (ver 12d, 11h→12a). Surgió en la
   revisión de la ronda 2 de playtest de 13b; el operador confirmó dejarlo diferido de ese plan.
 
+  **El canal de visualización ya está construido** (verificado en la ronda 5 de playtest, ante la pregunta del
+  operador "¿cómo afecta si tengo 7 elementos consumiendo energía dentro de esa zona?"): el inspector de
+  "Prioridad" (`game/src/ui/widgets/power-priority-list.ts`, abierto desde cada sección en la capa "energia")
+  ya lista los componentes de la sección y pinta en ámbar los que quedaron sin alimentar, leyendo
+  `MissionPowerRuntime.isInstancePowered`. Lo único que falta es el DATO: al autorar `powerDraw` en el
+  catálogo, ese inspector pasa a responder solo, sin UI nueva. Al hacerlo, revisar si además hace falta un
+  indicador a nivel de sección en el plano (hoy el efecto ambiental de "sin energía" es binario: 0 unidades
+  otorgadas o no) para distinguir "sección sin nada" de "sección a media máquina".
+
 #### Subfase 13e: Destino Real de Sustancias — Reservorios, Extracción y Estación Química
 
 Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustancia sintetizada (11c.3) se resuelve y queda `available` pero no puede verterse en nada ni tiene ubicación propia en el plano. Es el mismo sistema — dar un destino real a las sustancias. Substrato del Cap.7 (Fase 20, neutralizante sintetizado en la mesa). **Pendiente de su propio ciclo de preguntas** antes de plan de implementación (mismo criterio que 12d / "Potenciar LED"): exige decidir si `ReservoirProperty` se extiende con sustancia+cantidad o si el estado vive en un runtime aparte paralelo a `MissionAtmosphereRuntime`.

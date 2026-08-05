@@ -2920,3 +2920,42 @@ obsoleto y además su fixture ni siquiera entraba en déficit (pedía 5 con pres
 `mission-power-runtime.test.ts` que verifica el apagado ordenado, la emisión única por flanco y que el pedido
 sigue intacto. 612 tests en `/engine` (antes 608, +4), 29 en `/game` sin cambios. `tsc --noEmit`/`vite build`
 limpios en ambos workspaces.
+
+**Fix post-playtest del operador, ronda 5 (2026-08-05):** el operador repartió 3 y 7 unidades entre dos zonas
+(presupuesto 10) y desmanteló fuentes hasta dejar una sola (presupuesto 2): **ambas zonas mostraban "2/2"**,
+perdiendo por completo cuánto había pedido cada una. Además notó que el indicador de energía del HUD no se
+mueve nunca. Dos defectos, los dos del mismo tipo que viene marcando (la UI muestra algo que el motor
+contradice):
+- **El slider clampeaba el pedido al presupuesto**: `units = clamp(round(options.units), 0, cap)` con
+  `cap ≤ maxUnits`, así que pedidos de 3 y 7 con presupuesto 2 se clampeaban **los dos a 2**. El blueprint
+  conservaba el pedido real (la reconciliación de la ronda 4 es no destructiva) — era solo el widget
+  tapándolo, y parecía que "se había bajado la solicitud al nuevo máximo". Corregido: el pedido ya no se
+  clampea (`units = max(0, round(...))`, `capUnits` limita solo el ARRASTRE), la escala del track pasa a
+  `max(1, maxUnits, units)` — mientras el pedido entra en el presupuesto todo se ve igual que antes, y con
+  sobre-asignación la barra abarca el pedido, así que la zona que pidió 7 y recibe 2 se ve 2/7 azul + 5/7
+  ámbar en vez de toda azul. Etiqueta honesta ("3/2" y "7/2"); el `· P%` de la ronda 3 se muestra solo cuando
+  el pedido entra en el presupuesto, porque con sobre-asignación daría valores como 350%. `scaleMax` se fija
+  al construir el widget y no se recalcula durante el arrastre (cambiar la escala a mitad de un drag movería
+  el mapeo puntero→unidades); los controles ya se reconstruyen al volver a pausa. `setCap` dejó de recortar
+  `units`, que era otra vía de tapar el pedido.
+- **El indicador de energía del HUD estaba muerto**: `aggregateEnergy` leía `unpoweredSectionIds.length`, y
+  desde la ronda 2 ese campo refleja SOLO la cicatriz permanente (`permanentlyDisconnectedSectionIds`), que
+  hoy está siempre vacía porque no hay contenido de Cap.5 — o sea que marcaba 100% nominal pasara lo que
+  pasara. Corregido (decisión del operador entre tres alternativas): `aggregateEnergy` pasa a tomar el **peor
+  de dos señales** — la cicatriz permanente (semántica original de 11g) y **suministro/demanda**
+  (`grantedUnits / requestedUnits`). Clave del diseño: `requestedUnits === 0` (partida nueva, nada repartido)
+  cuenta como **nominal**, no como fallo — es lo que evita revivir el bug de la ronda 1 (todo en crítico desde
+  el primer frame, disparando el overlay de alerta y el CRT a máxima intensidad). La función pasa a recibir un
+  **objeto** en vez de cuatro números posicionales: dos son "secciones" y dos son "unidades", y confundirlos
+  daría un HUD que miente sin fallar ningún chequeo de tipos. El dato entra por una interfaz angosta y
+  opcional nueva, `PowerSupplySource` (`ship-status-runtime.ts`), implementada por `MissionPowerRuntime` —
+  mismo criterio que `PowerScarSource`/`InstancePowerSource`, y sin ella el indicador se comporta como antes.
+- **Documentado, sin código** (pregunta del operador sobre qué pasa con los consumidores de una zona con
+  déficit): el canal de visualización YA existe — el inspector de "Prioridad" lista los componentes de la
+  sección y pinta en ámbar los no alimentados, leyendo `isInstancePowered`. Falta solo el dato (`powerDraw`
+  sin autorar). Anotado en la nota de la Subfase 13d de `nuevo-orden.md`.
+Tests: 3 casos nuevos en `ship-status-aggregation.test.ts` (déficit → crítico; **pedido 0 → nominal**, que
+protege contra la regresión de la ronda 1; cicatriz y déficit simultáneos → gana el peor) más los 4 existentes
+migrados al parámetro objeto, y verificación de `grantedTotalUnits`/`requestedTotalUnits` en
+`mission-power-runtime.test.ts`. 615 tests en `/engine` (antes 612, +3), 29 en `/game` sin cambios.
+`tsc --noEmit`/`vite build` limpios en ambos workspaces.

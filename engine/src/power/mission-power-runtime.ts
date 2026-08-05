@@ -7,6 +7,7 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { PowerScarSource, InstancePowerSource } from "../mission/mission-signal-runtime.js";
+import type { PowerSupplySource } from "../ship-status/ship-status-runtime.js";
 import type { MutableShipState } from "../mission/mutable-ship-state.js";
 import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { PowerDomainEvent } from "./power-events.types.js";
@@ -33,7 +34,7 @@ import { allocateComponentPower, allocateSectionBudget } from "./power-allocatio
  * queda como el camino de ejecución (el reparto también debe seguir vivo
  * mientras corre la simulación, ej. si se destruye una fuente).
  */
-export class MissionPowerRuntime implements Tickable, PowerScarSource, InstancePowerSource {
+export class MissionPowerRuntime implements Tickable, PowerScarSource, InstancePowerSource, PowerSupplySource {
   private poweredInstanceIds = new Set<PlacedComponentInstanceId>();
   private darkSectionIds: ReadonlySet<SectionId> = new Set<SectionId>();
   private grantedBySectionId: ReadonlyMap<SectionId, number> = new Map<SectionId, number>();
@@ -180,6 +181,22 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
   /** Unidades pedidas por encima del presupuesto disponible; 0 si no hay conflicto. */
   powerShortfallUnits(): number {
     return this.shortfallUnits;
+  }
+
+  /** `PowerSupplySource` (ronda 5): total realmente otorgado, para el indicador del HUD. */
+  grantedTotalUnits(): number {
+    let total = 0;
+    for (const units of this.grantedBySectionId.values()) {
+      total += units;
+    }
+    return total;
+  }
+
+  /** `PowerSupplySource` (ronda 5): total que el jugador tiene repartido — el pedido, intacto. */
+  requestedTotalUnits(): number {
+    return this.shipState
+      .get()
+      .powerState.sectionAllocations.reduce((sum, entry) => sum + Math.max(0, entry.units), 0);
   }
 }
 

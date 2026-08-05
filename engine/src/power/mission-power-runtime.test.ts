@@ -224,6 +224,10 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     runtime.recalculate();
     runtime.recalculate();
     expect(seen).toHaveLength(1);
+
+    // `PowerSupplySource` (ronda 5): lo que alimenta el indicador del HUD.
+    expect(runtime.grantedTotalUnits()).toBe(3);
+    expect(runtime.requestedTotalUnits()).toBe(4);
   });
 
   it("unpoweredSectionIds refleja SOLO la cicatriz permanente — el déficit vivo de sesión no la contamina", () => {

@@ -177,22 +177,60 @@ describe("aggregateSectionHullIntegrity (Fase 12a, mismo criterio worst-case per
   });
 });
 
-describe("aggregateEnergy (fracción de secciones con suministro)", () => {
+describe("aggregateEnergy (peor de: cicatriz permanente vs. suministro/demanda)", () => {
+  /** Sin déficit de reparto: aísla la señal de cicatriz permanente (semántica original de 11g). */
+  const scarOnly = (unpoweredSectionCount: number, totalSectionCount: number) =>
+    aggregateEnergy({ unpoweredSectionCount, totalSectionCount, grantedUnits: 0, requestedUnits: 0 });
+
   it("returns nominal with no unpowered sections", () => {
-    expect(aggregateEnergy(0, 4)).toEqual({ level: "nominal", fraction: 1 });
+    expect(scarOnly(0, 4)).toEqual({ level: "nominal", fraction: 1 });
   });
 
   it("returns critical when every section is unpowered", () => {
-    expect(aggregateEnergy(4, 4)).toEqual({ level: "critical", fraction: 0 });
+    expect(scarOnly(4, 4)).toEqual({ level: "critical", fraction: 0 });
   });
 
   it("returns a partial fraction for a partial outage", () => {
-    const result = aggregateEnergy(1, 4);
+    const result = scarOnly(1, 4);
     expect(result.fraction).toBeCloseTo(0.75);
     expect(result.level).toBe("nominal");
   });
 
   it("returns nominal (fraction 1) for a ship with no sections (edge case)", () => {
-    expect(aggregateEnergy(0, 0)).toEqual({ level: "nominal", fraction: 1 });
+    expect(scarOnly(0, 0)).toEqual({ level: "nominal", fraction: 1 });
+  });
+
+  it("cae a crítico cuando la nave no puede entregar lo repartido (ronda 5)", () => {
+    // Pedido 10 con presupuesto 2: solo se entrega el 20% de lo pedido.
+    const result = aggregateEnergy({
+      unpoweredSectionCount: 0,
+      totalSectionCount: 4,
+      grantedUnits: 2,
+      requestedUnits: 10,
+    });
+    expect(result.fraction).toBeCloseTo(0.2);
+    expect(result.level).toBe("critical");
+  });
+
+  it("sin nada repartido todavía es NOMINAL, no un fallo (protege contra el bug de la ronda 1)", () => {
+    // Partida nueva: hay presupuesto pero el jugador no repartió. Si esto diera
+    // crítico, el overlay de alerta y el CRT arrancarían a full desde el frame 1.
+    const result = aggregateEnergy({
+      unpoweredSectionCount: 0,
+      totalSectionCount: 11,
+      grantedUnits: 0,
+      requestedUnits: 0,
+    });
+    expect(result).toEqual({ level: "nominal", fraction: 1 });
+  });
+
+  it("con cicatriz permanente y déficit a la vez, gana la peor de las dos señales", () => {
+    const result = aggregateEnergy({
+      unpoweredSectionCount: 1, // cicatriz → 0.75
+      totalSectionCount: 4,
+      grantedUnits: 1,
+      requestedUnits: 10, // suministro → 0.1, peor
+    });
+    expect(result.fraction).toBeCloseTo(0.1);
   });
 });

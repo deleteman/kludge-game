@@ -338,6 +338,9 @@ export class MissionRuntime {
       this.atmosphereRuntime,
       this.componentRegistry,
       this.chemicalRegistry,
+      // Fase 13b ronda 5: sin esta fuente el indicador de energía del HUD queda
+      // clavado en nominal (solo miraría la cicatriz permanente, hoy vacía).
+      this.powerRuntime,
     );
 
     this.scheduler = new TaskScheduler({

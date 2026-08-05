@@ -536,6 +536,7 @@
 
 - `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`). Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`). `Blueprint.unpoweredSectionIds` refleja SOLO `powerState.permanentlyDisconnectedSectionIds` (ronda 2 — ya no unión con déficit vivo). `sectionHasNoPowerGranted(sectionId)`: señal puramente cosmética (déficit vivo, sin excepciones) para el efecto visual ambiental, desacoplada del gating real.
 - `recalculate()` público (ronda 3): el recálculo NO puede depender solo de `tick()`, porque `CoreLoopModeMachine` es NO-OP en modo `planning` y los controles de energía solo existen en pausa. `tick()` delega en él.
+- Ronda 5: implementa además `PowerSupplySource` (`grantedTotalUnits()`/`requestedTotalUnits()`) — alimenta el indicador de energía del HUD.
 - Ronda 4: cachea `grantedBySectionId`/`shortfallUnits` (`sectionPowerGranted()`, `powerShortfallUnits()`) y emite `PowerShortfallEvent` POR FLANCO — solo cuando el faltante aparece o cambia de magnitud, no en cada recálculo. Guarda el último `elapsedSeconds` visto en `tick()`, porque `recalculate()` no recibe `TickContext`.
 
 ## `engine/src/properties/functional.types.ts` (modificado, Fase 13b)
@@ -562,9 +563,10 @@
 
 - `starterKit(archetype)` gana el parámetro `archetype`: solo para `"exploracion"` siembra fuentes reales de energía. Ronda 3: 5× `celula-fotovoltaica` (footprint 1×2, `powerUnits: 2`) = **10 unidades** — 3 en `ingenieria` y 2 en `propulsion` (`ingenieria` tope real 6: solo 3 pares verticales libres). Celdas verificadas contra `nave-exploracion.json`, en `EXPLORACION_POWER_SOURCE_CELLS`.
 
-## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b)
+## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 5)
 
 - Comentarios actualizados: `aggregateEnergy` ya no es MVP-stub, la fórmula no cambió pero `unpoweredSectionIds` ahora es un valor real derivado, no un flag estático.
+- Ronda 5: `aggregateEnergy` recibe `EnergyAggregationInput` (objeto, no 4 números posicionales) y devuelve el PEOR de dos señales — cicatriz permanente y suministro/demanda (`granted/requested`). `requestedUnits === 0` = nominal, la condición que impide revivir el bug de "todo crítico al arrancar" de la ronda 1. Sin esto el indicador quedaba muerto (siempre 100%). El dato entra por `PowerSupplySource`, interfaz angosta y opcional implementada por `MissionPowerRuntime`.
 
 ## `engine/src/components/catalog/{atomic-component-catalog,composite/*}.ts` (modificado, Fase 13b)
 
@@ -579,6 +581,7 @@
 - `renderPowerAllocationSlider`: slider entero de arrastre por sección (molde de `kenney-slider.ts`), consciente de cámara (`getWorldPoint`, objeto de mundo no HUD) y con `destroy()` explícito de sus propios listeners de `scene.input` — necesario porque se destruye/reconstruye muchas veces por sesión, a diferencia del slider de `options-scene.ts`.
 - Ronda 3: el track abarca `0..maxUnits` (presupuesto total, ancho con el mismo significado en todas las secciones) pero el arrastre se topa en `capUnits`; el tramo bloqueado se pinta con `LOCKED_COLOR` propio. Etiqueta `N/total · P%`. `setCap(capUnits)` reajusta el tope sin destruir el widget.
 - Ronda 4: relleno partido pedido vs. otorgado — azul hasta `grantedUnits`, ámbar (`ENERGY_LAYER_COLOR.deficit`) de ahí al pedido. `setGranted(n)` lo refresca sin destruir el widget. Sin déficit el tramo ámbar mide 0.
+- Ronda 5: el pedido ya NO se clampea al presupuesto (lo tapaba: dos zonas con 3 y 7 mostraban ambas "2/2"). La escala del track es `max(1, maxUnits, units)` — fijada al construir, no se recalcula en el arrastre. `capUnits` limita solo el arrastre. El `· P%` se muestra solo cuando el pedido entra en el presupuesto.
 
 ## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
 

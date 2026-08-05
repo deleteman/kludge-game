@@ -3102,3 +3102,60 @@ Archivos: `engine/src/power/power-allocation.ts` (+test), `engine/src/power/powe
 `tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 612 tests de `/engine` (antes 608, +4:
 3 de la regla de déficit y 1 del evento por flanco), 29 de `/game` sin cambios.
 Razón: cuarta ronda de playtest manual del operador sobre la Subfase 13b.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 5 (slider honesto ante sobre-asignación + HUD de energía vivo).
+Detalle: el operador repartió 3 y 7 unidades entre dos zonas (presupuesto 10) y después desmanteló fuentes
+hasta dejar una sola (presupuesto 2). Observó que AMBAS zonas pasaban a mostrar "2/2" — la que había pedido 3
+en ámbar y la que había pedido 7 también en "2/2" —, perdiéndose por completo la información de cuánto había
+pedido cada una; y que el indicador de energía del HUD no se mueve nunca durante todo el proceso. Dos defectos
+reales, ambos del mismo tipo que el operador viene marcando ronda tras ronda: la UI muestra algo que el motor
+contradice.
+(1) El slider clampeaba el PEDIDO al presupuesto. En `power-allocation-slider.ts`,
+`cap = clamp(capUnits, 0, safeMax)` y `units = clamp(round(options.units), 0, cap)`, con `safeMax = maxUnits`
+(el presupuesto): con presupuesto 2, un pedido de 3 y uno de 7 se clampeaban LOS DOS a 2 y la etiqueta imprimía
+"2/2" en ambos. El blueprint conservaba el pedido real (la reconciliación de la ronda 4 es no destructiva), así
+que no era una pérdida de dato sino de presentación — pero desde el juego se veía como si la solicitud se
+hubiera bajado sola al nuevo máximo. Corregido: el pedido ya no se clampea (`units = max(0, round(...))`);
+`capUnits` sigue limitando el ARRASTRE (no se puede pedir más de lo que queda libre) pero deja de reescribir lo
+que se muestra; y la escala del track pasa a `max(1, maxUnits, units)`, de modo que mientras el pedido entra en
+el presupuesto `safeMax === maxUnits` y el widget se ve exactamente igual que antes, y solo cuando hay
+sobre-asignación la barra abarca el pedido. Efecto concreto: la zona que pidió 7 y recibe 2 ahora se ve 2/7
+azul + 5/7 ámbar (antes: toda azul, fingiendo estar satisfecha), y la que pidió 3 y recibe 0, toda ámbar.
+Etiqueta honesta: "3/2" y "7/2". El `· P%` agregado en la ronda 3 se muestra solo cuando el pedido entra en el
+presupuesto — con sobre-asignación daría valores como 350%, que confunden más de lo que informan, y los
+números crudos ya cuentan la historia. `scaleMax` se fija al CONSTRUIR el widget y no se recalcula durante el
+arrastre: recalcularlo en vivo cambiaría el mapeo puntero→unidades a mitad de un drag y lo volvería inestable;
+los controles ya se reconstruyen al volver a pausa y al togglear la capa, que es cuando la escala se normaliza.
+`setCap` dejó de hacer `units = min(units, cap)`, que era otra vía por la que el pedido podía quedar tapado.
+(2) El indicador de energía del HUD estaba MUERTO. `ship-status-runtime.ts` llamaba
+`aggregateEnergy(blueprint.unpoweredSectionIds.length, ...)`, y desde la ronda 2 `unpoweredSectionIds` refleja
+SOLO la cicatriz permanente (`powerState.permanentlyDisconnectedSectionIds`), que hoy está siempre vacía porque
+no existe contenido del Cap.5 — o sea que el indicador marcaba 100% nominal pasara lo que pasara, incluida una
+nave con 10 unidades repartidas y presupuesto 2. Es la consecuencia no prevista del desacople hecho en la ronda
+2 (que resolvió bien el bug de "todo en crítico desde el frame 1", pero dejó al indicador sin ninguna señal
+viva). Corregido, con la alternativa elegida por el operador entre tres planteadas: `aggregateEnergy` toma
+ahora el PEOR de dos señales independientes — la cicatriz permanente por sección (semántica original de 11g) y
+suministro/demanda (`grantedUnits / requestedUnits`, qué fracción de lo repartido puede entregar la nave). La
+clave del diseño es que `requestedUnits === 0` (partida nueva, el jugador todavía no repartió nada) cuenta como
+NOMINAL y no como fallo: es la condición que evita revivir el bug de la ronda 1, porque no repartir energía no
+es una avería. La función pasa a recibir un OBJETO (`EnergyAggregationInput`) en vez de cuatro números
+posicionales: dos parámetros son "secciones" y dos son "unidades", y confundirlos daría un HUD que miente sin
+fallar ningún chequeo de tipos — exactamente la clase de error que esta ronda vino a corregir. El dato entra
+por una interfaz angosta y OPCIONAL nueva, `PowerSupplySource` (`grantedTotalUnits()`/`requestedTotalUnits()`,
+declarada en `ship-status-runtime.ts` e implementada por `MissionPowerRuntime` sobre lo que ya cachea): mismo
+criterio que `PowerScarSource`/`InstancePowerSource`, y al ser opcional no rompe construcciones ni fixtures
+previos. No hizo falta reordenar nada en `mission-runtime.ts`: `powerRuntime` ya se construía antes que
+`shipStatusQuery`.
+(3) Documentado sin código, respondiendo a la pregunta del operador ("¿cómo afectaría si tengo 7 elementos
+consumiendo energía dentro de esa zona?"): el canal de visualización YA está construido — el inspector de
+"Prioridad" (`power-priority-list.ts`) lista cada componente de la sección y pinta en ámbar los que quedaron
+sin alimentar, leyendo `isInstancePowered`. Lo único que falta es el dato: ningún componente del catálogo tiene
+`powerDraw` autorado, así que hoy todos figuran alimentados sin importar el reparto. Anotado en la nota de la
+Subfase 13d de `nuevo-orden.md` (junto al `powerDraw` diferido de la ronda 2), incluyendo el pendiente de
+evaluar si además hará falta un indicador de sección "a media máquina" en el plano, distinto del binario actual.
+Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `engine/src/ship-status/ship-status-aggregation.ts`
+(+test), `engine/src/ship-status/ship-status-runtime.ts`, `engine/src/power/mission-power-runtime.ts` (+test),
+`engine/src/index.ts`, `game/src/mission/mission-runtime.ts`, `nuevo-orden.md`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 615 tests de `/engine` (antes 612, +3),
+29 de `/game` sin cambios.
+Razón: quinta ronda de playtest manual del operador sobre la Subfase 13b.

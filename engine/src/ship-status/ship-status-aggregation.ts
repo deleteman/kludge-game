@@ -180,18 +180,40 @@ export function aggregateSectionHullIntegrity(
   return indicator(sawAny ? worstFraction : 1);
 }
 
+export interface EnergyAggregationInput {
+  /** Secciones con cicatriz PERMANENTE de energía (Cap.5); no incluye el déficit vivo de reparto. */
+  readonly unpoweredSectionCount: number;
+  readonly totalSectionCount: number;
+  /** Unidades realmente otorgadas por el reparto vivo (Fase 13b). */
+  readonly grantedUnits: number;
+  /** Unidades que el jugador tiene repartidas. 0 = todavía no repartió nada. */
+  readonly requestedUnits: number;
+}
+
 /**
- * Agregación a nivel de nave de energía (Subfase 11g): fracción de secciones
- * CON suministro, derivada de `Blueprint.unpoweredSectionIds`. Fórmula sin
- * cambios desde 11g — lo que cambió en la Fase 13b es de dónde sale el dato:
- * `unpoweredSectionIds` dejó de ser un flag estático y ahora es un valor real
- * recalculado cada tick por `MissionPowerRuntime` (dominio `power/`,
- * presupuesto de energía en unidades discretas + reparto por prioridad), no
- * un MVP sin simulación.
+ * Agregación a nivel de nave de energía (Subfase 11g; reescrita en la ronda 5
+ * de playtest de 13b). Toma el PEOR de dos señales independientes:
+ *
+ * 1. Cicatriz permanente por sección (`unpoweredSectionIds`, semántica original
+ *    de 11g — sacrificio del Cap.5, hoy sin contenido).
+ * 2. Suministro vs. demanda (`grantedUnits / requestedUnits`): qué fracción de
+ *    lo que el jugador repartió puede entregar la nave realmente. Sin esto el
+ *    indicador quedaba MUERTO — desde la ronda 2 `unpoweredSectionIds` refleja
+ *    solo la cicatriz permanente, siempre vacía, así que marcaba 100% nominal
+ *    pasara lo que pasara (detectado en playtest).
+ *
+ * `requestedUnits === 0` (partida nueva, nada repartido todavía) cuenta como
+ * nominal, NO como fallo: es la condición que evita revivir el bug de la ronda
+ * 1 (todo en crítico desde el primer frame, disparando el overlay de alerta y
+ * el CRT a máxima intensidad). No repartir energía no es una avería.
+ *
+ * Recibe un objeto y no cuatro números sueltos a propósito: dos parámetros son
+ * "secciones" y dos son "unidades", y confundirlos daría un HUD que miente sin
+ * fallar ningún test de tipos.
  */
-export function aggregateEnergy(unpoweredSectionCount: number, totalSectionCount: number): ShipStatusIndicator {
-  if (totalSectionCount === 0) {
-    return indicator(1);
-  }
-  return indicator(1 - unpoweredSectionCount / totalSectionCount);
+export function aggregateEnergy(input: EnergyAggregationInput): ShipStatusIndicator {
+  const { unpoweredSectionCount, totalSectionCount, grantedUnits, requestedUnits } = input;
+  const scarFraction = totalSectionCount === 0 ? 1 : 1 - unpoweredSectionCount / totalSectionCount;
+  const supplyFraction = requestedUnits > 0 ? grantedUnits / requestedUnits : 1;
+  return indicator(Math.min(scarFraction, supplyFraction));
 }

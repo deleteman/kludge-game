@@ -23,6 +23,17 @@ import type { ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status.type
  * Mismos colaboradores que `MissionStructuralRuntime`, adrede: ambos
  * recorren todas las secciones/componentes de la misma forma.
  */
+/**
+ * Suministro vs. demanda de energía para el indicador del HUD (Fase 13b, ronda
+ * 5). Interfaz angosta y opcional, mismo criterio que `PowerScarSource`/
+ * `InstancePowerSource`: `ShipStatusQuery` no necesita conocer el dominio
+ * `power/` completo, y sin la fuente el indicador se comporta como antes.
+ */
+export interface PowerSupplySource {
+  grantedTotalUnits(): number;
+  requestedTotalUnits(): number;
+}
+
 export class ShipStatusQuery {
   constructor(
     private readonly shipState: MutableShipState,
@@ -30,6 +41,7 @@ export class ShipStatusQuery {
     private readonly atmosphereRuntime: MissionAtmosphereRuntime,
     private readonly componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
     private readonly chemicalRegistry: EntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>,
+    private readonly powerSupply?: PowerSupplySource,
   ) {}
 
   snapshot(): ShipStatusSnapshot {
@@ -42,9 +54,16 @@ export class ShipStatusQuery {
       atmosphere: aggregateAtmosphere(sections, this.chemicalRegistry),
       lifeSupport: aggregateLifeSupport(sections),
       hullIntegrity: aggregateHullIntegrity(blueprint.placedComponents, this.componentRegistry),
-      // Fase 13b: `unpoweredSectionIds` es ahora un valor real (recalculado
-      // cada tick por `MissionPowerRuntime`), no el flag estático de 11b.
-      energy: aggregateEnergy(blueprint.unpoweredSectionIds.length, this.shipFloorplan.sections.length),
+      // Fase 13b (ronda 5): además de la cicatriz permanente, el indicador mira
+      // si la nave puede entregar lo que el jugador repartió — sin eso quedaba
+      // clavado en nominal, porque `unpoweredSectionIds` solo lleva la cicatriz
+      // del Cap.5 (hoy vacía) desde la ronda 2.
+      energy: aggregateEnergy({
+        unpoweredSectionCount: blueprint.unpoweredSectionIds.length,
+        totalSectionCount: this.shipFloorplan.sections.length,
+        grantedUnits: this.powerSupply?.grantedTotalUnits() ?? 0,
+        requestedUnits: this.powerSupply?.requestedTotalUnits() ?? 0,
+      }),
     };
   }
 
