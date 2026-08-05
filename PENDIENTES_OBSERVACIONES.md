@@ -373,3 +373,24 @@ dónde, y qué costaría arreglarlo.
 18. al seleccionar un tripulante en la pantalla de selección de tripulantes debería cambiarle su imagen a color, ahora quedan en escala de grises.
 
 19. los efectos visuales de una zona sin energía se renderizan parcialmente arriba del cuadro de asginacion de energía en modo pausa.
+20. ⚠️ PARCHE INTERINO (13c fix ronda 1) — **la integridad de casco se deriva del RE de los componentes
+    instalados, no de la nave.** Reportado por el operador en el playtest de 13c: instalar un `tubo-flexible`
+    (RE-B) desplomaba el indicador de casco de toda la nave, y desmontarlo lo "reparaba". La causa es de la
+    Subfase 11g: `aggregateHullIntegrity` (`engine/src/ship-status/ship-status-aggregation.ts`) tomaba el peor
+    RE de CUALQUIER pieza que declarara RE. Una manguera no es casco. 13c solo hizo el problema visible, al
+    poner al jugador a mirar el RE.
+    Parcheado de forma interina: solo cuentan las piezas con propiedad funcional `EST` (Estructura/soporte,
+    GDD 5.1) y se ponderan por su `damageResistance` de catálogo en vez de tomar el peor caso — ponderar
+    además de filtrar era necesario porque la `tornilleria-fijacion` (EST, RE-B) reproducía el mismo síntoma.
+    **Se resuelve del todo en la Subfase 13f** (`nuevo-orden.md`, diseño ya cerrado 2026-08-05): las secciones
+    pasan a tener vida propia, dañada por impacto cinético contra pared, explosión/combustión, corrosión y
+    descompresión, con brecha + cicatriz permanente al llegar a 0. Esa subfase borra `instanceHullContribution`
+    y `weightedHullFraction` enteras.
+
+21. **Un proyectil que no golpea nada sale del plano y sigue avanzando** (relevado al diseñar 13f).
+    `ProjectileSimulation.advance` (`engine/src/kinetics/projectile-simulation.ts`) no valida contra
+    `floorplan.gridSize`, y `MissionProjectileWorld.occupantAt` solo resuelve componentes, tripulación y
+    enemigos — no hay concepto de pared en el motor. Lo único que lo frena es el drag de ASA 2. Tampoco
+    rebota: `impact()` lo detiene en seco y pierde toda la inercia. Se aborda en la Subfase 13f, que necesita
+    la colisión contra pared para dañar la sección (mismo patrón de inyección que `setMotionBlockedQuery` de
+    13a, sin que `/engine` conozca Tiled).

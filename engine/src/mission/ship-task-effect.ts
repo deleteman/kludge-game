@@ -96,6 +96,8 @@ export function createShipTaskEffect(
               wearDeps.random,
             )
           : DEFAULT_WEAR;
+        // ¿Este desmontaje concreto empeoró la pieza? (fix de playtest ronda 1)
+        const degraded = instance ? recoveredWear !== instance.wear : false;
 
         if (definition && isCompositeEntity(definition)) {
           let nextStock = atomicStock.get();
@@ -111,6 +113,7 @@ export function createShipTaskEffect(
               componentId: ingredient.ref,
               quantity: ingredient.quantity,
               wear: recoveredWear,
+              degraded,
             })),
           };
         }
@@ -125,7 +128,7 @@ export function createShipTaskEffect(
           );
           return {
             obtained: [
-              { componentId: instance.componentDefinitionId, quantity: 1, wear: recoveredWear },
+              { componentId: instance.componentDefinitionId, quantity: 1, wear: recoveredWear, degraded },
             ],
           };
         }

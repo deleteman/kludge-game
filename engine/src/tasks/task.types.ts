@@ -141,6 +141,14 @@ export interface TaskEffectResult {
     readonly quantity: number;
     /** Desgaste con el que la pieza volvió al stock (Fase 13c) — `/game` lo muestra en la notificación. */
     readonly wear?: ComponentWear;
+    /**
+     * `true` si el desmontaje EMPEORÓ el desgaste respecto de lo que la pieza
+     * traía (13c, fix de playtest ronda 1). Sin esto `/game` no puede
+     * distinguir "el novato rompió algo" de "salió limpio": comparar `wear`
+     * contra `nuevo` no alcanza, porque una pieza que ya entraba `usado` y sale
+     * `usado` no sufrió nada en ESTE desmontaje.
+     */
+    readonly degraded?: boolean;
   }>;
   /** Sustancia cuya composición quedó revelada por "Analizar Sustancia" (Fase 11e). */
   readonly analyzedSubstanceId?: ChemicalSubstanceId;

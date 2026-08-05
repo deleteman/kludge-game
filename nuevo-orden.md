@@ -293,6 +293,28 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
 
 * Test unitario del vertido/extracción antes de integrar; caso de validación ligado al Cap.7.
 
+#### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
+
+Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.
+
+13c dejó un **parche interino** (solo cuentan las piezas con tag `EST`, ponderadas por `damageResistance`) explícitamente marcado como provisional: esta subfase **borra `instanceHullFraction`/`weightedHullFraction` y toda esa agregación**.
+
+* **Vida por sección (motor):** HP numérico interno por sección, escalado por `sectionArea()` (ya existe). El jugador **nunca ve el número**: el HUD y la capa "estructural" ya consumen `ShipStatusIndicator` (`fraction` + nominal/warning/critical), así que no hace falta UI nueva. Se eligió numérico y no la escala cualitativa del resto del motor porque los impactos son eventos discretos que restan de forma natural; con 3 niveles, la primera explosión ya se comería un tercio de la barra. Misma clase de excepción deliberada que las unidades de energía de 13b.
+
+* **Cuatro escritores de daño:** (1) impacto cinético contra pared, (2) explosión/combustión, (3) corrosión de la atmósfera de la sección, (4) descompresión/presión baja — este último **amortiguado**, porque se realimenta con la brecha (menos vida → más fuga → menos presión → más daño).
+
+* **Colapso a 0:** brecha que drena presión de forma continua, reutilizando el `SectionPressureSinkSource` que el Cap.1 ya usa para su junta rota, **más una cicatriz permanente en el guardado de campaña**. Esto último es literalmente el callback que `docs/Primeras_8_crisis.md` pide para los Cap. 3, 6, 7 y 8 ("la sección afectada queda con `RE` reducida — cicatriz que reaparece en el capítulo 7") y que hoy no tiene ninguna implementación. Sellar la brecha la detiene, pero la vida NO se recupera (principio 5).
+
+* **Huecos de motor a cubrir** (relevados antes de planificar, para que la subfase no arranque a ciegas):
+  1. `KineticImpactEvent` no lleva posición/celda/sección — solo `targetRef`.
+  2. **No existe colisión contra pared:** `MissionProjectileWorld.occupantAt` resuelve solo componentes, tripulación y enemigos; el motor no conoce las paredes (viven en el tilemap de `/game`). Además un proyectil que no golpea nada **sale del plano sin frenar** — no hay chequeo de bordes. Se resuelve con el mismo patrón de inyección que 13a usó para la línea de visión (`setMotionBlockedQuery`), sin que `/engine` sepa de Tiled.
+  3. `OverloadEvent` no lleva `sectionId` (el puente `ref → sección` ya se hace a mano en `MissionReactionRuntime`). `CombustionEvent` sí lo lleva, y su `radius` cualitativo (`half-section`/`full-section`) hoy solo alimenta partículas — se le da consecuencia real.
+  4. Estado dinámico por sección: copiar el molde exacto de `sectionAtmospheres` + `SectionAtmosphereSnapshot` (bump de `schemaVersion` con campo opcional).
+  5. `MissionAtmosphereRuntime` acepta **un solo** `SectionPressureSinkSource`; hay que componer el sink de brecha con el del Cap.1.
+  6. El render ya está desacoplado: `drawStructuralLayer` recibe `indicatorForSection` inyectado — sustituir la fuente es una línea.
+
+* Test unitario por escritor de daño + integración "una explosión abre una brecha que drena presión"; la cicatriz permanente debe sobrevivir un round-trip de guardado.
+
 
 
 ### Fase 14 — Capítulo 2: "Ecos en el Pasillo"
@@ -493,6 +515,9 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 
  |
 | **Deudas #13/#14 — Conductos `senal`/`fluido` en otros arquetipos**<br> | **Fase 22a**<br> | Autoría de contenido en Tiled para desbloquear el cableado cross-section del Cap.1 en investigación/guerra/médica.
+
+ |
+| **Playtest 13c — Integridad de casco derivada del RE de los componentes**<br> | **Fase 13f**<br> | Vida propia por sección (HP interno, display cualitativo) dañada por impacto/explosión/corrosión/descompresión; brecha + cicatriz permanente al llegar a 0. Reemplaza la agregación de 11g, parcheada de forma interina en 13c.
 
  |
 | **Obs 0 — Historia / intro narrativa**<br> | **Fase 15 (Demo)**<br> | Escenas de intro tipo "reporte de incidente" antes del plano, pendientes de ciclo de diseño narrativo.

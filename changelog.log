@@ -3355,3 +3355,50 @@ REPARAR desgaste (principio 5: sin undo gratuito); hay un test de contrato que l
 Suite: `/engine` 636 → 671 tests, `/game` 30 → 36. `tsc --noEmit` limpio en ambos, `vite build` limpio.
 Razón: cerrar el Gap ① de la comparativa con Duskers ("el gap más alineado con el nombre y la fantasía del
 juego", REPORTE_evaluacion_comparativas.md) y su prerrequisito bloqueante, la deuda #6.
+
+2026-08-05 — Subfase 13c: fixes de playtest, ronda 1.
+Detalle: cuatro observaciones del operador tras jugar 13c, todas con causa raíz distinta.
+
+(1 y 2) Texto ilegible en el modal de instalación. El tooltip y el modal usan los MISMOS colores de tag del
+Eje B (Fase 12e), pero el tooltip tiene fondo oscuro propio (`0x0a0a0f`) y el modal dibujaba directo sobre
+`panel_rectangle.png`, un gris medio (~#9496a5). Contraste medido: celeste `#7fb4ff` a 1.4:1 y bronce
+`#c0a080` a 1.2:1, contra los 4.5:1 que pide WCAG AA — efectivamente ilegible. Corregido con un fondo oscuro
+detrás de la columna de ficha, con los mismos valores que el tooltip, en vez de tocar los colores: son cuatro
+constantes canónicas custodiadas por `palette.contract.test.ts`, y aclararlas habría roto su legibilidad
+sobre el fondo oscuro del tooltip. Mismo criterio que el badge de la ronda 8 de 13b: poner un fondo detrás,
+no inventar un color. Auditoría de layout con números reales: el fondo mide 406×334 en x 580..986 / y
+210..544, con 16px de aire respecto de la lista y 14-56px respecto de los bordes del modal. Detalle de
+implementación: el rectángulo NO lleva `setDepth` — dentro de un `Container` el depth ordena entre hermanos,
+así que fijarlo lo habría puesto por encima de la ficha; basta el orden de inserción.
+
+(3) "Al instalar un tubo flexible con RE baja, la integridad del casco bajó de golpe, ¿por qué? Al desmontarlo
+se soluciona, ¿tiene sentido?" — No tiene sentido, y el operador tenía razón. `aggregateHullIntegrity` tomaba
+el peor RE de CUALQUIER pieza instalada que declarara RE, y `tubo-flexible` declara `RE: "B"`. Una manguera no
+es casco. Es un error de modelado de la Subfase 11g que 13c volvió visible, no algo que 13c rompiera. Parche
+interino en dos partes: solo cuentan las piezas con propiedad funcional `EST` (Estructura/soporte, GDD 5.1), y
+entre ellas se PONDERA por su `damageResistance` de catálogo en vez de tomar el peor caso. Se ponderó y no
+solo se filtró por dos razones concretas: con solo filtrar, `tornilleria-fijacion` (EST, RE-B) reproduciría el
+mismo síntoma; y autorar `carcasa-plastica` como RE-B en el punto (4) habría INTRODUCIDO una regresión nueva
+en la misma ronda. Marcado en el código como provisional: la Subfase 13f (registrada en `nuevo-orden.md` en
+este mismo cambio, con su diseño ya cerrado) borra `instanceHullFraction`/`weightedHullFraction` enteras y
+pasa la integridad a ser vida propia de cada sección.
+
+(4) "Desmontar una célula fotovoltaica no le bajó la RE ni la marca de ninguna forma, ¿está bien?" — No del
+todo, por dos motivos independientes. Primero, `celula-fotovoltaica` no declaraba `RE` (solo `CE: "A"`): 18 de
+las 24 piezas atómicas estaban igual, así que acumulaban desgaste sin ninguna consecuencia mecánica. Autoradas
+las 18 (B para electrónica delicada y plástico, M para metálico funcional; A queda reservado a metal macizo).
+Segundo, y más grave: la notificación de desmontaje decía `×1 Célula fotovoltaica` y nada más, así que "el
+novato rompió algo" y "salió limpio" eran indistinguibles — una tirada sin feedback es una tirada invisible.
+`TaskEffectResult.obtained` gana `degraded?: boolean`, que compara contra el desgaste que la pieza traía y no
+contra `nuevo` (una pieza que ya entraba `usado` y sale `usado` no sufrió nada en ESTE desmontaje); la
+notificación añade el tag de desgaste a la línea y escala su `type` a `warning` cuando alguna pieza degradó.
+
+Hallazgo al implementar (4): `TaskCompletedEvent.obtained` REPETÍA la forma del tipo en vez de reusar
+`TaskEffectResult["obtained"]`. Como ese evento es el único camino por el que el dato llega a `/game`, el
+campo `wear` que 13c había agregado nunca podía leerse desde la UI, y nada fallaba al compilar. Unificados los
+dos tipos para que no vuelvan a divergir.
+Archivos: `game/src/ui/widgets/install-picker-modal.ts`, `engine/src/components/catalog/atomic-component-catalog.ts`,
+`engine/src/tasks/task.types.ts`, `engine/src/tasks/task-events.types.ts`, `engine/src/mission/ship-task-effect.ts`,
+`engine/src/ship-status/ship-status-aggregation.ts`, `game/src/scenes/floorplan-scene.ts`, `nuevo-orden.md`.
+Suite: `/engine` 671 → 679 tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos, `vite build` limpio.
+Razón: primera ronda de playtest manual del operador sobre la Subfase 13c.

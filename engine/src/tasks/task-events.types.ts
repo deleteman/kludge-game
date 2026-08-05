@@ -2,7 +2,7 @@ import type { DomainEventBase } from "../simulation/domain-event.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
-import type { CrewTaskId, TaskType } from "./task.types.js";
+import type { CrewTaskId, TaskEffectResult, TaskType } from "./task.types.js";
 
 /**
  * Eventos de dominio del core loop (Fase 6). Único seam Observer hacia `/game`
@@ -30,8 +30,14 @@ export interface TaskCompletedEvent extends DomainEventBase {
   readonly taskId: CrewTaskId;
   readonly actorId: CrewActorId;
   readonly type: TaskType;
-  /** Piezas acreditadas al inventario por el efecto (ej. desarmar un compuesto). Ver `TaskEffectResult`. */
-  readonly obtained?: ReadonlyArray<{ readonly componentId: ComponentId; readonly quantity: number }>;
+  /**
+   * Piezas acreditadas al inventario por el efecto (ej. desarmar un compuesto).
+   * Se REUSA el tipo de `TaskEffectResult` en vez de repetir su forma: este
+   * evento es el único camino por el que ese dato llega a `/game`, y mientras
+   * estuvieron duplicados los campos nuevos (`wear` en 13c) se quedaban en el
+   * motor sin que nada fallara al compilar.
+   */
+  readonly obtained?: TaskEffectResult["obtained"];
   /** Sustancia revelada por "Analizar Sustancia" (Fase 11e). Ver `TaskEffectResult`. */
   readonly analyzedSubstanceId?: ChemicalSubstanceId;
 }

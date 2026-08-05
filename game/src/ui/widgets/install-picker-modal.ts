@@ -98,6 +98,14 @@ const LIST_CENTER_Y = (CONTENT_TOP + CONTENT_BOTTOM) / 2;
 const LIST_HEIGHT = CONTENT_BOTTOM - CONTENT_TOP;
 const DESCRIPTION_X = MODAL_LEFT + 24 + LIST_WIDTH + 26;
 const DESCRIPTION_WIDTH = MODAL_RIGHT - 24 - DESCRIPTION_X;
+/**
+ * Fondo de la columna de ficha (fix de playtest 13c ronda 1). Mismos valores
+ * que el fondo del tooltip (`mission-tooltip.ts`), donde estos mismos colores
+ * de tag ya se leen sin problema — no es un color nuevo, es el mismo recurso.
+ */
+const DESCRIPTION_BACKDROP_COLOR = 0x0a0a0f;
+const DESCRIPTION_BACKDROP_ALPHA = 0.92;
+const DESCRIPTION_BACKDROP_PADDING = 10;
 
 /**
  * Selector de instalación como modal de dos columnas (Fase 10d, ajuste post-
@@ -212,6 +220,32 @@ export function renderInstallPickerModal(
   const selected = options[selectedIndex];
   const descriptionX = DESCRIPTION_X;
   const descriptionTop = CONTENT_TOP;
+
+  // Fondo oscuro de la columna de ficha (fix de playtest 13c ronda 1): los tags
+  // funcionales (#7fb4ff) y la resistencia estructural (#c0a080) del Eje B se
+  // dibujaban directo sobre `panel_rectangle.png`, un gris medio (~#9496a5) —
+  // contraste real de 1.4:1 y 1.2:1 respectivamente, ilegible (WCAG AA pide
+  // 4.5:1). El tooltip usa esos MISMOS colores y sí se lee, porque tiene su
+  // propio fondo oscuro; acá se replica ese fondo en vez de aclarar/oscurecer
+  // los colores, que romperían el contrato de la paleta (Fase 12e) y el
+  // `palette.contract.test.ts` que lo custodia. Mismo criterio que el badge de
+  // la ronda 8 de 13b: poner un fondo detrás, no inventar un color nuevo.
+  container.add(
+    scene.add
+      .rectangle(
+        descriptionX - DESCRIPTION_BACKDROP_PADDING,
+        descriptionTop - DESCRIPTION_BACKDROP_PADDING,
+        DESCRIPTION_WIDTH + DESCRIPTION_BACKDROP_PADDING * 2,
+        CONTENT_BOTTOM - CONTENT_TOP + DESCRIPTION_BACKDROP_PADDING * 2,
+        DESCRIPTION_BACKDROP_COLOR,
+        DESCRIPTION_BACKDROP_ALPHA,
+      )
+      .setOrigin(0, 0),
+    // Sin `setDepth`: dentro de un `Container` el depth ORDENA entre hermanos,
+    // así que fijarlo acá pondría el fondo por ENCIMA de la ficha (que se
+    // inserta después con depth 0). El orden de inserción ya basta: el panel
+    // Kenney va antes, este fondo después, y la ficha encima de los dos.
+  );
 
   if (selected) {
     container.add(renderSelectedComponentSheet(scene, descriptionX, descriptionTop, selected, labels));

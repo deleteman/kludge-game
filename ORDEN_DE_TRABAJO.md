@@ -3077,3 +3077,35 @@ atómico era fungible, sin lugar donde guardar la historia de la pieza.
 
 Suite: `/engine` 636 → **671** tests, `/game` 30 → **36**. `tsc --noEmit` limpio en ambos workspaces y
 `vite build` limpio. Detalle completo en `changelog.log`.
+
+#### Fixes de playtest de 13c, ronda 1 ✅ (2026-08-05)
+
+* **Texto ilegible en el modal de instalación (obs 1 y 2):** el tooltip y el modal usan los mismos colores de
+  tag del Eje B, pero el tooltip tiene fondo oscuro propio y el modal dibujaba sobre el gris de
+  `panel_rectangle.png` — contraste real de 1.4:1 (celeste) y 1.2:1 (bronce) contra los 4.5:1 de WCAG AA.
+  **Resuelto:** fondo oscuro detrás de la columna de ficha, con los mismos valores que el tooltip, sin tocar
+  ningún color del contrato de 12e. Auditoría de layout con números: 406×334, 16px de aire respecto de la
+  lista, 14-56px respecto de los bordes del modal.
+
+* **Instalar un tubo flexible desplomaba la integridad del casco (obs 3):** `aggregateHullIntegrity` tomaba el
+  peor RE de *cualquier* pieza instalada. Una manguera no es casco — error de modelado de 11g que 13c volvió
+  visible. **Parche interino:** solo cuentan las piezas con tag `EST`, ponderadas por `damageResistance`
+  (ponderar y no solo filtrar evita que la tornillería RE-B reproduzca el síntoma, y evita una regresión al
+  autorar `carcasa-plastica` como RE-B). Marcado como provisional en el código: **la Subfase 13f lo reemplaza
+  entero.**
+
+* **El desgaste no se veía ni se notificaba (obs 4):** `celula-fotovoltaica` no declaraba `RE`, como 18 de las
+  24 piezas atómicas — acumulaban desgaste sin consecuencia mecánica. **Resuelto:** `RE` autorado en las 18.
+  Y la notificación de desmontaje pasó de `×1 Célula fotovoltaica` a incluir el tag de desgaste y escalar a
+  `warning` cuando la pieza sufrió, vía un `degraded` nuevo en `TaskEffectResult.obtained` que compara contra
+  el desgaste previo y no contra `nuevo`.
+
+* **Hallazgo al implementar:** `TaskCompletedEvent.obtained` repetía la forma del tipo en vez de reusar
+  `TaskEffectResult["obtained"]`, así que el campo `wear` que 13c agregó nunca podía llegar a `/game` y nada
+  fallaba al compilar. Unificados.
+
+* **Registrada la Subfase 13f** en `nuevo-orden.md` con su diseño ya cerrado (vida propia por sección, cuatro
+  escritores de daño, brecha + cicatriz permanente al llegar a 0) y los 6 huecos de motor relevados.
+
+Suite: `/engine` 671 → **679** tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos workspaces y
+`vite build` limpio. Detalle completo en `changelog.log`.

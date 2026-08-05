@@ -341,7 +341,8 @@ describe("createShipTaskEffect", () => {
     // reporta en `obtained` (para el coleccionable + notificación de `/game`).
     expect(atomicStock.get()).toEqual({ ["valvula-simple" as ComponentId]: { nuevo: 1 } });
     expect(result?.obtained).toEqual([
-      { componentId: "valvula-simple" as ComponentId, quantity: 1, wear: "nuevo" },
+      // `degraded: false` — sin `RandomSource` inyectado el desmontaje nunca degrada.
+      { componentId: "valvula-simple" as ComponentId, quantity: 1, wear: "nuevo", degraded: false },
     ]);
     expect(shipState.get().placedComponents).toEqual([]);
   });

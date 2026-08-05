@@ -118,7 +118,9 @@ describe("13c — canibalizar deja la pieza frágil (integración)", () => {
     expect(stockOfWear(atomicStock.get(), CONDUCTOR, "usado")).toBe(1);
     expect(stockOfWear(atomicStock.get(), CONDUCTOR, "nuevo")).toBe(0);
     // 2. El desmontaje reporta el desgaste, para que `/game` no mienta al notificarlo.
-    expect(dismantle?.obtained).toEqual([{ componentId: CONDUCTOR, quantity: 1, wear: "usado" }]);
+    expect(dismantle?.obtained).toEqual([
+      { componentId: CONDUCTOR, quantity: 1, wear: "usado", degraded: true },
+    ]);
 
     // 3. Reinstalarla consume el bucket desgastado y la instancia nace desgastada.
     effect(
@@ -187,6 +189,48 @@ describe("13c — canibalizar deja la pieza frágil (integración)", () => {
 
     expect(run(crewActor())).toBe("usado");
     expect(run(crewActor({ tier: "experto", specialty: "ingeniero" }))).toBe("nuevo");
+  });
+
+  // Fix de playtest 13c ronda 1 (obs 4): sin este dato `/game` no puede
+  // distinguir "el novato rompió algo" de "salió limpio" al notificar.
+  describe("obtained.degraded reporta si ESTE desmontaje empeoró la pieza", () => {
+    const dismantleWith = (wear: "nuevo" | "usado" | "degradado" | "critico", roll: number) => {
+      const effect = createShipTaskEffect(
+        new MutableShipState(shipWithConductor(wear)),
+        registryWithConductor(),
+        new MutableAtomicStock({}),
+        undefined,
+        { random: sequenceRandom([roll]), actorOf: () => crewActor() },
+      );
+      return effect(
+        createCrewTask({
+          id: "t" as CrewTaskId,
+          actorId: NOVATO,
+          type: "dismantle",
+          payload: { kind: "dismantle", instanceId: INSTANCE },
+        }),
+      );
+    };
+
+    it("es true cuando la tirada falla y la pieza baja un escalón", () => {
+      expect(dismantleWith("nuevo", 0.95)?.obtained?.[0]?.degraded).toBe(true);
+    });
+
+    it("es false cuando la tirada la salva", () => {
+      expect(dismantleWith("nuevo", 0.1)?.obtained?.[0]?.degraded).toBe(false);
+    });
+
+    it("es false si la pieza ya venía usada y sigue usada — no sufrió en ESTE desmontaje", () => {
+      const result = dismantleWith("usado", 0.1);
+      expect(result?.obtained?.[0]?.wear).toBe("usado");
+      expect(result?.obtained?.[0]?.degraded).toBe(false);
+    });
+
+    it("es false en una pieza ya critica, que no puede empeorar más", () => {
+      const result = dismantleWith("critico", 0.99);
+      expect(result?.obtained?.[0]?.wear).toBe("critico");
+      expect(result?.obtained?.[0]?.degraded).toBe(false);
+    });
   });
 
   it("sin RandomSource inyectado el desmontaje no degrada nada (pre-13c intacto)", () => {

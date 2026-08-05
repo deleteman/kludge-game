@@ -3305,12 +3305,20 @@ export class FloorplanScene extends Phaser.Scene {
             const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(event.actorId);
             if (cell) this.fireElementCollection(cell, event.obtained);
             // Detalle legible del desmantelamiento por el sistema de notificaciones (12c.7).
+            // 13c fix ronda 1: la línea dice ADEMÁS con qué desgaste volvió la
+            // pieza, y la notificación entera pasa a `warning` si alguna sufrió
+            // en este desmontaje. Antes siempre era `success` con el mismo
+            // texto, así que "el novato rompió algo" y "salió limpio" eran
+            // indistinguibles — una tirada sin feedback es una tirada invisible.
+            const anyDegraded = event.obtained.some((entry) => entry.degraded === true);
             this.notifications?.push({
               title: t("ui.floorplan.notification.dismantled"),
-              lines: event.obtained.map(
-                (entry) => `×${entry.quantity} ${this.nameByComponentId.get(entry.componentId as string) ?? entry.componentId}`,
-              ),
-              type: "success",
+              lines: event.obtained.map((entry) => {
+                const name = this.nameByComponentId.get(entry.componentId as string) ?? entry.componentId;
+                const wear = entry.wear && entry.wear !== "nuevo" ? ` ${t(`component.wear.${entry.wear}`)}` : "";
+                return `×${entry.quantity} ${name}${wear}`;
+              }),
+              type: anyDegraded ? "warning" : "success",
             });
           }
           // Síntesis/fabricación completada (tarea `combine`, 12c.7): el motor ya

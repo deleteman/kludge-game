@@ -43,7 +43,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 100 }],
-      material: { CE: "A" },
+      material: { RE: "M", CE: "A" },
     },
   },
   {
@@ -52,7 +52,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 100 }],
-      material: { CE: "A" },
+      material: { RE: "M", CE: "A" },
     },
     // Nota: enrollado; cuando se combina con núcleo ferromagnético + corriente → electroimán (GDD 5.2, caso 9).
   },
@@ -62,7 +62,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 50 }],
-      material: { CE: "A" },
+      material: { RE: "M", CE: "A" },
     },
     // Nota: conductor con pérdida controlada, limita corriente.
   },
@@ -72,7 +72,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 2 },
       functional: [{ tag: "RES", resourceType: "E", capacity: 60, dischargeRate: 5, powerUnits: 2 }],
-      material: { CE: "A" },
+      material: { RE: "B", CE: "A" },
     },
     // Nota: reservorio pequeño, regenerable (GDD 7.2).
   },
@@ -82,7 +82,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "RES", resourceType: "E", capacity: 40, dischargeRate: 5, powerUnits: 1 }],
-      material: { CE: "A" },
+      material: { RE: "M", CE: "A" },
     },
     // Nota: reservorio pequeño, no regenerable.
   },
@@ -92,6 +92,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "REC", threshold: 0.5, responseDelayMs: 100 }],
+      material: { RE: "B" },
     },
   },
   {
@@ -99,6 +100,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Lente óptica",
     data: {
       footprint: { width: 1, height: 1 },
+      material: { RE: "B" },
     },
     // Nota: componente óptico base. Propiedad óptica no tiene representación en propiedades actuales (properties/).
   },
@@ -108,6 +110,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "ACT", power: 20, cadence: 10, directional: true }],
+      material: { RE: "B" },
     },
   },
   {
@@ -116,6 +119,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "EM", range: 10, triggerType: "optical", frequency: 1 }],
+      material: { RE: "B" },
     },
   },
   {
@@ -173,7 +177,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Junta hermética/goma",
     data: {
       footprint: { width: 1, height: 1 },
-      material: { ES: "S", CE: "N" },
+      material: { RE: "M", ES: "S", CE: "N" },
     },
     // Nota: sellado, sin propiedades funcionales ni conductividad.
   },
@@ -183,6 +187,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "ACT", power: 10, cadence: 5, directional: false }],
+      material: { RE: "M" },
     },
     // Nota: actuador para abrir/cerrar flujo en conductos.
   },
@@ -191,7 +196,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Placa disipadora",
     data: {
       footprint: { width: 1, height: 2 },
-      material: { CT: "A" },
+      material: { RE: "M", CT: "A" },
     },
     // Nota: regulador térmico, conductividad térmica alta.
   },
@@ -200,7 +205,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Placa aislante térmica",
     data: {
       footprint: { width: 1, height: 2 },
-      material: { CT: "B" },
+      material: { RE: "M", CT: "B" },
     },
   },
   {
@@ -209,6 +214,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 2, height: 2 },
       functional: [{ tag: "ACT", power: 50, cadence: 15, directional: true }],
+      material: { RE: "M" },
     },
     // Nota: movimiento mecánico básico.
   },
@@ -218,7 +224,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 2, height: 2 },
       functional: [{ tag: "EST", damageResistance: 30, articulatedRange: undefined }],
-      material: { CE: "N" },
+      material: { RE: "B", CE: "N" },
     },
     // Nota: contenedor, sin conductividad eléctrica.
   },
@@ -228,6 +234,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "REC", threshold: 0.5, responseDelayMs: 100 }],
+      material: { RE: "B" },
     },
     // Nota: extensión Subfase 11h (docs/Extension_indicador_led_pantalla_lcd.md §1).
     // "Actuador de salida de información" (§3 del documento): no produce trabajo físico
@@ -240,6 +247,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 2, height: 1 },
       functional: [{ tag: "REC", threshold: 0.5, responseDelayMs: 100 }],
+      material: { RE: "B" },
     },
     // Nota: extensión Subfase 11h (docs/Extension_indicador_led_pantalla_lcd.md §2). Pieza
     // atómica independiente, no receta de otras piezas. A diferencia del Indicador LED, no
@@ -252,6 +260,7 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       functional: [{ tag: "EM", range: 0, triggerType: "pressure", frequency: 1 }],
+      material: { RE: "B" },
     },
     // Nota: extensión Subfase 11h, requerido por el caso de validación 19 ("El Panel de
     // Diagnóstico Improvisado"). A diferencia del resto de `EM` del catálogo (siempre activos

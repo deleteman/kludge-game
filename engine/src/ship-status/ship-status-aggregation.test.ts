@@ -124,6 +124,66 @@ describe("aggregateHullIntegrity (peor RE gana, destroyed fuerza crítico)", () 
     );
     expect(result).toEqual({ level: "critical", fraction: 0 });
   });
+
+  // Fix de playtest 13c ronda 1 (obs 3 del operador): "al instalar un tubo
+  // flexible con RE baja, la integridad del casco bajó de golpe, ¿por qué?".
+  // Provisional hasta la Subfase 13f, que reemplaza toda esta agregación por
+  // vida propia de la sección.
+  describe("solo cuentan las piezas estructurales (EST), ponderadas por damageResistance", () => {
+    // `tubo-flexible` declara RE-B pero NO tiene tag EST: una manguera no es casco.
+    const tuboFlexible = "tubo-flexible" as ComponentId;
+    // `tornilleria-fijacion`: EST con RE-B y damageResistance 20 (vs plancha 50).
+    const tornilleria = "tornilleria-fijacion" as ComponentId;
+
+    it("una pieza NO estructural con RE baja no afecta el casco", () => {
+      const result = aggregateHullIntegrity(
+        [placedInstance({ componentDefinitionId: tuboFlexible })],
+        componentRegistry,
+      );
+      expect(result).toEqual({ level: "nominal", fraction: 1 });
+    });
+
+    it("instalar esa pieza junto a la estructura no mueve el indicador", () => {
+      const soloEstructura = aggregateHullIntegrity(
+        [placedInstance({ componentDefinitionId: planchaMetalica })],
+        componentRegistry,
+      );
+      const conManguera = aggregateHullIntegrity(
+        [
+          placedInstance({ componentDefinitionId: planchaMetalica }),
+          placedInstance({ componentDefinitionId: tuboFlexible, instanceId: "i2" as PlacedComponentInstanceId }),
+        ],
+        componentRegistry,
+      );
+      expect(conManguera).toEqual(soloEstructura);
+    });
+
+    it("pondera por damageResistance: un tornillo frágil no arrastra a una plancha sana", () => {
+      // plancha RE-M (0.5, peso 50) + tornillería RE-B (0.2, peso 20)
+      // → (0.5×50 + 0.2×20) / 70 = 0.414 — con worst-case habría dado 0.2 (crítico).
+      const result = aggregateHullIntegrity(
+        [
+          placedInstance({ componentDefinitionId: planchaMetalica }),
+          placedInstance({ componentDefinitionId: tornilleria, instanceId: "i2" as PlacedComponentInstanceId }),
+        ],
+        componentRegistry,
+      );
+      expect(result.fraction).toBeCloseTo(0.414, 2);
+      expect(result.level).toBe("warning");
+    });
+
+    it("el desgaste de una pieza estructural sí baja el casco (13c sigue vigente)", () => {
+      const sana = aggregateHullIntegrity(
+        [placedInstance({ componentDefinitionId: planchaMetalica })],
+        componentRegistry,
+      );
+      const desgastada = aggregateHullIntegrity(
+        [placedInstance({ componentDefinitionId: planchaMetalica, wear: "usado" })],
+        componentRegistry,
+      );
+      expect(desgastada.fraction).toBeLessThan(sana.fraction);
+    });
+  });
 });
 
 describe("aggregateSectionHullIntegrity (Fase 12a, mismo criterio worst-case pero acotado a una sección)", () => {

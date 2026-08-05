@@ -648,3 +648,19 @@
 
 - Tooltip: tag de desgaste + resistencia EFECTIVA (corrige un bug preexistente que mostraba el RE de catálogo).
 - Selector de instalación: una fila por bucket de desgaste (`optionRowLabel`), para que el jugador elija qué unidad gasta en vez de recibir la peor en silencio.
+
+## `engine/src/ship-status/ship-status-aggregation.ts` (modificado, 13c fix de playtest ronda 1)
+
+- `instanceHullContribution`/`weightedHullFraction` reemplazan a `instanceHullFraction`: la integridad de casco solo cuenta piezas con tag `EST` y las pondera por `damageResistance`. **Provisional** — la Subfase 13f lo borra y pasa la integridad a ser vida propia de la sección.
+
+## `engine/src/tasks/task-events.types.ts` (modificado, 13c fix de playtest ronda 1)
+
+- `TaskCompletedEvent.obtained` pasa a reusar `TaskEffectResult["obtained"]` en vez de repetir su forma; mientras estuvieron duplicados, los campos nuevos del motor no llegaban a `/game` sin que nada fallara al compilar.
+
+## `engine/src/components/catalog/atomic-component-catalog.ts` (modificado, 13c fix de playtest ronda 1)
+
+- `material.RE` autorado en las 18 piezas que no lo declaraban (B electrónica/plástico, M metálico funcional): sin RE, el desgaste de 13c no tenía consecuencia mecánica en la mayoría del catálogo.
+
+## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13c fix de playtest ronda 1)
+
+- `DESCRIPTION_BACKDROP_*` + rectángulo de fondo bajo la columna de ficha: los tags del Eje B daban 1.2-1.4:1 sobre el gris del panel Kenney. Mismo recurso que el fondo del tooltip, sin tocar la paleta.

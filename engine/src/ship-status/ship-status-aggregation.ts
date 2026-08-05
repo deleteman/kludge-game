@@ -37,23 +37,70 @@ function indicator(fraction: number): ShipStatusIndicator {
   return { level: fractionToLevel(clamped), fraction: clamped };
 }
 
-/** Fracción de RE de una única instancia, mismo criterio que `aggregateHullIntegrity`. Null si no aplica (sin dato de RE). */
-function instanceHullFraction(
+/**
+ * Aporte de UNA instancia a la integridad de casco: su fracción de RE efectiva
+ * y cuánto pesa. `null` si la pieza no cuenta como estructura.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * PROVISIONAL — se elimina entero en la Subfase 13f.
+ * ─────────────────────────────────────────────────────────────────────────
+ * Derivar la integridad del casco del RE de los componentes INSTALADOS es un
+ * error de modelado de la Subfase 11g, reportado por el operador en el playtest
+ * de 13c: instalar un `tubo-flexible` (RE-B) desplomaba el indicador de casco de
+ * toda la nave, y desmontarlo lo "reparaba". Una manguera no es casco.
+ *
+ * Parche interino, en dos partes:
+ *  1. Solo cuentan las piezas con propiedad funcional `EST` (Estructura/soporte,
+ *     GDD 5.1) — una manguera, un chip o un sensor dejan de afectar el casco.
+ *  2. Entre las que sí son estructura, se PONDERA por su `damageResistance` de
+ *     catálogo en vez de tomar el peor caso: el casco es el conjunto de su
+ *     estructura, así que degradar una plancha (50) pesa más que un tornillo
+ *     (20). Sin esto, la tornillería (EST, RE-B) reproduciría exactamente el
+ *     mismo síntoma que motivó el arreglo.
+ *
+ * En 13f la integridad pasa a ser estado propio de la sección (HP dañado por
+ * impactos, explosiones, corrosión y descompresión) y esta función desaparece.
+ */
+function instanceHullContribution(
   instance: PlacedComponentInstance,
   componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
-): number | null {
-  const catalogRE = componentRegistry.get(instance.componentDefinitionId)?.data.material?.RE;
+): { readonly fraction: number; readonly weight: number } | null {
+  const definition = componentRegistry.get(instance.componentDefinitionId);
+  const catalogRE = definition?.data.material?.RE;
   if (!catalogRE) {
     return null;
   }
+  const structure = definition?.data.functional?.find((property) => property.tag === "EST");
+  if (!structure) {
+    return null;
+  }
+  const weight = structure.damageResistance > 0 ? structure.damageResistance : 1;
   if (instance.condition === "destroyed") {
-    return 0;
+    return { fraction: 0, weight };
   }
   // Fase 13c: la resistencia efectiva incluye el desgaste acumulado, así que el
   // HUD de integridad de casco y el overlay `estructural` reaccionan a una
   // pieza canibalizada o corroída sin código propio.
   const level = effectiveResistance(catalogRE, instance.wear, instance.structuralResistanceOverride);
-  return level === null ? null : RE_LEVEL_FRACTION[level];
+  return level === null ? null : { fraction: RE_LEVEL_FRACTION[level], weight };
+}
+
+/** Media ponderada de los aportes de estructura; `null` si no hay ninguna pieza estructural. */
+function weightedHullFraction(
+  instances: ReadonlyArray<PlacedComponentInstance>,
+  componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+): number | null {
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const instance of instances) {
+    const contribution = instanceHullContribution(instance, componentRegistry);
+    if (!contribution) {
+      continue;
+    }
+    weighted += contribution.fraction * contribution.weight;
+    totalWeight += contribution.weight;
+  }
+  return totalWeight > 0 ? weighted / totalWeight : null;
 }
 
 /** Nivel de RE efectivo mapeado a fracción [0,1], mismo orden A>M>B que `RE_ORDER`. */
@@ -132,37 +179,28 @@ export function aggregateLifeSupport(sections: ReadonlyArray<SectionAtmosphereEn
 }
 
 /**
- * Agregación a nivel de nave de integridad de casco (Subfase 11g): peor
- * resistencia EFECTIVA (`wear/effective-resistance.ts`: RE de catálogo bajado
- * por el desgaste acumulado, Fase 13c) entre todos los componentes instalados
- * con propiedad de material RE. `condition === "destroyed"` fuerza crítico sin
- * importar el RE.
+ * Agregación a nivel de nave de integridad de casco (Subfase 11g): media
+ * ponderada de la resistencia EFECTIVA (`wear/effective-resistance.ts`) de las
+ * piezas ESTRUCTURALES instaladas — ver `instanceHullContribution` para el
+ * porqué del filtro y de la ponderación, y para la nota de que todo esto es
+ * provisional hasta la Subfase 13f. `condition === "destroyed"` aporta 0.
+ * Sin ninguna pieza estructural: nominal.
  */
 export function aggregateHullIntegrity(
   placedComponents: ReadonlyArray<PlacedComponentInstance>,
   componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
 ): ShipStatusIndicator {
-  let worstFraction = 1;
-  let sawAny = false;
-  for (const instance of placedComponents) {
-    const fraction = instanceHullFraction(instance, componentRegistry);
-    if (fraction === null) {
-      continue;
-    }
-    sawAny = true;
-    worstFraction = Math.min(worstFraction, fraction);
-  }
-  return indicator(sawAny ? worstFraction : 1);
+  return indicator(weightedHullFraction(placedComponents, componentRegistry) ?? 1);
 }
 
 /**
  * Agregación de integridad de casco POR SECCIÓN (Fase 12a: capa "estructural"
  * del HUD del plano, hasta ahora sin overlay real — ver
- * `game/src/render/floorplan-renderer.ts`). Mismo criterio worst-case que
+ * `game/src/render/floorplan-renderer.ts`). Mismo criterio que
  * `aggregateHullIntegrity` a nivel nave, acotado a los componentes anclados
  * en `sectionId` (`sectionContainingCell`, mismo criterio de anclaje que usa
  * `MissionStructuralRuntime` para escribir la cicatriz de RE por instancia).
- * Sin componentes con dato de RE en la sección: "nominal" por default, misma
+ * Sin piezas estructurales en la sección: "nominal" por default, misma
  * convención que la agregación a nivel nave.
  */
 export function aggregateSectionHullIntegrity(
@@ -171,21 +209,10 @@ export function aggregateSectionHullIntegrity(
   shipFloorplan: ShipFloorplan,
   sectionId: SectionId,
 ): ShipStatusIndicator {
-  let worstFraction = 1;
-  let sawAny = false;
-  for (const instance of placedComponents) {
-    const section = sectionContainingCell(shipFloorplan, instance.placement.position);
-    if (section?.id !== sectionId) {
-      continue;
-    }
-    const fraction = instanceHullFraction(instance, componentRegistry);
-    if (fraction === null) {
-      continue;
-    }
-    sawAny = true;
-    worstFraction = Math.min(worstFraction, fraction);
-  }
-  return indicator(sawAny ? worstFraction : 1);
+  const inSection = placedComponents.filter(
+    (instance) => sectionContainingCell(shipFloorplan, instance.placement.position)?.id === sectionId,
+  );
+  return indicator(weightedHullFraction(inSection, componentRegistry) ?? 1);
 }
 
 export interface EnergyAggregationInput {
