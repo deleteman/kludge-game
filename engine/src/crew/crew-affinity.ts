@@ -18,7 +18,12 @@ export type AffinityAction =
   | "stabilize"
   | "evasive-maneuver"
   | "weapon-aim"
-  | "analyze-substance";
+  | "analyze-substance"
+  // Subfase 13d — asegurar una pieza antes de canibalizarla es trabajo de
+  // Ingeniero, igual que desmontar/instalar; el GDD 6.6 no las lista porque no
+  // existían, mismo caso que `combine`/`analyze-substance`.
+  | "cut-power"
+  | "purge-reservoir";
 
 /** Especialidad afín a cada acción (GDD 6.6, columna "Afinidad"). */
 export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = {
@@ -35,6 +40,8 @@ export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = 
   // desconocida MÁS RÁPIDO" — modificador de velocidad, no un requisito duro
   // (Fase 11e); cualquier especialidad puede ejecutar "Analizar Sustancia".
   "analyze-substance": "medico",
+  "cut-power": "ingeniero",
+  "purge-reservoir": "ingeniero",
 };
 
 /**
@@ -54,6 +61,10 @@ export const AFFINITY_DURATION_MULTIPLIER: Record<AffinityAction, Record<CrewTie
   // placeholder ajustable en playtesting — el GDD no da una fila numérica
   // propia para "analizar sustancia".
   "analyze-substance": { novato: 0.85, veterano: 0.65, experto: 0.45 },
+  // Mismos valores que desmontar/instalar: es la misma clase de trabajo manual
+  // del Ingeniero sobre la pieza (13d).
+  "cut-power": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "purge-reservoir": { novato: 0.9, veterano: 0.75, experto: 0.6 },
 };
 
 /** Regla general fuera de afinidad (GDD 6.6): +20% de tiempo, sin importar el tier. */

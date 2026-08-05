@@ -664,3 +664,38 @@
 ## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13c fix de playtest ronda 1)
 
 - `DESCRIPTION_BACKDROP_*` + rectángulo de fondo bajo la columna de ficha: los tags del Eje B daban 1.2-1.4:1 sobre el gris del panel Kenney. Mismo recurso que el fondo del tooltip, sin tocar la paleta.
+
+## `engine/src/salvage/` (nuevo, Subfase 13d)
+
+- `salvage-hazard.types.ts`: `dismantle-spark`/`dismantle-spill`/`dismantle-leak` + `SalvageDomainEvent`. Todos llevan `instanceId`/`position`/`sectionId` — lo que `/game` necesita para pintar y lo que 13f necesitará para restar vida a la sección sin cambiar el contrato.
+- `dismantle-hazard-rules.ts`: Strategy, una regla por condición de peligro (`powered-instance`, `reservoir-content`, `hazardous-atmosphere`) + `DismantleHazardContext` (el estado vivo alrededor de la pieza).
+- `dismantle-hazard-assessment.ts`: evaluación PURA compartida por el efecto de tarea y por la UI (badge de riesgo) — una sola fuente de verdad, no dos criterios que se desincronizan.
+- `dismantle-hazard-handler.ts`: la parte con efectos (emitir eventos, dañar al actor vía `applyCrewDamage`, pedir el escalón extra de desgaste).
+- `salvage-parameters.ts`: daño por hazard, umbrales de atmósfera comprometida, caudal/duración de la fuga.
+- `transient-pressure-sink.ts`: `TransientLeakPressureSink`, fugas acotadas en el tiempo como `SectionPressureSinkSource` (las permanentes son 13f).
+
+## `engine/src/mission/composite-pressure-sink.ts` (nuevo, Subfase 13d)
+
+- `composePressureSinks(...)`: `MissionAtmosphereRuntime` acepta un solo sumidero (ocupado por la junta rota del Cap.1); esto los suma respetando el signo. Cubre también el hueco #5 relevado por 13f.
+
+## `engine/src/mission/ship-task-effect.ts` (modificado, Subfase 13d)
+
+- `SalvageHazardDeps` (opcional, mismo criterio que `DismantleWearDeps`): consultas al mundo vivo — energía (13b), atmósfera de la sección, reloj — más el handler. Sin ellas, comportamiento pre-13d intacto.
+- `dismantleHazardContext()` exportado: `/game` lo reusa para el badge de riesgo antes de encolar.
+- Casos nuevos `cut-power` (asignación de la sección a 0) y `purge-reservoir` (ventea el contenido, no lo acredita al stock).
+
+## `engine/src/mission/mission-reaction-runtime.ts` (modificado, Subfase 13d)
+
+- Segunda fuente de ignición real: se suscribe a `dismantle-spark` además del `OverloadEvent` fire/explosion. `ignitionTrigger: "overload-bridge"` pasa a significar "hay ignición real en la sección", venga de donde venga (nombre conservado para no tocar contenido autorado).
+
+## `game/src/particles/effects/salvage-hazard-effect.ts` · `game/src/audio/effects/dismantle-spark-sound.ts` (nuevo, Subfase 13d)
+
+- Tres efectos visualmente distintos (principio 6): estallido eléctrico hacia arriba, charco + salpicadura, chorro ancho que se disipa. El sonido del chispazo reutiliza el banco de sobrecarga (misma familia eléctrica, sin asset dedicado — deuda #17).
+
+## `game/src/mission/mission-runtime.ts` (modificado, Subfase 13d)
+
+- `salvageEvents`, `dismantleHazardsFor()`, `queueCutPower`/`queuePurgeReservoir`, `sectionIdOfInstance()`, y un `Tickable` mínimo registrado PRIMERO en el core loop que fija el reloj del tick (los hazards lo leen para datar sus eventos) y caduca las fugas abiertas.
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, Subfase 13d)
+
+- `ActionPanelContent.instance.dismantleHazards`: badge de riesgo en ámbar (contrato de 12e) + un botón de asegurado por hazard aplicable. El widget solo pinta: el riesgo lo evalúa el motor.

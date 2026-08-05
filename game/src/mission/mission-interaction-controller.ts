@@ -301,6 +301,10 @@ export class MissionInteractionController {
         instanceId: instance.instanceId,
         name: this.nameByComponentId.get(instance.componentDefinitionId) ?? instance.componentDefinitionId,
         condition: instance.condition,
+        // Subfase 13d: riesgo evaluado contra el mundo VIVO en el momento de
+        // seleccionar. Se recalcula en cada apertura del panel, así que cortar
+        // la energía (o volver a asignarla) se refleja al reabrirlo.
+        dismantleHazards: this.mission.dismantleHazardsFor(instance.instanceId),
       });
     } else {
       this.setActionPanelContent({ kind: "empty", position });
@@ -552,6 +556,9 @@ export class MissionInteractionController {
         emptyTitle: t("ui.floorplan.mission.inspector.empty-title"),
         emptyHint: t("ui.floorplan.mission.inspector.empty-hint"),
         dismantle: t("ui.floorplan.mission.inspector.dismantle"),
+        hazardWarning: (kind) => t(`ui.floorplan.mission.inspector.hazard.${kind}`),
+        cutPower: t("ui.floorplan.mission.inspector.cut-power"),
+        purgeReservoir: t("ui.floorplan.mission.inspector.purge-reservoir"),
         installHere: t("ui.floorplan.mission.inspector.install-here"),
         noActorSelected: t("ui.floorplan.mission.no-actor-selected"),
         analyzeSubstance: (analyzed) =>
@@ -567,6 +574,21 @@ export class MissionInteractionController {
           if (!this.selectedActorIdValue) return;
           this.mission.queueDismantle(this.selectedActorIdValue, instanceId);
           this.setActionPanelContent({ kind: "idle" });
+          this.callbacks.onTaskQueued();
+        },
+        // Tareas de asegurado (13d): se encolan ANTES del desmontaje. Van al
+        // mismo actor, cuya cola es FIFO, así que el orden de encolado ya
+        // garantiza que corran primero — no hace falta `linkDependency`. El
+        // panel se mantiene abierto para poder encolar el desmontaje después.
+        onCutPower: (instanceId) => {
+          const sectionId = this.mission.sectionIdOfInstance(instanceId);
+          if (!this.selectedActorIdValue || !sectionId) return;
+          this.mission.queueCutPower(this.selectedActorIdValue, sectionId);
+          this.callbacks.onTaskQueued();
+        },
+        onPurgeReservoir: (instanceId) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queuePurgeReservoir(this.selectedActorIdValue, instanceId);
           this.callbacks.onTaskQueued();
         },
         onOpenInstallPicker: (position) => {

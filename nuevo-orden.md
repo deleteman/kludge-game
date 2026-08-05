@@ -253,7 +253,7 @@ Cierra el hueco de "hardware frágil" de Duskers y refuerza el Pilar 2 (consecue
 
 * Test unitario del modificador de RE + riesgo por condición; integración "canibalizar deja la pieza frágil".
 
-#### Subfase 13d: Riesgo Sistémico al Desmontar (Gap ②)
+#### Subfase 13d: Riesgo Sistémico al Desmontar (Gap ②) ✅ CERRADA (2026-08-05)
 
 Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería viva = hazard). Distinto de la pérdida de material (§6.5, coste de tiempo/piezas): es un hazard **puntual en el acto de desmontaje** según el estado vivo de la pieza. Depende de 13b, que define "pieza viva" con precisión (= recibiendo ≥1 unidad de energía). Diseño cerrado 2026-07-29.
 
@@ -264,6 +264,17 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
 * **Doble filo:** el mismo evento queda disponible como herramienta **deliberada** (provocar el chispazo, ligado a la trampa-de-chispa §5.5 / caso de validación 8).
 
 * Test: desmontar conductor energizado sin purga → evento de chispa/combustión; con purga previa → seguro.
+
+  **Cerrada:** dominio nuevo `engine/src/salvage/` con las reglas como Strategy (tres condiciones ortogonales:
+  energizada → `dismantle-spark`, reservorio con contenido → `dismantle-spill`, atmósfera comprometida →
+  `dismantle-leak`) y la evaluación PURA compartida por el efecto de tarea y por la UI. Dos tareas de asegurado
+  (`cut-power`, `purge-reservoir`); la fuga atmosférica no tiene tarea propia, se evita arreglando la sección.
+  Estado "seguro" DERIVADO del mundo, sin flag ni bump de `schemaVersion` (re-asignar energía vuelve a hacerla
+  peligrosa). Consecuencias: ignición real + daño no letal al tripulante + un escalón extra de desgaste; el
+  daño a la vida de la sección queda para 13f (los eventos ya llevan `sectionId`/`position`). El doble filo se
+  validó extendiendo el **caso 8** con la chispa REAL en vez del `ignitionPresent: true` literal. De paso,
+  `composePressureSinks` cubre el hueco #5 relevado por 13f. UI: badge ámbar (contrato 12e) + botones de
+  asegurado, tres efectos de partículas distintos, i18n en es/en. `/engine` 679 → 707 tests.
 
 * **Extensión diferida (fuera de 13b/13d): `powerDraw` en `EmitterProperty`/`ReceptorProperty`.** Hoy solo
   `ActuatorProperty` tiene costo eléctrico; un sensor/receptor nunca deja de funcionar por falta de energía.

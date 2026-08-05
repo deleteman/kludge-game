@@ -16,6 +16,7 @@ import type { EntityRegistry } from "../composition/entity-registry.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
 
 const ACTOR = "actor-a" as CrewActorId;
 
@@ -416,6 +417,68 @@ describe("createShipTaskEffect", () => {
 
     expect(atomicStock.get()).toEqual({});
     expect(shipState.get().placedComponents).toHaveLength(1);
+  });
+
+  it("cut-power drops the section allocation to zero (13d, asegurado eléctrico)", () => {
+    const sectionId = "bodega" as SectionId;
+    const shipState = new MutableShipState(
+      fixtureShip({
+        powerState: {
+          sectionAllocations: [
+            { sectionId, units: 3 },
+            { sectionId: "puente" as SectionId, units: 2 },
+          ],
+          instancePriorities: [],
+          permanentlyDisconnectedSectionIds: [],
+        },
+      }),
+    );
+    const effect = createShipTaskEffect(shipState, EMPTY_REGISTRY, new MutableAtomicStock({}));
+
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "cut-power",
+        payload: { kind: "cut-power", sectionId },
+      }),
+    );
+
+    // Quitar la entrada equivale a 0 unidades (mismo criterio que `setSectionPowerUnits`).
+    expect(shipState.get().powerState.sectionAllocations).toEqual([{ sectionId: "puente", units: 2 }]);
+  });
+
+  it("purge-reservoir empties the instance contents without spilling anything (13d)", () => {
+    const instanceId = "tanque-1" as PlacedComponentInstanceId;
+    const shipState = new MutableShipState(
+      fixtureShip({
+        reservoirContents: [
+          { componentInstanceId: instanceId, substanceId: "acido" as ChemicalSubstanceId, amount: 8 },
+          {
+            componentInstanceId: "otro" as PlacedComponentInstanceId,
+            substanceId: "agua" as ChemicalSubstanceId,
+            amount: 2,
+          },
+        ],
+      }),
+    );
+    const atomicStock = new MutableAtomicStock({});
+    const effect = createShipTaskEffect(shipState, EMPTY_REGISTRY, atomicStock);
+
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "purge-reservoir",
+        payload: { kind: "purge-reservoir", instanceId },
+      }),
+    );
+
+    expect(shipState.get().reservoirContents).toEqual([
+      { componentInstanceId: "otro", substanceId: "agua", amount: 2 },
+    ]);
+    // La sustancia se ventea: no vuelve al inventario (deuda #9 sigue en 13e).
+    expect(atomicStock.get()).toEqual({});
   });
 
   it("analyze-substance reveals the substance id and touches nothing else (Fase 11e)", () => {

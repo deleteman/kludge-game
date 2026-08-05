@@ -950,6 +950,20 @@ export class FloorplanScene extends Phaser.Scene {
           this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "error" });
         }
       }),
+      // Subfase 13d: riesgo sistémico al desmontar. El evento SÍ trae su celda
+      // (a diferencia de la combustión), así que la partícula se pinta
+      // exactamente donde estaba la pieza que el tripulante acaba de arrancar.
+      this.mission.salvageEvents.onAny((event) => {
+        fireEventEffect(this, event.position, event);
+        fireEventSound(this, event);
+        this.notifications?.push({
+          title: t(`ui.floorplan.notification.${event.kind}`),
+          type: "warning",
+        });
+        // El desmontaje inseguro cambia el mundo (pieza fuera, fuga abierta):
+        // redibujar para que el plano no quede una pasada atrás.
+        this.redrawOverlay();
+      }),
       // Fase 13b (ronda 4): el jugador tiene más energía repartida de la que la
       // nave puede entregar — típicamente porque desmanteló una fuente. El
       // motor ya resolvió el conflicto apagando secciones de menor a mayor

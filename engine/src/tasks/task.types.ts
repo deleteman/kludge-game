@@ -24,7 +24,16 @@ export type CrewTaskId = Brand<string, "CrewTaskId">;
  * `TaskEffect`, no aquí.
  */
 export type TaskType =
-  "go-to" | "dismantle" | "transport" | "combine" | "install" | "connect" | "analyze-substance";
+  | "go-to"
+  | "dismantle"
+  | "transport"
+  | "combine"
+  | "install"
+  | "connect"
+  | "analyze-substance"
+  // Subfase 13d — tareas de ASEGURADO previas a un desmontaje peligroso.
+  | "cut-power"
+  | "purge-reservoir";
 
 /**
  * Máquina de estados explícita de una tarea (CLAUDE.md: "State machine
@@ -95,11 +104,38 @@ export interface AnalyzeSubstanceTaskPayload {
   readonly substanceId: ChemicalSubstanceId;
 }
 
+/**
+ * "Cortar energía a la sección" (Subfase 13d): pone en 0 la asignación de
+ * unidades de la sección (13b), dejando sin alimentar a todo lo que hay dentro
+ * — así desmontar una pieza de ahí deja de producir un chispazo.
+ *
+ * No hay un flag "purgado" por instancia (decisión del operador, 2026-08-05):
+ * el estado seguro es DERIVADO del mundo, así que volver a asignar energía a
+ * la sección la vuelve peligrosa de nuevo, sin nada que resincronizar.
+ */
+export interface CutPowerTaskPayload {
+  readonly kind: "cut-power";
+  readonly sectionId: SectionId;
+}
+
+/**
+ * "Purgar reservorio" (Subfase 13d): vacía de forma controlada el contenido de
+ * un reservorio antes de desmontarlo. La sustancia se ventea — no vuelve al
+ * inventario, porque no existe todavía un destino real para las sustancias
+ * (deuda #9, Subfase 13e).
+ */
+export interface PurgeReservoirTaskPayload {
+  readonly kind: "purge-reservoir";
+  readonly instanceId: PlacedComponentInstanceId;
+}
+
 export type TaskPayload =
   | DismantleTaskPayload
   | InstallTaskPayload
   | ConnectTaskPayload
-  | AnalyzeSubstanceTaskPayload;
+  | AnalyzeSubstanceTaskPayload
+  | CutPowerTaskPayload
+  | PurgeReservoirTaskPayload;
 
 export interface CrewTask {
   readonly id: CrewTaskId;

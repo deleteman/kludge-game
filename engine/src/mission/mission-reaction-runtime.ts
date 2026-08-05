@@ -9,6 +9,7 @@ import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { ScriptedReactionSubject } from "../crisis/crisis-definition.types.js";
+import type { SalvageDomainEvent } from "../salvage/salvage-hazard.types.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
 /**
@@ -39,6 +40,7 @@ export class MissionReactionRuntime implements Tickable {
     private readonly atmosphereOf: (sectionId: SectionId) => SectionAtmosphere | undefined,
     private readonly emitter?: EventEmitter<ReactionDomainEvent>,
     failureEvents?: EventEmitter<FailureDomainEvent>,
+    salvageEvents?: EventEmitter<SalvageDomainEvent>,
   ) {
     failureEvents?.on("overload", (event) => {
       if (event.failureMode !== "fire" && event.failureMode !== "explosion") {
@@ -48,6 +50,15 @@ export class MissionReactionRuntime implements Tickable {
       const section = instance && sectionContainingCell(this.shipFloorplan, instance.placement.position);
       if (section) {
         this.ignitedSectionIds.add(section.id);
+      }
+    });
+    // Segunda fuente de ignición REAL (Subfase 13d): el chispazo de desmontar
+    // una pieza viva. Es el doble filo del GDD §5.5 / caso de validación 8 —
+    // hasta acá, "provocar una chispa con un cable pelado" solo existía como
+    // `ignitionPresent: true` literal en el fixture del test.
+    salvageEvents?.on("dismantle-spark", (event) => {
+      if (event.sectionId) {
+        this.ignitedSectionIds.add(event.sectionId);
       }
     });
   }

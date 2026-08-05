@@ -78,6 +78,10 @@
 
 11. los clicks en botones de selección de capa hacen click en el mapa tambien. Eso no debería pasar en ningun elemento de la UI que está renderizado arriba del mapa.
 
+12. hay algun uso real para los planos de la nave? que gana el jugador con ver es
+
+13. el modal de instalación tiene ahora la sección derecha con fondo negro para solucionar el contraste horrible entre el texto y el fondo gris del modal. Esto es un parche temporal, se debe rediseñar este modal para que se lea mejor l ainformacion.
+
 
 ## Fine-tunning
 
@@ -248,6 +252,11 @@ dónde, y qué costaría arreglarlo.
    una — pero los dos huecos de arriba (reservorio con sustancia+cantidad, mecánica de extracción/
    inventario) siguen sin resolver, así que una sustancia sigue sin poder verterse en nada ni tener
    ubicación propia en el plano.
+   **Tocado por la Subfase 13d, sin cerrarse**: `Blueprint.reservoirContents` (que SÍ tiene
+   `substanceId`/`amount`) pasó a tener consecuencia — desmontar un reservorio lleno derrama
+   (`dismantle-spill`) y la tarea `purge-reservoir` lo ventea de forma controlada. Lo que sigue igual: no hay
+   forma de LLENAR un reservorio ni de verter una sustancia sintetizada en él, ni mecánica de extracción /
+   inventario de elementos. Ambos siguen siendo alcance de 13e.
 
 10. **Capa `fluido` del plano (11f) anima con una heurística sin dato de caudal real.** A diferencia de
     `ventilacion` (deriva de `pressureKpa` real) y `electrico`/`senal` (derivan de `unpoweredSectionIds`/
@@ -369,6 +378,9 @@ dónde, y qué costaría arreglarlo.
     `computerNoise` para la alarma, `impactMetal` para instalación/pasos de tripulante. Reemplazar cuando se
     consiga un asset más específico — el punto de cambio es un solo archivo (`AUDIO_KEYS`), no requiere tocar
     ningún llamador.
+    **Ampliado en 13d**: el chispazo de desmontar una pieza viva (`dismantle-spark`) tampoco tiene asset
+    propio — reutiliza el banco `overloadCut` (chisporroteo/arco), que es la misma familia eléctrica. El
+    derrame y la fuga de 13d quedan sin sonido puntual a propósito, por la misma falta de assets.
 
 18. al seleccionar un tripulante en la pantalla de selección de tripulantes debería cambiarle su imagen a color, ahora quedan en escala de grises.
 

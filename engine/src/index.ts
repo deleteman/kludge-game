@@ -592,7 +592,13 @@ export {
 export { MutableShipState } from "./mission/mutable-ship-state.js";
 export { MutableCrewState } from "./mission/mutable-crew-state.js";
 export { MutableEnemyState } from "./mission/mutable-enemy-state.js";
-export { createShipTaskEffect, InsufficientStockError } from "./mission/ship-task-effect.js";
+export {
+  createShipTaskEffect,
+  InsufficientStockError,
+  // Subfase 13d: `/game` lo reusa para el badge de riesgo del panel de acciones.
+  dismantleHazardContext,
+} from "./mission/ship-task-effect.js";
+export type { SalvageHazardDeps } from "./mission/ship-task-effect.js";
 export type { AtomicPartsStock, WearBuckets } from "./inventory/inventory.types.js";
 export {
   hasStock,
@@ -662,6 +668,27 @@ export { MissionStructuralRuntime } from "./mission/mission-structural-runtime.j
 export { MissionOverloadRuntime } from "./mission/mission-overload-runtime.js";
 // Fase 13a — química viva de misión, scripteada por contenido (primer llamador de ReactionResolver en misión, deuda #16).
 export { MissionReactionRuntime } from "./mission/mission-reaction-runtime.js";
+// Subfase 13d — riesgo sistémico al desmontar (Gap ② Shipbreaker).
+export type {
+  SalvageDomainEvent,
+  DismantleHazardKind,
+  DismantleSparkEvent,
+  DismantleSpillEvent,
+  DismantleLeakEvent,
+} from "./salvage/salvage-hazard.types.js";
+export { SALVAGE_HAZARD_PARAMETERS } from "./salvage/salvage-parameters.js";
+export {
+  createDefaultDismantleHazardRules,
+  PoweredInstanceHazardRule,
+  ReservoirContentHazardRule,
+  HazardousAtmosphereHazardRule,
+} from "./salvage/dismantle-hazard-rules.js";
+export type { DismantleHazardContext, DismantleHazardRule } from "./salvage/dismantle-hazard-rules.js";
+export { assessDismantleHazards, dismantleHazardKinds } from "./salvage/dismantle-hazard-assessment.js";
+export { handleDismantleHazards, applyDismantleHazardDamage } from "./salvage/dismantle-hazard-handler.js";
+export type { DismantleHazardHandlerDeps, DismantleHazardOutcome } from "./salvage/dismantle-hazard-handler.js";
+export { TransientLeakPressureSink } from "./salvage/transient-pressure-sink.js";
+export { composePressureSinks } from "./mission/composite-pressure-sink.js";
 // Fase 13b — presupuesto de energía estilo FTL (dominio nuevo `power/`).
 export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "./power/power.types.js";
 export { emptyPowerState } from "./power/power.types.js";
@@ -728,6 +755,7 @@ import type { CrewDomainEvent } from "./crew/crew-events.types.js";
 import type { CrisisDomainEvent } from "./crisis/crisis-events.types.js";
 import type { EnemyDomainEvent } from "./enemies/enemy-events.types.js";
 import type { PowerDomainEvent } from "./power/power-events.types.js";
+import type { SalvageDomainEvent } from "./salvage/salvage-hazard.types.js";
 
 /**
  * Unión agregada de todos los eventos de dominio del motor (Observer). `/game`
@@ -744,4 +772,5 @@ export type DomainEvent =
   | CrewDomainEvent
   | CrisisDomainEvent
   | EnemyDomainEvent
-  | PowerDomainEvent;
+  | PowerDomainEvent
+  | SalvageDomainEvent;

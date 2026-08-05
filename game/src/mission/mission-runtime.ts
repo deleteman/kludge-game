@@ -34,6 +34,10 @@ import {
   CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
   CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE,
   sealBreachPressureSink,
+  composePressureSinks,
+  TransientLeakPressureSink,
+  dismantleHazardKinds,
+  dismantleHazardContext,
   buildChemicalCatalog,
   buildComponentCatalog,
   createCrewTask,
@@ -88,6 +92,8 @@ import type {
   ReactantSubstance,
   ReactionDomainEvent,
   PowerDomainEvent,
+  SalvageDomainEvent,
+  DismantleHazardKind,
   ScriptedRoute,
   SectionPowerAllocation,
   SignalDomainEvent,
@@ -100,7 +106,15 @@ import type {
 } from "engine";
 
 /** Acciones del core loop con afinidad de especialidad (GDD 6.6); `combine` = fabricar en la mesa (11c.2). */
-type ModulatedTaskType = "dismantle" | "install" | "connect" | "combine" | "analyze-substance";
+type ModulatedTaskType =
+  | "dismantle"
+  | "install"
+  | "connect"
+  | "combine"
+  | "analyze-substance"
+  // Subfase 13d — tareas de asegurado, con afinidad de Ingeniero.
+  | "cut-power"
+  | "purge-reservoir";
 
 /**
  * Orquestador de una misión en curso (Fase 10d) — el equivalente en `/game` de
@@ -184,6 +198,16 @@ export class MissionRuntime {
   readonly reactionEvents = new EventEmitter<ReactionDomainEvent>();
   /** Déficit de energía (Fase 13b ronda 4: se pidió más de lo que la nave entrega) — `/game` lo avisa. */
   readonly powerEvents = new EventEmitter<PowerDomainEvent>();
+  /** Riesgo al canibalizar (Subfase 13d: chispa/derrame/fuga al desmontar una pieza viva) — `/game` los pinta. */
+  readonly salvageEvents = new EventEmitter<SalvageDomainEvent>();
+  /** Fugas acotadas abiertas por desmontar en una sección comprometida (13d). */
+  private readonly leakSink = new TransientLeakPressureSink();
+  /**
+   * Último `elapsedSeconds` visto por el core loop. Los hazards de 13d se
+   * disparan DENTRO del efecto de una tarea, que no recibe `TickContext` — sin
+   * esto, todos sus eventos de dominio saldrían con `elapsedSeconds: 0`.
+   */
+  private lastElapsedSeconds = 0;
   /** Stock vivo de piezas atómicas (rework "sin stock → desarmar → reutilizar") — leído/mutado por `ship-task-effect.ts`. */
   readonly atomicStock: MutableAtomicStock;
 
@@ -319,14 +343,21 @@ export class MissionRuntime {
       // el jugador la repara (desmontar+instalar cuenta, se identifica por
       // posición, no por instanceId — mismo criterio que la resolución de
       // crisis `replacement-installed-connected`).
-      sealBreachPressureSink(this.shipState, {
-        position: CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE[save.metadata.archetype],
-        acceptableComponentDefinitionIds: CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
-        sectionId: CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE[save.metadata.archetype],
-        drainRateKpaPerSecond: CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
-        recoveryRateKpaPerSecond: CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
-      }),
+      // Subfase 13d: el runtime acepta UN solo sumidero, así que la junta rota
+      // del capítulo y las fugas por desmontaje se componen en uno
+      // (`composePressureSinks`) en vez de competir por el mismo hueco.
+      composePressureSinks(
+        sealBreachPressureSink(this.shipState, {
+          position: CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE[save.metadata.archetype],
+          acceptableComponentDefinitionIds: CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
+          sectionId: CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE[save.metadata.archetype],
+          drainRateKpaPerSecond: CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
+          recoveryRateKpaPerSecond: CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
+        }),
+        this.leakSink.asSinkSource(),
+      ),
     );
+    this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
       this.shipState,
       this.shipFloorplan,
@@ -358,6 +389,21 @@ export class MissionRuntime {
         // llamar `Math.random` por su cuenta — y el lookup de tripulación es
         // lo que permite leer el tier/especialidad de quien ejecuta la tarea.
         { random: systemRandom, actorOf: (actorId) => this.crewState.get(actorId) },
+        // Subfase 13d: riesgo sistémico al desmontar. Las tres consultas al
+        // mundo vivo que definen "pieza viva" — energía (13b), atmósfera de la
+        // sección y el reloj — se inyectan desde acá; `/engine` no conoce
+        // ninguno de esos runtimes por su cuenta.
+        {
+          isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+          atmosphereOf: (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+          elapsedSecondsOf: () => this.lastElapsedSeconds,
+          handler: {
+            emitter: this.salvageEvents,
+            crewEmitter: this.crewEvents,
+            actorOf: (actorId) => this.crewState.get(actorId),
+            setActor: (actor) => this.crewState.set(actor),
+          },
+        },
       ),
     });
 
@@ -420,6 +466,9 @@ export class MissionRuntime {
       (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
       this.reactionEvents,
       this.failureEvents,
+      // Subfase 13d: segunda fuente de ignición real — el chispazo de arrancar
+      // una pieza viva (§5.5, caso de validación 8).
+      this.salvageEvents,
     );
     this.crisisRuntime = new CrisisRuntime({
       definition,
@@ -455,6 +504,17 @@ export class MissionRuntime {
     this.loosePromoter.promote();
 
     this.coreLoop = new CoreLoopModeMachine(this.coreLoopEvents);
+    // Subfase 13d, PRIMERO de todos: fija el reloj del tick antes de que el
+    // scheduler complete tareas (los hazards de desmontaje lo leen para datar
+    // sus eventos) y caduca las fugas abiertas. Al ser un `Tickable` del core
+    // loop, la pausa táctica congela también el vencimiento de una fuga en vez
+    // de dejarla correr mientras el jugador planifica.
+    this.coreLoop.registerTickable({
+      tick: (ctx) => {
+        this.lastElapsedSeconds = ctx.elapsedSeconds;
+        this.leakSink.advanceTo(ctx.elapsedSeconds);
+      },
+    });
     this.coreLoop.registerTickable(this.scheduler);
     this.coreLoop.registerTickable(this.crisisRuntime);
     // Fase 11d.2: amenaza enemiga justo después de la crisis y antes de
@@ -633,6 +693,72 @@ export class MissionRuntime {
         estimatedDurationSeconds: this.modulatedDuration("dismantle", actorId),
       }),
     );
+  }
+
+  /**
+   * Riesgo VIVO de desmontar esta pieza (Subfase 13d), para el badge del panel
+   * de acciones. Reusa la misma evaluación que el efecto de tarea
+   * (`assessDismantleHazards` sobre `dismantleHazardContext`) — la UI no puede
+   * decir "seguro" mientras el motor dispara un chispazo.
+   */
+  dismantleHazardsFor(instanceId: PlacedComponentInstanceId): ReadonlyArray<DismantleHazardKind> {
+    const ship = this.shipState.get();
+    const instance = ship.placedComponents.find((entry) => entry.instanceId === instanceId);
+    if (!instance) {
+      return [];
+    }
+    return dismantleHazardKinds(
+      dismantleHazardContext(ship, instance, this.shipFloorplan, {
+        isInstancePowered: (id: PlacedComponentInstanceId) => this.powerRuntime.isInstancePowered(id),
+        atmosphereOf: (sectionId: SectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+        elapsedSecondsOf: () => this.lastElapsedSeconds,
+      }),
+    );
+  }
+
+  /**
+   * "Cortar energía a la sección" (13d): tarea de asegurado previa a un
+   * desmontaje peligroso. Se enlaza con `linkDependency` desde el llamador si
+   * hace falta; encolada por el mismo actor, el orden FIFO de su cola ya
+   * garantiza que corra antes.
+   */
+  queueCutPower(actorId: CrewActorId, sectionId: SectionId): void {
+    this.ensureAt(actorId, sectionId);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "cut-power",
+        targetSectionId: sectionId,
+        payload: { kind: "cut-power", sectionId },
+        estimatedDurationSeconds: this.modulatedDuration("cut-power", actorId),
+      }),
+    );
+  }
+
+  /** "Purgar reservorio" (13d): vacía el contenido antes de desmontar la pieza. */
+  queuePurgeReservoir(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
+    const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
+    const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
+    this.ensureAt(actorId, targetSectionId);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "purge-reservoir",
+        targetSectionId,
+        payload: { kind: "purge-reservoir", instanceId },
+        estimatedDurationSeconds: this.modulatedDuration("purge-reservoir", actorId),
+      }),
+    );
+  }
+
+  /** Sección que contiene una instancia colocada (para encolar el corte de energía desde la UI). */
+  sectionIdOfInstance(instanceId: PlacedComponentInstanceId): SectionId | undefined {
+    const instance = this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId);
+    return instance && this.sectionIdAt(instance.placement.position);
   }
 
   /**

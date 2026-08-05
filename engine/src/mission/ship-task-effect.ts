@@ -9,7 +9,7 @@ import type { CrewSpecialty } from "../crew/crew-specialty.types.js";
 import type { CrewTier } from "../crew/crew-tier.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { RandomSource } from "../simulation/random-source.js";
-import { DEFAULT_WEAR } from "../wear/wear.types.js";
+import { DEFAULT_WEAR, worsenWear } from "../wear/wear.types.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
 import { wearAfterDismantle } from "../wear/dismantle-wear.js";
 import type { EntityRegistry } from "../composition/entity-registry.js";
@@ -18,6 +18,14 @@ import type { CrewTask, InstallTaskPayload, TaskEffect, TaskEffectResult } from 
 import { deriveSignalNodes } from "../workbench/derive-signal-nodes.js";
 import { assertSignalWiringReachable, mergeInstalledSignalGraph, wireExternalPort } from "../workbench/port-wiring.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
+import { sectionContainingCell } from "../floorplan/floorplan.types.js";
+import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
+import type { DismantleHazardContext } from "../salvage/dismantle-hazard-rules.js";
+import type { DismantleHazardHandlerDeps } from "../salvage/dismantle-hazard-handler.js";
+import {
+  applyDismantleHazardDamage,
+  handleDismantleHazards,
+} from "../salvage/dismantle-hazard-handler.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
@@ -40,6 +48,21 @@ export class InsufficientStockError extends Error {}
  * efecto se comporta EXACTAMENTE como antes de 13c — sin degradar nada. Eso
  * mantiene compilando los tests unitarios que ejercitan desmontaje sin actor.
  */
+/**
+ * Dependencias opcionales de 13d (riesgo sistémico al desmontar). Igual que
+ * `DismantleWearDeps`: sin ellas el efecto se comporta EXACTAMENTE como antes
+ * de 13d — ningún hazard, ningún daño. Solo la misión real las cablea.
+ */
+export interface SalvageHazardDeps {
+  /** `MissionPowerRuntime.isInstancePowered` (13b): la definición de "pieza viva". */
+  readonly isInstancePowered?: (instanceId: PlacedComponentInstanceId) => boolean;
+  /** Atmósfera VIVA de la sección donde está la pieza (`MissionAtmosphereRuntime`). */
+  readonly atmosphereOf?: (sectionId: SectionId) => SectionAtmosphere | undefined;
+  /** Tiempo simulado del tick en que se completa la tarea, para los eventos de dominio. */
+  readonly elapsedSecondsOf?: () => number;
+  readonly handler?: DismantleHazardHandlerDeps;
+}
+
 export interface DismantleWearDeps {
   /** Azar inyectado; sin él el desmontaje nunca degrada (ver `wear/dismantle-wear.ts`). */
   readonly random?: RandomSource;
@@ -64,6 +87,7 @@ export function createShipTaskEffect(
   // acá un `connect` que viole la regla — esto es defensa en profundidad.
   floorplan?: ShipFloorplan,
   wearDeps: DismantleWearDeps = {},
+  salvageDeps: SalvageHazardDeps = {},
 ): TaskEffect {
   return (task: CrewTask): TaskEffectResult | void => {
     const payload = task.payload;
@@ -86,7 +110,7 @@ export function createShipTaskEffect(
         // del especialista contra la RE efectiva que la pieza tiene AHORA. La
         // consecuencia de canibalizar deja de ser gratis — desmontar y volver
         // a instalar ya no devuelve una pieza de fábrica (Pilar 2).
-        const recoveredWear = instance
+        const rolledWear = instance
           ? wearAfterDismantle(
               {
                 current: instance.wear,
@@ -96,6 +120,27 @@ export function createShipTaskEffect(
               wearDeps.random,
             )
           : DEFAULT_WEAR;
+        // Riesgo sistémico (13d): el mundo hay que leerlo con la pieza TODAVÍA
+        // puesta — después de `dismantleInstance` nada estaría energizado ni
+        // tendría contenido, y todo desmontaje parecería seguro.
+        const hazard = instance
+          ? handleDismantleHazards(
+              dismantleHazardContext(shipState.get(), instance, floorplan, salvageDeps),
+              salvageDeps.handler ?? {},
+            )
+          : undefined;
+        if (hazard?.events.length) {
+          applyDismantleHazardDamage(
+            task.actorId,
+            hazard.events,
+            salvageDeps.elapsedSecondsOf?.() ?? 0,
+            salvageDeps.handler ?? {},
+          );
+        }
+        // Tercera consecuencia de un desmontaje inseguro (13d): la pieza sale
+        // un escalón peor de lo que la tirada de GDD §6.5 ya decidió. Arrancar
+        // algo vivo maltrata la pieza, no solo a quien la arranca.
+        const recoveredWear = hazard?.extraWearStep ? worsenWear(rolledWear) : rolledWear;
         // ¿Este desmontaje concreto empeoró la pieza? (fix de playtest ronda 1)
         const degraded = instance ? recoveredWear !== instance.wear : false;
 
@@ -160,7 +205,63 @@ export function createShipTaskEffect(
       case "analyze-substance":
         // Tarea de "revelar", no de mutar: no toca `shipState`/`atomicStock`.
         return { analyzedSubstanceId: payload.substanceId };
+      case "cut-power": {
+        // Asegurado eléctrico (13d): quitar la entrada de asignación equivale a
+        // 0 unidades — mismo criterio que `MissionRuntime.setSectionPowerUnits`,
+        // para no tener dos representaciones de "esta sección no pide energía".
+        const ship = shipState.get();
+        shipState.set({
+          ...ship,
+          powerState: {
+            ...ship.powerState,
+            sectionAllocations: ship.powerState.sectionAllocations.filter(
+              (entry) => entry.sectionId !== payload.sectionId,
+            ),
+          },
+        });
+        return;
+      }
+      case "purge-reservoir": {
+        // Purga CONTROLADA (13d): el contenido se ventea, no se derrama ni
+        // vuelve al inventario — no existe todavía un destino real para las
+        // sustancias (deuda #9, Subfase 13e).
+        const ship = shipState.get();
+        shipState.set({
+          ...ship,
+          reservoirContents: ship.reservoirContents.filter(
+            (entry) => entry.componentInstanceId !== payload.instanceId,
+          ),
+        });
+        return;
+      }
     }
+  };
+}
+
+/**
+ * Arma el contexto de riesgo (13d) leyendo el mundo vivo alrededor de la pieza.
+ * Exportado como helper propio para que `/game` pueda reusarlo tal cual al
+ * pintar el badge de riesgo ANTES de encolar — misma evaluación, no dos
+ * criterios que se desincronizan.
+ */
+export function dismantleHazardContext(
+  ship: Blueprint,
+  instance: PlacedComponentInstance,
+  floorplan: ShipFloorplan | undefined,
+  deps: SalvageHazardDeps,
+): DismantleHazardContext {
+  const sectionId = floorplan
+    ? sectionContainingCell(floorplan, instance.placement.position)?.id
+    : undefined;
+  return {
+    instance,
+    sectionId,
+    powered: deps.isInstancePowered?.(instance.instanceId) ?? false,
+    reservoirContents: ship.reservoirContents.filter(
+      (entry) => entry.componentInstanceId === instance.instanceId,
+    ),
+    atmosphere: sectionId ? deps.atmosphereOf?.(sectionId) : undefined,
+    elapsedSeconds: deps.elapsedSecondsOf?.() ?? 0,
   };
 }
 

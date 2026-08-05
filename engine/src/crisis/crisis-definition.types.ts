@@ -209,8 +209,11 @@ export interface ScriptedReactionSubject {
   readonly reactants: ReadonlyArray<ReactantSubstance>;
   /**
    * `"always"`: hay ignición desde el inicio (casos de validación deterministas).
-   * `"overload-bridge"`: hay ignición solo tras un `OverloadEvent` con
-   * `failureMode` "fire"/"explosion" reciente en `sectionId`.
+   * `"overload-bridge"`: hay ignición solo cuando algo encendió `sectionId` de
+   * verdad. Desde la Subfase 13d hay DOS fuentes de ignición real y el nombre
+   * del valor quedó más estrecho que su semántica (se conserva para no tocar
+   * contenido de capítulo ya autorado): un `OverloadEvent` "fire"/"explosion" y
+   * el `dismantle-spark` de arrancar una pieza viva (§5.5, caso 8).
    */
   readonly ignitionTrigger: "always" | "overload-bridge";
 }

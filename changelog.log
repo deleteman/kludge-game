@@ -3402,3 +3402,73 @@ Archivos: `game/src/ui/widgets/install-picker-modal.ts`, `engine/src/components/
 `engine/src/ship-status/ship-status-aggregation.ts`, `game/src/scenes/floorplan-scene.ts`, `nuevo-orden.md`.
 Suite: `/engine` 671 → 679 tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos, `vite build` limpio.
 Razón: primera ronda de playtest manual del operador sobre la Subfase 13c.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-05 — Subfase 13d: Riesgo Sistémico al Desmontar (Gap ② Shipbreaker)
+────────────────────────────────────────────────────────────────────────────────
+Qué: desmontar deja de ser gratis en términos de riesgo. Hasta hoy `dismantleInstance` sacaba la pieza del
+`Blueprint` y tiraba sus `reservoirContents` en silencio, sin importar si estaba energizada, llena o en una
+sección contaminada. Ahora el acto de desmontaje evalúa el estado VIVO de la pieza y, si es peligroso, emite
+un evento de dominio con consecuencias reales.
+
+Dominio nuevo `engine/src/salvage/` (5 archivos): `salvage-hazard.types.ts` (tres eventos, `SalvageDomainEvent`
+sumado a `DomainEvent`), `dismantle-hazard-rules.ts` (Strategy, una regla por condición — mismo patrón que las
+reglas de reacción), `dismantle-hazard-assessment.ts` (evaluación PURA, compartida por el efecto de tarea y por
+la UI para que el badge no pueda mentir), `salvage-parameters.ts` (data-driven, cero literales en la lógica) y
+`dismantle-hazard-handler.ts` (la parte con efectos: emitir + dañar). El handler vive fuera de
+`ship-task-effect.ts` a propósito: ese archivo ya rondaba las 300 líneas y su responsabilidad es mutar el
+`Blueprint`.
+
+Decisiones cerradas con el operador (ciclo de preguntas, 2026-08-05):
+ (1) Las TRES condiciones: energizada → chispa, reservorio con contenido → derrame, atmósfera comprometida →
+     fuga. Ortogonales, no excluyentes.
+ (2) DOS tareas de asegurado (`cut-power`, `purge-reservoir`), no una genérica. La fuga atmosférica no tiene
+     tarea propia: se evita resolviendo la atmósfera con lo que ya existe.
+ (3) Consecuencias: ignición real + daño al tripulante + un escalón extra de desgaste. La vida de la sección
+     es 13f — los eventos ya llevan `sectionId`/`position` para que esa subfase solo se suscriba.
+ (4) Estado "seguro" DERIVADO del mundo, sin flag por instancia y sin bump de `schemaVersion`. Cortar energía
+     es poner la asignación de la sección en 0 (dato de 13b) y purgar es vaciar `reservoirContents`; re-asignar
+     energía vuelve a hacerla peligrosa sola. Un flag persistido habría duplicado un estado que el mundo ya
+     sabe y se habría desincronizado con el dial de reparto.
+
+El doble filo (GDD §5.5 / caso de validación 8): `MissionReactionRuntime` gana una segunda fuente de ignición
+real, `dismantle-spark`, junto al `OverloadEvent` que ya escuchaba. NO se agregó un valor nuevo a
+`ignitionTrigger` — `"overload-bridge"` pasa a significar "algo encendió la sección de verdad", venga de donde
+venga, para no tocar contenido de capítulo ya autorado (documentado en el tipo). El caso 8 suma un tercer test
+donde la chispa la produce el jugador: los dos previos declaraban `ignitionPresent: true` a mano porque nada
+en el motor la producía.
+
+Hueco de motor resuelto de paso: `MissionAtmosphereRuntime` acepta UN solo `SectionPressureSinkSource`, ya
+ocupado por la junta rota del Cap.1. `composePressureSinks` (`engine/src/mission/composite-pressure-sink.ts`)
+los suma respetando el signo, y `TransientLeakPressureSink` registra fugas ACOTADAS en el tiempo (las brechas
+permanentes son 13f). Es el hueco #5 del relevamiento de 13f — se paga una vez.
+
+`AffinityAction` (GDD §6.6) se extendió con `cut-power`/`purge-reservoir` con afinidad de Ingeniero, mismo
+criterio con el que ya se habían agregado `combine`/`analyze-substance`. Duración base baja a propósito (5s/6s):
+el coste de asegurar debe ser tener que PREVERLO en pausa, no el tiempo en sí — si costara como el desmontaje,
+el jugador preferiría siempre comerse el chispazo.
+
+/game: `MissionRuntime.salvageEvents` + `dismantleHazardsFor()` (reusa la evaluación del motor, no una copia)
++ `queueCutPower`/`queuePurgeReservoir`; un `Tickable` mínimo registrado PRIMERO en el core loop fija el reloj
+del tick antes de que el scheduler complete tareas (los hazards lo leen para datar sus eventos) y caduca las
+fugas — al ser del core loop, la pausa táctica congela también el vencimiento de una fuga. Badge de riesgo en
+ámbar del contrato de 12e + botones de asegurado en el panel contextual. Tres efectos de partículas DISTINTOS
+(`salvage-hazard-effect.ts`): estallido eléctrico hacia arriba, charco que se expande + salpicadura, chorro
+ancho que se disipa — principio 6. Sonido del chispazo reutilizando el banco de sobrecarga (misma familia
+eléctrica; no hay asset dedicado, deuda #17). Claves i18n nuevas en es.ts y en.ts.
+
+Archivos nuevos: `engine/src/salvage/*` (5 + 3 de test), `engine/src/mission/composite-pressure-sink.ts`,
+`engine/src/mission/dismantle-hazard.integration.test.ts`, `game/src/particles/effects/salvage-hazard-effect.ts`,
+`game/src/audio/effects/dismantle-spark-sound.ts`.
+Modificados: `engine/src/mission/ship-task-effect.ts` (`SalvageHazardDeps`, dos casos nuevos del switch,
+`dismantleHazardContext` exportado), `engine/src/tasks/task.types.ts` + `task-parameters.ts`,
+`engine/src/crew/crew-affinity.ts`, `engine/src/mission/mission-reaction-runtime.ts`,
+`engine/src/crisis/crisis-definition.types.ts` (doc), `engine/src/index.ts`,
+`game/src/mission/mission-runtime.ts`, `game/src/mission/mission-interaction-controller.ts`,
+`game/src/ui/widgets/mission-action-panel.ts`, `game/src/scenes/floorplan-scene.ts`,
+`game/src/particles/effect-registry.ts`, `game/src/audio/phenomenon-sound-registry.ts`, `game/src/i18n/{es,en}.ts`.
+Suite: `/engine` 679 → 707 tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos; `eslint` sin errores
+nuevos (queda uno PREEXISTENTE en `engine/src/tasks/task-events.types.ts`, import `ComponentId` sin usar,
+ajeno a esta subfase).
+Razón: cerrar el Gap ② de las comparativas de género (Shipbreaker) — el riesgo de canibalizar, que es la
+tensión central de ese referente y el complemento del Pilar 2 que 13c dejó a medias.

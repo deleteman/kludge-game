@@ -5,6 +5,7 @@ import type { EventDrivenSound } from "./audio-effect.types.js";
 import { combustionSound } from "./effects/combustion-sound.js";
 import { corrosionSound } from "./effects/corrosion-sound.js";
 import { overloadSound } from "./effects/overload-sound.js";
+import { dismantleSparkSound } from "./effects/dismantle-spark-sound.js";
 
 /**
  * Sonido gemelo de `particles/effect-registry.ts` (mismo patrón Factory,
@@ -20,6 +21,10 @@ const SOUNDS_BY_KIND: {
   overload: overloadSound,
   combustion: combustionSound,
   "corrosive-exposure": corrosionSound,
+  // Subfase 13d: el chispazo de arrancar una pieza viva reutiliza el sonido de
+  // sobrecarga (misma familia eléctrica) — no hay asset dedicado en el pack
+  // (deuda #17), y el derrame/fuga quedan sin sonido puntual a propósito.
+  "dismantle-spark": dismantleSparkSound,
 };
 
 export function fireEventSound(scene: Phaser.Scene, event: DomainEvent): void {

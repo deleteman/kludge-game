@@ -8,6 +8,11 @@ import { corrosiveExposureEffect, toxicThresholdEffect } from "./effects/hazard-
 import { kineticImpactEffect, magneticAccelerationEffect } from "./effects/kinetics-effect.js";
 import { neutralizationEffect } from "./effects/neutralization-effect.js";
 import { overloadEffect } from "./effects/overload-effect.js";
+import {
+  dismantleLeakEffect,
+  dismantleSparkEffect,
+  dismantleSpillEffect,
+} from "./effects/salvage-hazard-effect.js";
 import { spontaneousIgnitionEffect } from "./effects/spontaneous-ignition-effect.js";
 import {
   structuralDegradedEffect,
@@ -39,6 +44,10 @@ const EFFECTS_BY_KIND: {
   "kinetic-impact": kineticImpactEffect,
   "crew-death": crewDeathEffect,
   "crew-damaged": crewDamagedEffect,
+  // Subfase 13d — riesgo al canibalizar (chispa/derrame/fuga).
+  "dismantle-spark": dismantleSparkEffect,
+  "dismantle-spill": dismantleSpillEffect,
+  "dismantle-leak": dismantleLeakEffect,
 };
 
 /** Dispara el efecto registrado para `event.kind`, si existe uno todavía. */

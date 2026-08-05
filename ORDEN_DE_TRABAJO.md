@@ -3109,3 +3109,49 @@ Suite: `/engine` 636 → **671** tests, `/game` 30 → **36**. `tsc --noEmit` li
 
 Suite: `/engine` 671 → **679** tests, `/game` 36 sin cambios. `tsc --noEmit` limpio en ambos workspaces y
 `vite build` limpio. Detalle completo en `changelog.log`.
+
+### Subfase 13d — Riesgo Sistémico al Desmontar ✅ (2026-08-05)
+
+Cierra el Gap ② de la comparativa con Shipbreaker ("cortar una tubería viva es un hazard"). Distinto de la
+pérdida de material de GDD §6.5 (coste de tiempo/piezas, ya cubierto por el desgaste de 13c): esto es un
+riesgo **puntual en el acto de desmontaje**, según el estado VIVO de la pieza. Depende de 13b, que define
+"pieza viva" con precisión (`MissionPowerRuntime.isInstancePowered`).
+
+Diseño cerrado con el operador en ciclo de preguntas propio (2026-08-05):
+
+* **Tres condiciones de peligro, ortogonales:** energizada → `dismantle-spark`; reservorio con contenido →
+  `dismantle-spill`; sección con la atmósfera comprometida (contaminante sobre umbral o presión ya caída) →
+  `dismantle-leak`. Las tres pueden dispararse en el mismo desmontaje.
+
+* **Dos tareas de asegurado:** `cut-power` (pone en 0 la asignación de la sección, dato de 13b) y
+  `purge-reservoir` (ventea el contenido sin derramarlo). La fuga atmosférica **no** tiene tarea propia: se
+  evita resolviendo la atmósfera con los medios que ya existen (sellar la brecha, ventilar).
+
+* **Estado "seguro" DERIVADO del mundo, sin flag ni bump de `schemaVersion`:** al completarse el desmontaje se
+  vuelve a preguntar "¿está alimentada? ¿tiene contenido?". Volver a asignar energía a la sección la vuelve
+  peligrosa de nuevo, sin nada que resincronizar (hay un test de integración que lo fija).
+
+* **Tres consecuencias:** ignición real de la sección + daño al tripulante que desmonta (nunca letal por sí
+  solo, `minHp: 1`) + la pieza sale un escalón más degradada de lo que la tirada de §6.5 ya decidió. El daño a
+  la vida de la sección / integridad de casco queda para **13f**: los eventos ya llevan `sectionId`/`position`
+  para que 13f solo tenga que suscribirse.
+
+* **Dominio nuevo `engine/src/salvage/`** con las reglas como **Strategy** (mismo patrón que las reglas de
+  reacción): añadir una cuarta condición es implementar la interfaz, no editar un `if` central. La evaluación
+  (`assessDismantleHazards`) es pura y la comparten el efecto de tarea y la UI — el badge de riesgo no puede
+  decir "seguro" mientras el motor dispara un chispazo.
+
+* **El doble filo, ya no simulado:** `MissionReactionRuntime` gana una segunda fuente de ignición real
+  (`dismantle-spark`, junto al `OverloadEvent` que ya escuchaba). El **caso de validación 8** suma un tercer
+  test donde la chispa que detona la sala cebada con O2 la produce el jugador arrancando una pieza viva — los
+  dos tests previos declaraban `ignitionPresent: true` a mano porque nada en el motor la producía.
+
+* **Composición de sumideros de presión** (`composePressureSinks`): `MissionAtmosphereRuntime` acepta uno
+  solo, ocupado por la junta rota del Cap.1. Es además el hueco #5 que 13f ya tenía relevado — se paga una vez.
+
+* **UI:** badge de riesgo ámbar (contrato de color de 12e) + botones de asegurado en el panel de acciones
+  contextual; tres efectos de partículas distintos (principio 6) en `salvage-hazard-effect.ts`; sonido del
+  chispazo reutilizando el banco de sobrecarga (no hay asset dedicado, deuda #17); claves i18n en es y en.
+
+Suite: `/engine` 679 → **707** tests (25 nuevos de 13d), `/game` 36 sin cambios. `tsc --noEmit` limpio en
+ambos workspaces, `eslint` sin errores nuevos. Detalle completo en `changelog.log`.

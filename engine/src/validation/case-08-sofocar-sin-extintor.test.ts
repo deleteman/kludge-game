@@ -2,14 +2,32 @@
 import { describe, expect, it } from "vitest";
 import {
   CombustionRule,
+  createShipTaskEffect,
+  createCrewTask,
   diffuse,
+  EventEmitter,
   GAS,
+  MissionReactionRuntime,
+  MutableAtomicStock,
+  MutableShipState,
+  ReactionResolver,
   sectionCombustionAtmosphere,
+  type Blueprint,
   type ChemicalSubstanceId,
+  type ComponentId,
+  type CrewActorId,
+  type CrewTaskId,
+  type EntityRegistry,
   type GasKey,
+  type PhysicalComponentDefinition,
+  type PlacedComponentInstanceId,
   type ReactionContext,
+  type ReactionDomainEvent,
+  type SalvageDomainEvent,
+  type ScriptedReactionSubject,
   type SectionId,
   type SectionRuntime,
+  type ShipFloorplan,
   type TickContext,
 } from "../index.js";
 
@@ -79,6 +97,123 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
       intensity: "violent",
       radius: "full-section",
       crewDamage: "high",
+    });
+  });
+
+  /**
+   * Subfase 13d — el doble filo, ya no simulado. Los dos tests de arriba
+   * declaran `ignitionPresent: true` a mano: la "chispa del cable pelado" del
+   * enunciado del GDD era literal en el fixture, porque hasta 13d nada en el
+   * motor la producía. Ahora la chispa la genera el jugador al arrancar una
+   * pieza VIVA (`dismantle-spark`), y `MissionReactionRuntime` la escucha como
+   * fuente de ignición igual que ya escuchaba una sobrecarga.
+   */
+  it("13d: dismantling a live piece is the spark that detonates the O2-enriched room", () => {
+    const SALA = sectionId("sala-cebada");
+    const CONDUCTOR = "conductor-1" as PlacedComponentInstanceId;
+    const emptyRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition> = {
+      get: () => undefined,
+      has: () => false,
+      all: () => [],
+    };
+    const floorplan: ShipFloorplan = {
+      id: "fixture-floorplan",
+      archetype: "exploracion",
+      nameKey: "fixture",
+      gridSize: { width: 1, height: 1 },
+      sections: [{ id: SALA, nameKey: "fixture-section", cells: [{ x: 0, y: 0 }] }],
+      conduits: [],
+      anchors: [],
+      componentSeeds: [],
+    };
+    const ship: Blueprint = {
+      metadata: {
+        schemaVersion: 5,
+        id: "t",
+        name: "t",
+        engineVersion: "0.0.0",
+        createdAt: "2026-08-05",
+        updatedAt: "2026-08-05",
+      },
+      placedComponents: [
+        {
+          instanceId: CONDUCTOR,
+          componentDefinitionId: "cable-cobre" as ComponentId,
+          placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+          condition: "ok",
+          wear: "nuevo",
+        },
+      ],
+      reservoirContents: [],
+      signalGraph: { nodes: [], edges: [] },
+      sectionAtmospheres: [],
+      unpoweredSectionIds: [],
+      overloadedRefs: [],
+      powerState: {
+        sectionAllocations: [{ sectionId: SALA, units: 1 }],
+        instancePriorities: [],
+        permanentlyDisconnectedSectionIds: [],
+      },
+    };
+
+    // Sala cebada con O2 (el paso que el test anterior ya validó) + combustible.
+    const enrichedAtmosphere = section("sala-cebada", 5, { [GAS.OXYGEN]: 0.9 }).atmosphere;
+    const scripted: ScriptedReactionSubject[] = [
+      { id: "vapores", sectionId: SALA, reactants: [fuel], ignitionTrigger: "overload-bridge" },
+    ];
+
+    const shipState = new MutableShipState(ship);
+    const salvageEvents = new EventEmitter<SalvageDomainEvent>();
+    const reactionEvents = new EventEmitter<ReactionDomainEvent>();
+    const seen: ReactionDomainEvent[] = [];
+    reactionEvents.onAny((event) => seen.push(event));
+
+    const reactionRuntime = new MissionReactionRuntime(
+      shipState,
+      floorplan,
+      scripted,
+      new ReactionResolver(),
+      () => enrichedAtmosphere,
+      reactionEvents,
+      undefined,
+      salvageEvents,
+    );
+
+    const effect = createShipTaskEffect(
+      shipState,
+      emptyRegistry,
+      new MutableAtomicStock({}),
+      floorplan,
+      {},
+      {
+        isInstancePowered: () => true,
+        atmosphereOf: () => enrichedAtmosphere,
+        elapsedSecondsOf: () => 0,
+        handler: { emitter: salvageEvents },
+      },
+    );
+
+    // Sin chispa todavía: la sala está cebada pero nada la enciende.
+    reactionRuntime.tick(tickOf(0));
+    expect(seen).toHaveLength(0);
+
+    // El jugador arranca el conductor energizado a propósito.
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: "crew-1" as CrewActorId,
+        type: "dismantle",
+        payload: { kind: "dismantle", instanceId: CONDUCTOR },
+      }),
+    );
+    reactionRuntime.tick(tickOf(1));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      kind: "combustion",
+      sectionId: SALA,
+      intensity: "violent",
+      radius: "full-section",
     });
   });
 });

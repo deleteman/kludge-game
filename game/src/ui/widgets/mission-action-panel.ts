@@ -3,6 +3,7 @@ import type {
   ChemicalSubstanceId,
   ComponentCondition,
   ComponentId,
+  DismantleHazardKind,
   Footprint,
   FunctionalProperty,
   GridPosition,
@@ -10,7 +11,7 @@ import type {
   PlacedComponentInstanceId,
 } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { LABEL_COLOR, HEADER_COLOR } from "../../render/palette.js";
+import { LABEL_COLOR, HEADER_COLOR, CRISIS_WARNING_CSS } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { createKenneyButton } from "./kenney-button.js";
 import { createKenneyList } from "./kenney-list.js";
@@ -41,6 +42,12 @@ export type ActionPanelContent =
       readonly instanceId: PlacedComponentInstanceId;
       readonly name: string;
       readonly condition: ComponentCondition;
+      /**
+       * Riesgo VIVO de desmontar esta pieza (Subfase 13d), ya evaluado por el
+       * llamador contra el motor (`MissionRuntime.dismantleHazardsFor`). El
+       * panel solo pinta: no sabe qué hace peligrosa a una pieza.
+       */
+      readonly dismantleHazards?: ReadonlyArray<DismantleHazardKind>;
     }
   | { readonly kind: "empty"; readonly position: GridPosition }
   | {
@@ -95,6 +102,11 @@ export interface ActionPanelLabels {
   readonly emptyHint: string;
   readonly dismantle: string;
   readonly installHere: string;
+  /** Aviso de riesgo al desmontar (13d), una línea por hazard vivo. */
+  readonly hazardWarning: (kind: DismantleHazardKind) => string;
+  /** Tareas de asegurado que neutralizan el riesgo (13d). */
+  readonly cutPower: string;
+  readonly purgeReservoir: string;
   readonly noActorSelected: string;
   /** "Analizar Sustancia" (Fase 11e); el label ya refleja si se completó (ej. "Ya analizada"). */
   readonly analyzeSubstance: (analyzed: boolean) => string;
@@ -107,6 +119,10 @@ export interface ActionPanelLabels {
 
 export interface ActionPanelCallbacks {
   readonly onDismantle: (instanceId: PlacedComponentInstanceId) => void;
+  /** Encola "Cortar energía a la sección" (13d) para la sección de esta pieza. */
+  readonly onCutPower: (instanceId: PlacedComponentInstanceId) => void;
+  /** Encola "Purgar reservorio" (13d) sobre esta pieza. */
+  readonly onPurgeReservoir: (instanceId: PlacedComponentInstanceId) => void;
   readonly onOpenInstallPicker: (position: GridPosition) => void;
   readonly onAnalyzeSubstance: (substanceId: ChemicalSubstanceId) => void;
   readonly onSelectSubstance: (substanceId: ChemicalSubstanceId) => void;
@@ -247,8 +263,28 @@ export function renderMissionActionPanel(
     // Propiedades/composición ya NO se repiten acá (playtest): esa ficha
     // completa vive en el tooltip de hover (`mission-tooltip.ts`) — este
     // panel solo ofrece la acción sobre la pieza seleccionada.
+    const hazards = content.dismantleHazards ?? [];
+    // Badge de riesgo (13d): el jugador tiene que poder decidir ANTES de
+    // encolar, no descubrirlo con el chispazo (pilar de legibilidad total).
+    // Ámbar del contrato de color único de 12e — es escalable, no fatal.
+    let cursorY = contentTop + 30;
+    for (const hazard of hazards) {
+      container.add(
+        scene.add
+          .text(width / 2, cursorY, `⚠ ${labels.hazardWarning(hazard)}`, {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "10px",
+            color: CRISIS_WARNING_CSS,
+            align: "center",
+            wordWrap: { width: width - 20, useAdvancedWrap: true },
+          })
+          .setOrigin(0.5, 0),
+      );
+      cursorY += 24;
+    }
+
     container.add(
-      createKenneyButton(scene, width / 2, contentTop + 68, labels.dismantle, {
+      createKenneyButton(scene, width / 2, Math.max(cursorY, contentTop + 68), labels.dismantle, {
         width: width - 40,
         height: 34,
         fontSize: "12px",
@@ -256,6 +292,33 @@ export function renderMissionActionPanel(
         onClick: () => callbacks.onDismantle(content.instanceId),
       }),
     );
+    cursorY = Math.max(cursorY, contentTop + 68) + 40;
+
+    // Un botón por tarea de asegurado APLICABLE — la fuga atmosférica no tiene
+    // tarea propia (decisión del operador): se resuelve arreglando la sección.
+    if (hazards.includes("dismantle-spark")) {
+      container.add(
+        createKenneyButton(scene, width / 2, cursorY, labels.cutPower, {
+          width: width - 40,
+          height: 30,
+          fontSize: "11px",
+          enabled: hasSelectedActor,
+          onClick: () => callbacks.onCutPower(content.instanceId),
+        }),
+      );
+      cursorY += 36;
+    }
+    if (hazards.includes("dismantle-spill")) {
+      container.add(
+        createKenneyButton(scene, width / 2, cursorY, labels.purgeReservoir, {
+          width: width - 40,
+          height: 30,
+          fontSize: "11px",
+          enabled: hasSelectedActor,
+          onClick: () => callbacks.onPurgeReservoir(content.instanceId),
+        }),
+      );
+    }
   } else if (content.kind === "empty") {
     container.add(
       createKenneyButton(scene, width / 2, contentTop + 68, labels.installHere, {

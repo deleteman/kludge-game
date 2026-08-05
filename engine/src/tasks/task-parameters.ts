@@ -22,6 +22,11 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   install: 8,
   connect: 5,
   "analyze-substance": 10,
+  // Subfase 13d: baratas a propósito. El coste de asegurar no debe ser el
+  // tiempo en sí, sino tener que PREVERLO en pausa — si costara tanto como el
+  // desmontaje, el jugador preferiría siempre comerse el chispazo.
+  "cut-power": 5,
+  "purge-reservoir": 6,
 };
 
 /** Duración base de un tipo de tarea (segundos). Punto único de lectura de la tabla. */
