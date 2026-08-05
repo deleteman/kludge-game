@@ -589,6 +589,7 @@
 - Ronda 5: el pedido ya NO se clampea al presupuesto (lo tapaba: dos zonas con 3 y 7 mostraban ambas "2/2"). La escala del track es `max(1, maxUnits, units)` — fijada al construir, no se recalcula en el arrastre. `capUnits` limita solo el arrastre. El `· P%` se muestra solo cuando el pedido entra en el presupuesto.
 - Ronda 6: señal de rechazo al chocar contra el tope (antes era silencioso y el slider parecía roto) — `signalBlocked()` throttleado a 500 ms: sacudón del thumb, destello con `POWER_BLOCKED_FLASH_COLOR` y sonido `uiDenied`; la etiqueta muestra "Sin energía libre" ~1s. `LOCKED_COLOR` con más contraste (neutro, no rojo: aparece casi siempre). `destroy()` cancela timer y tweens.
 - Ronda 7: `setLabel(texto, color)` mide y encoge la fuente si el texto no entra en `maxLabelWidth` (robusto frente a i18n); el mensaje de bloqueo va en `CRISIS_FATAL_CSS`, el mismo rojo del destello. `LABEL_OFFSET_Y` a `-24` — antes la etiqueta se salía por arriba del panel.
+- Ronda 8: el mensaje de bloqueo se dibuja sobre un badge casi negro dimensionado al texto medido — el rojo del contrato sobre el gris del panel daba ~1.3:1 de contraste; sobre el badge sube a ~4.5:1 sin salirse de las constantes canónicas. Piso del auto-encogido a 10px (el mensaje caía en el anterior de 8px).
 
 ## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
 

@@ -3249,3 +3249,27 @@ Archivos: `game/src/scenes/floorplan-scene.ts`, `game/src/ui/widgets/power-alloc
 `tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 30 tests de `/game` y 615 de `/engine`,
 sin cambios respecto de la ronda anterior.
 Razón: séptima ronda de playtest manual del operador sobre la Subfase 13b (fine tuning visual).
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 8 (legibilidad del mensaje "Sin energía libre").
+Detalle: el operador reportó que el rojo del mensaje sobre el gris del panel no se lee, y que la letra chica
+sumada a esa combinación lo vuelve muy difícil de leer. Eran DOS problemas acumulados, no uno.
+(1) Contraste. Se verificó el asset real del panel (`panel_rectangle.png` del pack Kenney): es un gris medio,
+~#9496a5. El rojo del contrato (`CRISIS_FATAL_CSS`, #e0483f) encima de ese gris da un contraste de ~1.3:1 —
+efectivamente ilegible (para referencia, WCAG AA pide 4.5:1 para texto normal). Corregido con un badge de
+fondo casi negro (#14161c, alpha 0.92) detrás del mensaje: el mismo rojo sube a ~4.5:1 SIN cambiar el color
+del contrato, así que el texto sigue siendo el mismo rojo del destello del tramo bloqueado y las dos señales
+se siguen leyendo juntas. Se prefirió esto antes que aclarar el rojo (habría introducido un color fuera de las
+4 constantes canónicas que el `palette.contract.test.ts` custodia) o pasar el texto a blanco (habría perdido
+la codificación de bloqueo).
+(2) Tamaño. El auto-encogido agregado en la ronda 7 tenía piso de 8px, y el mensaje CAÍA en ese piso: "Sin
+energía libre" (17 caracteres) no entra a 12px en los 96px de ancho útil que dejaba el panel de 120, así que
+se renderizaba a ~8px. O sea que el problema de "letra pequeña" no era el tamaño base sino que el mensaje
+tocaba fondo en el encogido. Corregido en dos frentes: el piso sube a 10px y `ENERGY_CONTROL_BOX.width` pasa
+de 120 a 140 (ancho útil 116), de modo que el mensaje entra sin llegar al piso. El resto del contenido del
+cluster no depende de ese ancho (el track mide 90px y el botón "Prioridad" 90px), así que no hubo que
+reposicionar nada más; `energyControlWorldBounds` acompaña solo, como desde la ronda 3.
+El badge se dimensiona al texto YA medido (`label.width`/`label.height` + padding), no a un tamaño fijo, así
+encuadra bien sea cual sea el idioma y el tamaño al que haya terminado encogiendo la fuente.
+Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `game/src/scenes/floorplan-scene.ts`.
+`tsc --noEmit` limpio y `vite build` limpio. Suite: 30 tests de `/game`, sin cambios.
+Razón: octava ronda de playtest manual del operador sobre la Subfase 13b.

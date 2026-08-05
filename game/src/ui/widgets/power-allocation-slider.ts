@@ -31,7 +31,23 @@ const BLOCKED_LABEL_MS = 1000;
  */
 const LABEL_OFFSET_Y = -24;
 const LABEL_FONT_PX = 12;
-const LABEL_MIN_FONT_PX = 8;
+/**
+ * Piso del auto-encogido. Antes era 8px y el mensaje de bloqueo caía ahí
+ * (no entra en el ancho útil a 12px), quedando ilegible por tamaño ADEMÁS de
+ * por contraste (ronda 8).
+ */
+const LABEL_MIN_FONT_PX = 10;
+/**
+ * Fondo del mensaje de bloqueo. El panel del cluster es un gris medio
+ * (`panel_rectangle.png`, ~#9496a5): el rojo del contrato (#e0483f) encima da
+ * un contraste de ~1.3:1, ilegible. Sobre este fondo casi negro sube a ~4.5:1
+ * sin cambiar el color del contrato — el rojo sigue siendo el mismo del
+ * destello del tramo bloqueado.
+ */
+const BLOCKED_BADGE_COLOR = 0x14161c;
+const BLOCKED_BADGE_ALPHA = 0.92;
+const BLOCKED_BADGE_PAD_X = 6;
+const BLOCKED_BADGE_PAD_Y = 3;
 const THUMB_COLOR = 0xd8dce8;
 const DISABLED_ALPHA = 0.5;
 
@@ -115,6 +131,11 @@ export function renderPowerAllocationSlider(
       ? `${value}/${maxUnits} · ${Math.round((value / Math.max(1, maxUnits)) * 100)}%`
       : `${value}/${maxUnits}`;
 
+  // Detrás de la etiqueta: solo visible con el mensaje de bloqueo.
+  const labelBadge = scene.add
+    .rectangle(0, LABEL_OFFSET_Y, 0, 0, BLOCKED_BADGE_COLOR, BLOCKED_BADGE_ALPHA)
+    .setOrigin(0.5)
+    .setVisible(false);
   const label = scene.add
     .text(0, LABEL_OFFSET_Y, labelOf(units), {
       fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
@@ -129,7 +150,7 @@ export function renderPowerAllocationSlider(
    * vez de fijar un tamaño a ojo porque el largo depende del idioma — "No free
    * power" entra a 12px, pero ninguna traducción futura lo garantiza.
    */
-  const setLabel = (text: string, color: string): void => {
+  const setLabel = (text: string, color: string, withBadge = false): void => {
     label.setColor(color);
     let size = LABEL_FONT_PX;
     label.setFontSize(size);
@@ -137,6 +158,12 @@ export function renderPowerAllocationSlider(
     while (label.width > options.maxLabelWidth && size > LABEL_MIN_FONT_PX) {
       size -= 1;
       label.setFontSize(size);
+    }
+    // El badge se dimensiona al texto YA medido, así encuadra bien sea cual sea
+    // el idioma y el tamaño al que haya terminado encogiendo.
+    labelBadge.setVisible(withBadge);
+    if (withBadge) {
+      labelBadge.setSize(label.width + BLOCKED_BADGE_PAD_X * 2, label.height + BLOCKED_BADGE_PAD_Y * 2);
     }
   };
   const track = scene.add.rectangle(0, 0, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0.5);
@@ -146,7 +173,7 @@ export function renderPowerAllocationSlider(
   const unmet = scene.add.rectangle(left, 0, 0, TRACK_HEIGHT, ENERGY_LAYER_COLOR.deficit).setOrigin(0, 0.5);
   const fill = scene.add.rectangle(left, 0, 0, TRACK_HEIGHT, FILL_COLOR).setOrigin(0, 0.5);
   const thumb = scene.add.circle(unitToX(units), 0, THUMB_RADIUS, THUMB_COLOR);
-  container.add([label, track, locked, unmet, fill, thumb]);
+  container.add([labelBadge, label, track, locked, unmet, fill, thumb]);
 
   if (!enabled) {
     container.setAlpha(DISABLED_ALPHA);
@@ -228,7 +255,7 @@ export function renderPowerAllocationSlider(
     // La etiqueta explica el porqué (no queda energía libre en la nave).
     // Rojo, el MISMO del destello del tramo bloqueado: destello y texto se leen
     // como una sola señal, y en el gris claro normal el mensaje se perdía.
-    setLabel(t("ui.floorplan.energia.no-free-power"), CRISIS_FATAL_CSS);
+    setLabel(t("ui.floorplan.energia.no-free-power"), CRISIS_FATAL_CSS, true);
     blockedLabelUntilMs = now + BLOCKED_LABEL_MS;
     labelRestoreEvent?.remove();
     labelRestoreEvent = scene.time.delayedCall(BLOCKED_LABEL_MS, () => {

@@ -188,7 +188,10 @@ const LAYER_PANEL_HEIGHT = 74;
  * `energyControlWorldBounds` (la zona que impide que el click atraviese al
  * mapa) — antes eran literales sueltos que podían desincronizarse.
  */
-const ENERGY_CONTROL_BOX = { offsetX: 0, offsetY: -1, width: 120, height: 90, padding: 12 } as const;
+// Ancho 140 (ronda 8): con 120 el mensaje "Sin energía libre" no entraba ni al
+// tamaño mínimo de fuente y quedaba microscópico. El resto del contenido
+// (track de 90px, botón de 90px) no depende de este ancho.
+const ENERGY_CONTROL_BOX = { offsetX: 0, offsetY: -1, width: 140, height: 90, padding: 12 } as const;
 
 /**
  * Sombra dura del cluster de energía (ronda 7): un segundo panel oscuro
