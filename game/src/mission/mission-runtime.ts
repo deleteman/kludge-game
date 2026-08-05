@@ -84,6 +84,7 @@ import type {
   InstancePowerPriority,
   ReactantSubstance,
   ReactionDomainEvent,
+  PowerDomainEvent,
   ScriptedRoute,
   SectionPowerAllocation,
   SignalDomainEvent,
@@ -178,6 +179,8 @@ export class MissionRuntime {
   readonly failureEvents = new EventEmitter<FailureDomainEvent>();
   /** Eventos de reacción química en vivo (Fase 13a: combustión/neutralización/ignición espontánea) — `/game` los pinta. */
   readonly reactionEvents = new EventEmitter<ReactionDomainEvent>();
+  /** Déficit de energía (Fase 13b ronda 4: se pidió más de lo que la nave entrega) — `/game` lo avisa. */
+  readonly powerEvents = new EventEmitter<PowerDomainEvent>();
   /** Stock vivo de piezas atómicas (rework "sin stock → desarmar → reutilizar") — leído/mutado por `ship-task-effect.ts`. */
   readonly atomicStock: MutableAtomicStock;
 
@@ -239,7 +242,12 @@ export class MissionRuntime {
       ComponentId,
       PhysicalComponentDefinition
     >;
-    this.powerRuntime = new MissionPowerRuntime(this.shipState, this.shipFloorplan, this.componentRegistry);
+    this.powerRuntime = new MissionPowerRuntime(
+      this.shipState,
+      this.shipFloorplan,
+      this.componentRegistry,
+      this.powerEvents,
+    );
     this.emitterInputs = pressureAwareEmitterInputs(
       this.shipState,
       this.shipFloorplan,
@@ -897,6 +905,20 @@ export class MissionRuntime {
    */
   sectionHasNoPowerGranted(sectionId: SectionId): boolean {
     return this.powerRuntime.sectionHasNoPowerGranted(sectionId);
+  }
+
+  /**
+   * Unidades realmente otorgadas a una sección (Fase 13b ronda 4) — menor que
+   * `sectionPowerAllocation` cuando hay déficit. El slider muestra ambas para
+   * no fingir que el pedido se cumplió.
+   */
+  sectionPowerGranted(sectionId: SectionId): number {
+    return this.powerRuntime.sectionPowerGranted(sectionId);
+  }
+
+  /** Unidades pedidas por encima del presupuesto disponible; 0 si no hay conflicto. */
+  powerShortfallUnits(): number {
+    return this.powerRuntime.powerShortfallUnits();
   }
 
   /** Suma de `powerDraw` de los componentes de una sección (Fase 13b, heatmap de la capa "energia"). */

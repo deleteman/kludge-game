@@ -8,6 +8,7 @@ import type { InstancePowerPriority } from "./power.types.js";
 
 const SECTION_A = "puente" as SectionId;
 const SECTION_B = "bahia-carga" as SectionId;
+const SECTION_C = "ingenieria" as SectionId;
 
 function instance(id: string, componentDefinitionId: string): PlacedComponentInstance {
   return {
@@ -62,18 +63,66 @@ describe("allocateSectionBudget (Fase 13b, nivel 1: global→sección)", () => {
     expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
   });
 
-  it("recorta proporcionalmente ante déficit global (pedido total > presupuesto total)", () => {
+  it("sin déficit no reporta faltante ni apaga nada por presupuesto", () => {
     const result = allocateSectionBudget(
-      5,
+      10,
       [
         { sectionId: SECTION_A, units: 3 },
         { sectionId: SECTION_B, units: 2 },
       ],
       [SECTION_A, SECTION_B],
     );
-    const totalGranted = (result.grantedBySectionId.get(SECTION_A) ?? 0) + (result.grantedBySectionId.get(SECTION_B) ?? 0);
-    expect(totalGranted).toBeLessThanOrEqual(5);
-    expect(result.grantedBySectionId.get(SECTION_A)).toBeGreaterThan(result.grantedBySectionId.get(SECTION_B) ?? 0);
+    expect(result.shortfallUnits).toBe(0);
+    expect(result.shedSectionIds.size).toBe(0);
+  });
+});
+
+describe("allocateSectionBudget — déficit: apagado ordenado de menor a mayor (ronda 4)", () => {
+  it("apaga las secciones con MENOS unidades asignadas primero, sin desperdiciar presupuesto", () => {
+    // Pedido 1+2+4 = 7 con presupuesto 4: se sacrifican las dos más chicas y
+    // sobrevive intacta la que más energía tenía puesta.
+    const result = allocateSectionBudget(
+      4,
+      [
+        { sectionId: SECTION_A, units: 1 },
+        { sectionId: SECTION_B, units: 2 },
+        { sectionId: SECTION_C, units: 4 },
+      ],
+      [SECTION_A, SECTION_B, SECTION_C],
+    );
+
+    expect(result.grantedBySectionId.get(SECTION_A)).toBe(0);
+    expect(result.grantedBySectionId.get(SECTION_B)).toBe(0);
+    expect(result.grantedBySectionId.get(SECTION_C)).toBe(4);
+    expect([...result.shedSectionIds].sort()).toEqual([SECTION_A, SECTION_B].sort());
+    expect(result.shortfallUnits).toBe(3);
+    // El recorte proporcional anterior otorgaba 3 de 4 aquí: se perdía una unidad.
+    const totalGranted = [...result.grantedBySectionId.values()].reduce((sum, units) => sum + units, 0);
+    expect(totalGranted).toBe(4);
+  });
+
+  it("una única sección asignada que excede el presupuesto se recorta, no se apaga", () => {
+    const result = allocateSectionBudget(4, [{ sectionId: SECTION_C, units: 7 }], [SECTION_A, SECTION_C]);
+
+    expect(result.grantedBySectionId.get(SECTION_C)).toBe(4);
+    expect(result.shedSectionIds.size).toBe(0);
+    expect(result.darkSectionIds.has(SECTION_C)).toBe(false);
+    expect(result.shortfallUnits).toBe(3);
+  });
+
+  it("empate de unidades asignadas se resuelve por sectionId de forma determinista", () => {
+    const result = allocateSectionBudget(
+      3,
+      [
+        { sectionId: SECTION_A, units: 3 },
+        { sectionId: SECTION_B, units: 3 },
+      ],
+      [SECTION_A, SECTION_B],
+    );
+
+    // "bahia-carga" < "puente": se apaga B y sobrevive A.
+    expect(result.shedSectionIds.has(SECTION_B)).toBe(true);
+    expect(result.grantedBySectionId.get(SECTION_A)).toBe(3);
   });
 });
 

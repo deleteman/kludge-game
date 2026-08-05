@@ -3046,3 +3046,59 @@ Archivos: `engine/src/floorplan/initial-ship-state.ts` (+test nuevo `initial-shi
 `tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 608 tests de `/engine` (antes 604, +4:
 3 de la siembra inicial y 1 de `recalculate()` sin tick), 29 de `/game` sin cambios.
 Razón: tercera ronda de playtest manual del operador sobre la Subfase 13b.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 4 (déficit de energía al perder fuentes).
+Detalle: el operador reportó que al ir desmantelando fuentes de energía el presupuesto total baja pero la
+asignación ya hecha no se ve afectada — si tenía 7 unidades repartidas y el presupuesto cae a 4, las 7 siguen
+repartidas y nada avisa del conflicto. Pidió explícitamente que las secciones se vayan quedando sin energía
+ordenadas "de las que tienen menos unidades asignadas a las que más".
+Dos problemas reales detrás del síntoma. (a) La UI mentía: `redrawEnergyControls` le pasaba al slider
+`units = sectionPowerAllocation()` (el PEDIDO del jugador), nunca lo OTORGADO por el motor, así que una sección
+que pidió 4 con presupuesto 4 mostraba "4/4 · 100%" aunque el motor le estuviera otorgando 2; y
+`unallocatedPowerUnits()` devuelve `max(0, 4-7) = 0`, o sea que el cap tapaba el déficit en vez de exponerlo.
+(b) La regla de déficit de `allocateSectionBudget` era un recorte PROPORCIONAL con `Math.floor` que además
+desperdiciaba presupuesto: con pedido A=1,B=2,C=4 y presupuesto 4, `scale=4/7` otorgaba 0+1+2 = 3 de las 4
+unidades disponibles.
+Corregido con tres piezas. (1) Regla nueva en la función pura `allocateSectionBudget`: ante déficit se apagan
+secciones de MENOR a MAYOR asignación hasta que el resto entra en el presupuesto — se sacrifica lo menos
+invertido y sobrevive intacto lo que más energía tenía puesta. Desempate determinista por `sectionId` (mismo
+criterio que ya usa `allocateComponentPower`). Caso borde confirmado con el operador: si queda UNA sola sección
+asignada y por sí sola excede el presupuesto, se la RECORTA en vez de apagarla — apagarla dejaría el
+presupuesto entero ocioso, y dentro de la sección el triaje por prioridad de 13b ya decide qué componentes se
+quedan sin energía. `SectionBudgetResult` gana `shortfallUnits` (faltante, 0 si no hay conflicto) y
+`shedSectionIds` (las apagadas POR el déficit — subconjunto de `darkSectionIds`, que además incluye a las que
+el jugador nunca asignó).
+(2) Reconciliación NO destructiva, decisión explícita del operador entre las dos alternativas planteadas: el
+pedido del jugador NUNCA se reescribe en el blueprint, solo cambia lo otorgado. Ventaja concreta: al reinstalar
+una fuente el reparto original vuelve solo, sin tener que repartir de nuevo a mano. La alternativa descartada
+era que `MissionPowerRuntime` reescribiera `sectionAllocations` (estado siempre consistente, pero perdiendo la
+intención del jugador y con un runtime mutando input del jugador, el mismo tipo de acoplamiento que se
+desarmó en la ronda 2).
+(3) El conflicto se COMUNICA en vez de resolverse en silencio: nuevo dominio de eventos
+`engine/src/power/power-events.types.ts` (`PowerShortfallEvent` / `PowerDomainEvent`, sumado a la unión
+agregada `DomainEvent` del barrel), siguiendo el patrón Observer ya establecido (cada dominio define sus
+eventos junto a su lógica). `MissionPowerRuntime` recibe un `EventEmitter<PowerDomainEvent>` opcional (molde de
+`MissionOverloadRuntime`) y emite POR FLANCO: solo cuando el faltante aparece o cambia de magnitud, nunca en
+cada recálculo — importante porque `recalculate()` corre en cada escritura de la UI además de en cada tick.
+Como `recalculate()` no recibe `TickContext` (se llama desde la UI en pausa) pero todo evento de dominio
+necesita `elapsedSeconds`, el runtime guarda el último visto en `tick()`; en pausa el reloj está congelado, así
+que sigue siendo el tiempo simulado correcto. `MissionRuntime` expone `powerEvents` y `floorplan-scene.ts` se
+suscribe y lanza un aviso por el `NotificationCenter` (`type: "warning"`, sin alarma sonora ni overlay de
+pantalla completa: es un problema de gestión, no una crisis violenta como incendio/explosión).
+(4) El slider deja de mentir: nueva opción `grantedUnits` y método `setGranted()` en
+`power-allocation-slider.ts`. El thumb y la etiqueta siguen sobre el PEDIDO (es lo que el slider controla),
+pero el relleno se parte en dos — azul (`FILL_COLOR`) hasta lo otorgado, y ÁMBAR de ahí hasta el pedido, o sea
+el tramo que la nave no puede cubrir. Reutiliza `ENERGY_LAYER_COLOR.deficit`, el mismo ámbar que ya usa la capa
+"energia" del plano para déficit, en vez de introducir un color nuevo. Sin déficit el tramo ámbar mide 0 y el
+widget se ve exactamente como antes. Sin strings nuevos: la distinción es puramente visual (principio 6 de
+CLAUDE.md), las palabras las pone la notificación. `MissionPowerRuntime` cachea `grantedBySectionId` y lo expone
+vía `sectionPowerGranted()`/`powerShortfallUnits()`, reexpuestos por `MissionRuntime`.
+Nota sobre i18n: `t()` no soporta interpolación (`i18n.ts` es una tabla de claves simple), así que el cuerpo del
+aviso compone las palabras desde la tabla y los números aparte — mismo criterio que la etiqueta del slider, sin
+tocar el sistema de i18n compartido.
+Archivos: `engine/src/power/power-allocation.ts` (+test), `engine/src/power/power-events.types.ts` (nuevo),
+`engine/src/power/mission-power-runtime.ts` (+test), `engine/src/index.ts`, `game/src/mission/mission-runtime.ts`,
+`game/src/ui/widgets/power-allocation-slider.ts`, `game/src/scenes/floorplan-scene.ts`, `game/src/i18n/{es,en}.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 612 tests de `/engine` (antes 608, +4:
+3 de la regla de déficit y 1 del evento por flanco), 29 de `/game` sin cambios.
+Razón: cuarta ronda de playtest manual del operador sobre la Subfase 13b.

@@ -126,6 +126,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.task-blocked": "Task blocked",
   "ui.floorplan.notification.objective-done": "Objective complete",
   "ui.floorplan.notification.crisis-escalation": "Crisis escalating",
+  "ui.floorplan.notification.power-shortfall": "Power shortfall",
+  "ui.floorplan.notification.power-shortfall-detail": "Allocated / available:",
 
   "component.functional.EM": "Signal emitter — generates a pulse on trigger",
   "component.functional.REC": "Signal receptor — reacts to a received pulse",

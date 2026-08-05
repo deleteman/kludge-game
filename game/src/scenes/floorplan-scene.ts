@@ -939,6 +939,22 @@ export class FloorplanScene extends Phaser.Scene {
           this.notifications?.push({ title: t("ui.floorplan.notification.crisis-escalation"), type: "error" });
         }
       }),
+      // Fase 13b (ronda 4): el jugador tiene más energía repartida de la que la
+      // nave puede entregar — típicamente porque desmanteló una fuente. El
+      // motor ya resolvió el conflicto apagando secciones de menor a mayor
+      // asignación; acá solo se COMUNICA, porque de otro modo el reparto
+      // cambiaba en silencio. No lleva alarma sonora ni overlay de pantalla
+      // completa: es un problema de gestión, no una crisis violenta.
+      this.mission.powerEvents.onAny((event) => {
+        if (event.kind !== "power-shortfall") return;
+        this.notifications?.push({
+          title: t("ui.floorplan.notification.power-shortfall"),
+          // `t()` no interpola: las palabras vienen de la tabla, los números se
+          // componen aparte (mismo criterio que la etiqueta del slider).
+          lines: [`${t("ui.floorplan.notification.power-shortfall-detail")} ${event.requestedUnits}/${event.totalUnits}`],
+          type: "warning",
+        });
+      }),
       this.mission.crisisEvents.onAny((event) => {
         this.updateHeader();
         this.updateProblemMarkerVisibility();
@@ -1821,6 +1837,7 @@ export class FloorplanScene extends Phaser.Scene {
         maxUnits: totalBudget,
         capUnits: units + this.unallocatedPowerUnits(),
         units,
+        grantedUnits: this.mission.sectionPowerGranted(section.id),
         enabled: true,
         onChange: (nextUnits) => {
           this.mission.setSectionPowerUnits(section.id, nextUnits);
@@ -1895,6 +1912,9 @@ export class FloorplanScene extends Phaser.Scene {
   private syncEnergySliderCaps(changedSectionId: SectionId): void {
     const remaining = this.unallocatedPowerUnits();
     for (const [sectionId, { slider }] of this.energyDialContainers) {
+      // Lo otorgado se refresca en TODAS, incluida la que se está arrastrando:
+      // resolver un déficit en una sección puede devolverle energía a otra.
+      slider.setGranted(this.mission.sectionPowerGranted(sectionId));
       if (sectionId === changedSectionId) continue;
       slider.setCap(this.mission.sectionPowerAllocation(sectionId) + remaining);
     }

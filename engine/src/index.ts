@@ -641,6 +641,7 @@ export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "
 export { emptyPowerState } from "./power/power.types.js";
 export { totalPowerBudget } from "./power/power-source.js";
 export { allocateSectionBudget, allocateComponentPower } from "./power/power-allocation.js";
+export type { PowerDomainEvent, PowerShortfallEvent } from "./power/power-events.types.js";
 export type { SectionBudgetResult, ComponentPowerResult } from "./power/power-allocation.js";
 export { MissionPowerRuntime } from "./power/mission-power-runtime.js";
 // Subfase 11g — estado agregado a nivel de nave (atmósfera/soporte vital/casco/energía).
@@ -698,6 +699,7 @@ import type { CoreLoopDomainEvent } from "./tasks/task-events.types.js";
 import type { CrewDomainEvent } from "./crew/crew-events.types.js";
 import type { CrisisDomainEvent } from "./crisis/crisis-events.types.js";
 import type { EnemyDomainEvent } from "./enemies/enemy-events.types.js";
+import type { PowerDomainEvent } from "./power/power-events.types.js";
 
 /**
  * Unión agregada de todos los eventos de dominio del motor (Observer). `/game`
@@ -713,4 +715,5 @@ export type DomainEvent =
   | CoreLoopDomainEvent
   | CrewDomainEvent
   | CrisisDomainEvent
-  | EnemyDomainEvent;
+  | EnemyDomainEvent
+  | PowerDomainEvent;

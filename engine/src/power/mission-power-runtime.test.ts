@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MissionPowerRuntime } from "./mission-power-runtime.js";
 import { MutableShipState } from "../mission/mutable-ship-state.js";
+import { EventEmitter } from "../simulation/event-emitter.js";
+import type { PowerDomainEvent } from "./power-events.types.js";
 import { MapEntityRegistry } from "../composition/entity-registry.js";
 import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -185,6 +187,43 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     runtime.recalculate();
 
     expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(false);
+  });
+
+  it("déficit (ronda 4): apaga de menor a mayor y avisa UNA sola vez, sin tocar el pedido", () => {
+    // Presupuesto real = 3 (una `bateria` de powerUnits 3), pedido = 1 + 3 = 4.
+    const shipState = new MutableShipState(
+      baseBlueprint({
+        powerState: {
+          sectionAllocations: [
+            { sectionId: SECTION_A, units: 1 },
+            { sectionId: SECTION_B, units: 3 },
+          ],
+          instancePriorities: [],
+          permanentlyDisconnectedSectionIds: [],
+        },
+      }),
+    );
+    const emitter = new EventEmitter<PowerDomainEvent>();
+    const seen: PowerDomainEvent[] = [];
+    emitter.onAny((event) => seen.push(event));
+    const runtime = new MissionPowerRuntime(shipState, floorplan(), registry(), emitter);
+
+    runtime.recalculate();
+
+    // La sección con MENOS unidades asignadas es la que se apaga.
+    expect(runtime.sectionPowerGranted(SECTION_A)).toBe(0);
+    expect(runtime.sectionPowerGranted(SECTION_B)).toBe(3);
+    expect(runtime.powerShortfallUnits()).toBe(1);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: "power-shortfall", totalUnits: 3, requestedUnits: 4 });
+
+    // No destructivo: el pedido del jugador sigue intacto en el blueprint.
+    expect(shipState.get().powerState.sectionAllocations).toHaveLength(2);
+
+    // Recalcular sin cambios no vuelve a avisar (emisión por flanco).
+    runtime.recalculate();
+    runtime.recalculate();
+    expect(seen).toHaveLength(1);
   });
 
   it("unpoweredSectionIds refleja SOLO la cicatriz permanente — el déficit vivo de sesión no la contamina", () => {
