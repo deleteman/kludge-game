@@ -3,6 +3,7 @@ import type { ComponentId, PhysicalComponentDefinition } from "../components/phy
 import type { ProjectileBody } from "../kinetics/projectile.types.js";
 import type { ProjectileSimulation } from "../kinetics/projectile-simulation.js";
 import type { Tickable } from "../tasks/core-loop-mode.js";
+import { effectiveResistance } from "../wear/effective-resistance.js";
 import { isLooseFerromagneticCandidate } from "./mission-projectile-world.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
@@ -68,10 +69,19 @@ export class LooseFerromagneticPromoter implements Tickable {
       if (!definition || !isLooseFerromagneticCandidate(definition.data)) {
         return true;
       }
+      // Fase 13c: la masa virtual del impacto usa la RE EFECTIVA — una pieza
+      // canibalizada golpea (y se rompe) como lo que es, no como la de
+      // catálogo. `"fallo"` no es un nivel válido de `ProjectileBody.re`, así
+      // que se colapsa al más débil que el dominio kinetics entiende.
+      const effective = effectiveResistance(
+        definition.data.material?.RE,
+        placed.wear,
+        placed.structuralResistanceOverride,
+      );
       const body: ProjectileBody = {
         ref: placed.instanceId,
         footprint: placed.placement.footprint,
-        re: definition.data.material?.RE,
+        re: effective === null ? undefined : effective === "fallo" ? "B" : effective,
       };
       this.definitionByRef.set(placed.instanceId, placed.componentDefinitionId);
       this.projectiles.register(body, placed.placement.position);

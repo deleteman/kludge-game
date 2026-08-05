@@ -57,18 +57,21 @@ function buildBlueprint(sealInstance: Blueprint["placedComponents"][number] | nu
         componentDefinitionId: "sensor-presion" as ComponentId,
         placement: { position: { x: 8, y: 5 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
       {
         instanceId: LCD_INSTANCE,
         componentDefinitionId: "pantalla-lcd" as ComponentId,
         placement: { position: { x: 9, y: 5 }, footprint: { width: 2, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
       {
         instanceId: LED_INSTANCE,
         componentDefinitionId: "indicador-led" as ComponentId,
         placement: { position: { x: 11, y: 5 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],
@@ -96,6 +99,7 @@ function jammedSeal(): Blueprint["placedComponents"][number] {
     componentDefinitionId: "junta-hermetica" as ComponentId,
     placement: { position: SEAL_POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
     condition: "jammed",
+    wear: "nuevo",
   };
 }
 
@@ -162,6 +166,7 @@ describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h
         componentDefinitionId: "junta-hermetica" as ComponentId,
         placement: { position: SEAL_POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       }),
     );
     const pressureAtRepair = atmosphereOf(SOPORTE_VITAL)!.pressureKpa;
@@ -195,6 +200,7 @@ describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h
         componentDefinitionId: "junta-hermetica" as ComponentId,
         placement: { position: SEAL_POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       }),
     );
     const floorplan = buildFloorplan();

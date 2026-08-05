@@ -37,6 +37,7 @@ function placed(instanceId: string, x: number, y: number, width: number, height:
     componentDefinitionId: "comp" as ComponentId,
     placement: { position: { x, y }, footprint: { width, height }, rotation: 0 },
     condition: "ok",
+    wear: "nuevo",
   };
 }
 

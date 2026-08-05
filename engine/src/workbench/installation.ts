@@ -1,4 +1,5 @@
 import type { Footprint, GridPosition, Rotation } from "../geometry/grid-position.types.js";
+import { DEFAULT_WEAR } from "../wear/wear.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { FloorplanSection } from "../floorplan/floorplan.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -42,6 +43,11 @@ export function installCreationInFloorplan(
         componentDefinitionId: creationDefinitionId,
         placement: proposedPlacement,
         condition: "ok",
+        // Creación recién ensamblada en la mesa: sus piezas pueden venir
+        // desgastadas, pero el compuesto nace sin historia propia (13c). El
+        // desgaste heredado de las partes es una extensión futura, no un
+        // silencio: hoy la mesa no consume unidades de un bucket concreto.
+        wear: DEFAULT_WEAR,
       },
     ],
   };

@@ -1,4 +1,5 @@
 import { assertBlueprintIntegrity } from "./blueprint-integrity.js";
+import { DEFAULT_WEAR, isComponentWear } from "../wear/wear.types.js";
 import type { Blueprint } from "./blueprint.types.js";
 
 /**
@@ -86,13 +87,25 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
         `Blueprint.placedComponents entry has invalid condition: ${String(entry.condition)}`,
       );
     }
-    // schemaVersion < 4 no tenía cicatriz de RE (Fase 11b) — ausente = sin degradar.
+    // schemaVersion < 4 no tenía cicatriz de RE (Fase 11b) — ausente = sin
+    // degradar. DEPRECADO desde 13c: se sigue validando y conservando para que
+    // un save viejo no pierda su cicatriz (`effectiveResistance` toma el peor
+    // de los dos ejes), pero ningún runtime lo escribe ya.
     if (
       entry.structuralResistanceOverride !== undefined &&
       !["A", "M", "B"].includes(entry.structuralResistanceOverride as string)
     ) {
       throw new BlueprintParseError(
         `Blueprint.placedComponents entry has invalid structuralResistanceOverride: ${String(entry.structuralResistanceOverride)}`,
+      );
+    }
+    // schemaVersion < 7 no tenía desgaste (Fase 13c) — todo lo autorado hasta
+    // ahora entra como pieza sin historia, mismo criterio que `condition`.
+    if (entry.wear === undefined) {
+      (entry as { wear: unknown }).wear = DEFAULT_WEAR;
+    } else if (!isComponentWear(entry.wear)) {
+      throw new BlueprintParseError(
+        `Blueprint.placedComponents entry has invalid wear: ${String(entry.wear)}`,
       );
     }
   }

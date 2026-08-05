@@ -16,6 +16,7 @@ import { computeSignalWireRoute } from "./conduit-path.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
   COMPONENT_CONDITION_TINT,
+  COMPONENT_WEAR_TINT,
   CONDUIT_COLORS,
   LABEL_COLOR,
   LED_INACTIVE_TINT,
@@ -88,7 +89,10 @@ export function renderMissionOverlay(
   const lcdDisplaysByInstanceId = new Map<PlacedComponentInstanceId, Phaser.GameObjects.Text>();
 
   blueprint.placedComponents.forEach((instance, index) => {
-    const tint = COMPONENT_CONDITION_TINT[instance.condition];
+    // `condition` gana sobre `wear` (Fase 13c): una pieza destruida se ve
+    // destruida aunque además esté degradada — el dato más grave manda, para
+    // no colapsar dos estados distintos en un color intermedio ambiguo.
+    const tint = COMPONENT_CONDITION_TINT[instance.condition] ?? COMPONENT_WEAR_TINT[instance.wear];
     const { width, height } = effectiveFootprintExtent(instance.placement);
     const originX = instance.placement.position.x * CELL;
     const originY = instance.placement.position.y * CELL;

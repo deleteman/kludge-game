@@ -29,6 +29,7 @@ describe("instantiateComponentSeeds", () => {
       componentDefinitionId: "herramientas-reparacion-externa",
       placement: { position: { x: 3, y: 3 }, footprint: { width: 2, height: 1 }, rotation: 0 },
       condition: "ok",
+      wear: "nuevo",
     });
   });
 

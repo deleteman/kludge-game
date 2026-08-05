@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { effectiveResistance } from "../wear/effective-resistance.js";
 import { MissionStructuralRuntime } from "./mission-structural-runtime.js";
 import { MissionAtmosphereRuntime } from "./mission-atmosphere-runtime.js";
 import { MutableShipState } from "./mutable-ship-state.js";
@@ -58,6 +59,7 @@ function blueprintWithHullPanel(): Blueprint {
         componentDefinitionId: "panel-casco" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],
@@ -97,7 +99,12 @@ describe("MissionStructuralRuntime (Fase 11b, cicatriz de RE por componente)", (
     }
 
     const instance = shipState.get().placedComponents[0]!;
-    expect(instance.structuralResistanceOverride).toBe("M");
+    // Fase 13c: la cicatriz se escribe como DESGASTE, no como override de RE.
+    // El panel arranca en RE-A y `usado` = un escalón menos = RE efectiva M,
+    // así que el ritmo observable de la Espec. §1 no cambió (mismos 8 ticks),
+    // solo el campo donde queda registrado.
+    expect(instance.wear).toBe("usado");
+    expect(effectiveResistance("A", instance.wear)).toBe("M");
   });
 
   it("does not degrade a placed instance in a section with no corrosive exposure", () => {

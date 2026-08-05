@@ -24,6 +24,7 @@ function placedAt(
     componentDefinitionId: "panel-fijo" as ComponentId,
     placement: { position, footprint, rotation: 0 },
     condition: "ok",
+    wear: "nuevo",
   };
 }
 

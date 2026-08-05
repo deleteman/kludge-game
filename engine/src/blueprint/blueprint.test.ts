@@ -31,12 +31,14 @@ function buildFixtureBlueprint(): Blueprint {
         componentDefinitionId: "fixture-component-a" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
       {
         instanceId: INSTANCE_B,
         componentDefinitionId: "fixture-component-b" as ComponentId,
         placement: { position: { x: 1, y: 0 }, footprint: { width: 1, height: 2 }, rotation: 90 },
         condition: "ok",
+        wear: "nuevo",
         structuralResistanceOverride: "M",
       },
     ],
@@ -153,6 +155,40 @@ describe("blueprint: serialize/deserialize round-trip", () => {
   it("rejects a powerState with a malformed sectionAllocations entry", () => {
     const broken = buildFixtureBlueprint() as unknown as Record<string, unknown>;
     broken.powerState = { ...(broken.powerState as object), sectionAllocations: [{ sectionId: "x" }] };
+
+    expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(BlueprintParseError);
+  });
+
+  it("defaults wear to 'nuevo' when loading a pre-13c (schema v6) save", () => {
+    const v6 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    for (const entry of v6.placedComponents as Array<Record<string, unknown>>) {
+      delete entry.wear;
+    }
+    (v6.metadata as Record<string, unknown>).schemaVersion = 6;
+
+    const restored = deserializeBlueprint(JSON.stringify(v6));
+    expect(restored.placedComponents.every((entry) => entry.wear === "nuevo")).toBe(true);
+  });
+
+  it("keeps a v6 structuralResistanceOverride scar so it is not lost when defaulting wear", () => {
+    // La cicatriz vieja no se convierte acá (el deserializador no conoce el
+    // catálogo); se conserva y `effectiveResistance` toma el peor de los ejes.
+    const v6 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    const placedComponents = v6.placedComponents as Array<Record<string, unknown>>;
+    delete placedComponents[1]!.wear;
+    placedComponents[1]!.structuralResistanceOverride = "B";
+    (v6.metadata as Record<string, unknown>).schemaVersion = 6;
+
+    const restored = deserializeBlueprint(JSON.stringify(v6));
+    expect(restored.placedComponents[1]!.wear).toBe("nuevo");
+    expect(restored.placedComponents[1]!.structuralResistanceOverride).toBe("B");
+  });
+
+  it("rejects an invalid wear value", () => {
+    const broken = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    broken.placedComponents = (broken.placedComponents as Array<Record<string, unknown>>).map(
+      (entry, index) => (index === 0 ? { ...entry, wear: "oxidado" } : entry),
+    );
 
     expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(BlueprintParseError);
   });

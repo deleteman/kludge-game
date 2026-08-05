@@ -70,6 +70,13 @@
    que auto-arranca) suscribe `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN` para forzar `this.scale.refresh()` en
    ambas transiciones, por si el recálculo automático de `FIT` no dispara solo.
 
+8. Se pueden encolar 2 o más tripulantes para instalar la misma pieza (de la cual solo hay una copia) y cuando se le da "play", luego de que el primero termina la instalación, el juego da un error al querer instalar la pieza que ya no está en stock.
+
+9. cambiar de idioma no afecta todos los strings, hay botones de la UI que no cambian el idioma.
+
+10. En la pantalla de selección de arquetipo y la selección de tripulantes, el click no funciona bien. Parece que hay un desfase entre donde está el mouse y donde se hace el click, incluso parece que a veces el jugador hace click en un tripulante y termina clickeando en otro.
+
+11. los clicks en botones de selección de capa hacen click en el mapa tambien. Eso no debería pasar en ningun elemento de la UI que está renderizado arriba del mapa.
 
 
 ## Fine-tunning
@@ -167,7 +174,7 @@ dónde, y qué costaría arreglarlo.
    fantasma. No poder seleccionar/desmontar la pieza promovida SÍ es comportamiento esperado (principio 5
    de CLAUDE.md: una vez proyectil, no vuelve a `placedComponents`).
 
-6. **Una creación de la mesa no hereda las propiedades de material de sus partes** (Fase 11c.1).
+6. ✅ RESUELTO (Fase 13c, como prerrequisito). **Una creación de la mesa no hereda las propiedades de material de sus partes** (Fase 11c.1).
    `nameAndRegisterCreation` (`engine/src/workbench/creation-naming.ts`) agrega al compuesto la unión
    de las propiedades FUNCIONALES de sus ingredientes (para que derive nodos de señal, 11c.0/11c.1),
    pero NO agrega las propiedades de MATERIAL (`RE`, `MAG`, etc.). Consecuencia: una creación instalada
@@ -178,6 +185,21 @@ dónde, y qué costaría arreglarlo.
    11c.1. Lo necesita cualquier capítulo donde una creación instalada deba corroerse o servir de
    proyectil/ariete. Al resolverlo, decidir la regla de agregación de material y testearla junto al
    caso correspondiente.
+   Resuelto: `aggregateCreationMaterial` (`engine/src/workbench/creation-material-aggregation.ts`), consumido
+   por `nameAndRegisterCreation` junto a la agregación funcional que ya existía. Regla decidida con el operador
+   (2026-08-05), una por propiedad porque cada una tiene semántica física distinta — no hay una regla genérica:
+   - `RE` = el **PEOR** de las partes. Un ensamblaje se rompe por su eslabón más débil; es además el mismo
+     criterio worst-case que `aggregateHullIntegrity`/`aggregateSectionHullIntegrity` ya usaban para agregar a
+     nivel sección y nave, así que no se inventa un criterio nuevo. Pegar una lente frágil a una plancha de
+     acero no da una lente blindada.
+   - `MAG` = `true` si **cualquier** parte lo es (basta para que una bobina la acelere, GDD 5.5 / caso 17).
+   - `CE`/`CT` = el **mayor**: conducir es una propiedad de camino, si alguna parte conduce el conjunto conduce.
+   - `ES` = el estado mayoritario (empate → el de la primera parte, determinista).
+   Devuelve `undefined` si ninguna parte declara material, para no poblar `data.material` con un objeto vacío
+   (mismo criterio que ya seguía `aggregatedFunctional`). El orden canónico de niveles se extrajo a
+   `engine/src/properties/material-order.ts` (`RE_ORDER` dejó de ser un array local de `structural-failure.ts`).
+   11 tests unitarios propios + 2 de integración en `creation-naming.test.ts`. Era prerrequisito bloqueante de
+   la Fase 13c: sin `data.material`, una creación no podía corroerse y por lo tanto no podía desgastarse.
 
 7. ✅ RESUELTO (Fase 11c.2). **La mesa de creación dibuja rectángulos, no los sprites de las piezas** (Fase 11c.1, reportado en playtest).
    `workbench-renderer.ts` (`game/src/render/`) pinta cada celda con `graphics.fillRect` + etiqueta de
@@ -347,3 +369,7 @@ dónde, y qué costaría arreglarlo.
     `computerNoise` para la alarma, `impactMetal` para instalación/pasos de tripulante. Reemplazar cuando se
     consiga un asset más específico — el punto de cambio es un solo archivo (`AUDIO_KEYS`), no requiere tocar
     ningún llamador.
+
+18. al seleccionar un tripulante en la pantalla de selección de tripulantes debería cambiarle su imagen a color, ahora quedan en escala de grises.
+
+19. los efectos visuales de una zona sin energía se renderizan parcialmente arriba del cuadro de asginacion de energía en modo pausa.

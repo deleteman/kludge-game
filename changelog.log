@@ -3273,3 +3273,85 @@ encuadra bien sea cual sea el idioma y el tamaño al que haya terminado encogien
 Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `game/src/scenes/floorplan-scene.ts`.
 `tsc --noEmit` limpio y `vite build` limpio. Suite: 30 tests de `/game`, sin cambios.
 Razón: octava ronda de playtest manual del operador sobre la Subfase 13b.
+
+2026-08-05 — Subfase 13c: Degradación Funcional de Componentes (Gap ① Duskers) + deuda #6.
+Detalle: hasta ahora una pieza canibalizada entraba al nuevo sistema como de fábrica — `installInstance`
+(`engine/src/mission/ship-task-effect.ts`) la creaba con `condition: "ok"` hardcodeado, y el stock atómico
+(`Record<ComponentId, number>`) era fungible, sin ningún lugar donde guardar la historia de la pieza entre
+desmontarla y reinstalarla. El ciclo desmontar+reinstalar era gratuito, que es justo lo contrario del Pilar 2.
+
+Prerrequisito (deuda #6, cerrada): `nameAndRegisterCreation` agregaba la unión de propiedades FUNCIONALES de
+las partes pero no las de MATERIAL, así que una creación instalada no tenía `data.material` y ni se corroía ni
+se detectaba ferromagnética. Nuevo `engine/src/workbench/creation-material-aggregation.ts` con una regla por
+propiedad, decidida con el operador: RE = el PEOR de las partes (eslabón más débil, mismo criterio worst-case
+que ya usan `aggregateHullIntegrity`/`aggregateSectionHullIntegrity`), MAG = true si CUALQUIER parte lo es,
+CE/CT = el mayor (conducir es propiedad de camino), ES = el mayoritario. El orden canónico de niveles se
+extrajo a `engine/src/properties/material-order.ts` (`RE_ORDER` dejó de ser un array local de
+`structural-failure.ts` al aparecer el tercer y cuarto consumidor).
+
+Dominio nuevo `engine/src/wear/`: `ComponentWear` = nuevo/usado/degradado/critico. El nombre es `wear` y no
+`condition` porque `ComponentCondition` (ok/jammed/destroyed, Fase 10a) ya existe y es un eje ORTOGONAL: aquel
+dice si la pieza responde, este cuánta historia arrastra. Efecto = FRAGILIDAD, no eficiencia — se descartó
+explícitamente el nerf funcional del "80%" literal de Duskers: una pieza desgastada conserva su propiedad
+funcional intacta.
+
+Decisión central (cerrada con el operador): mapeo 1:1 entre desgaste y RE. `effectiveResistance()`
+(`wear/effective-resistance.ts`) = RE de catálogo bajado tantos escalones como desgaste (A: nuevo=A, usado=M,
+degradado=B, critico=fallo). Esto resolvió un doble conteo que el texto de la subfase no anticipaba: la
+corrosión YA bajaba RE directamente (`structuralResistanceOverride`, Fase 11b) y el desgaste iba a modificar la
+RE efectiva, así que mantener ambos habría contado el MISMO daño dos veces sobre la misma pieza. Se unificó en
+un solo eje: `MissionStructuralRuntime` ahora escribe `wear`, `structuralResistanceOverride` queda DEPRECADO
+(solo lectura, para que un save ≤ v6 no pierda su cicatriz: `effectiveResistance` toma el peor de los dos
+ejes). Como el mapeo es 1:1, el ritmo de la Espec. §1 (~15s/nivel a corrosivo medio) es idéntico — el caso de
+validación 7 lo confirma con los mismos 8 ticks, solo cambió el campo donde queda registrado.
+
+Antes de 13c la fórmula `override ?? catálogo` estaba REPLICADA en tres sitios (`MissionStructuralRuntime`,
+`ship-status-aggregation`, `LooseFerromagneticPromoter`). Se centralizó primero en `effectiveResistance()` para
+que el modificador de desgaste entrara en un único lugar; los tres pasan por ella, más el tooltip.
+
+Escritor (1), canibalización: primer azar del motor. `/engine` era 100% determinista (cero `Math.random`, con
+la regla escrita en `enemies/route-progression.ts`), así que el "probabilístico por tier" del diseño se
+resolvió por INYECCIÓN — `engine/src/simulation/random-source.ts` (`RandomSource`, `sequenceRandom` para tests,
+`systemRandom` que `/game` inyecta). `createShipTaskEffect` gana dos deps opcionales (el azar y un lookup
+`actorId → CrewActor`, que faltaba: el efecto recibía la `CrewTask` con su `actorId` pero no podía resolver el
+tier). La probabilidad de CONSERVAR el estado reutiliza `atomicRecoveryFraction` (GDD §6.5), que existía desde
+la Fase 9 pero estaba MUERTA en producción — solo la usaban tests. Sin `random` inyectado el desmontaje no
+degrada nada, así que el comportamiento pre-13c queda intacto para los llamadores que no eligieron fuente.
+
+Escritor (2), corrosión: `MissionStructuralRuntime` mantiene su `StructuralIntegrity` por instancia (que ya
+hacía el bucle instancia→sección→nivel CORR→tick) pero siembra el tracker con la RE EFECTIVA y escribe `wear`.
+Una pieza canibalizada entra ya debilitada al ácido.
+
+Stock por buckets de desgaste: `AtomicPartsStock` pasa de `Record<ComponentId, number>` a
+`Record<ComponentId, Partial<Record<ComponentWear, number>>>`. Era la única forma de que el escritor (1) fuera
+realizable: sin buckets no hay dónde guardar la historia entre desmontar y reinstalar. `stockOf` conserva su
+firma y devuelve el TOTAL, así que los consumidores viejos (`MissionRuntime.stockOf`, el selector de `/game`)
+siguen siendo correctos sin tocarse; se suman `stockOfWear`/`wearBucketsOf`. `consumeStock` NO cae a otro
+bucket si el pedido está vacío — darle la degradada en silencio sería la UI mintiendo.
+
+Consumo del desgaste: `MissionOverloadRuntime` aplica `wornCapacity()` (−15% por escalón) al construir el
+`OverloadSubject`, así el desgaste "sube la probabilidad de fallo catastrófico" (GDD §6.3) SIN meter dados en
+el tick — `OverloadRule` sigue siendo determinista (`load > capacity`) y el jugador puede razonar su margen.
+`instanceHullFraction` y el promotor de proyectiles pasan por `effectiveResistance`, así que el HUD de casco,
+el overlay `estructural` y la masa virtual del impacto reflejan el desgaste sin código propio.
+
+Schema: `Blueprint` 6→7 (`wear` requerido, default `nuevo` en el guard) y `CampaignSaveState` 3→4 (el stock
+cambia de forma; migración `number → {nuevo: n}` en el deserializador). ~55 fixtures migradas en el mismo
+commit, como hizo 13b con su bump.
+
+UI: tag de desgaste en ámbar/rojo del contrato de 12e en el tooltip; tinte del sprite (`COMPONENT_WEAR_TINT`,
+con `condition` ganando sobre `wear` para no colapsar dos estados en un color ambiguo); una fila por bucket en
+el selector de instalación ("Sensor ×2", "Sensor ×1 · [USADO]"); claves i18n es/en. De paso se corrigió un bug
+PREEXISTENTE del tooltip (`mission-tooltip.ts`): mostraba el RE de CATÁLOGO, así que decía "A" mientras el
+motor trataba la pieza como "M" — ahora muestra la efectiva.
+
+Fuera de alcance, documentado: (a) ningún capítulo autorado tiene todavía una sustancia CORR viva en su
+atmósfera (el Cap.1 es fuga de presión, no de ácido), así que el escritor (2) solo se ejercita en el caso de
+validación 7 — el escritor (1) sí tiene camino real en el Cap.1; anotado en el docblock del runtime en vez de
+fingir que el indicador se mueve. (b) `InsufficientStockError` sigue sin manejarse en `/game`: es la Obs #8 ya
+abierta (2+ tripulantes encolados para la misma pieza), 13c solo hizo su mensaje más específico. (c) el riesgo
+sistémico al desmontar es la Subfase 13d, que depende de este `wear`. (d) no se implementó ninguna forma de
+REPARAR desgaste (principio 5: sin undo gratuito); hay un test de contrato que lo custodia.
+Suite: `/engine` 636 → 671 tests, `/game` 30 → 36. `tsc --noEmit` limpio en ambos, `vite build` limpio.
+Razón: cerrar el Gap ① de la comparativa con Duskers ("el gap más alineado con el nombre y la fantasía del
+juego", REPORTE_evaluacion_comparativas.md) y su prerrequisito bloqueante, la deuda #6.

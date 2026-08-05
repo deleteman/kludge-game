@@ -52,6 +52,7 @@ function placed(instanceId: string, definitionId: string, x: number, y: number):
     componentDefinitionId: componentId(definitionId),
     placement: { position: { x, y }, footprint: { width: 1, height: 1 }, rotation: 0 },
     condition: "ok",
+    wear: "nuevo",
   };
 }
 

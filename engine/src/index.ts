@@ -593,8 +593,34 @@ export { MutableShipState } from "./mission/mutable-ship-state.js";
 export { MutableCrewState } from "./mission/mutable-crew-state.js";
 export { MutableEnemyState } from "./mission/mutable-enemy-state.js";
 export { createShipTaskEffect, InsufficientStockError } from "./mission/ship-task-effect.js";
-export type { AtomicPartsStock } from "./inventory/inventory.types.js";
-export { hasStock, stockOf, consumeStock, creditStock } from "./inventory/inventory-ledger.js";
+export type { AtomicPartsStock, WearBuckets } from "./inventory/inventory.types.js";
+export {
+  hasStock,
+  stockOf,
+  stockOfWear,
+  wearBucketsOf,
+  consumeStock,
+  creditStock,
+} from "./inventory/inventory-ledger.js";
+
+// Desgaste por instancia (Subfase 13c, dominio `wear/`).
+export type { ComponentWear } from "./wear/wear.types.js";
+export {
+  DEFAULT_WEAR,
+  WEAR_ORDER,
+  isComponentWear,
+  wearSteps,
+  worsenWear,
+  worstWear,
+} from "./wear/wear.types.js";
+export type { EffectiveResistance } from "./wear/effective-resistance.js";
+export { effectiveResistance, effectiveResistanceSteps } from "./wear/effective-resistance.js";
+export { wornCapacity, CAPACITY_LOSS_PER_WEAR_STEP } from "./wear/overload-capacity.js";
+export { wearAfterDismantle } from "./wear/dismantle-wear.js";
+export type { DismantleWearDeps } from "./mission/ship-task-effect.js";
+export type { RandomSource } from "./simulation/random-source.js";
+export { sequenceRandom, systemRandom } from "./simulation/random-source.js";
+export { aggregateCreationMaterial } from "./workbench/creation-material-aggregation.js";
 export { MutableAtomicStock } from "./inventory/mutable-atomic-stock.js";
 export { CrisisRuntime } from "./mission/crisis-runtime.js";
 export type { CrisisRuntimeOptions } from "./mission/crisis-runtime.js";

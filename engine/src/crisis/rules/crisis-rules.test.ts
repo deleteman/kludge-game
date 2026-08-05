@@ -60,6 +60,7 @@ describe("JammedActuatorBlocksSectionRule", () => {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "jammed",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isTriggered(spec, ctx)).toBe(true);
@@ -72,6 +73,7 @@ describe("JammedActuatorBlocksSectionRule", () => {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isTriggered(spec, ctx)).toBe(false);
@@ -95,6 +97,7 @@ describe("MotionSensorsActiveRule", () => {
       componentDefinitionId: "fotorreceptor" as ComponentId,
       placement: { position: { x: 12, y: 9 }, footprint: { width: 1, height: 1 }, rotation: 0 },
       condition: "ok",
+      wear: "nuevo",
     };
   }
 
@@ -195,6 +198,7 @@ describe("ReplacementInstalledConnectedRule", () => {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(true);
@@ -207,6 +211,7 @@ describe("ReplacementInstalledConnectedRule", () => {
         componentDefinitionId: "motor-pequeno" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 2, height: 2 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(true);
@@ -219,6 +224,7 @@ describe("ReplacementInstalledConnectedRule", () => {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "jammed",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(false);
@@ -231,6 +237,7 @@ describe("ReplacementInstalledConnectedRule", () => {
         componentDefinitionId: "cable-cobre" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(false);
@@ -243,6 +250,7 @@ describe("ReplacementInstalledConnectedRule", () => {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(false);
@@ -266,6 +274,7 @@ describe("FunctionalTagInstalledRule", () => {
           componentDefinitionId: "motor-pequeno" as ComponentId,
           placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "ok",
+          wear: "nuevo",
         },
       ]),
       componentRegistry,
@@ -281,6 +290,7 @@ describe("FunctionalTagInstalledRule", () => {
           componentDefinitionId: "valvula-simple" as ComponentId,
           placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "ok",
+          wear: "nuevo",
         },
       ]),
       componentRegistry,
@@ -296,6 +306,7 @@ describe("FunctionalTagInstalledRule", () => {
           componentDefinitionId: "cable-cobre" as ComponentId,
           placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "ok",
+          wear: "nuevo",
         },
       ]),
       componentRegistry,
@@ -311,6 +322,7 @@ describe("FunctionalTagInstalledRule", () => {
           componentDefinitionId: "valvula-simple" as ComponentId,
           placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "jammed",
+          wear: "nuevo",
         },
       ]),
       componentRegistry,
@@ -325,6 +337,7 @@ describe("FunctionalTagInstalledRule", () => {
         componentDefinitionId: "motor-pequeno" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
     expect(rule.isResolved(spec, ctx)).toBe(false);

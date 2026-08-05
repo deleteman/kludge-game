@@ -50,6 +50,7 @@ function chapter01InitialShip(): Blueprint {
         componentDefinitionId: "valvula-simple" as ComponentId,
         placement: { position: CHAPTER_01_ANCHOR_POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "jammed",
+        wear: "nuevo",
       },
       // Sensor + panel de compuerta (dueños de los nodos de señal del 2º paso).
       ...CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE.exploracion,
@@ -82,8 +83,8 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
     // la escasez del capítulo 1 — eso lo cubre `chapter-01-primer-aviso.test.ts`).
     // Subfase 11h: también 1 junta hermética de repuesto, para sellar la fuga.
     const atomicStock = new MutableAtomicStock({
-      ["motor-pequeno" as ComponentId]: 1,
-      ["junta-hermetica" as ComponentId]: 1,
+      ["motor-pequeno" as ComponentId]: { nuevo: 1 },
+      ["junta-hermetica" as ComponentId]: { nuevo: 1 },
     });
     const scheduler = new TaskScheduler({
       effect: createShipTaskEffect(shipState, componentRegistry, atomicStock),
@@ -191,6 +192,7 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
       componentDefinitionId: "motor-pequeno" as ComponentId,
       placement: { position: CHAPTER_01_ANCHOR_POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
       condition: "ok",
+      wear: "nuevo",
     });
     expect(
       finalShip.placedComponents.some((c) => c.instanceId === CHAPTER_01_ACTUATOR_INSTANCE_ID),

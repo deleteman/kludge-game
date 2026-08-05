@@ -2,6 +2,7 @@ import type {
   ChemicalSubstanceId,
   ChemicalTag,
   ComponentCondition,
+  ComponentWear,
   ConduitKind,
   CoreLoopMode,
   ShipStatusLevel,
@@ -128,6 +129,35 @@ export const SIGNAL_NODE_COLORS: Readonly<Record<SignalNodeRole, number>> = {
 export const COMPONENT_CONDITION_TINT: Readonly<Partial<Record<ComponentCondition, number>>> = {
   jammed: CRISIS_WARNING_COLOR, // ámbar del contrato (Fase 12e)
   destroyed: 0x4a4a52,
+};
+
+/**
+ * Tinte por DESGASTE de una instancia (Subfase 13c). Eje ortogonal a
+ * `COMPONENT_CONDITION_TINT`: aquel dice si la pieza responde, este dice cuánta
+ * historia arrastra. Una pieza desgastada funciona con normalidad, así que su
+ * señal visual es más apagada que la de `jammed` — no es una alarma, es una
+ * advertencia de fragilidad.
+ *
+ * `nuevo` no tiñe (usa el color de sección normal). Los tres niveles restantes
+ * no inventan hues fuera del contrato de 12e: `usado` es un desaturado neutro
+ * (todavía no es un problema), `degradado` es el ámbar del contrato y `critico`
+ * el rojo — el mismo lenguaje rojo/ámbar/seguro que el resto de la UI.
+ *
+ * Prioridad al pintar (`mission-overlay-renderer.ts`): `condition` gana sobre
+ * `wear`. Una pieza destruida se ve destruida aunque además esté degradada; el
+ * dato más grave manda, para no colapsar dos estados en un color intermedio.
+ */
+export const COMPONENT_WEAR_TINT: Readonly<Partial<Record<ComponentWear, number>>> = {
+  usado: 0xb9a98f, // bronce apagado: se nota, no alarma
+  degradado: CRISIS_WARNING_COLOR,
+  critico: CRISIS_FATAL_COLOR,
+};
+
+/** Color de texto del tag de desgaste en el inspector, por nivel. */
+export const COMPONENT_WEAR_CSS: Readonly<Partial<Record<ComponentWear, string>>> = {
+  usado: hexToCss(0xb9a98f),
+  degradado: CRISIS_WARNING_CSS,
+  critico: CRISIS_FATAL_CSS,
 };
 
 /**

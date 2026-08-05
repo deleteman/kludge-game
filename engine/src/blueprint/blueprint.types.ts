@@ -7,6 +7,7 @@ import type { StructuralResistanceLevel } from "../properties/material.types.js"
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
 import type { PowerState } from "../power/power.types.js";
+import type { ComponentWear } from "../wear/wear.types.js";
 
 /**
  * Blueprint schema — PRIMER INTENTO, PROVISIONAL (GDD sección 17: "formato
@@ -77,6 +78,16 @@ import type { PowerState } from "../power/power.types.js";
  * `powerState.permanentlyDisconnectedSectionIds`, para que un apagón elegido
  * por el jugador en una misión no se filtre como cicatriz definitiva del
  * guardado de campaña.
+ *
+ * Fase 13c: `schemaVersion` 6→7 — se añade `PlacedComponentInstance.wear`
+ * (dominio `wear/`, degradación funcional estilo Duskers). Con esto
+ * `structuralResistanceOverride` queda DEPRECADO: pasa a ser un campo de solo
+ * lectura para migrar saves ≤ v6, y la resistencia efectiva se deriva de
+ * `RE de catálogo + wear` en un único lugar (`wear/effective-resistance.ts`).
+ * El motivo del reemplazo es que la corrosión escribía RE directamente y el
+ * desgaste iba a modificar la RE efectiva: mantener ambos habría contado el
+ * mismo daño dos veces sobre la misma pieza. Un solo eje, mapeado 1:1, así que
+ * el ritmo de degradación por corrosión de la Espec. §1 no cambió.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -106,11 +117,22 @@ export interface PlacedComponentInstance {
   readonly placement: PlacedFootprint;
   readonly condition: ComponentCondition;
   /**
-   * Cicatriz de RE (Fase 11b): nivel de resistencia estructural degradado de
-   * forma permanente por `StructuralIntegrity`, distinto del RE de catálogo
-   * de `componentDefinitionId`. Ausente = sin degradar, se usa el RE de
-   * catálogo. Nunca sube: solo `MissionStructuralRuntime` lo escribe, y solo
-   * hacia un nivel peor.
+   * Desgaste acumulado (Fase 13c, dominio `wear/`). Eje ORTOGONAL a
+   * `condition`: esta pieza responde con normalidad, pero es más frágil —
+   * menos RE efectiva y menos capacidad ante sobrecarga. Escrito por la
+   * canibalización (`ship-task-effect.ts`) y por la exposición corrosiva
+   * (`MissionStructuralRuntime`). Nunca mejora (principio 5 de CLAUDE.md).
+   */
+  readonly wear: ComponentWear;
+  /**
+   * @deprecated Desde la Fase 13c. Cicatriz de RE de la Fase 11b: nivel de
+   * resistencia estructural degradado de forma permanente por
+   * `StructuralIntegrity`. Ningún runtime lo escribe ya — la resistencia
+   * efectiva se deriva de `RE de catálogo + wear`
+   * (`wear/effective-resistance.ts`). Se conserva SOLO por retrocompatibilidad
+   * de saves ≤ v6: `effectiveResistance()` lo recibe como tercer argumento y
+   * se queda con el PEOR de los dos ejes, así una cicatriz vieja no se pierde.
+   * No leerlo directamente desde código nuevo.
    */
   readonly structuralResistanceOverride?: StructuralResistanceLevel;
 }

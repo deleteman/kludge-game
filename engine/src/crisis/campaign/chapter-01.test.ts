@@ -57,6 +57,7 @@ function shipWithActuator(condition: "ok" | "jammed", definitionId: ComponentId)
           rotation: 0,
         },
         condition,
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],

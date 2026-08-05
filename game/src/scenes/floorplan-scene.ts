@@ -1406,6 +1406,8 @@ export class FloorplanScene extends Phaser.Scene {
       this.tooltip = renderMissionTooltip(this.rex, content, {
         functionalDescription: (tag) => t(`component.functional.${tag}`),
         structuralResistance: (level) => t(`component.material.re.${STRUCTURAL_RESISTANCE_LEVEL_KEY[level]}`),
+        wearTag: (wear) => t(`component.wear.${wear}`),
+        structuralFailure: t("component.material.re.fallo"),
         compositionTitle: t("ui.floorplan.mission.composition-title"),
       }).setDepth(RENDER_DEPTH.hudContent);
       this.markAsHudObject(this.tooltip);

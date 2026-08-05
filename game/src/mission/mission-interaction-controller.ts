@@ -1,6 +1,7 @@
 import type Phaser from "phaser";
 import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
 import {
+  effectiveResistance,
   ATOMIC_COMPONENT_CATALOG,
   assertSignalWiringReachable,
   findFittingInstallPlacement,
@@ -250,8 +251,18 @@ export class MissionInteractionController {
         // ComponentId crudo como "valvula-simple").
         name: definition?.name ?? this.nameByComponentId.get(instance.componentDefinitionId) ?? instance.componentDefinitionId,
         condition: instance.condition,
+        wear: instance.wear,
         functional: definition?.data.functional,
         material: definition?.data.material,
+        // Fase 13c: la ficha muestra la resistencia REAL (catálogo + desgaste),
+        // no la de catálogo. Antes mentía en cuanto la pieza se corroía o se
+        // canibalizaba — decía "A" mientras el motor la trataba como "M".
+        effectiveResistance:
+          effectiveResistance(
+            definition?.data.material?.RE,
+            instance.wear,
+            instance.structuralResistanceOverride,
+          ) ?? undefined,
         composition: definition ? this.buildComposition(definition) : undefined,
       };
     }
@@ -594,15 +605,21 @@ export class MissionInteractionController {
    * Una creación sin footprint no es instalable (no se sabe cuánto ocupa).
    */
   private buildInventoryOptions(): ReadonlyArray<InstallPickerOption> {
-    const atomicOptions: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
-      (spec) => this.mission.stockOf(spec.id) > 0,
-    ).map((spec) => ({
-      id: spec.id,
-      name: spec.name,
-      footprint: spec.data.footprint,
-      functional: spec.data.functional,
-      material: spec.data.material,
-    }));
+    // Fase 13c: una fila por BUCKET de desgaste, no una por pieza. Si hay 2
+    // sensores nuevos y 1 usado, el jugador ve las dos opciones y elige cuál
+    // gasta — colapsarlas en "Sensor ×3" escondería que un tercio del stock
+    // está degradado.
+    const atomicOptions: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.flatMap((spec) =>
+      this.mission.wearBucketsOf(spec.id).map((bucket) => ({
+        id: spec.id,
+        name: spec.name,
+        footprint: spec.data.footprint,
+        functional: spec.data.functional,
+        material: spec.data.material,
+        wear: bucket.wear,
+        quantity: bucket.quantity,
+      })),
+    );
     const creationOptions: InstallPickerOption[] = [];
     for (const def of this.mission.installableCreations) {
       const footprint = def.data.footprint;
@@ -674,6 +691,7 @@ export class MissionInteractionController {
         selectHint: t("ui.floorplan.mission.install-modal.select-hint"),
         functionalDescription: (tag) => t(`component.functional.${tag}`),
         structuralResistance: (level) => t(`component.material.re.${STRUCTURAL_RESISTANCE_LEVEL_KEY[level]}`),
+        wearTag: (wear) => t(`component.wear.${wear}`),
         compositionTitle: t("ui.floorplan.mission.composition-title"),
         inventoryTab: t("ui.floorplan.mission.install-modal.inventory-tab"),
         catalogTab: t("ui.floorplan.mission.install-modal.catalog-tab"),
@@ -738,7 +756,13 @@ export class MissionInteractionController {
       this.callbacks.setStatus(issues.map((issue) => issue.detail).join(" / "));
       return;
     }
-    this.mission.queueInstall(this.selectedActorIdValue, option.id, option.footprint, fitPosition);
+    this.mission.queueInstall(
+      this.selectedActorIdValue,
+      option.id,
+      option.footprint,
+      fitPosition,
+      option.wear,
+    );
     this.closeInstallPicker();
     this.setActionPanelContent({ kind: "idle" });
     this.callbacks.onTaskQueued();

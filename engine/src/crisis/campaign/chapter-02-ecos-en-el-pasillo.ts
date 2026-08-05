@@ -159,6 +159,7 @@ function buildChapter02SeededComponents(archetype: ShipArchetype): ReadonlyArray
     componentDefinitionId: definitionId as ComponentId,
     placement: { position, footprint: { width: 1, height: 1 }, rotation: 0 },
     condition: "ok",
+    wear: "nuevo",
   });
   return [
     cell(params.sensorAPosition, CHAPTER_02_SENSOR_A_INSTANCE_ID, "fotorreceptor"),

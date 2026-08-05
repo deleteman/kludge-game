@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPONENT_WEAR_TINT,
+  COMPONENT_WEAR_CSS,
   CRISIS_FATAL_COLOR,
   CRISIS_WARNING_COLOR,
   CRISIS_SAFE_COLOR,
@@ -60,6 +62,39 @@ describe("contrato de color de crisis (Eje A)", () => {
     expect(CRISIS_FATAL_CSS).toBe(hexToCss(CRISIS_FATAL_COLOR));
     expect(CRISIS_WARNING_CSS).toBe(hexToCss(CRISIS_WARNING_COLOR));
     expect(CRISIS_SAFE_CSS).toBe(hexToCss(CRISIS_SAFE_COLOR));
+  });
+});
+
+describe("desgaste de componente (Fase 13c) respeta el contrato", () => {
+  it("degradado y critico derivan del Eje A, no de hexes inventados", () => {
+    expect(COMPONENT_WEAR_TINT.degradado).toBe(CRISIS_WARNING_COLOR);
+    expect(COMPONENT_WEAR_TINT.critico).toBe(CRISIS_FATAL_COLOR);
+  });
+
+  it("nuevo no tiñe (una pieza de fábrica se ve como cualquier otra)", () => {
+    expect(COMPONENT_WEAR_TINT.nuevo).toBeUndefined();
+  });
+
+  it("usado no se confunde con ningún estado del Eje A: todavía no es un problema", () => {
+    const crisisAxis = [CRISIS_FATAL_COLOR, CRISIS_WARNING_COLOR, CRISIS_SAFE_COLOR, INFO_NEUTRAL_COLOR];
+    expect(crisisAxis).not.toContain(COMPONENT_WEAR_TINT.usado);
+  });
+
+  it("el desgaste escala en gravedad, nunca al revés (usado ≠ critico)", () => {
+    expect(COMPONENT_WEAR_TINT.usado).not.toBe(COMPONENT_WEAR_TINT.critico);
+    expect(COMPONENT_WEAR_TINT.degradado).not.toBe(COMPONENT_WEAR_TINT.critico);
+  });
+
+  it("los espejos CSS del desgaste coinciden con sus tintes", () => {
+    expect(COMPONENT_WEAR_CSS.degradado).toBe(CRISIS_WARNING_CSS);
+    expect(COMPONENT_WEAR_CSS.critico).toBe(CRISIS_FATAL_CSS);
+    expect(COMPONENT_WEAR_CSS.usado).toBe(hexToCss(COMPONENT_WEAR_TINT.usado!));
+  });
+
+  it("el desgaste NUNCA usa el verde reservado a 'todo bien' (misma regresión que la deuda #15)", () => {
+    for (const tint of Object.values(COMPONENT_WEAR_TINT)) {
+      expect(tint).not.toBe(CRISIS_SAFE_COLOR);
+    }
   });
 });
 

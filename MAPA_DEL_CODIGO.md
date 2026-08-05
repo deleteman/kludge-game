@@ -607,3 +607,44 @@
 - Ronda 3: `unallocatedPowerUnits()`/`syncEnergySliderCaps()` imponen el tope global del reparto (los sliders de las otras secciones se reajustan sin reconstruirse). Constante `ENERGY_CONTROL_BOX`, fuente única de la que se derivan el panel de fondo (`createKenneyPanel`) y `energyControlWorldBounds`.
 - Ronda 4: suscripción a `mission.powerEvents` → aviso de déficit por el `NotificationCenter`; `syncEnergySliderCaps` refresca además lo otorgado en todos los sliders.
 - Ronda 7: `ENERGY_CONTROL_BOX` gana `padding` y crece a 120×90 con las 3 piezas re-espaciadas (la etiqueta se salía del panel); `ENERGY_CONTROL_SHADOW` + un segundo `createKenneyPanel` tintado de negro hacen de sombra dura, sin shaders (hay un cluster por sección).
+
+## `engine/src/wear/` (nuevo, Fase 13c)
+
+- `wear.types.ts`: `ComponentWear` (`nuevo`/`usado`/`degradado`/`critico`), `WEAR_ORDER`, `wearSteps`, `worsenWear`, `worstWear`. Eje ortogonal a `ComponentCondition`. No existe función inversa a propósito (principio 5: sin undo gratuito).
+- `effective-resistance.ts`: `effectiveResistance(catalogRE, wear, legacyOverride?)` — punto ÚNICO donde el desgaste entra en el cálculo estructural; antes la fórmula estaba replicada en 3 sitios. Mapeo 1:1 (un escalón de desgaste = un escalón de RE) + retrocompat de la cicatriz `structuralResistanceOverride` de saves ≤ v6 (gana el peor de los dos ejes).
+- `overload-capacity.ts`: `wornCapacity(capacity, wear)` = −15% por escalón. Así el desgaste sube el riesgo de fallo catastrófico sin meter azar en el tick de simulación.
+- `dismantle-wear.ts`: `wearAfterDismantle` — probabilidad de conservar el estado al canibalizar, reutilizando `atomicRecoveryFraction` (GDD §6.5) como probabilidad por pieza. Sin `RandomSource` inyectado nunca degrada.
+
+## `engine/src/simulation/random-source.ts` (nuevo, Fase 13c)
+
+- `RandomSource` (tipo inyectable), `sequenceRandom` (secuencia fija para tests), `systemRandom`. Primer y único azar del motor; se inyecta para que los casos de validación sigan siendo reproducibles.
+
+## `engine/src/properties/material-order.ts` (nuevo, Fase 13c)
+
+- `RE_ORDER`/`CE_ORDER`/`CT_ORDER` + `worstResistance`/`bestConductivity`/`bestThermalConductivity`. El orden canónico de niveles de material, antes un array local de `structural-failure.ts`.
+
+## `engine/src/workbench/creation-material-aggregation.ts` (nuevo, Fase 13c — deuda #6)
+
+- `aggregateCreationMaterial`: RE = peor de las partes, MAG = OR, CE/CT = mayor, ES = mayoritario. Consumido por `creation-naming.ts`, que hasta ahora solo agregaba propiedades funcionales.
+
+## `engine/src/inventory/` (modificado, Fase 13c)
+
+- `inventory.types.ts`: `AtomicPartsStock` pasa de `Record<ComponentId, number>` a buckets por desgaste (`WearBuckets`) — sin esto no hay dónde guardar la historia de una pieza entre desmontarla y reinstalarla.
+- `inventory-ledger.ts`: `stockOf` conserva su firma y devuelve el total; nuevos `stockOfWear`/`wearBucketsOf`; `consumeStock`/`creditStock` operan sobre un bucket explícito y no caen a otro.
+
+## `engine/src/mission/ship-task-effect.ts` (modificado, Fase 13c)
+
+- `DismantleWearDeps` (azar + lookup `actorId → CrewActor`, ambos opcionales): el desmontaje degrada la pieza según el tier del especialista y la instalación toma el desgaste del bucket consumido. Sin las deps, comportamiento pre-13c intacto.
+
+## `engine/src/blueprint/` · `engine/src/save/` (modificado, Fase 13c)
+
+- `PlacedComponentInstance.wear` requerido (`schemaVersion` 6→7, default `nuevo` en el guard); `structuralResistanceOverride` deprecado a solo-lectura. `CampaignSaveState` 3→4 por el cambio de forma del stock, con migración `number → {nuevo: n}`.
+
+## `game/src/render/palette.ts` (modificado, Fase 13c)
+
+- `COMPONENT_WEAR_TINT`/`COMPONENT_WEAR_CSS`: `degradado` y `critico` derivan del contrato de 12e; `usado` es un bronce apagado que no colisiona con el Eje A. `condition` gana sobre `wear` al pintar.
+
+## `game/src/ui/widgets/mission-tooltip.ts` · `install-picker-modal.ts` (modificado, Fase 13c)
+
+- Tooltip: tag de desgaste + resistencia EFECTIVA (corrige un bug preexistente que mostraba el RE de catálogo).
+- Selector de instalación: una fila por bucket de desgaste (`optionRowLabel`), para que el jugador elija qué unidad gasta en vez de recibir la peor en silencio.

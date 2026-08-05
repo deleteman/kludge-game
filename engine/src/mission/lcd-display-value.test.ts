@@ -33,12 +33,14 @@ function baseBlueprint(): Blueprint {
         componentDefinitionId: "sensor-presion" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
       {
         instanceId: LCD_INSTANCE,
         componentDefinitionId: "pantalla-lcd" as ComponentId,
         placement: { position: { x: 1, y: 0 }, footprint: { width: 2, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],
@@ -105,6 +107,7 @@ describe("mission: resolveLcdDisplayValue (Subfase 11h, caso 19)", () => {
           componentDefinitionId: "chip-circuito-generico" as ComponentId,
           placement: { position: { x: 0, y: 1 }, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "ok",
+          wear: "nuevo",
         },
       ],
       signalGraph: {

@@ -1,6 +1,7 @@
 import { assertIsBlueprintShape } from "../blueprint/blueprint-serializer.js";
 import { assertBlueprintIntegrity } from "../blueprint/blueprint-integrity.js";
 import { assertCampaignSaveIntegrity } from "./campaign-save-integrity.js";
+import { DEFAULT_WEAR, isComponentWear } from "../wear/wear.types.js";
 import type { CampaignSaveState } from "./campaign-save.types.js";
 
 /**
@@ -108,10 +109,35 @@ function assertIsCampaignSaveShape(value: unknown): asserts value is CampaignSav
     if (!isPlainObject(atomicStock)) {
       throw new CampaignSaveParseError("CampaignSaveState.atomicStock must be an object");
     }
-    for (const [id, quantity] of Object.entries(atomicStock)) {
-      if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 0) {
-        throw new CampaignSaveParseError(`CampaignSaveState.atomicStock.${id} must be a non-negative integer`);
+    for (const [id, entry] of Object.entries(atomicStock)) {
+      // schemaVersion < 4 guardaba un único número por pieza; desde 13c son
+      // buckets por desgaste. Un save viejo se migra al bucket `nuevo`: nada
+      // de lo guardado hasta ahora podía estar desgastado, porque el concepto
+      // no existía.
+      if (typeof entry === "number") {
+        assertNonNegativeInteger(entry, `CampaignSaveState.atomicStock.${id}`);
+        (atomicStock as Record<string, unknown>)[id] = { [DEFAULT_WEAR]: entry };
+        continue;
+      }
+      if (!isPlainObject(entry)) {
+        throw new CampaignSaveParseError(
+          `CampaignSaveState.atomicStock.${id} must be an object of wear buckets`,
+        );
+      }
+      for (const [wear, quantity] of Object.entries(entry)) {
+        if (!isComponentWear(wear)) {
+          throw new CampaignSaveParseError(
+            `CampaignSaveState.atomicStock.${id} has invalid wear bucket: ${wear}`,
+          );
+        }
+        assertNonNegativeInteger(quantity, `CampaignSaveState.atomicStock.${id}.${wear}`);
       }
     }
+  }
+}
+
+function assertNonNegativeInteger(value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new CampaignSaveParseError(`${path} must be a non-negative integer`);
   }
 }

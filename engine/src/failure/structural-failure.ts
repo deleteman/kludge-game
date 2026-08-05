@@ -3,10 +3,11 @@ import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { ChemicalTagLevel } from "../properties/chemical-tag.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
+// Orden de resistencia estructural de mayor a menor (GDD 7.0): A → M → B → fallo.
+// Desde 13c vive en `properties/material-order.ts` — este módulo dejó de ser su
+// único consumidor (la agregación de creaciones y el dominio `wear/` lo usan).
+import { RE_ORDER } from "../properties/material-order.js";
 import type { FailureDomainEvent } from "./failure-events.types.js";
-
-/** Orden de resistencia estructural de mayor a menor (GDD 7.0): A → M → B → fallo. */
-const RE_ORDER: ReadonlyArray<StructuralResistanceLevel> = ["A", "M", "B"];
 
 /**
  * Segundos de exposición continua para bajar un nivel de RE, según el nivel del

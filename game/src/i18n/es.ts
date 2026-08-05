@@ -140,6 +140,14 @@ export const ES: Readonly<Record<string, string>> = {
   "component.material.re.alta": "Resistencia estructural: alta",
   "component.material.re.media": "Resistencia estructural: media",
   "component.material.re.baja": "Resistencia estructural: baja",
+  // Fase 13c: el desgaste consumió todos los escalones de RE de la pieza.
+  "component.material.re.fallo": "Resistencia estructural: FALLO",
+  // Desgaste por instancia (Fase 13c). `nuevo` existe por completitud aunque la
+  // UI no lo etiquete (es el caso por defecto).
+  "component.wear.nuevo": "[NUEVO]",
+  "component.wear.usado": "[USADO]",
+  "component.wear.degradado": "[DEGRADADO]",
+  "component.wear.critico": "[CRÍTICO]",
   "ui.floorplan.mission.crisis-state.not-triggered": "sin disparar",
   "ui.floorplan.mission.crisis-state.active": "activa",
   "ui.floorplan.mission.crisis-state.resolved-success": "resuelta",

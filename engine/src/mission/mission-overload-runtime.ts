@@ -11,6 +11,7 @@ import {
 import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ScriptedOverloadSubject } from "../crisis/crisis-definition.types.js";
+import { wornCapacity } from "../wear/overload-capacity.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
 /**
@@ -67,10 +68,13 @@ export class MissionOverloadRuntime implements Tickable {
       if (!baseSubject) {
         continue;
       }
-      const subject =
-        scripted.capacityOverride === undefined
-          ? baseSubject
-          : { ...baseSubject, capacity: scripted.capacityOverride };
+      const declaredCapacity =
+        scripted.capacityOverride === undefined ? baseSubject.capacity : scripted.capacityOverride;
+      // Fase 13c: una pieza desgastada aguanta menos. Es la forma en que el
+      // desgaste "sube la probabilidad de fallo catastrófico" (GDD 6.3) sin
+      // meter dados en el tick — la misma carga que la pieza nueva toleraba
+      // ahora la revienta. `OverloadRule` sigue siendo determinista.
+      const subject = { ...baseSubject, capacity: wornCapacity(declaredCapacity, instance.wear) };
 
       const event = this.rule.evaluate(subject, ctx, this.emitter);
       if (!event) {

@@ -50,6 +50,7 @@ function sealInstance(condition: "ok" | "jammed" | "destroyed"): Blueprint["plac
     componentDefinitionId: "junta-hermetica" as ComponentId,
     placement: { position: POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
     condition,
+    wear: "nuevo",
   };
 }
 
@@ -85,6 +86,7 @@ describe("mission: sealBreachPressureSink (Subfase 11h, escenario de fuga en Cap
           componentDefinitionId: "junta-hermetica" as ComponentId,
           placement: { position: POSITION, footprint: { width: 1, height: 1 }, rotation: 0 },
           condition: "ok",
+          wear: "nuevo",
         },
       ]),
     );

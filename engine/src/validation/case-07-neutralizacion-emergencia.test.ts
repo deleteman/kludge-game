@@ -10,6 +10,7 @@
 // exactamente lo que corre en misión — y confirma que la cicatriz sobrevive un
 // round-trip de guardado (schema v4, Fase 11b).
 import { describe, expect, it } from "vitest";
+import { effectiveResistance } from "../wear/effective-resistance.js";
 import {
   buildChemicalCatalog,
   deserializeBlueprint,
@@ -69,6 +70,7 @@ function blueprintWithHullPanel(): Blueprint {
         componentDefinitionId: HULL_COMPONENT,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],
@@ -123,7 +125,10 @@ describe("case 7 — La Neutralización de Emergencia", () => {
     // La fuga corroe el casco sin intervención: 8s a corrosivo alto (~7.5s/nivel) ya degrada un nivel.
     run(8);
     const hullAfterExposure = shipState.get().placedComponents.find((entry) => entry.instanceId === HULL_INSTANCE);
-    expect(hullAfterExposure?.structuralResistanceOverride).toBe("M");
+    // Fase 13c: la cicatriz vive ahora en `wear`, mapeada 1:1 a escalones de
+    // RE — el timing de la Espec. §1 que este caso valida es idéntico.
+    expect(hullAfterExposure?.wear).toBe("usado");
+    expect(effectiveResistance("A", hullAfterExposure?.wear)).toBe("M");
 
     // El jugador mezcla base disponible en el mismo pasillo: ácido+base neutraliza (verificado con el motor de reacciones puro).
     const acidoBateria = chemicalRegistry.get(ACIDO_BATERIA)!;
@@ -153,13 +158,13 @@ describe("case 7 — La Neutralización de Emergencia", () => {
     // tiempo — la cicatriz ya hecha persiste, pero no crece.
     run(60);
     const hullAfterNeutralizing = shipState.get().placedComponents.find((entry) => entry.instanceId === HULL_INSTANCE);
-    expect(hullAfterNeutralizing?.structuralResistanceOverride).toBe("M");
+    expect(hullAfterNeutralizing?.wear).toBe("usado");
 
-    // La cicatriz sobrevive un guardado real (Fase 11b, schema v4) — no es
-    // solo estado en memoria de la sesión de misión.
+    // La cicatriz sobrevive un guardado real (Fase 11b, schema v7 desde 13c) —
+    // no es solo estado en memoria de la sesión de misión.
     const restored = deserializeBlueprint(serializeBlueprint(shipState.get()));
-    expect(
-      restored.placedComponents.find((entry) => entry.instanceId === HULL_INSTANCE)?.structuralResistanceOverride,
-    ).toBe("M");
+    const restoredHull = restored.placedComponents.find((entry) => entry.instanceId === HULL_INSTANCE);
+    expect(restoredHull?.wear).toBe("usado");
+    expect(effectiveResistance("A", restoredHull?.wear)).toBe("M");
   });
 });

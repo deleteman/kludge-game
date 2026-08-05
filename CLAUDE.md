@@ -63,12 +63,14 @@ Documentación de referencia (leer antes de tocar el sistema correspondiente):
 ## Orden de implementación
 Cada vez que inicies el proceso de implementación, seguirás estos pasos **sin excepción**:
 1. Leer los documentos del proyecto para entender que tienes la ultima versión del entendimiento
-2. Planificar la implementación (si ya no vienes con un plan de implementación dado).
+2. Planificar la implementación (si ya no vienes con un plan de implementación dado), para esta planificación utiliza los criterios aprendidos del feedback del operador en `feedback-aprender-del-patron-de-playtest`.
 3. Solicitar al operador humano cualquier dato que no tengas claro, **debes minimizar tus assumptions al minimo** y preguntar antes de implementar nada.
 4. Implementar la tarea actual siguiendo las guías definidas en este y otros documentos.
 5. Cuando termines con la actividad actual, actualizar el archivo `ORDEN_DE_TRABAJO.md` marcando la tarea como cerrad.
 6. Mantendras un log de cambios en `changelog.log` en donde registraras la fecha del cambio, el detalle de lo que hicisite y la razón.
 7. Al cerrar cualquier fase o sub-fase, actualizar MAPA_DEL_CODIGO.md con los módulos nuevos o modificados — una línea por módulo, no un changelog. Es un paso de cierre, no opcional.
+8. al cerrar cualquier fase o sub-fase de iteracion, actualiza los criterios de diseño que tienes en `feedback-aprender-del-patron-de-playtest` a partir de lo que yo te doy como feedback del playtest para evitar esos problemas a futuro.
+
 
 
 ## Uso eficiente de contexto (agentes y lecturas)

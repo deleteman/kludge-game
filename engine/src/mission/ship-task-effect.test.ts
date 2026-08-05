@@ -80,12 +80,14 @@ describe("createShipTaskEffect", () => {
             componentDefinitionId: "valvula-simple" as ComponentId,
             placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
             condition: "jammed",
+            wear: "nuevo",
           },
           {
             instanceId: "other" as PlacedComponentInstanceId,
             componentDefinitionId: "cable-cobre" as ComponentId,
             placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
             condition: "ok",
+            wear: "nuevo",
           },
         ],
         reservoirContents: [{ componentInstanceId: instanceId, substanceId: "x" as never, amount: 1 }],
@@ -139,6 +141,7 @@ describe("createShipTaskEffect", () => {
         componentDefinitionId: "motor-pequeno" as ComponentId,
         placement: { position: { x: 6, y: 4 }, footprint: { width: 2, height: 2 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ]);
   });
@@ -154,6 +157,7 @@ describe("createShipTaskEffect", () => {
             componentDefinitionId: "comp" as ComponentId,
             placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
             condition: "ok",
+            wear: "nuevo",
           },
         ],
         signalGraph: {
@@ -189,7 +193,7 @@ describe("createShipTaskEffect", () => {
     const effect = createShipTaskEffect(
       shipState,
       registry,
-      new MutableAtomicStock({ ["fotorreceptor" as ComponentId]: 1 }),
+      new MutableAtomicStock({ ["fotorreceptor" as ComponentId]: { nuevo: 1 } }),
     );
     const instanceId = "foto-1" as PlacedComponentInstanceId;
     const task = createCrewTask({
@@ -280,6 +284,7 @@ describe("createShipTaskEffect", () => {
             componentDefinitionId: "herramientas-reparacion-externa" as ComponentId,
             placement: { position: { x: 5, y: 5 }, footprint: { width: 1, height: 1 }, rotation: 0 },
             condition: "ok",
+            wear: "nuevo",
           },
         ],
       }),
@@ -297,10 +302,10 @@ describe("createShipTaskEffect", () => {
     );
 
     expect(atomicStock.get()).toEqual({
-      ["motor-pequeno" as ComponentId]: 1,
-      ["plancha-metalica" as ComponentId]: 1,
-      ["tornilleria-fijacion" as ComponentId]: 3,
-      ["cable-cobre" as ComponentId]: 1,
+      ["motor-pequeno" as ComponentId]: { nuevo: 1 },
+      ["plancha-metalica" as ComponentId]: { nuevo: 1 },
+      ["tornilleria-fijacion" as ComponentId]: { nuevo: 3 },
+      ["cable-cobre" as ComponentId]: { nuevo: 1 },
     });
   });
 
@@ -315,6 +320,7 @@ describe("createShipTaskEffect", () => {
             componentDefinitionId: "valvula-simple" as ComponentId,
             placement: { position: { x: 5, y: 5 }, footprint: { width: 1, height: 1 }, rotation: 0 },
             condition: "ok",
+            wear: "nuevo",
           },
         ],
       }),
@@ -333,15 +339,17 @@ describe("createShipTaskEffect", () => {
 
     // La pieza atómica vuelve al stock como su propia pieza, y el desmontaje la
     // reporta en `obtained` (para el coleccionable + notificación de `/game`).
-    expect(atomicStock.get()).toEqual({ ["valvula-simple" as ComponentId]: 1 });
-    expect(result?.obtained).toEqual([{ componentId: "valvula-simple" as ComponentId, quantity: 1 }]);
+    expect(atomicStock.get()).toEqual({ ["valvula-simple" as ComponentId]: { nuevo: 1 } });
+    expect(result?.obtained).toEqual([
+      { componentId: "valvula-simple" as ComponentId, quantity: 1, wear: "nuevo" },
+    ]);
     expect(shipState.get().placedComponents).toEqual([]);
   });
 
   it("installing an atomic component consumes one unit of stock", () => {
     const registry = buildComponentCatalog().registry;
     const shipState = new MutableShipState(fixtureShip());
-    const atomicStock = new MutableAtomicStock({ ["motor-pequeno" as ComponentId]: 1 });
+    const atomicStock = new MutableAtomicStock({ ["motor-pequeno" as ComponentId]: { nuevo: 1 } });
     const effect = createShipTaskEffect(shipState, registry, atomicStock);
 
     effect(
@@ -358,7 +366,7 @@ describe("createShipTaskEffect", () => {
       }),
     );
 
-    expect(atomicStock.get()).toEqual({ ["motor-pequeno" as ComponentId]: 0 });
+    expect(atomicStock.get()).toEqual({ ["motor-pequeno" as ComponentId]: {} });
   });
 
   it("refuses to install an atomic component with no stock and leaves the ship untouched", () => {

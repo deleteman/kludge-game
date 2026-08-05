@@ -1,4 +1,5 @@
 import type { ComponentId } from "../components/physical-component.types.js";
+import { DEFAULT_WEAR } from "../wear/wear.types.js";
 import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ShipArchetype } from "./floorplan.types.js";
 import { SHIP_ARCHETYPES } from "./floorplan.types.js";
@@ -55,6 +56,8 @@ function starterKit(archetype: ShipArchetype): ReadonlyArray<PlacedComponentInst
     componentDefinitionId: "celula-fotovoltaica" as ComponentId,
     placement: { position, footprint: { width: 1, height: 2 }, rotation: 0 },
     condition: "ok" as const,
+    // Equipamiento de arranque: sale de fábrica, sin historia (13c).
+    wear: DEFAULT_WEAR,
   }));
 }
 

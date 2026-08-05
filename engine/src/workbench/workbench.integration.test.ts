@@ -51,6 +51,7 @@ function emptyBlueprintWithExistingNode(): Blueprint {
         componentDefinitionId: "generador-electrico" as ComponentId,
         placement: { position: { x: 2, y: 1 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],

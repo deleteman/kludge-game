@@ -40,6 +40,20 @@ function setup() {
   });
   registry.register(sensor.id, sensor);
 
+  const plancha = factory.buildAtomic({
+    id: "plancha-metalica" as ComponentId,
+    name: "Plancha metálica",
+    data: { footprint: { width: 1, height: 1 }, material: { RE: "A", MAG: true, CE: "M", ES: "S" } },
+  });
+  registry.register(plancha.id, plancha);
+
+  const lente = factory.buildAtomic({
+    id: "lente" as ComponentId,
+    name: "Lente",
+    data: { footprint: { width: 1, height: 1 }, material: { RE: "B", CE: "N", ES: "S" } },
+  });
+  registry.register(lente.id, lente);
+
   return { registry, factory };
 }
 
@@ -87,6 +101,35 @@ describe("workbench: creation naming", () => {
         { tag: "EM", range: 10, triggerType: "optical", frequency: 1 },
         { tag: "COND", resourceType: "E", maxCapacity: 100 },
       ]);
+    }
+  });
+
+  it("aggregates the pieces' MATERIAL properties into the composite (deuda #6: para poder corroerse y ser ferromagnética)", () => {
+    const { registry, factory } = setup();
+    const pieces = [piece("a", "plancha-metalica", 0, 0), piece("b", "lente", 1, 0)];
+
+    const composite = nameAndRegisterCreation(factory, registry, pieces, {
+      id: "visor-blindado" as ComponentId,
+      name: "Visor blindado",
+    });
+
+    if (composite.level === "composite") {
+      // RE = peor de las partes (la lente frágil manda), MAG = OR, CE = mayor.
+      expect(composite.data.material).toEqual({ CE: "M", MAG: true, RE: "B", ES: "S" });
+    }
+  });
+
+  it("leaves material undefined when no piece declares any (compuestos puramente funcionales)", () => {
+    const { registry, factory } = setup();
+    const pieces = [piece("a", "fotorreceptor", 0, 0), piece("b", "cable-cobre", 1, 0)];
+
+    const composite = nameAndRegisterCreation(factory, registry, pieces, {
+      id: "sensor-cableado" as ComponentId,
+      name: "Sensor cableado",
+    });
+
+    if (composite.level === "composite") {
+      expect(composite.data.material).toBeUndefined();
     }
   });
 

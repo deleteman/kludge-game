@@ -6,6 +6,7 @@ import type { ComponentId } from "../components/physical-component.types.js";
 import type { PlacedFootprint } from "../geometry/grid-position.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import type { ComponentWear } from "../wear/wear.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 
 export type CrewTaskId = Brand<string, "CrewTaskId">;
@@ -65,6 +66,12 @@ export interface InstallTaskPayload {
   readonly instanceId: PlacedComponentInstanceId;
   readonly componentDefinitionId: ComponentId;
   readonly placement: PlacedFootprint;
+  /**
+   * Bucket de desgaste del que se toma la unidad (Fase 13c). El jugador lo
+   * elige en el selector de instalación cuando hay unidades en varios estados.
+   * Opcional y retrocompatible: ausente = `nuevo`, el bucket por defecto.
+   */
+  readonly wear?: ComponentWear;
 }
 
 export interface ConnectTaskPayload {
@@ -129,7 +136,12 @@ export interface CrewTask {
  * (principio 6, legibilidad visual total).
  */
 export interface TaskEffectResult {
-  readonly obtained?: ReadonlyArray<{ readonly componentId: ComponentId; readonly quantity: number }>;
+  readonly obtained?: ReadonlyArray<{
+    readonly componentId: ComponentId;
+    readonly quantity: number;
+    /** Desgaste con el que la pieza volvió al stock (Fase 13c) — `/game` lo muestra en la notificación. */
+    readonly wear?: ComponentWear;
+  }>;
   /** Sustancia cuya composición quedó revelada por "Analizar Sustancia" (Fase 11e). */
   readonly analyzedSubstanceId?: ChemicalSubstanceId;
 }

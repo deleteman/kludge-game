@@ -34,6 +34,7 @@ function placedInstance(
     instanceId: "instance-1" as PlacedComponentInstanceId,
     placement: { position: { x: 0, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
     condition: "ok",
+    wear: "nuevo",
     ...overrides,
   };
 }

@@ -9,6 +9,7 @@ import type {
 } from "../components/physical-component.types.js";
 import { calculateFootprint, calculateFootprintOrigin } from "./footprint-calculator.js";
 import { buildRecipeFromPieces } from "./creation-recipe-builder.js";
+import { aggregateCreationMaterial } from "./creation-material-aggregation.js";
 import { WorkbenchError, type WorkbenchPiece } from "./workbench-state.types.js";
 
 export interface NameCreationParams {
@@ -60,9 +61,16 @@ export function nameAndRegisterCreation(
   // emergen de las propiedades de sus partes (principios 1 y 3), no se declaran
   // aparte. Una propiedad por ingrediente distinto (la receta ya deduplica
   // piezas repetidas en `quantity`): un solo puerto por tipo de pieza con rol.
-  const aggregatedFunctional = factory
-    .resolveIngredients(recipe)
-    .flatMap(({ entity }) => entity.data.functional ?? []);
+  const ingredients = factory.resolveIngredients(recipe);
+  const aggregatedFunctional = ingredients.flatMap(({ entity }) => entity.data.functional ?? []);
+
+  // Agrega las propiedades de MATERIAL (deuda #6, prerrequisito de 13c): sin
+  // esto la creación no tenía `data.material`, así que no se corroía
+  // (`MissionStructuralRuntime` la saltaba) ni se detectaba ferromagnética.
+  // La regla por propiedad vive en `creation-material-aggregation.ts`, no acá.
+  const aggregatedMaterial = aggregateCreationMaterial(
+    ingredients.map(({ entity }) => entity.data.material),
+  );
 
   const composite = factory.buildComposite({
     id: params.id,
@@ -71,6 +79,7 @@ export function nameAndRegisterCreation(
       footprint,
       layout,
       ...(aggregatedFunctional.length > 0 ? { functional: aggregatedFunctional } : {}),
+      ...(aggregatedMaterial ? { material: aggregatedMaterial } : {}),
     },
     recipe,
   });

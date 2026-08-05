@@ -3016,3 +3016,64 @@ Ronda de pulido visual puro: lo único con algo de lógica (el bucle de ajuste d
 `label.width`, que solo existe con un `Text` real de Phaser, así que no tiene porción pura que aislar. Suites
 corridas como regresión: 30 tests en `/game` y 615 en `/engine`, sin cambios. `tsc --noEmit`/`vite build`
 limpios en ambos workspaces.
+
+### Subfase 13c — Degradación Funcional de Componentes ✅ (2026-08-05)
+
+Cierra el Gap ① de la comparativa con Duskers ("hardware degradado pero funcional") y su prerrequisito
+bloqueante, la deuda #6 de `PENDIENTES_OBSERVACIONES.md`. Depende del guardado/schema de 11b. Refuerza el
+Pilar 2 (consecuencias permanentes) en el bucle central del juego: hasta ahora desmontar y reinstalar una
+pieza era una operación gratuita — `installInstance` la creaba con `condition: "ok"` hardcodeado y el stock
+atómico era fungible, sin lugar donde guardar la historia de la pieza.
+
+* **Prerrequisito — agregación de material en creaciones (deuda #6, cerrada):**
+  `engine/src/workbench/creation-material-aggregation.ts`, una regla por propiedad decidida con el operador:
+  RE = el **peor** de las partes (eslabón más débil, mismo criterio worst-case de `aggregateHullIntegrity`),
+  MAG = OR, CE/CT = el mayor, ES = el mayoritario. El orden canónico de niveles se extrajo a
+  `engine/src/properties/material-order.ts`. Sin esto una creación instalada no tenía `data.material`, así que
+  no se corroía ni se detectaba ferromagnética.
+
+* **Dominio `engine/src/wear/`:** `ComponentWear` = `nuevo`/`usado`/`degradado`/`critico`. Se llama `wear` y
+  no `condition` porque `ComponentCondition` (ok/jammed/destroyed, Fase 10a) ya existía y es un eje
+  **ortogonal**. Efecto = **fragilidad, no eficiencia**: se descartó el nerf funcional del "80%" literal de
+  Duskers, la pieza conserva su propiedad funcional intacta.
+
+* **Mapeo 1:1 desgaste ↔ RE (decisión central):** `effectiveResistance()` = RE de catálogo bajado tantos
+  escalones como desgaste. Resolvió un **doble conteo** que el texto de la subfase no anticipaba: la corrosión
+  ya bajaba RE directamente (11b) y el desgaste iba a modificar la RE efectiva. Un solo eje —
+  `MissionStructuralRuntime` escribe `wear`, `structuralResistanceOverride` queda **deprecado** (solo lectura,
+  para que un save ≤ v6 no pierda su cicatriz). Como el mapeo es 1:1, el ritmo de la Espec. §1 es **idéntico**;
+  el caso de validación 7 lo confirma con los mismos 8 ticks.
+
+* **Centralización previa:** la fórmula `override ?? catálogo` estaba replicada en 3 sitios; se unificó en
+  `effectiveResistance()` antes de tocar nada, para que el modificador entrara en un único lugar.
+
+* **Escritor (1) — canibalización, primer azar del motor:** `/engine` era 100% determinista, así que el
+  "probabilístico por tier" se resolvió por **inyección** (`simulation/random-source.ts`). La probabilidad de
+  conservar el estado reutiliza `atomicRecoveryFraction` (GDD §6.5), que estaba **muerta en producción** desde
+  la Fase 9. `createShipTaskEffect` gana el lookup `actorId → CrewActor` que faltaba para leer el tier.
+
+* **Escritor (2) — corrosión:** mismo `StructuralIntegrity` por instancia, sembrado con la RE efectiva
+  (una pieza canibalizada entra ya debilitada al ácido) y escribiendo `wear`.
+
+* **Stock por buckets de desgaste:** `AtomicPartsStock` pasa a contar por `(pieza, desgaste)`. Era la única
+  forma de que el escritor (1) fuera realizable. `stockOf` conserva su firma (total) para no romper llamadores;
+  `consumeStock` **no** cae a otro bucket si el pedido está vacío.
+
+* **Consumo:** `wornCapacity()` (−15%/escalón) en `MissionOverloadRuntime` — el desgaste sube el riesgo de
+  fallo **sin dados en el tick**, `OverloadRule` sigue determinista. `instanceHullFraction` y el promotor de
+  proyectiles pasan por `effectiveResistance`.
+
+* **Schema:** `Blueprint` 6→7 y `CampaignSaveState` 3→4, con ~55 fixtures migradas en el mismo commit.
+
+* **UI:** tag de desgaste en el tooltip, tinte del sprite (`condition` gana sobre `wear`), una fila por bucket
+  en el selector de instalación, i18n es/en. De paso corrigió un bug **preexistente**: el tooltip mostraba el
+  RE de catálogo, no el efectivo.
+
+* **Fuera de alcance, documentado:** (a) ningún capítulo autorado tiene una sustancia `CORR` viva, así que el
+  escritor (2) solo se ejercita en el caso 7 — anotado en el docblock del runtime en vez de fingir que el
+  indicador se mueve; el escritor (1) sí tiene camino real en el Cap.1. (b) `InsufficientStockError` sigue sin
+  manejarse en `/game` (Obs #8, ya abierta). (c) el riesgo sistémico al desmontar es la Subfase 13d. (d) no se
+  implementó ninguna forma de **reparar** desgaste (principio 5), con test de contrato que lo custodia.
+
+Suite: `/engine` 636 → **671** tests, `/game` 30 → **36**. `tsc --noEmit` limpio en ambos workspaces y
+`vite build` limpio. Detalle completo en `changelog.log`.

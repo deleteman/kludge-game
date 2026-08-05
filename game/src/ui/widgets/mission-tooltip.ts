@@ -1,8 +1,8 @@
 import type Phaser from "phaser";
-import type { ComponentCondition, FunctionalProperty, MaterialProperties } from "engine";
+import type { ComponentCondition, ComponentWear, FunctionalProperty, MaterialProperties } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
-import { COMPONENT_CONDITION_TINT } from "../../render/palette.js";
+import { COMPONENT_CONDITION_TINT, COMPONENT_WEAR_CSS, CRISIS_FATAL_CSS } from "../../render/palette.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
@@ -12,8 +12,17 @@ export type TooltipContent =
       readonly kind: "instance";
       readonly name: string;
       readonly condition: ComponentCondition;
+      /** Desgaste acumulado (Fase 13c) — eje ortogonal a `condition`. */
+      readonly wear?: ComponentWear;
       readonly functional?: ReadonlyArray<FunctionalProperty>;
       readonly material?: MaterialProperties;
+      /**
+       * RE EFECTIVA (catálogo + desgaste). Hasta 13c el tooltip mostraba el RE
+       * de CATÁLOGO (`material.RE`), que mentía en cuanto una pieza se corroía
+       * o se canibalizaba: la ficha decía "A" mientras el motor la trataba
+       * como "M". El llamador resuelve el valor real con `effectiveResistance`.
+       */
+      readonly effectiveResistance?: "A" | "M" | "B" | "fallo";
       /** Solo para compuestos: desglose de sus piezas atómicas. */
       readonly composition?: ReadonlyArray<CompositionIngredient>;
     }
@@ -22,6 +31,10 @@ export type TooltipContent =
 export interface MissionTooltipLabels {
   readonly functionalDescription: (tag: FunctionalProperty["tag"]) => string;
   readonly structuralResistance: (level: "A" | "M" | "B") => string;
+  /** Etiqueta del tag de desgaste, ej. `[DEGRADADO]` (Fase 13c). */
+  readonly wearTag: (wear: ComponentWear) => string;
+  /** "Resistencia estructural: FALLO" cuando el desgaste consumió todos los escalones. */
+  readonly structuralFailure: string;
   readonly compositionTitle: string;
 }
 
@@ -89,14 +102,40 @@ export function renderMissionTooltip(
       container.add(line);
       y += line.height + 4;
     }
-    if (content.material?.RE) {
+    // Tag de desgaste (Fase 13c), antes del RE porque es lo que EXPLICA que el
+    // RE mostrado no coincida con el de catálogo que el jugador conoce.
+    if (content.wear && content.wear !== "nuevo") {
       const line = scene.add
-        .text(PADDING, y, `• ${labels.structuralResistance(content.material.RE)}`, {
+        .text(PADDING, y, `• ${labels.wearTag(content.wear)}`, {
           fontFamily: "sans-serif",
           fontSize: "11px",
-          color: TAG_CATEGORY_CSS.material, // Eje B, categoría material (Fase 12e)
+          color: COMPONENT_WEAR_CSS[content.wear] ?? TAG_CATEGORY_CSS.material,
+          fontStyle: "bold",
           wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
         })
+        .setOrigin(0, 0);
+      container.add(line);
+      y += line.height + 4;
+    }
+    // RE EFECTIVA si el llamador la resolvió; si no, el de catálogo (piezas sin
+    // instanciar, donde no hay desgaste que aplicar).
+    const resistance = content.effectiveResistance ?? content.material?.RE;
+    if (resistance) {
+      const isFailure = resistance === "fallo";
+      const line = scene.add
+        .text(
+          PADDING,
+          y,
+          `• ${isFailure ? labels.structuralFailure : labels.structuralResistance(resistance)}`,
+          {
+            fontFamily: "sans-serif",
+            fontSize: "11px",
+            // Eje B (categoría material, Fase 12e) salvo en fallo, donde el
+            // Eje A manda: es estado crítico, no una etiqueta de propiedad.
+            color: isFailure ? CRISIS_FATAL_CSS : TAG_CATEGORY_CSS.material,
+            wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
+          },
+        )
         .setOrigin(0, 0);
       container.add(line);
       y += line.height + 4;

@@ -21,6 +21,7 @@ import {
   MutableShipState,
   previewMissionTrajectory,
   stockOf,
+  wearBucketsOf,
   ProjectileSimulation,
   ReactionResolver,
   TaskScheduler,
@@ -46,11 +47,13 @@ import {
   sectionCombustionAtmosphere,
   sectionContainingCell,
   synthesizeSubstance,
+  systemRandom,
   toReactant,
   totalPowerBudget,
   MapEntityRegistry,
 } from "engine";
 import type {
+  ComponentWear,
   CellBlockedQuery,
   EmitterInputSource,
   MixtureHazardPreview,
@@ -345,7 +348,17 @@ export class MissionRuntime {
 
     this.scheduler = new TaskScheduler({
       emitter: this.coreLoopEvents,
-      effect: createShipTaskEffect(this.shipState, this.componentRegistry, this.atomicStock, this.shipFloorplan),
+      effect: createShipTaskEffect(
+        this.shipState,
+        this.componentRegistry,
+        this.atomicStock,
+        this.shipFloorplan,
+        // Fase 13c: canibalizar degrada la pieza con probabilidad por tier
+        // (GDD §6.5). El azar se inyecta desde acá — `/engine` sigue sin
+        // llamar `Math.random` por su cuenta — y el lookup de tripulación es
+        // lo que permite leer el tier/especialidad de quien ejecuta la tarea.
+        { random: systemRandom, actorOf: (actorId) => this.crewState.get(actorId) },
+      ),
     });
 
     // Materialización diferida de una fabricación (11c.2): cuando el tripulante
@@ -659,6 +672,11 @@ export class MissionRuntime {
   }
 
   /** Unidades disponibles de una pieza atómica en el stock vivo de esta misión — el picker filtra por esto. */
+  /** Buckets de desgaste no vacíos de una pieza (Fase 13c), del mejor al peor. */
+  wearBucketsOf(componentId: ComponentId): ReadonlyArray<{ wear: ComponentWear; quantity: number }> {
+    return wearBucketsOf(this.atomicStock.get(), componentId);
+  }
+
   stockOf(componentId: ComponentId): number {
     return stockOf(this.atomicStock.get(), componentId);
   }
@@ -815,6 +833,8 @@ export class MissionRuntime {
     componentDefinitionId: ComponentId,
     footprint: Footprint,
     position: GridPosition,
+    /** Bucket de desgaste elegido en el selector (Fase 13c); ausente = `nuevo`. */
+    wear?: ComponentWear,
   ): void {
     const targetSectionId = this.sectionIdAt(position);
     this.ensureAt(actorId, targetSectionId);
@@ -830,6 +850,7 @@ export class MissionRuntime {
           instanceId,
           componentDefinitionId,
           placement: { position, footprint, rotation: 0 },
+          ...(wear ? { wear } : {}),
         },
         estimatedDurationSeconds: this.modulatedDuration("install", actorId),
       }),

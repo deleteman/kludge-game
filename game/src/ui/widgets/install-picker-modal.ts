@@ -1,6 +1,12 @@
 import Phaser from "phaser";
 import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
-import type { ComponentId, Footprint, FunctionalProperty, MaterialProperties } from "engine";
+import type {
+  ComponentId,
+  ComponentWear,
+  Footprint,
+  FunctionalProperty,
+  MaterialProperties,
+} from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, LABEL_COLOR, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
@@ -15,6 +21,18 @@ import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
 
 export type InstallPickerTab = "inventory" | "catalog";
 
+/**
+ * Texto de una fila de la lista. Con buckets de desgaste (13c) la misma pieza
+ * puede aparecer varias veces, así que la fila tiene que decir CUÁL es —
+ * mostrar solo el nombre haría que dos filas idénticas fueran indistinguibles.
+ * `nuevo` no se etiqueta: es el caso por defecto y ensuciaría toda la lista.
+ */
+function optionRowLabel(option: InstallPickerOption, labels: InstallPickerLabels): string {
+  const count = option.quantity !== undefined && option.quantity > 1 ? ` ×${option.quantity}` : "";
+  const wear = option.wear && option.wear !== "nuevo" ? ` · ${labels.wearTag(option.wear)}` : "";
+  return `${option.name}${count}${wear}`;
+}
+
 export interface InstallPickerOption {
   readonly id: ComponentId;
   readonly name: string;
@@ -23,6 +41,16 @@ export interface InstallPickerOption {
   readonly material?: MaterialProperties;
   /** Solo para compuestos: desglose de sus piezas atómicas. Ver `CompositionIngredient`. */
   readonly composition?: ReadonlyArray<CompositionIngredient>;
+  /**
+   * Bucket de desgaste que representa esta fila (Fase 13c). Una misma pieza
+   * aparece una vez por estado ("Sensor ×2 · NUEVO", "Sensor ×1 · USADO") para
+   * que el jugador elija qué unidad gasta en vez de recibir la peor en
+   * silencio. Ausente en el catálogo informativo y en las creaciones, que no
+   * se sirven del stock por buckets.
+   */
+  readonly wear?: ComponentWear;
+  /** Unidades disponibles en ese bucket, para el sufijo "×N". */
+  readonly quantity?: number;
 }
 
 export interface InstallPickerLabels {
@@ -33,6 +61,8 @@ export interface InstallPickerLabels {
   readonly selectHint: string;
   readonly functionalDescription: (tag: FunctionalProperty["tag"]) => string;
   readonly structuralResistance: (level: "A" | "M" | "B") => string;
+  /** Etiqueta corta del desgaste para la fila de la lista (Fase 13c). */
+  readonly wearTag: (wear: ComponentWear) => string;
   readonly compositionTitle: string;
   readonly inventoryTab: string;
   readonly catalogTab: string;
@@ -162,10 +192,13 @@ export function renderInstallPickerModal(
     LIST_CENTER_Y,
     LIST_WIDTH,
     LIST_HEIGHT,
-    options.map((option, index) => ({
-      text: index === selectedIndex ? `> ${option.name}` : option.name,
-      onClick: () => callbacks.onSelect(index),
-    })),
+    options.map((option, index) => {
+      const label = optionRowLabel(option, labels);
+      return {
+        text: index === selectedIndex ? `> ${label}` : label,
+        onClick: () => callbacks.onSelect(index),
+      };
+    }),
   ).setDepth(RENDER_DEPTH.hudModal);
   callbacks.markAsHudObject(list);
   container.once(Phaser.GameObjects.Events.DESTROY, () => list.destroy());

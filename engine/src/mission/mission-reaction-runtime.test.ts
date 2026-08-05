@@ -41,6 +41,7 @@ function emptyBlueprint(): Blueprint {
         componentDefinitionId: "panel-electrico" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
+        wear: "nuevo",
       },
     ],
     reservoirContents: [],

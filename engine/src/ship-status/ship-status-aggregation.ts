@@ -7,7 +7,10 @@ import { GAS, STANDARD_OXYGEN_FRACTION } from "../atmosphere/atmosphere-composit
 import { getGasFraction, standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import { OXYGEN_COMBUSTION_THRESHOLDS } from "../atmosphere/combustion-atmosphere.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
-import type { StructuralResistanceLevel } from "../properties/material.types.js";
+import {
+  effectiveResistance,
+  type EffectiveResistance,
+} from "../wear/effective-resistance.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
@@ -46,15 +49,19 @@ function instanceHullFraction(
   if (instance.condition === "destroyed") {
     return 0;
   }
-  const level = instance.structuralResistanceOverride ?? catalogRE;
-  return RE_LEVEL_FRACTION[level];
+  // Fase 13c: la resistencia efectiva incluye el desgaste acumulado, así que el
+  // HUD de integridad de casco y el overlay `estructural` reaccionan a una
+  // pieza canibalizada o corroída sin código propio.
+  const level = effectiveResistance(catalogRE, instance.wear, instance.structuralResistanceOverride);
+  return level === null ? null : RE_LEVEL_FRACTION[level];
 }
 
-/** Nivel de RE mapeado a fracción [0,1], mismo orden A>M>B que `RE_ORDER` (`failure/structural-failure.ts`). */
-const RE_LEVEL_FRACTION: Record<StructuralResistanceLevel, number> = {
+/** Nivel de RE efectivo mapeado a fracción [0,1], mismo orden A>M>B que `RE_ORDER`. */
+const RE_LEVEL_FRACTION: Record<EffectiveResistance, number> = {
   A: 1,
   M: 0.5,
   B: 0.2,
+  fallo: 0,
 };
 
 export interface SectionAtmosphereEntry {
@@ -126,9 +133,10 @@ export function aggregateLifeSupport(sections: ReadonlyArray<SectionAtmosphereEn
 
 /**
  * Agregación a nivel de nave de integridad de casco (Subfase 11g): peor
- * `structuralResistanceOverride ?? RE de catálogo` entre todos los
- * componentes instalados con propiedad de material RE. `condition ===
- * "destroyed"` fuerza crítico sin importar el RE.
+ * resistencia EFECTIVA (`wear/effective-resistance.ts`: RE de catálogo bajado
+ * por el desgaste acumulado, Fase 13c) entre todos los componentes instalados
+ * con propiedad de material RE. `condition === "destroyed"` fuerza crítico sin
+ * importar el RE.
  */
 export function aggregateHullIntegrity(
   placedComponents: ReadonlyArray<PlacedComponentInstance>,

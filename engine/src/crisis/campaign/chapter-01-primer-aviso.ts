@@ -48,10 +48,12 @@ export const CHAPTER_01_ACTUATOR_INSTANCE_ID =
 // (para poder instalarlos sin desarmar nada) y 1 junta hermética de repuesto
 // (para reparar la fuga sembrada más abajo, ver `CHAPTER_01_SEAL_INSTANCE_ID`).
 export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
-  "sensor-presion": 1,
-  "pantalla-lcd": 1,
-  "indicador-led": 1,
-  "junta-hermetica": 1,
+  // Repuestos de fábrica: el stock inicial del capítulo entra sin desgaste
+  // (Fase 13c). El desgaste aparece al canibalizar piezas ya instaladas.
+  "sensor-presion": { nuevo: 1 },
+  "pantalla-lcd": { nuevo: 1 },
+  "indicador-led": { nuevo: 1 },
+  "junta-hermetica": { nuevo: 1 },
 } as AtomicPartsStock;
 
 /**
@@ -243,6 +245,7 @@ function buildChapter01InitialComponent(archetype: ShipArchetype): PlacedCompone
       rotation: 0,
     },
     condition: "jammed",
+    wear: "nuevo",
   };
 }
 
@@ -260,6 +263,7 @@ function buildChapter01SeededComponents(archetype: ShipArchetype): ReadonlyArray
     componentDefinitionId: definitionId as ComponentId,
     placement: { position, footprint: { width: 1, height: 1 }, rotation: 0 },
     condition: "ok",
+    wear: "nuevo",
   });
   return [
     cell(params.sensorPosition, CHAPTER_01_SENSOR_INSTANCE_ID, "fotorreceptor"),
@@ -271,6 +275,7 @@ function buildChapter01SeededComponents(archetype: ShipArchetype): ReadonlyArray
       componentDefinitionId: "junta-hermetica" as ComponentId,
       placement: { position: params.sealPosition, footprint: { width: 1, height: 1 }, rotation: 0 },
       condition: "jammed",
+      wear: "nuevo",
     },
     // Conductor sobrecargado (Fase 12a) — sembrado `ok`; `scriptedOverloads`
     // (`buildChapter01Definition`) es lo que lo hace fallar en vivo, no su

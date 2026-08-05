@@ -1,4 +1,5 @@
 import { isCompositeEntity } from "../composition/composable-entity.types.js";
+import { DEFAULT_WEAR } from "../wear/wear.types.js";
 import type { EntityRegistry } from "../composition/entity-registry.js";
 import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { ComponentCondition, PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -56,6 +57,10 @@ export function instantiateComponentSeeds(
       componentDefinitionId: componentId,
       placement: { position: seed.position, footprint, rotation: 0 },
       condition: resolveCondition(seed),
+      // El attrezzo autorado en Tiled entra sin desgaste (13c). Si algún día
+      // una semilla quiere nacer degradada, se autora como propiedad del
+      // objeto igual que `condition`, no se asume acá.
+      wear: DEFAULT_WEAR,
     };
   });
 }

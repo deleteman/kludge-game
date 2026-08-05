@@ -52,7 +52,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 6,
+      schemaVersion: 7,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -84,7 +84,9 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   return {
     metadata: {
-      schemaVersion: 3,
+      // 3→4 (Fase 13c): `atomicStock` pasa de `{pieza: n}` a buckets por
+      // desgaste `{pieza: {nuevo: n}}`, ver `inventory/inventory.types.ts`.
+      schemaVersion: 4,
       id: input.id,
       name: input.name,
       archetype: input.archetype,
