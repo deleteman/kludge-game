@@ -188,7 +188,15 @@ const LAYER_PANEL_HEIGHT = 74;
  * `energyControlWorldBounds` (la zona que impide que el click atraviese al
  * mapa) — antes eran literales sueltos que podían desincronizarse.
  */
-const ENERGY_CONTROL_BOX = { offsetX: 0, offsetY: 4, width: 120, height: 78 } as const;
+const ENERGY_CONTROL_BOX = { offsetX: 0, offsetY: -1, width: 120, height: 90, padding: 12 } as const;
+
+/**
+ * Sombra dura del cluster de energía (ronda 7): un segundo panel oscuro
+ * desplazado, sin blur ni shaders — hay un cluster por sección (~11 en
+ * Exploración), así que un `postFX.addShadow` por cuadro costaría un render
+ * target cada uno. El borde nítido además va con el pixel art del resto.
+ */
+const ENERGY_CONTROL_SHADOW = { offsetX: 3, offsetY: 4, alpha: 0.45 } as const;
 
 // Franja lateral fija (ajuste post-playtest): NUNCA se mueve, vive en la
 // cámara de HUD. El mapa se panea por debajo, en la cámara de mundo recortada
@@ -1833,11 +1841,15 @@ export class FloorplanScene extends Phaser.Scene {
       const units = this.mission.sectionPowerAllocation(section.id);
       const slider = renderPowerAllocationSlider(this, {
         x,
-        y: y - 14,
+        y: y - 2,
         maxUnits: totalBudget,
         capUnits: units + this.unallocatedPowerUnits(),
         units,
         grantedUnits: this.mission.sectionPowerGranted(section.id),
+        // Ancho útil del panel: la etiqueta se encoge sola si no entra (ronda 7,
+        // "Sin energía libre" se desbordaba). Derivado de la MISMA constante que
+        // el panel para no duplicar el número en dos archivos.
+        maxLabelWidth: ENERGY_CONTROL_BOX.width - ENERGY_CONTROL_BOX.padding * 2,
         enabled: true,
         onChange: (nextUnits) => {
           this.mission.setSectionPowerUnits(section.id, nextUnits);
@@ -1847,7 +1859,7 @@ export class FloorplanScene extends Phaser.Scene {
       const priorityButton = createKenneyButton(
         this.rex,
         x,
-        y + 14,
+        y + 22,
         t("ui.floorplan.layer.energia-priority-button"),
         {
           width: 90,
@@ -1859,6 +1871,16 @@ export class FloorplanScene extends Phaser.Scene {
       // Fondo del cluster (fix ronda 3): sueltos sobre el plano, slider y botón
       // se mezclaban con el mapa. Reutiliza el mismo `NineSlice` que el resto
       // de paneles del proyecto. Se inserta PRIMERO para quedar detrás.
+      // Ronda 7: una copia oscura desplazada hace de sombra dura, para despegar
+      // el cuadro del plano.
+      const { panel: shadowPanel } = createKenneyPanel(
+        this,
+        x + ENERGY_CONTROL_BOX.offsetX + ENERGY_CONTROL_SHADOW.offsetX,
+        y + ENERGY_CONTROL_BOX.offsetY + ENERGY_CONTROL_SHADOW.offsetY,
+        ENERGY_CONTROL_BOX.width,
+        ENERGY_CONTROL_BOX.height,
+      );
+      shadowPanel.setTint(0x000000).setAlpha(ENERGY_CONTROL_SHADOW.alpha);
       const { panel } = createKenneyPanel(
         this,
         x + ENERGY_CONTROL_BOX.offsetX,
@@ -1872,7 +1894,9 @@ export class FloorplanScene extends Phaser.Scene {
       // es el mismo nivel que usan otros controles interactivos de mundo,
       // ej. `fireLocalStatic`). NO se reparenta a `floorplanRender.base`
       // (ese container fija el depth de TODOS sus hijos a `background`).
-      const outer = this.add.container(0, 0, [panel, slider.container, priorityButton]).setDepth(RENDER_DEPTH.effect);
+      const outer = this.add
+        .container(0, 0, [shadowPanel, panel, slider.container, priorityButton])
+        .setDepth(RENDER_DEPTH.effect);
       this.markAsWorldObject(outer);
       this.energyDialContainers.set(section.id, { outer, slider });
       // Mismo rectángulo que el panel de fondo — derivado de la MISMA constante

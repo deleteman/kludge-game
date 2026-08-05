@@ -3209,3 +3209,43 @@ Archivos: `game/src/ui/widgets/power-allocation-slider.ts`, `game/src/render/pal
 `tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 30 tests de `/game` (antes 29, +1),
 615 de `/engine` sin cambios.
 Razón: sexta ronda de playtest manual del operador sobre la Subfase 13b; cierra el sistema de energía.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 7 (pulido visual del cuadro de reasignación de energía).
+Detalle: tres ajustes finos reportados por el operador sobre el cluster de controles de energía, sin lógica de
+dominio nueva.
+(1) La etiqueta de arriba (tanto el "x/y · XX%" como el "Sin energía libre") estaba pegada al borde superior,
+sin padding, mientras el resto del cuadro sí lo tenía. Verificado con los números: el panel iba de `y-35` a
+`y+43` (`ENERGY_CONTROL_BOX` 120×78 centrado en `y+4`) y la etiqueta estaba centrada en `y-30` con ~16px de
+alto, o sea que su borde superior caía en `y-38` — 3px FUERA del panel, no solo pegado. Abajo, en cambio,
+sobraban 19px entre el botón "Prioridad" (`y+24`) y el borde (`y+43`). El layout se había vuelto asimétrico al
+ir agregando piezas ronda a ronda sin recalcular la caja. Corregido: `ENERGY_CONTROL_BOX` pasa a
+`{offsetX: 0, offsetY: -1, width: 120, height: 90, padding: 12}` y las tres piezas se reposicionan — etiqueta
+en `y-26` (local `-24` en el slider, antes `-16`), track en `y-2` (antes `y-14`), botón en `y+22` (antes
+`y+14`) — dejando 12px de aire arriba y abajo. `energyControlWorldBounds` (la zona que impide que el click
+atraviese al mapa) acompaña sola, porque desde la ronda 3 se deriva de esa misma constante.
+(2) "Sin energía libre" se salía del cuadro de texto y se perdía visualmente por ser del mismo gris claro que
+los números (`LABEL_COLOR`, #d8dce8). Corregido en dos frentes. Color: pasa a `CRISIS_FATAL_CSS` (#e0483f), el
+MISMO rojo del destello del tramo bloqueado que ya se agregó en la ronda 6 — mismo evento, misma señal, así
+destello y texto se leen juntos; el contrato de color además ya define ese rojo como bloqueo. Ancho: en vez de
+bajar el tamaño de fuente a ojo hasta que entrara, se agregó un helper `setLabel(texto, color)` que MIDE y
+encoge — fija el texto y baja 1px de fuente mientras `label.width` supere el ancho útil, con piso de 8px. Es
+lo único robusto frente a i18n: "No free power" entra a 12px pero ninguna traducción futura lo garantiza, y un
+tamaño fijo elegido a ojo sobre el string español volvería a romperse con el primer idioma nuevo. El ancho
+útil llega como opción nueva `maxLabelWidth`, calculada en la escena desde `ENERGY_CONTROL_BOX` (ancho menos
+padding × 2) para no duplicar el número mágico en dos archivos.
+(3) Los cuadros no se separaban del mapa. Se agregó una sombra dura: un segundo `createKenneyPanel` detrás del
+real, desplazado 3px a la derecha y 4px abajo, con `setTint(0x000000)` y alpha 0.45, insertado primero en el
+container para quedar al fondo. Decisión del operador entre tres opciones planteadas (sombra dura / sombra
+suave con `postFX.addShadow` / halo claro): la dura no usa shaders ni render targets, lo que importa porque hay
+un cluster por sección (~11 en Exploración) y `postFX` habría costado un render target por cuadro; además el
+borde nítido es coherente con el pixel art del resto del plano (CLAUDE.md), a diferencia del desenfoque. Los
+bounds que bloquean el click se siguen derivando del panel real y no de la sombra: agrandar la zona muerta del
+mapa sería peor que dejar pasar el click en esos 3px de sombra.
+Ronda de pulido visual puro: no hay lógica de dominio nueva y lo único con algo de lógica (el bucle de ajuste
+de fuente) depende de `label.width`, que solo existe con un `Text` real de Phaser, así que no tiene porción
+pura que valga la pena aislar en un test. Se corrieron las suites completas como regresión y el resto se
+verifica a mano — mismo criterio que CLAUDE.md fija para `/game`.
+Archivos: `game/src/scenes/floorplan-scene.ts`, `game/src/ui/widgets/power-allocation-slider.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 30 tests de `/game` y 615 de `/engine`,
+sin cambios respecto de la ronda anterior.
+Razón: séptima ronda de playtest manual del operador sobre la Subfase 13b (fine tuning visual).

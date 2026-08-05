@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { ENERGY_LAYER_COLOR, LABEL_COLOR, POWER_BLOCKED_FLASH_COLOR } from "../../render/palette.js";
+import { CRISIS_FATAL_CSS, ENERGY_LAYER_COLOR, LABEL_COLOR, POWER_BLOCKED_FLASH_COLOR } from "../../render/palette.js";
 import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
 import { pickSoundKey } from "../../audio/audio-utils.js";
@@ -24,6 +24,14 @@ const LOCKED_COLOR = 0x11131a;
 /** Cadencia máxima de la señal de rechazo: `pointermove` dispara decenas de veces por segundo. */
 const BLOCKED_FEEDBACK_THROTTLE_MS = 500;
 const BLOCKED_LABEL_MS = 1000;
+/**
+ * La etiqueta va arriba del track, con aire respecto al borde del panel: antes
+ * (`-16`) su borde superior caía FUERA del cuadro (ronda 7). Ver
+ * `ENERGY_CONTROL_BOX` en `floorplan-scene.ts`, que define el panel.
+ */
+const LABEL_OFFSET_Y = -24;
+const LABEL_FONT_PX = 12;
+const LABEL_MIN_FONT_PX = 8;
 const THUMB_COLOR = 0xd8dce8;
 const DISABLED_ALPHA = 0.5;
 
@@ -38,6 +46,8 @@ export interface PowerAllocationSliderOptions {
   readonly units: number;
   /** Lo realmente OTORGADO por el motor — menor que `units` ante déficit (ronda 4). */
   readonly grantedUnits: number;
+  /** Ancho útil para la etiqueta: si el texto no entra, se encoge la fuente (ronda 7). */
+  readonly maxLabelWidth: number;
   /** Gateado a modo `"planning"` (Fase 13b) — mismo criterio que `createWorkbenchButton`. */
   readonly enabled: boolean;
   readonly onChange: (units: number) => void;
@@ -106,12 +116,29 @@ export function renderPowerAllocationSlider(
       : `${value}/${maxUnits}`;
 
   const label = scene.add
-    .text(0, -16, labelOf(units), {
+    .text(0, LABEL_OFFSET_Y, labelOf(units), {
       fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-      fontSize: "12px",
+      fontSize: `${LABEL_FONT_PX}px`,
       color: LABEL_COLOR,
     })
     .setOrigin(0.5);
+
+  /**
+   * Fija el texto de la etiqueta y lo ENCOGE si no entra en el ancho útil del
+   * panel (ronda 7: "Sin energía libre" se desbordaba del cuadro). Se mide en
+   * vez de fijar un tamaño a ojo porque el largo depende del idioma — "No free
+   * power" entra a 12px, pero ninguna traducción futura lo garantiza.
+   */
+  const setLabel = (text: string, color: string): void => {
+    label.setColor(color);
+    let size = LABEL_FONT_PX;
+    label.setFontSize(size);
+    label.setText(text);
+    while (label.width > options.maxLabelWidth && size > LABEL_MIN_FONT_PX) {
+      size -= 1;
+      label.setFontSize(size);
+    }
+  };
   const track = scene.add.rectangle(0, 0, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0.5);
   const locked = scene.add.rectangle(unitToX(cap), 0, TRACK_WIDTH, TRACK_HEIGHT, LOCKED_COLOR).setOrigin(0, 0.5);
   // Tramo PEDIDO PERO NO OTORGADO (déficit): ámbar, el mismo que ya usa la capa
@@ -147,7 +174,7 @@ export function renderPowerAllocationSlider(
     locked.setVisible(cap < safeMax);
     // Mientras se muestra "Sin energía libre" la etiqueta no se pisa.
     if (scene.time.now >= blockedLabelUntilMs) {
-      label.setText(labelOf(units));
+      setLabel(labelOf(units), LABEL_COLOR);
     }
   };
   redraw();
@@ -199,13 +226,15 @@ export function renderPowerAllocationSlider(
     scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
 
     // La etiqueta explica el porqué (no queda energía libre en la nave).
-    label.setText(t("ui.floorplan.energia.no-free-power"));
+    // Rojo, el MISMO del destello del tramo bloqueado: destello y texto se leen
+    // como una sola señal, y en el gris claro normal el mensaje se perdía.
+    setLabel(t("ui.floorplan.energia.no-free-power"), CRISIS_FATAL_CSS);
     blockedLabelUntilMs = now + BLOCKED_LABEL_MS;
     labelRestoreEvent?.remove();
     labelRestoreEvent = scene.time.delayedCall(BLOCKED_LABEL_MS, () => {
       blockedLabelUntilMs = 0;
       labelRestoreEvent = undefined;
-      label.setText(labelOf(units));
+      setLabel(labelOf(units), LABEL_COLOR);
     });
   };
 

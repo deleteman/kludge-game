@@ -2989,3 +2989,30 @@ Ronda de UI pura: la lógica nueva (throttle por tiempo, tweens) vive dentro de 
 porción pura que valga la pena aislar, así que se testea la aserción de contrato de color y el resto se
 verifica a mano — mismo criterio que CLAUDE.md fija para `/game`. 30 tests en `/game` (antes 29, +1), 615 en
 `/engine` sin cambios. `tsc --noEmit`/`vite build` limpios en ambos workspaces.
+
+**Fix post-playtest del operador, ronda 7 (2026-08-05) — pulido visual del cluster de energía:** tres ajustes
+finos, sin lógica de dominio nueva.
+- **Padding de la etiqueta superior**: el layout había quedado asimétrico al ir sumando piezas ronda a ronda.
+  Los números lo confirmaban: el panel iba de `y-35` a `y+43` (120×78 centrado en `y+4`) y la etiqueta estaba
+  centrada en `y-30` con ~16px de alto, o sea que su borde superior caía en `y-38`, **3px fuera del panel**,
+  mientras abajo sobraban 19px. `ENERGY_CONTROL_BOX` pasa a `{offsetY: -1, width: 120, height: 90,
+  padding: 12}` y las tres piezas se reposicionan (etiqueta `y-26`, track `y-2`, botón `y+22`) para dejar 12px
+  de aire arriba y abajo. `energyControlWorldBounds` acompaña solo, porque desde la ronda 3 se deriva de la
+  misma constante.
+- **"Sin energía libre" se desbordaba y se perdía**: ahora se pinta en `CRISIS_FATAL_CSS` — el **mismo rojo**
+  del destello del tramo bloqueado, así que destello y texto se leen como una sola señal (antes usaba el gris
+  claro de los números). Y en vez de fijar un tamaño de fuente a ojo hasta que entrara, un helper `setLabel()`
+  **mide y encoge**: baja 1px de fuente mientras `label.width` supere el ancho útil, con piso de 8px. Es lo
+  único robusto frente a i18n — "No free power" entra a 12px, pero ninguna traducción futura lo garantiza. El
+  ancho útil llega como opción `maxLabelWidth`, derivada de `ENERGY_CONTROL_BOX` para no duplicar el número
+  mágico en dos archivos.
+- **Sombra para despegar el cuadro del mapa**: un segundo `createKenneyPanel` detrás, desplazado 3px/4px, con
+  `setTint(0x000000)` y alpha 0.45. Sombra **dura, sin shaders** (decisión del operador entre tres opciones):
+  hay un cluster por sección (~11 en Exploración), así que un `postFX.addShadow` por cuadro costaría un render
+  target cada uno, y el borde nítido va con el pixel art del resto del plano. Los bounds que bloquean el click
+  siguen saliendo del panel real, no de la sombra — agrandar la zona muerta sería peor que dejar pasar el
+  click en 3px de sombra.
+Ronda de pulido visual puro: lo único con algo de lógica (el bucle de ajuste de fuente) depende de
+`label.width`, que solo existe con un `Text` real de Phaser, así que no tiene porción pura que aislar. Suites
+corridas como regresión: 30 tests en `/game` y 615 en `/engine`, sin cambios. `tsc --noEmit`/`vite build`
+limpios en ambos workspaces.
