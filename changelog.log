@@ -2989,3 +2989,60 @@ netos por la eliminación de `distributeBudgetEvenly`/`reconcilePowerScars` y su
 Razón: segunda ronda de playtest manual del operador sobre la Subfase 13b, re-reportando los puntos 1 y 2 de
 la ronda 1 (no quedaron resueltos satisfactoriamente) más una inconsistencia visual nueva (punto 3) que
 resultó ser un error de diseño real, no un bug aislado.
+
+2026-08-05 — Fase 13b: fixes de playtest, ronda 3 (4 observaciones del operador).
+Detalle: (1+2, causa raíz compartida) el operador reportó que el slider "salta de 0 a 1" y que no existe tope
+global entre secciones. Causa: el presupuesto TOTAL de la nave era de 1 unidad — la única `bateria-celda-simple`
+sembrada en la ronda 2 (`powerUnits: 1`) —, así que `Math.round(fraction * safeMax)` con `safeMax = 1` solo
+podía dar 0 o 1; y `redrawEnergyControls` pasaba `maxUnits: totalBudget` a CADA sección de forma independiente,
+sin descontar lo ya asignado en las demás, de modo que se podía asignar el total en todas a la vez
+(`allocateSectionBudget` recortaba proporcionalmente DESPUÉS, o sea que la UI mostraba algo distinto de lo que
+el motor iba a hacer). Corregido en dos partes.
+(a) Presupuesto real de 10 unidades (valor elegido por el operador): `initial-ship-state.ts` siembra 5×
+`celula-fotovoltaica` (atómica, footprint 1×2, `powerUnits: 2`) en vez de una batería suelta — 3 en
+`ingenieria` (`{20,11}`, `{23,12}`, `{24,11}`) y 2 en `propulsion` (`{34,10}`, `{37,10}`). Las 2 de propulsión
+son necesarias porque `ingenieria` solo tiene 8 celdas libres y 3 pares verticales posibles: su tope real con
+esta pieza es 6 unidades. Todas las celdas verificadas decodificando `nave-exploracion.json` (capas
+`walls`/`objects` más todos los objetos de `anclajes`/`conductos`/`semillas`, y el `cable-cobre` del demo de
+Fase 12a en `{22,12}`); ninguna pisa los anclajes `propulsion-a1..a5` (todos en `x:36`) ni la ruta del enemigo
+del Cap.2 (íntegra en `pasillo-central`, `y:9`).
+(b) Cap global en la UI: el track del slider abarca SIEMPRE `0..totalUnits`, para que el mismo ancho signifique
+lo mismo en todas las secciones, pero el arrastre se topa en `capUnits = unidades_de_esta_sección +
+restante_sin_asignar`. El tramo bloqueado se pinta con un color propio y apagado (`LOCKED_COLOR`) en vez de
+dejarlo igual al track vacío, para que se vea POR QUÉ el thumb no avanza (principio 6 de CLAUDE.md: dos estados
+distintos no se ven igual). Método nuevo `setCap(capUnits)` en `PowerAllocationSliderHandle`: al mover un
+slider, los de las otras secciones se reajustan vía `syncEnergySliderCaps()` SIN reconstruirse — reconstruirlos
+destruiría el widget que el jugador está arrastrando en ese preciso instante (misma razón por la que en la
+ronda 2 se había quitado el rebuild-por-cambio). Decisión de diseño del operador durante la revisión del plan:
+se MANTIENE el modelo de unidades enteras (diseño cerrado de 13b, estilo FTL; `allocateComponentPower` consume
+`powerDraw` entero y 13c/13d definen "pieza viva" = >=1 unidad) y NO se pasa a un modelo de porcentaje — el %
+que el operador pidió ver se muestra como etiqueta derivada (`N/10 · P%`), sin tocar `SectionPowerAllocation`.
+Se dejó constancia de que un modelo de porcentaje real habría sido peor con presupuestos chicos: 80% de 1
+unidad = 0 unidades otorgadas tras el redondeo, o sea un slider que se mueve sin que pase nada.
+(3) El slider y el botón "Prioridad" se mezclaban visualmente con el plano. Causa: se dibujaban sueltos, sin
+fondo propio. Corregido reutilizando `createKenneyPanel` (el mismo `NineSlice` de `UI_TEXTURE_KEYS.panelRectangle`
+que usan pausa/opciones/explorador de blueprints — no se creó un widget nuevo), insertado primero en el
+container para quedar detrás de los controles. Además el tamaño del cluster pasó a una constante única
+(`ENERGY_CONTROL_BOX`) de la que se derivan TANTO el panel de fondo COMO `energyControlWorldBounds` (la zona
+que impide que el click atraviese al mapa): antes los bounds eran literales sueltos (`x-55, y-30, 110x68`) que
+podían desincronizarse del fondo visible.
+(4) Mover el slider a 1 no quitaba el efecto de "sección sin energía". Este NO era un problema de la señal
+cosmética introducida en la ronda 2, sino un bug de arquitectura más profundo: `CoreLoopModeMachine.tick()` es
+NO-OP en modo `planning` (`engine/src/tasks/core-loop-mode.ts:83-85`), y `MissionPowerRuntime` solo estaba
+registrado como `Tickable` — por lo tanto NUNCA recalculaba mientras el juego estaba en pausa, que es
+exactamente el único modo en que los controles de energía se muestran (`redrawEnergyControls` los gatea a
+`planning`). El comentario de `setSectionPowerUnits` prometía un recálculo "en el siguiente tick" que no
+llegaba jamás, y el de cabecera de `mission-power-runtime.ts` afirmaba —falsamente— que el runtime corría en
+cualquier modo. Corregido: el cuerpo de `tick()` se extrajo a un método público `recalculate()` (no depende del
+`TickContext`, que ya se ignoraba con `_ctx`, así que exponerlo no obliga a fabricar un contexto falso);
+`tick()` delega en él, y `MissionRuntime` lo llama de forma síncrona tras `setSectionPowerUnits` y
+`reorderInstancePriority`. La pasada síncrona del constructor pasa a usar `recalculate()` en vez del
+`tick({dtSeconds: 0.001, ...})` fabricado. El alcance del bug era mayor que el síntoma reportado: además del
+efecto visual, ni el triaje por prioridad ni el gating por instancia tenían efecto alguno mientras el jugador
+estaba en pausa.
+Archivos: `engine/src/floorplan/initial-ship-state.ts` (+test nuevo `initial-ship-state.test.ts`),
+`engine/src/power/mission-power-runtime.ts` (+test), `game/src/mission/mission-runtime.ts`,
+`game/src/ui/widgets/power-allocation-slider.ts`, `game/src/scenes/floorplan-scene.ts`.
+`tsc --noEmit` limpio y `vite build` limpio en ambos workspaces. Suite: 608 tests de `/engine` (antes 604, +4:
+3 de la siembra inicial y 1 de `recalculate()` sin tick), 29 de `/game` sin cambios.
+Razón: tercera ronda de playtest manual del operador sobre la Subfase 13b.

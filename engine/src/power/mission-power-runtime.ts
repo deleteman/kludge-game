@@ -22,10 +22,14 @@ import { allocateComponentPower, allocateSectionBudget } from "./power-allocatio
  * flag estático `unpoweredSectionIds` antes de esta fase (nadie lo
  * implementaba en producción hasta ahora).
  *
- * Corre en cada tick sin importar el modo (`planning`/`execution`), igual que
- * `MissionOverloadRuntime`: el reparto vivo debe reflejar de inmediato un
- * cambio del jugador durante la pausa táctica, que es precisamente cuándo se
- * opera el dial de asignación (Fase 13b, UI).
+ * IMPORTANTE (fix de la ronda 3 de playtest): `CoreLoopModeMachine.tick()` es
+ * NO-OP en modo `planning`, así que registrarse como `Tickable` NO alcanza —
+ * el reparto nunca se recalcularía durante la pausa táctica, que es
+ * precisamente cuándo el jugador opera el slider de asignación. Por eso el
+ * recálculo se expone también como `recalculate()` público, que `MissionRuntime`
+ * llama de forma síncrona tras cada escritura de asignación/prioridad. `tick()`
+ * queda como el camino de ejecución (el reparto también debe seguir vivo
+ * mientras corre la simulación, ej. si se destruye una fuente).
  */
 export class MissionPowerRuntime implements Tickable, PowerScarSource, InstancePowerSource {
   private poweredInstanceIds = new Set<PlacedComponentInstanceId>();
@@ -38,6 +42,15 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
   ) {}
 
   tick(_ctx: TickContext): void {
+    this.recalculate();
+  }
+
+  /**
+   * Recalcula el reparto completo. Independiente del `TickContext` (nunca lo
+   * usó), por eso se expone como método propio en vez de obligar a los
+   * llamadores fuera del core loop a fabricar un contexto falso.
+   */
+  recalculate(): void {
     const blueprint = this.shipState.get();
     const totalUnits = totalPowerBudget(blueprint.placedComponents, this.componentRegistry);
     const sectionIds = this.shipFloorplan.sections.map((section) => section.id);

@@ -3,18 +3,23 @@ import { UI_FONT_FAMILY } from "../fonts.js";
 import { LABEL_COLOR } from "../../render/palette.js";
 import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 
-const TRACK_WIDTH = 80;
+const TRACK_WIDTH = 90;
 const TRACK_HEIGHT = 6;
 const THUMB_RADIUS = 8;
 const TRACK_COLOR = 0x3a4152;
 const FILL_COLOR = 0x6fb4ff;
+/** Tramo inasignable por falta de presupuesto global — distinto del track vacío (principio 6). */
+const LOCKED_COLOR = 0x23262f;
 const THUMB_COLOR = 0xd8dce8;
 const DISABLED_ALPHA = 0.5;
 
 export interface PowerAllocationSliderOptions {
   readonly x: number;
   readonly y: number;
+  /** Presupuesto TOTAL de la nave — define el rango del track (ancho constante en todas las secciones). */
   readonly maxUnits: number;
+  /** Tope arrastrable = unidades de esta sección + restante sin asignar. Nunca mayor que `maxUnits`. */
+  readonly capUnits: number;
   readonly units: number;
   /** Gateado a modo `"planning"` (Fase 13b) — mismo criterio que `createWorkbenchButton`. */
   readonly enabled: boolean;
@@ -23,6 +28,8 @@ export interface PowerAllocationSliderOptions {
 
 export interface PowerAllocationSliderHandle {
   readonly container: Phaser.GameObjects.Container;
+  /** Reajusta el tope arrastrable sin destruir el widget (el presupuesto libre cambió en otra sección). */
+  setCap(capUnits: number): void;
   destroy(): void;
 }
 
@@ -43,6 +50,12 @@ export interface PowerAllocationSliderHandle {
  *   modo) — sin sacar sus propios listeners de `scene.input`, cada
  *   reconstrucción deja un handler huérfano apuntando a un container ya
  *   destruido.
+ *
+ * Ronda 3: el track abarca SIEMPRE `0..maxUnits` (el presupuesto total), para
+ * que el mismo ancho signifique lo mismo en todas las secciones, pero el
+ * arrastre se topa en `capUnits`. El tramo bloqueado se pinta aparte
+ * (`LOCKED_COLOR`) para que se vea POR QUÉ el thumb no avanza, en vez de
+ * parecer un slider roto. La etiqueta muestra además el % del total.
  */
 export function renderPowerAllocationSlider(
   scene: Phaser.Scene,
@@ -50,40 +63,46 @@ export function renderPowerAllocationSlider(
 ): PowerAllocationSliderHandle {
   const { x, y, maxUnits, enabled } = options;
   const safeMax = Math.max(1, maxUnits);
-  let units = Phaser.Math.Clamp(Math.round(options.units), 0, safeMax);
+  let cap = Phaser.Math.Clamp(options.capUnits, 0, safeMax);
+  let units = Phaser.Math.Clamp(Math.round(options.units), 0, cap);
 
   const left = -TRACK_WIDTH / 2;
+  const unitToX = (value: number): number => left + TRACK_WIDTH * (value / safeMax);
   const container = scene.add.container(x, y);
 
+  const labelOf = (value: number): string => `${value}/${maxUnits} · ${Math.round((value / safeMax) * 100)}%`;
+
   const label = scene.add
-    .text(0, -16, `${units}/${maxUnits}`, {
+    .text(0, -16, labelOf(units), {
       fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
       fontSize: "12px",
       color: LABEL_COLOR,
     })
     .setOrigin(0.5);
   const track = scene.add.rectangle(0, 0, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0.5);
-  const fill = scene.add
-    .rectangle(left, 0, TRACK_WIDTH * (units / safeMax), TRACK_HEIGHT, FILL_COLOR)
-    .setOrigin(0, 0.5);
-  const thumb = scene.add.circle(left + TRACK_WIDTH * (units / safeMax), 0, THUMB_RADIUS, THUMB_COLOR);
-  container.add([label, track, fill, thumb]);
+  const locked = scene.add.rectangle(unitToX(cap), 0, TRACK_WIDTH, TRACK_HEIGHT, LOCKED_COLOR).setOrigin(0, 0.5);
+  const fill = scene.add.rectangle(left, 0, TRACK_WIDTH * (units / safeMax), TRACK_HEIGHT, FILL_COLOR).setOrigin(0, 0.5);
+  const thumb = scene.add.circle(unitToX(units), 0, THUMB_RADIUS, THUMB_COLOR);
+  container.add([label, track, locked, fill, thumb]);
 
   if (!enabled) {
     container.setAlpha(DISABLED_ALPHA);
   }
 
   const redraw = (): void => {
-    const fraction = units / safeMax;
-    fill.width = TRACK_WIDTH * fraction;
-    thumb.x = left + TRACK_WIDTH * fraction;
-    label.setText(`${units}/${maxUnits}`);
+    fill.width = TRACK_WIDTH * (units / safeMax);
+    thumb.x = unitToX(units);
+    locked.x = unitToX(cap);
+    locked.width = TRACK_WIDTH * (1 - cap / safeMax);
+    locked.setVisible(cap < safeMax);
+    label.setText(labelOf(units));
   };
+  redraw();
 
   const applyFromWorldX = (worldX: number): void => {
     const local = worldX - container.x - left;
     const fraction = Phaser.Math.Clamp(local / TRACK_WIDTH, 0, 1);
-    const next = Math.round(fraction * safeMax);
+    const next = Phaser.Math.Clamp(Math.round(fraction * safeMax), 0, cap);
     if (next === units) return;
     units = next;
     redraw();
@@ -116,6 +135,14 @@ export function renderPowerAllocationSlider(
 
   return {
     container,
+    setCap(capUnits: number): void {
+      cap = Phaser.Math.Clamp(capUnits, 0, safeMax);
+      // El cap nunca debería bajar de lo ya asignado a ESTA sección (siempre se
+      // calcula como `units + restante`), pero se recorta por las dudas para no
+      // dejar el thumb fuera del tramo permitido si el llamador se equivoca.
+      units = Math.min(units, cap);
+      redraw();
+    },
     destroy(): void {
       hitZone.off("pointerdown", onDown);
       scene.input.off("pointermove", onMove);

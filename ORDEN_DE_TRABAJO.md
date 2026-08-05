@@ -2845,3 +2845,42 @@ Tests: `power-allocation.test.ts` (quita los 3 tests de las funciones eliminadas
 (reescrito el test de reconciliación + nuevo test de `sectionHasNoPowerGranted`). 604 tests en `/engine`
 (antes 607, -3 netos por la eliminación de funciones), 29 en `/game` sin cambios. `tsc --noEmit`/`vite build`
 limpios en ambos workspaces.
+
+**Fix post-playtest del operador, ronda 3 (2026-08-05):** 4 observaciones. Los puntos 1 y 2 comparten causa
+raíz: el presupuesto total era de **1 unidad** (la única `bateria-celda-simple` sembrada en la ronda 2), así
+que el slider solo podía valer 0 o 1 (`Math.round(fraction * 1)`) y el tope global nunca se ejercía —
+`redrawEnergyControls` pasaba `maxUnits: totalBudget` a CADA sección de forma independiente, dejando asignar
+el total en todas a la vez (`allocateSectionBudget` recortaba proporcionalmente *después*, o sea la UI
+mentía). Resuelto en dos partes: (a) **presupuesto real de 10 unidades** — 5× `celula-fotovoltaica` (atómica,
+footprint 1×2, `powerUnits: 2`) en `initial-ship-state.ts`, decisión del operador; 3 en `ingenieria`
+(`{20,11}`, `{23,12}`, `{24,11}`) y 2 en `propulsion` (`{34,10}`, `{37,10}`), porque `ingenieria` solo tiene 8
+celdas libres y 3 pares verticales posibles — tope real de 6 unidades ahí. Todas las celdas verificadas
+decodificando `nave-exploracion.json` (capas `walls`/`objects` + anclajes/conductos/semillas + el `cable-cobre`
+del demo de 12a), sin pisar los anclajes `propulsion-a1..a5` (`x:36`) ni la ruta del enemigo del Cap.2
+(`pasillo-central`, `y:9`). (b) **cap global en la UI**: el track abarca siempre `0..totalUnits` (mismo ancho
+= mismo significado en todas las secciones) pero el arrastre se topa en `capUnits = unidades_de_la_sección +
+restante_sin_asignar`; el tramo bloqueado se pinta en un gris apagado propio (`LOCKED_COLOR`) para que se vea
+*por qué* el thumb no avanza, en vez de parecer roto (principio 6). Nuevo método `setCap()` en el handle del
+slider: al mover uno, los demás se reajustan sin reconstruirse — reconstruirlos destruiría el widget que el
+jugador está arrastrando en ese mismo instante. El operador confirmó **mantener el modelo de unidades enteras**
+(diseño cerrado de 13b, estilo FTL) y no pasar a porcentaje: el % se muestra como etiqueta derivada
+(`N/10 · P%`), sin tocar `SectionPowerAllocation`.
+(3) slider y botón "Prioridad" se mezclaban con el fondo del plano — se agregó un panel de fondo reutilizando
+`createKenneyPanel` (mismo `NineSlice` del resto de paneles), insertado primero en el container. El tamaño del
+cluster pasó a vivir en una constante única (`ENERGY_CONTROL_BOX`) de la que se derivan tanto el panel como
+`energyControlWorldBounds`, para que el fondo visible y la zona que bloquea el click de mapa no puedan
+desincronizarse (antes eran literales sueltos).
+(4) **bug real de arquitectura**: mover el slider no quitaba el efecto de "sin energía". Causa:
+`CoreLoopModeMachine.tick()` es **NO-OP en modo `planning`** (`core-loop-mode.ts:83-85`), y `MissionPowerRuntime`
+solo estaba registrado como `Tickable` — o sea que **nunca recalculaba en pausa**, que es justamente el único
+modo en que los controles de energía existen (`redrawEnergyControls` los gatea a `planning`). El comentario de
+`setSectionPowerUnits` prometía un recálculo "en el siguiente tick" que no llegaba nunca, y el de
+`mission-power-runtime.ts` afirmaba —falsamente— que corría en cualquier modo. Resuelto extrayendo el cuerpo de
+`tick()` a un método público `recalculate()` (no depende del `TickContext`, que ya se ignoraba con `_ctx`), que
+`MissionRuntime` llama de forma síncrona tras `setSectionPowerUnits` y `reorderInstancePriority`; la pasada
+síncrona del constructor pasa a usarlo también, en vez de fabricar un `TickContext` falso. Esto no solo
+arregla el efecto visual: el triaje por prioridad y el gating por instancia tampoco tenían efecto en pausa.
+Tests nuevos: `initial-ship-state.test.ts` (nuevo — presupuesto de Exploración = 10, las 5 fuentes no se
+solapan, el resto de arquetipos sigue vacío) y un caso en `mission-power-runtime.test.ts` que verifica que
+`recalculate()` refleja un cambio de asignación SIN ningún tick. 608 tests en `/engine` (antes 604, +4), 29 en
+`/game` sin cambios. `tsc --noEmit`/`vite build` limpios en ambos workspaces.

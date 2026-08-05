@@ -527,9 +527,10 @@
 
 - Reparto en dos niveles, funciones puras testeadas antes de integrar: `allocateSectionBudget` (global→sección — `darkSectionIds` es informativo, no gatea nada por sí solo), `allocateComponentPower` (sección→componentes, ordena por prioridad con desempate determinista por `instanceId`, consume por `powerDraw`). `reconcilePowerScars`/`distributeBudgetEvenly` (ronda 1) eliminados en la ronda 2 — sin caller tras desacoplar la cicatriz permanente del déficit vivo (ver `mission-power-runtime.ts`).
 
-## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b; modificado, fix post-playtest ronda 2)
+## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b; modificado, fixes post-playtest rondas 2 y 3)
 
-- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`): recalcula el presupuesto cada tick. Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`). `Blueprint.unpoweredSectionIds` refleja SOLO `powerState.permanentlyDisconnectedSectionIds` (ronda 2 — ya no unión con déficit vivo). Nuevo `sectionHasNoPowerGranted(sectionId)`, señal puramente cosmética (déficit vivo, sin excepciones) para el efecto visual ambiental, desacoplada del gating real.
+- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`). Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`). `Blueprint.unpoweredSectionIds` refleja SOLO `powerState.permanentlyDisconnectedSectionIds` (ronda 2 — ya no unión con déficit vivo). `sectionHasNoPowerGranted(sectionId)`: señal puramente cosmética (déficit vivo, sin excepciones) para el efecto visual ambiental, desacoplada del gating real.
+- `recalculate()` público (ronda 3): el recálculo NO puede depender solo de `tick()`, porque `CoreLoopModeMachine` es NO-OP en modo `planning` y los controles de energía solo existen en pausa. `tick()` delega en él.
 
 ## `engine/src/properties/functional.types.ts` (modificado, Fase 13b)
 
@@ -551,9 +552,9 @@
 
 - Quitado `Chapter01ArchetypeParams.unpoweredSectionId` y el export `CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE` — la demo de "taller" (attrezzo de Fase 12a) no era contenido narrativo real; reemplazada por una fuente real sembrada en `initial-ship-state.ts`.
 
-## `engine/src/floorplan/initial-ship-state.ts` (modificado, fix post-playtest ronda 2 de 13b)
+## `engine/src/floorplan/initial-ship-state.ts` (+ `initial-ship-state.test.ts` nuevo) (modificado, fixes post-playtest rondas 2 y 3 de 13b)
 
-- `starterKit(archetype)` gana el parámetro `archetype`: solo para `"exploracion"` siembra `bateria-celda-simple` (`powerUnits: 1`) en `{x:23,y:12}` (`ingenieria`, verificada libre contra `nave-exploracion.json`) — da presupuesto real de energía desde el arranque para que el slider de reparto tenga algo que distribuir.
+- `starterKit(archetype)` gana el parámetro `archetype`: solo para `"exploracion"` siembra fuentes reales de energía. Ronda 3: 5× `celula-fotovoltaica` (footprint 1×2, `powerUnits: 2`) = **10 unidades** — 3 en `ingenieria` y 2 en `propulsion` (`ingenieria` tope real 6: solo 3 pares verticales libres). Celdas verificadas contra `nave-exploracion.json`, en `EXPLORACION_POWER_SOURCE_CELLS`.
 
 ## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b)
 
@@ -567,9 +568,10 @@
 
 - `ENERGY_LAYER_COLOR`/`ENERGY_LAYER_ALPHA` (deriva del Eje A de color). `FloorplanLayerId` gana `"energia"`; `drawEnergyLayer()` (plantilla de `drawStructuralLayer`) pinta rojo/ámbar por sección según déficit.
 
-## `game/src/ui/widgets/power-allocation-slider.ts` (nuevo, fix post-playtest ronda 2 de 13b — reemplaza `power-allocation-dial.ts`, borrado)
+## `game/src/ui/widgets/power-allocation-slider.ts` (nuevo, fix post-playtest ronda 2 de 13b — reemplaza `power-allocation-dial.ts`, borrado; modificado ronda 3)
 
 - `renderPowerAllocationSlider`: slider entero de arrastre por sección (molde de `kenney-slider.ts`), consciente de cámara (`getWorldPoint`, objeto de mundo no HUD) y con `destroy()` explícito de sus propios listeners de `scene.input` — necesario porque se destruye/reconstruye muchas veces por sesión, a diferencia del slider de `options-scene.ts`.
+- Ronda 3: el track abarca `0..maxUnits` (presupuesto total, ancho con el mismo significado en todas las secciones) pero el arrastre se topa en `capUnits`; el tramo bloqueado se pinta con `LOCKED_COLOR` propio. Etiqueta `N/total · P%`. `setCap(capUnits)` reajusta el tope sin destruir el widget.
 
 ## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
 
@@ -578,7 +580,9 @@
 ## `game/src/mission/mission-runtime.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
 
 - `powerRuntime: MissionPowerRuntime` nuevo, registrado en el core loop antes de `signalRuntime`. Getters/setters para la UI: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`, y (ronda 2) `sectionHasNoPowerGranted`.
+- Ronda 3: `setSectionPowerUnits`/`reorderInstancePriority` llaman `powerRuntime.recalculate()` de forma síncrona — el core loop no tickea en pausa, que es cuando se opera la UI de energía.
 
 ## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
 
 - Redibuja la capa "energia" cada frame (mismo criterio que "estructural"). Slider/inspector de prioridad se reconstruyen bajo demanda (toggle de capa, cambio de modo) — `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`, usa `renderPowerAllocationSlider` (ronda 2). Nuevo campo `energyControlWorldBounds` + chequeo en `isOverFixedUi()` (ronda 2, fix de click bleed-through, mismo patrón que `actionPanelBounds`). `redrawUnpoweredSectionScar`/`syncUnpoweredSectionLights` consumen `mission.sectionHasNoPowerGranted()` en vez de `blueprint.unpoweredSectionIds` (ronda 2).
+- Ronda 3: `unallocatedPowerUnits()`/`syncEnergySliderCaps()` imponen el tope global del reparto (los sliders de las otras secciones se reajustan sin reconstruirse). Constante `ENERGY_CONTROL_BOX`, fuente única de la que se derivan el panel de fondo (`createKenneyPanel`) y `energyControlWorldBounds`.

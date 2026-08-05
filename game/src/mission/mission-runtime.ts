@@ -419,11 +419,10 @@ export class MissionRuntime {
     this.crisisRuntime.tick({ dtSeconds: 0.001, elapsedSeconds: 0 });
 
     // Pasada síncrona (Fase 13b), mismo criterio que `crisisRuntime.tick`
-    // arriba: el presupuesto de energía debe estar resuelto (cicatriz
-    // permanente ∪ déficit de la asignación sembrada) ANTES de que
-    // `signalRuntime`/la UI lean `unpoweredSectionIds` por primera vez, sin
-    // esperar al primer tick de ejecución.
-    this.powerRuntime.tick({ dtSeconds: 0.001, elapsedSeconds: 0 });
+    // arriba: el presupuesto de energía debe estar resuelto ANTES de que
+    // `signalRuntime`/la UI lean la cicatriz y el déficit por primera vez, sin
+    // esperar al primer tick de ejecución (que en pausa no llega nunca).
+    this.powerRuntime.recalculate();
 
     // Pasada síncrona (Fase 11a.3), mismo criterio que `crisisRuntime.tick`
     // arriba: promueve piezas ferromagnéticas sueltas que ya vinieran en el
@@ -918,9 +917,11 @@ export class MissionRuntime {
 
   /**
    * Fija en bloque la asignación de unidades del jugador a una sección
-   * (dial +1/-1, Fase 13b, UI en modo pausa). `MissionPowerRuntime` recalcula
-   * el resultado en el siguiente tick — este método solo escribe la entrada
-   * de datos, no decide qué queda alimentado.
+   * (slider de la capa "energia", Fase 13b, UI en modo pausa). Este método
+   * escribe la entrada de datos y fuerza el recálculo síncrono: el core loop
+   * NO tickea en `planning` (`CoreLoopModeMachine.tick` es NO-OP), así que
+   * esperar "al siguiente tick" dejaría el cambio sin efecto hasta que el
+   * jugador apriete Play — fix de la ronda 3 de playtest.
    */
   setSectionPowerUnits(sectionId: SectionId, units: number): void {
     const blueprint = this.shipState.get();
@@ -929,6 +930,7 @@ export class MissionRuntime {
     const sectionAllocations: SectionPowerAllocation[] =
       clamped === 0 ? withoutSection : [...withoutSection, { sectionId, units: clamped }];
     this.shipState.set({ ...blueprint, powerState: { ...blueprint.powerState, sectionAllocations } });
+    this.powerRuntime.recalculate();
   }
 
   /**
@@ -977,6 +979,9 @@ export class MissionRuntime {
       ...order.map((id, priority) => ({ instanceId: id, priority })),
     ];
     this.shipState.set({ ...blueprint, powerState: { ...blueprint.powerState, instancePriorities } });
+    // Mismo motivo que `setSectionPowerUnits`: el triaje reordenado en pausa
+    // debe verse en el acto (el inspector muestra qué instancia queda viva).
+    this.powerRuntime.recalculate();
   }
 
   /**

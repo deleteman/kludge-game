@@ -181,6 +181,15 @@ const LAYER_PANEL_CENTER_Y = 118;
 const LAYER_PANEL_WIDTH = 830;
 const LAYER_PANEL_HEIGHT = 74;
 
+/**
+ * Caja del cluster de controles de energía por sección (slider + botón de
+ * prioridad), relativa al centroide de la sección. Fuente ÚNICA de la que se
+ * derivan tanto el panel de fondo (`createKenneyPanel`) como
+ * `energyControlWorldBounds` (la zona que impide que el click atraviese al
+ * mapa) — antes eran literales sueltos que podían desincronizarse.
+ */
+const ENERGY_CONTROL_BOX = { offsetX: 0, offsetY: 4, width: 120, height: 78 } as const;
+
 // Franja lateral fija (ajuste post-playtest): NUNCA se mueve, vive en la
 // cámara de HUD. El mapa se panea por debajo, en la cámara de mundo recortada
 // (`cameras.main`, ver `create()`) — sin esto, panear no serviría de nada: si
@@ -1798,21 +1807,25 @@ export class FloorplanScene extends Phaser.Scene {
     }
 
     const totalBudget = this.mission.totalPowerBudget();
+    // Sin presupuesto total (ningún arquetipo salvo Exploración por ahora), no
+    // hay nada que repartir — no se dibuja ningún control.
+    if (totalBudget <= 0) return;
+
     const bounds: Array<{ x: number; y: number; width: number; height: number }> = [];
     for (const section of this.mission.shipFloorplan.sections) {
-      // Sin presupuesto total todavía (ningún arquetipo salvo Exploración por
-      // ahora), no hay nada que repartir — omitir el control en vez de
-      // mostrar un slider inerte de 0/0.
-      if (totalBudget <= 0) continue;
-
       const { x, y } = sectionCentroidPx(section);
+      const units = this.mission.sectionPowerAllocation(section.id);
       const slider = renderPowerAllocationSlider(this, {
         x,
         y: y - 14,
         maxUnits: totalBudget,
-        units: this.mission.sectionPowerAllocation(section.id),
+        capUnits: units + this.unallocatedPowerUnits(),
+        units,
         enabled: true,
-        onChange: (units) => this.mission.setSectionPowerUnits(section.id, units),
+        onChange: (nextUnits) => {
+          this.mission.setSectionPowerUnits(section.id, nextUnits);
+          this.syncEnergySliderCaps(section.id);
+        },
       });
       const priorityButton = createKenneyButton(
         this.rex,
@@ -1826,16 +1839,34 @@ export class FloorplanScene extends Phaser.Scene {
           onClick: () => this.openEnergyPriorityPanel(section.id),
         },
       );
+      // Fondo del cluster (fix ronda 3): sueltos sobre el plano, slider y botón
+      // se mezclaban con el mapa. Reutiliza el mismo `NineSlice` que el resto
+      // de paneles del proyecto. Se inserta PRIMERO para quedar detrás.
+      const { panel } = createKenneyPanel(
+        this,
+        x + ENERGY_CONTROL_BOX.offsetX,
+        y + ENERGY_CONTROL_BOX.offsetY,
+        ENERGY_CONTROL_BOX.width,
+        ENERGY_CONTROL_BOX.height,
+      );
       // Depth explícito (fix post-playtest): sin esto, el contenedor heredaba
       // el depth `background` (0) de `floorplanRender.base` y quedaba oculto
       // detrás de las sombras dinámicas/paredes/luces (`RENDER_DEPTH.effect`
       // es el mismo nivel que usan otros controles interactivos de mundo,
       // ej. `fireLocalStatic`). NO se reparenta a `floorplanRender.base`
       // (ese container fija el depth de TODOS sus hijos a `background`).
-      const outer = this.add.container(0, 0, [slider.container, priorityButton]).setDepth(RENDER_DEPTH.effect);
+      const outer = this.add.container(0, 0, [panel, slider.container, priorityButton]).setDepth(RENDER_DEPTH.effect);
       this.markAsWorldObject(outer);
       this.energyDialContainers.set(section.id, { outer, slider });
-      bounds.push({ x: x - 55, y: y - 30, width: 110, height: 68 });
+      // Mismo rectángulo que el panel de fondo — derivado de la MISMA constante
+      // para que el fondo visible y la zona que bloquea el click de mapa no
+      // puedan desincronizarse.
+      bounds.push({
+        x: x + ENERGY_CONTROL_BOX.offsetX - ENERGY_CONTROL_BOX.width / 2,
+        y: y + ENERGY_CONTROL_BOX.offsetY - ENERGY_CONTROL_BOX.height / 2,
+        width: ENERGY_CONTROL_BOX.width,
+        height: ENERGY_CONTROL_BOX.height,
+      });
     }
     this.energyControlWorldBounds = bounds;
 
@@ -1843,6 +1874,29 @@ export class FloorplanScene extends Phaser.Scene {
     // no es visible (capa apagada/salió de pausa), cerrarlo con el resto.
     if (this.energyPriorityPanelSectionId) {
       this.openEnergyPriorityPanel(this.energyPriorityPanelSectionId);
+    }
+  }
+
+  /** Unidades de energía sin asignar a ninguna sección (Fase 13b ronda 3, tope global del reparto). */
+  private unallocatedPowerUnits(): number {
+    const assigned = this.mission.shipFloorplan.sections.reduce(
+      (sum, section) => sum + this.mission.sectionPowerAllocation(section.id),
+      0,
+    );
+    return Math.max(0, this.mission.totalPowerBudget() - assigned);
+  }
+
+  /**
+   * Reajusta el tope de los sliders de las OTRAS secciones tras un cambio de
+   * asignación. No se reconstruyen los controles: eso destruiría el widget que
+   * el jugador está arrastrando en ese mismo instante (la razón por la que en
+   * la ronda 2 se quitó el rebuild-por-cambio).
+   */
+  private syncEnergySliderCaps(changedSectionId: SectionId): void {
+    const remaining = this.unallocatedPowerUnits();
+    for (const [sectionId, { slider }] of this.energyDialContainers) {
+      if (sectionId === changedSectionId) continue;
+      slider.setCap(this.mission.sectionPowerAllocation(sectionId) + remaining);
     }
   }
 

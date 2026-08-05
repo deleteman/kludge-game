@@ -167,6 +167,26 @@ describe("MissionPowerRuntime (Fase 13b, presupuesto de energía en vivo)", () =
     expect(shipState.get()).toBe(afterFirst);
   });
 
+  it("recalculate() refleja un cambio de asignación SIN ningún tick (modo pausa, ronda 3)", () => {
+    // `CoreLoopModeMachine.tick()` es NO-OP en `planning`, y los controles de
+    // energía SOLO existen en pausa: sin este camino síncrono, mover el slider
+    // no tendría ningún efecto hasta apretar Play.
+    const shipState = new MutableShipState(baseBlueprint());
+    const runtime = new MissionPowerRuntime(shipState, floorplan(), registry());
+
+    runtime.recalculate();
+    expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(true);
+
+    const blueprint = shipState.get();
+    shipState.set({
+      ...blueprint,
+      powerState: { ...blueprint.powerState, sectionAllocations: [{ sectionId: SECTION_B, units: 2 }] },
+    });
+    runtime.recalculate();
+
+    expect(runtime.sectionHasNoPowerGranted(SECTION_B)).toBe(false);
+  });
+
   it("unpoweredSectionIds refleja SOLO la cicatriz permanente — el déficit vivo de sesión no la contamina", () => {
     const shipState = new MutableShipState(
       baseBlueprint({
