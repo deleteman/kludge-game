@@ -345,6 +345,31 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
   - **Fuera de alcance a propósito** (anotado en `PENDIENTES_OBSERVACIONES.md`): mezclar dos sustancias dentro
     de un reservorio, y un runtime de transporte continuo de fluido por conducto.
 
+  **Ronda 1 de fixes de playtest (2026-08-07)** — el operador reportó que el ciclo no se podía jugar de punta
+  a punta. Tres causas, las tres confirmadas en código:
+  - **Reservorios vacíos (bloqueante):** NADIE poblaba nunca `Blueprint.reservoirContents` — la sustancia de
+    cada reservorio existía solo como comentario (`// Nota: contiene X`) en 21 entradas del catálogo. Promovido
+    a dato real (`CompositeComponentSpec.contains`, con la interfaz extraída a
+    `composite-component-spec.types.ts` porque estaba duplicada en los 4 catálogos) y derivado al crear la
+    campaña y al sembrar un capítulo (`reservoir/initial-reservoir-contents.ts`). Los tanques nacen LLENOS a su
+    `capacity`. De paso, esto activa por primera vez en partida real el derrame de 13d.
+  - **Materia prima infinita (consecuencia del anterior):** extraer vaciaba el tanque entero en una tarea de
+    14s (100 unidades de agua = 200 H + 100 O). Se topea por tarea (`EXTRACTION_BATCH_UNITS = 5`): la escasez
+    pasa a ser de TIEMPO — cada lote es un viaje del tripulante — en vez de 21 cantidades autoradas a mano.
+  - **El tripulante no caminaba a la mesa:** `queueFabrication`/`queueSynthesis`/`queueAnalyzeSubstance` usaban
+    `plannedSectionFor` ("donde ya esté"), correcto cuando la mesa era un botón global pero contradictorio con
+    haberla convertido en aparato. Ahora van con `ensureAt` a la sección del aparato — y analizar, a la del
+    reservorio que contiene la sustancia.
+  - **Mesa en química:** se ocultan "modo cableado"/"modo borrar" (no aplican, sus handlers ya eran no-op), y
+    el layout pasa a tres columnas (`CHEM_COLUMNS`) usando el alto completo en vez de heredar el del grid
+    físico. **Causa raíz del texto cortado**: rexUI ancla cada hijo de un sizer por su CENTRO, pero las
+    tarjetas dibujaban sus hijos con `origin(0,0)` desde ese punto, así que media tarjeta caía fuera de la
+    máscara del `scrollablePanel` — bug preexistente de `kenney-card-list.ts`, ahora con hijos relativos al
+    centro y alto adaptativo al contenido.
+  - Verificado en la app real con Playwright (campaña nueva → misión → estación química): reservorio en
+    "Contiene: Agua — 100/100", aviso de derrame, "Extraer (requiere análisis)" deshabilitado, y la paleta con
+    el texto completo. `/engine` 843 → 858 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

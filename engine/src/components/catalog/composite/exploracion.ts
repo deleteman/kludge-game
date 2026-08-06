@@ -4,33 +4,15 @@
  */
 
 import type { ComponentId } from "../../physical-component.types.js";
-import type { FunctionalProperties } from "../../../properties/functional.types.js";
-import type { MaterialProperties } from "../../../properties/material.types.js";
-import type { Footprint } from "../../../geometry/grid-position.types.js";
-import type { Recipe } from "../../../composition/recipe.types.js";
+import type { CompositeComponentSpec } from "./composite-component-spec.types.js";
+export type { CompositeComponentSpec } from "./composite-component-spec.types.js";
+import type { ChemicalSubstanceId } from "../../../chemistry/chemical-substance.types.js";
 
-export interface CompositeComponentSpec {
-  readonly id: ComponentId;
-  readonly name: string;
-  readonly data: {
-    readonly functional?: FunctionalProperties;
-    readonly material?: MaterialProperties;
-    /**
-     * Footprint de catálogo — opcional (`CompositeComponentData.footprint`,
-     * `components/physical-component.types.ts`): la mayoría de los compuestos
-     * de catálogo pre-Fase-7 no lo tienen (se instalan solo vía mesa de
-     * creación, que calcula su propio footprint). Poblarlo acá es necesario
-     * únicamente para los compuestos que se siembran directo en el plano vía
-     * la capa Tiled `semillas` (`floorplan/instantiate-component-seeds.ts`).
-     */
-    readonly footprint?: Footprint;
-  };
-  readonly recipe: Recipe<ComponentId>;
-}
 
 export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   {
     id: "tanque-combustible-largo-alcance" as ComponentId,
+    contains: "combustible-de-motor" as ChemicalSubstanceId,
     name: "Tanque de combustible de largo alcance",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 300, dischargeRate: 20 }],
@@ -257,6 +239,7 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "invernadero-hidroponico" as ComponentId,
+    contains: "agua" as ChemicalSubstanceId,
     name: "Invernadero hidropónico",
     data: {
       functional: [
@@ -302,6 +285,7 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-refrigerante-motor" as ComponentId,
+    contains: "refrigerante-sintetico" as ChemicalSubstanceId,
     name: "Reservorio de refrigerante de motor",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 120, dischargeRate: 8 }],
@@ -318,6 +302,7 @@ export const EXPLORACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-agua-reciclada" as ComponentId,
+    contains: "agua" as ChemicalSubstanceId,
     name: "Reservorio de agua reciclada",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 5 }],

@@ -107,7 +107,7 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.reservoir-contents": "Contiene: {substance} — {amount}/{capacity}",
   "ui.floorplan.mission.inspector.transfer-substance": "Trasvasar",
   "ui.floorplan.mission.inspector.apply-substance": "Aplicar aquí",
-  "ui.floorplan.mission.inspector.extract-elements": "Extraer elementos",
+  "ui.floorplan.mission.inspector.extract-elements": "Extraer {amount} elementos",
   "ui.floorplan.mission.inspector.extract-blocked.empty": "Extraer (vacío)",
   "ui.floorplan.mission.inspector.extract-blocked.unanalyzed": "Extraer (requiere análisis)",
   "ui.floorplan.mission.inspector.extract-blocked.unknown-composition": "Extraer (composición desconocida)",

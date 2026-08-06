@@ -14,6 +14,21 @@ import { GUERRA_CATALOG } from "./composite/guerra.js";
 import { EXPLORACION_CATALOG } from "./composite/exploracion.js";
 import { MEDICA_CATALOG } from "./composite/medica.js";
 import { TALLER_CATALOG } from "./composite/taller.js";
+import type { CompositeComponentSpec } from "./composite/composite-component-spec.types.js";
+
+/**
+ * TODOS los specs de compuestos, en un solo array. Exportado porque hay
+ * consumidores que necesitan el METADATO de autoría del spec (ej. `contains`,
+ * Subfase 13e) y no la definición ya construida — la factory solo copia `data`,
+ * así que ese metadato no sobrevive a `buildComposite`.
+ */
+export const ALL_COMPOSITE_SPECS: ReadonlyArray<CompositeComponentSpec> = [
+  ...INVESTIGACION_CATALOG,
+  ...GUERRA_CATALOG,
+  ...EXPLORACION_CATALOG,
+  ...MEDICA_CATALOG,
+  ...TALLER_CATALOG,
+];
 
 export function buildComponentCatalog(): {
   registry: EntityRegistry<ComponentId, PhysicalComponentDefinition>;
@@ -37,19 +52,13 @@ export function buildComponentCatalog(): {
   // Primero: compuestos que solo referencian atómicos.
   // Segundo: compuestos que referencian otros compuestos (ensamblajes complejos como Torreta).
 
-  const allCompositeCatalogs = [
-    ...INVESTIGACION_CATALOG,
-    ...GUERRA_CATALOG,
-    ...EXPLORACION_CATALOG,
-    ...MEDICA_CATALOG,
-    // Kit base común a los 4 arquetipos (13e), no de un arquetipo concreto.
-    ...TALLER_CATALOG,
-  ];
+  // Kit base común a los 4 arquetipos (13e) incluido: ver `ALL_COMPOSITE_SPECS`.
+  const allCompositeCatalogs = ALL_COMPOSITE_SPECS;
 
   // Separar composites por si dependen de otros composites.
   const atomicReferences = new Set(ATOMIC_COMPONENT_CATALOG.map((a) => a.id));
-  const atomicOnlyComposites: typeof allCompositeCatalogs = [];
-  const complexAssemblies: typeof allCompositeCatalogs = [];
+  const atomicOnlyComposites: CompositeComponentSpec[] = [];
+  const complexAssemblies: CompositeComponentSpec[] = [];
 
   for (const compositeSpec of allCompositeCatalogs) {
     const referencesOnlyAtomics = compositeSpec.recipe.ingredients.every((ing) =>

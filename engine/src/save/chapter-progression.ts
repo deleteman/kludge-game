@@ -1,3 +1,5 @@
+import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
+import { FACTORY_RESERVOIR_CONTENTS } from "../reservoir/factory-reservoir-contents.js";
 import type { Blueprint, PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SignalNode } from "../signals/signal-node.types.js";
 import type { ShipArchetype } from "../floorplan/floorplan.types.js";
@@ -121,6 +123,13 @@ function applyChapterSeed(blueprint: Blueprint, seed: ChapterSeed): Blueprint {
   return {
     ...blueprint,
     placedComponents: [...blueprint.placedComponents, ...seed.components],
+    // Subfase 13e (fix de playtest ronda 1): un reservorio sembrado por un
+    // capítulo nace con su contenido de fábrica, igual que los del kit inicial
+    // — si no, el capítulo que lo introduce lo entregaría vacío e inservible.
+    reservoirContents: [
+      ...blueprint.reservoirContents,
+      ...deriveInitialReservoirContents(seed.components, FACTORY_RESERVOIR_CONTENTS),
+    ],
     signalGraph: {
       nodes: [...blueprint.signalGraph.nodes, ...seed.signalNodes],
       edges: [...blueprint.signalGraph.edges],

@@ -682,6 +682,13 @@ export {
   sectionOfInstance,
 } from "./reservoir/fluid-transfer-reachability.js";
 export {
+  deriveInitialReservoirContents,
+  indexFactoryReservoirContents,
+} from "./reservoir/initial-reservoir-contents.js";
+export type { FactoryReservoirContents } from "./reservoir/initial-reservoir-contents.js";
+export { FACTORY_RESERVOIR_CONTENTS } from "./reservoir/factory-reservoir-contents.js";
+export { EXTRACTION_BATCH_UNITS } from "./reservoir/reservoir-parameters.js";
+export {
   elementsFromAmount,
   elementsPerUnit,
   extractionBlockedReason,

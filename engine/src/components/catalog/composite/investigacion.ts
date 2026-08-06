@@ -4,19 +4,9 @@
  */
 
 import type { ComponentId } from "../../physical-component.types.js";
-import type { FunctionalProperties } from "../../../properties/functional.types.js";
-import type { MaterialProperties } from "../../../properties/material.types.js";
-import type { Recipe } from "../../../composition/recipe.types.js";
-
-export interface CompositeComponentSpec {
-  readonly id: ComponentId;
-  readonly name: string;
-  readonly data: {
-    readonly functional?: FunctionalProperties;
-    readonly material?: MaterialProperties;
-  };
-  readonly recipe: Recipe<ComponentId>;
-}
+import type { ChemicalSubstanceId } from "../../../chemistry/chemical-substance.types.js";
+import type { CompositeComponentSpec } from "./composite-component-spec.types.js";
+export type { CompositeComponentSpec } from "./composite-component-spec.types.js";
 
 export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   {
@@ -142,6 +132,7 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "tanque-muestra-criogenica" as ComponentId,
+    contains: "nitrogeno-liquido" as ChemicalSubstanceId,
     name: "Tanque de muestra criogénica",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 2 }],
@@ -276,6 +267,7 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-reactivo-acido" as ComponentId,
+    contains: "acido-de-laboratorio" as ChemicalSubstanceId,
     name: "Reservorio de reactivo ácido",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 80, dischargeRate: 5 }],
@@ -292,6 +284,7 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-reactivo-base" as ComponentId,
+    contains: "base-de-laboratorio" as ChemicalSubstanceId,
     name: "Reservorio de reactivo base",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 80, dischargeRate: 5 }],
@@ -308,6 +301,7 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-disolvente" as ComponentId,
+    contains: "disolvente-volatil" as ChemicalSubstanceId,
     name: "Reservorio de disolvente",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 60, dischargeRate: 4 }],

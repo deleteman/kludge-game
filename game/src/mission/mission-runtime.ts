@@ -1175,19 +1175,42 @@ export class MissionRuntime {
    * suscripción a `task-completed` en el constructor). Consecuencia de tiempo real,
    * no instantánea (principio 5).
    */
-  queueFabrication(actorId: CrewActorId, definition: PhysicalComponentDefinition): void {
+  queueFabrication(
+    actorId: CrewActorId,
+    definition: PhysicalComponentDefinition,
+    stationInstanceId?: PlacedComponentInstanceId,
+  ): void {
     this.componentRegistry.register(definition.id, definition);
     const taskId = this.nextTaskId();
     this.pendingFabrications.set(taskId, definition);
+    // 13e ronda 1 de fixes: fabricar ocurre EN el banco de trabajo, así que el
+    // tripulante tiene que ir hasta él. Antes se ejecutaba donde ya estuviera
+    // (`plannedSectionFor`), que era correcto cuando la mesa era un botón
+    // global del header — pero anula el sentido de haberla puesto en el plano.
+    const targetSectionId = this.workstationSectionFor(actorId, stationInstanceId);
+    this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
         type: "combine",
-        targetSectionId: this.plannedSectionFor(actorId),
+        targetSectionId,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );
+  }
+
+  /**
+   * Sección donde se ejecuta un trabajo de mesa. Si hay aparato, la suya; si no
+   * (modo creativo, o un llamador viejo), se mantiene el comportamiento anterior
+   * de hacerlo donde el tripulante ya esté, en vez de bloquear la acción.
+   */
+  private workstationSectionFor(
+    actorId: CrewActorId,
+    stationInstanceId: PlacedComponentInstanceId | undefined,
+  ): SectionId | undefined {
+    const stationSection = stationInstanceId && this.sectionIdOfInstance(stationInstanceId);
+    return stationSection ?? this.plannedSectionFor(actorId);
   }
 
   /**
@@ -1272,12 +1295,21 @@ export class MissionRuntime {
    * duro por especialidad.
    */
   queueAnalyzeSubstance(actorId: CrewActorId, substanceId: ChemicalSubstanceId): void {
+    // 13e ronda 1 de fixes: una sustancia ya tiene ubicación (vive en un
+    // reservorio), así que analizarla exige ir hasta ella — mismo criterio que
+    // fabricar y extraer. Si no está en ningún reservorio (respaldo de
+    // `availableSubstanceIds`), se mantiene el comportamiento anterior.
+    const location = this.substanceLocations(substanceId)[0];
+    const targetSectionId = location
+      ? this.sectionIdOfInstance(location.instanceId)
+      : this.plannedSectionFor(actorId);
+    this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
         type: "analyze-substance",
-        targetSectionId: this.plannedSectionFor(actorId),
+        targetSectionId,
         payload: { kind: "analyze-substance", substanceId },
         estimatedDurationSeconds: this.modulatedDuration("analyze-substance", actorId),
       }),
@@ -1334,12 +1366,15 @@ export class MissionRuntime {
     if (stationInstanceId) {
       this.pendingSynthesisStation.set(taskId, stationInstanceId);
     }
+    // Ídem `queueFabrication`: la síntesis ocurre EN la estación química.
+    const targetSectionId = this.workstationSectionFor(actorId, stationInstanceId);
+    this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
         type: "combine",
-        targetSectionId: this.plannedSectionFor(actorId),
+        targetSectionId,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );

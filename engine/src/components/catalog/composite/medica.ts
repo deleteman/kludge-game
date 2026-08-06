@@ -4,19 +4,9 @@
  */
 
 import type { ComponentId } from "../../physical-component.types.js";
-import type { FunctionalProperties } from "../../../properties/functional.types.js";
-import type { MaterialProperties } from "../../../properties/material.types.js";
-import type { Recipe } from "../../../composition/recipe.types.js";
-
-export interface CompositeComponentSpec {
-  readonly id: ComponentId;
-  readonly name: string;
-  readonly data: {
-    readonly functional?: FunctionalProperties;
-    readonly material?: MaterialProperties;
-  };
-  readonly recipe: Recipe<ComponentId>;
-}
+import type { ChemicalSubstanceId } from "../../../chemistry/chemical-substance.types.js";
+import type { CompositeComponentSpec } from "./composite-component-spec.types.js";
+export type { CompositeComponentSpec } from "./composite-component-spec.types.js";
 
 export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   {
@@ -37,6 +27,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "tanque-anestesico" as ComponentId,
+    contains: "anestesico-medico" as ChemicalSubstanceId,
     name: "Tanque de anestésico",
     data: {
       functional: [{ tag: "RES", resourceType: "G", capacity: 80, dischargeRate: 5 }],
@@ -109,6 +100,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "banco-sangre-fluidos" as ComponentId,
+    contains: "fluido-biologico" as ChemicalSubstanceId,
     name: "Banco de sangre/fluidos",
     data: {
       functional: [
@@ -148,6 +140,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "ventilador-mecanico" as ComponentId,
+    contains: "oxigeno" as ChemicalSubstanceId,
     name: "Ventilador mecánico",
     data: {
       functional: [
@@ -186,6 +179,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "farmacia-automatizada" as ComponentId,
+    contains: "sustancia-medica-generica" as ChemicalSubstanceId,
     name: "Farmacia automatizada",
     data: {
       functional: [
@@ -224,6 +218,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "generador-oxigeno-precision" as ComponentId,
+    contains: "oxigeno" as ChemicalSubstanceId,
     name: "Generador de oxígeno de precisión",
     data: {
       functional: [
@@ -297,6 +292,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-anestesico-concentrado" as ComponentId,
+    contains: "anestesico-medico" as ChemicalSubstanceId,
     name: "Reservorio de anestésico concentrado",
     data: {
       functional: [{ tag: "RES", resourceType: "G", capacity: 50, dischargeRate: 3 }],
@@ -313,6 +309,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-desinfectante" as ComponentId,
+    contains: "desinfectante" as ChemicalSubstanceId,
     name: "Reservorio de desinfectante",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 60, dischargeRate: 4 }],
@@ -329,6 +326,7 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-oxigeno-medico-concentrado" as ComponentId,
+    contains: "oxigeno" as ChemicalSubstanceId,
     name: "Reservorio de oxígeno médico concentrado",
     data: {
       functional: [{ tag: "RES", resourceType: "G", capacity: 100, dischargeRate: 6 }],

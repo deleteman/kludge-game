@@ -2054,7 +2054,7 @@ export class FloorplanScene extends Phaser.Scene {
       elementStockOf: (elementId: ChemicalSubstanceId) =>
         elementStockOf(this.mission.elementStock.get(), elementId),
       onFabricate: (definition: PhysicalComponentDefinition) => {
-        this.mission.queueFabrication(actorId, definition);
+        this.mission.queueFabrication(actorId, definition, stationInstanceId);
         this.nameByComponentId.set(definition.id as string, definition.name);
         this.setStatus(t("ui.floorplan.mission.workbench-queued").replace("{name}", definition.name));
         this.redrawQueuePanel();

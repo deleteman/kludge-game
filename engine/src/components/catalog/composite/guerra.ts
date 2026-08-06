@@ -5,19 +5,9 @@
  */
 
 import type { ComponentId } from "../../physical-component.types.js";
-import type { FunctionalProperties } from "../../../properties/functional.types.js";
-import type { MaterialProperties } from "../../../properties/material.types.js";
-import type { Recipe } from "../../../composition/recipe.types.js";
-
-export interface CompositeComponentSpec {
-  readonly id: ComponentId;
-  readonly name: string;
-  readonly data: {
-    readonly functional?: FunctionalProperties;
-    readonly material?: MaterialProperties;
-  };
-  readonly recipe: Recipe<ComponentId>;
-}
+import type { ChemicalSubstanceId } from "../../../chemistry/chemical-substance.types.js";
+import type { CompositeComponentSpec } from "./composite-component-spec.types.js";
+export type { CompositeComponentSpec } from "./composite-component-spec.types.js";
 
 export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   {
@@ -175,6 +165,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "extintor-militar" as ComponentId,
+    contains: "nitrogeno" as ChemicalSubstanceId,
     name: "Extintor militar",
     data: {
       functional: [{ tag: "RES", resourceType: "G", capacity: 100, dischargeRate: 15 }],
@@ -244,6 +235,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-combustible-motor" as ComponentId,
+    contains: "combustible-de-motor" as ChemicalSubstanceId,
     name: "Reservorio de combustible de motor",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 200, dischargeRate: 30 }],
@@ -260,6 +252,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "kit-medico-basico" as ComponentId,
+    contains: "anestesico-medico" as ChemicalSubstanceId,
     name: "Kit médico básico",
     data: {
       functional: [
@@ -294,6 +287,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-propelente-municion" as ComponentId,
+    contains: "propelente-oxidante-municion" as ChemicalSubstanceId,
     name: "Reservorio de propelente de munición",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 10 }],
@@ -310,6 +304,7 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
   },
   {
     id: "reservorio-acido-bateria" as ComponentId,
+    contains: "acido-de-bateria" as ChemicalSubstanceId,
     name: "Reservorio de ácido de batería",
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 80, dischargeRate: 5 }],

@@ -49,6 +49,28 @@ import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
 const CELL = GRID_CELL_SIZE_PX;
 const GRID_ORIGIN = { x: 40, y: 110 };
+
+/**
+ * Tres columnas del modo QUÍMICA (13e ronda 1 de fixes de playtest). Antes este
+ * modo reutilizaba tal cual el layout del modo físico: la selección se dibujaba
+ * sobre el grid (x 40..424) y la paleta quedaba clavada en x=1000, dejando ~450px
+ * muertos en el medio.
+ *
+ * Se ordenan como el flujo real, de izquierda a derecha: elijo un elemento →
+ * se acumula en la mezcla → veo qué sustancia sale.
+ */
+const CHEM_COLUMNS = {
+  palette: { centerX: 210, width: 340 },
+  selection: { x: 410, width: 380 },
+  result: { x: 830, width: 410 },
+  /**
+   * Alto útil de las columnas: del tope del grid hasta justo encima de la fila
+   * de botones (y=620). El modo química no usa el grid físico, así que no tiene
+   * por qué heredar su alto de 8 celdas — eso dejaba media pantalla vacía.
+   */
+  top: GRID_ORIGIN.y,
+  height: 590 - GRID_ORIGIN.y,
+} as const;
 const GRID_SIZE = { width: 12, height: 8 };
 
 /**
@@ -221,26 +243,29 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         metaGameStateMachine.transition("creative-hub");
       },
     });
-    createKenneyButton(self, 330, 620, t("ui.menu.workbench.wire-mode"), {
-      width: 150,
-      onClick: () => {
-        if (this.mode !== "fisica") return;
-        this.armedComponentId = undefined;
-        this.wireFirstNode = undefined;
-        this.deleteMode = false;
-        this.setStatus(t("ui.menu.workbench.wire-mode-hint"));
-      },
-    });
-    createKenneyButton(self, 500, 620, t("ui.menu.workbench.delete-mode"), {
-      width: 150,
-      onClick: () => {
-        if (this.mode !== "fisica") return;
-        this.armedComponentId = undefined;
-        this.wireFirstNode = undefined;
-        this.deleteMode = true;
-        this.setStatus(t("ui.menu.workbench.delete-mode-hint"));
-      },
-    });
+    // Modo cableado / borrar solo aplican al grid FÍSICO (sus handlers ya hacían
+    // `if (this.mode !== "fisica") return`). En química se ocultan del todo:
+    // dibujar un botón que no hace nada es ruido, no información (13e ronda 1).
+    if (this.mode === "fisica") {
+      createKenneyButton(self, 330, 620, t("ui.menu.workbench.wire-mode"), {
+        width: 150,
+        onClick: () => {
+          this.armedComponentId = undefined;
+          this.wireFirstNode = undefined;
+          this.deleteMode = false;
+          this.setStatus(t("ui.menu.workbench.wire-mode-hint"));
+        },
+      });
+      createKenneyButton(self, 500, 620, t("ui.menu.workbench.delete-mode"), {
+        width: 150,
+        onClick: () => {
+          this.armedComponentId = undefined;
+          this.wireFirstNode = undefined;
+          this.deleteMode = true;
+          this.setStatus(t("ui.menu.workbench.delete-mode-hint"));
+        },
+      });
+    }
 
     createKenneyButton(self, 730, 620, this.actionButtonLabel(missionContext), {
       width: 240,
@@ -343,10 +368,10 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     });
     this.palettePanel = createKenneyCardList(
       self,
-      1000,
-      GRID_ORIGIN.y + (GRID_SIZE.height * CELL) / 2,
-      260,
-      GRID_SIZE.height * CELL,
+      CHEM_COLUMNS.palette.centerX,
+      CHEM_COLUMNS.top + CHEM_COLUMNS.height / 2,
+      CHEM_COLUMNS.palette.width,
+      CHEM_COLUMNS.height,
       cards,
     );
   }
@@ -367,7 +392,9 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     if (this.mode !== "quimica" || !this.missionContext) {
       return;
     }
-    const container = this.add.container(GRID_ORIGIN.x, GRID_ORIGIN.y);
+    // 13e ronda 1: la selección deja de dibujarse encima del grid físico (que
+    // este modo no usa) y pasa a su propia columna central.
+    const container = this.add.container(CHEM_COLUMNS.selection.x, CHEM_COLUMNS.top);
     this.chemistryContainer = container;
 
     const counts = new Map<string, number>();
@@ -375,9 +402,11 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
       counts.set(elementId, (counts.get(elementId) ?? 0) + 1);
     }
 
-    const CHIP_WIDTH = 150;
+    const CHIP_WIDTH = 180;
     const CHIP_HEIGHT = 36;
-    const CHIPS_PER_ROW = 3;
+    // 2 por fila: la columna de selección es más angosta que el grid que este
+    // bloque ocupaba antes, pero los chips son más anchos y ya no se cortan.
+    const CHIPS_PER_ROW = 2;
     let index = 0;
     for (const [elementId, count] of counts) {
       const spec = this.elementSpecById.get(elementId);
@@ -410,7 +439,7 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
           fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
           fontSize: "12px",
           color: LABEL_COLOR,
-          wordWrap: { width: GRID_SIZE.width * CELL },
+          wordWrap: { width: CHEM_COLUMNS.selection.width },
         }),
       );
       return;
@@ -423,24 +452,29 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     const resultColor = chemicalResultColor(outcome.tags);
     // Caja de resultado más alta (12c.7, obs #8): el nombre ahora envuelve, así que
     // un resultado largo como "Mezcla sin identificar" ocupa 2 líneas sin salirse.
-    const resultBoxWidth = GRID_SIZE.width * CELL * 0.6;
-    const nameText = this.add.text(12, resultY + 26, outcome.name, {
+    // Columna derecha (13e ronda 1). `container` está anclado en la columna de
+    // selección, así que el offset es la distancia entre ambas columnas — y la
+    // caja arranca arriba del todo, no debajo de los chips.
+    const resultX = CHEM_COLUMNS.result.x - CHEM_COLUMNS.selection.x;
+    const resultTop = 0;
+    const resultBoxWidth = CHEM_COLUMNS.result.width;
+    const nameText = this.add.text(resultX + 12, resultTop + 26, outcome.name, {
       fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
       fontSize: "15px",
       color: HEADER_COLOR,
       wordWrap: { width: resultBoxWidth - 24 },
     });
     // La fila de tags va debajo del nombre ya envuelto, no a un offset fijo.
-    const tagsY = resultY + 26 + nameText.height + 6;
-    const resultBoxHeight = tagsY + 20 - resultY;
+    const tagsY = resultTop + 26 + nameText.height + 6;
+    const resultBoxHeight = tagsY + 20 - resultTop;
     container.add(
       this.add
-        .rectangle(0, resultY, resultBoxWidth, resultBoxHeight, 0x1a2030, 0.85)
+        .rectangle(resultX, resultTop, resultBoxWidth, resultBoxHeight, 0x1a2030, 0.85)
         .setOrigin(0, 0)
         .setStrokeStyle(2, resultColor, 1),
     );
     container.add(
-      this.add.text(12, resultY + 8, t("ui.menu.workbench.result-label"), {
+      this.add.text(resultX + 12, resultTop + 8, t("ui.menu.workbench.result-label"), {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: "11px",
         color: LABEL_COLOR,
@@ -448,7 +482,7 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     );
     container.add(nameText);
     container.add(
-      this.add.text(12, tagsY, outcome.tags.map((tag) => this.chemicalTagLabel(tag)).join(" · "), {
+      this.add.text(resultX + 12, tagsY, outcome.tags.map((tag) => this.chemicalTagLabel(tag)).join(" · "), {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: "11px",
         color: LABEL_COLOR,

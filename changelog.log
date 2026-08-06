@@ -3672,3 +3672,82 @@ reservorio, runtime de transporte continuo de fluido, selector de destino/cantid
 
 Razón: cerrar la Subfase 13e de `nuevo-orden.md`, substrato del Cap.7 (Fase 20) y del hueco de motor
 "todo lector, ningún escritor" que 13a dejó anotado sobre `atmosphere.gases`.
+
+================================================================================
+2026-08-07 — Subfase 13e, ronda 1 de fixes de playtest
+================================================================================
+
+El operador probó 13e y reportó que el ciclo NO se podía jugar de punta a punta. Tres hallazgos, ninguno
+cosmético: dos dejaban la subfase inservible en partida real y el tercero contradecía el motivo de haber
+convertido la mesa en un aparato físico.
+
+1. "EL RESERVORIO DE AGUA RECICLADA DICE ESTAR VACÍO" (bloqueante)
+   Causa: NADIE poblaba nunca `Blueprint.reservoirContents`. `campaign-save-factory.ts` sembraba `[]` y
+   `instantiateComponentSeeds` tampoco lo tocaba. La sustancia de cada reservorio existía SOLO como comentario
+   (`// Nota: contiene X (catálogo químico: id)`) en 21 entradas de `catalog/composite/*.ts`. 13e construyó
+   todos los escritores (verter, trasvasar, extraer) pero la nave arrancaba sin una sola gota, así que el ciclo
+   no tenía de dónde empezar.
+   Fix: el comentario pasa a ser dato — `CompositeComponentSpec.contains`, poblado en los 21 reservorios con el
+   id que su propio comentario ya nombraba. `reservoir/initial-reservoir-contents.ts` lo deriva a
+   `reservoirContents` al crear la campaña Y al sembrar un capítulo, llenando cada tanque a su `capacity` de
+   catálogo (decisión del operador: la nave salió de puerto cargada, en vez de inventar 21 cantidades a mano).
+   De paso: `CompositeComponentSpec` estaba DUPLICADA palabra por palabra en los cuatro catálogos de arquetipo
+   y las copias ya habían divergido (solo exploración tenía `footprint`). Se extrajo a
+   `composite/composite-component-spec.types.ts` en vez de repetir el campo nuevo cuatro veces.
+   Efecto colateral BUENO: esto activa por primera vez en partida real la `ReservoirContentHazardRule` de 13d —
+   desmontar un reservorio lleno ahora avisa "se derramará al desmontar" y derrama de verdad.
+
+2. MATERIA PRIMA INFINITA (consecuencia directa del fix anterior, detectada al planificar)
+   Con los tanques llenos, "Extraer elementos" vaciaba el tanque ENTERO en una tarea de 14s: un reservorio de
+   agua de capacidad 100 daba 200 hidrógeno + 100 oxígeno de un saque, ~100 síntesis — justo lo contrario de la
+   escasez que 13e venía a introducir.
+   Fix: `EXTRACTION_BATCH_UNITS = 5` (`reservoir/reservoir-parameters.ts`, data-driven como
+   `salvage-parameters.ts`). La UI encola un lote por tarea. Vaciar un tanque grande cuesta varias tareas y
+   varios VIAJES del tripulante: la escasez pasa a ser de tiempo, que es el recurso real del core loop. El
+   label del botón muestra el lote ("Extraer 5 elementos") para que no se lea como "extraer todo".
+
+3. "EL TRIPULANTE NO SE MUEVE HASTA LA MESA"
+   Causa: `queueFabrication`, `queueSynthesis` y `queueAnalyzeSubstance` usaban
+   `targetSectionId: plannedSectionFor(actorId)` — "donde ya esté". Era correcto cuando la mesa era un botón
+   global del header, pero anula el sentido de haberla puesto en el plano.
+   Fix: las tres pasan por `ensureAt` a la sección del aparato (`workstationSectionFor`). `queueFabrication`
+   gana el `stationInstanceId` que `queueSynthesis` ya recibía desde 13e. Analizar va a la sección del
+   RESERVORIO que contiene la sustancia (`substanceLocations`), coherente con que ahora una sustancia tiene
+   ubicación. Fallback al comportamiento anterior si no hay aparato/ubicación (modo creativo), en vez de
+   bloquear la acción.
+
+4. MESA EN MODO QUÍMICA
+   - "Modo cableado" y "modo borrar" se creaban siempre, aunque sus handlers ya hacían
+     `if (this.mode !== "fisica") return`. Ahora solo existen en modo físico: un botón que no hace nada es
+     ruido, no información.
+   - Layout a tres columnas (`CHEM_COLUMNS`: paleta → selección → resultado), leyendo como el flujo real, y
+     usando el alto completo (110..590) en vez de heredar los 256px del grid físico que este modo no usa. Eso
+     elimina los ~450px muertos del centro y la media pantalla vacía de abajo.
+   - CAUSA RAÍZ del "listado cortado a la derecha de cada tarjeta" (bug PREEXISTENTE de
+     `ui/widgets/kenney-card-list.ts`, no introducido por 13e): rexUI ancla cada hijo de un sizer por su
+     CENTRO, pero las tarjetas dibujaban todos sus hijos con `origin(0,0)` A PARTIR de ese punto — o sea la
+     tarjeta entera se pintaba hacia la derecha del centro y la máscara del `scrollablePanel` le cortaba la
+     mitad. Ahora los hijos se posicionan relativos al centro (`left = -cardWidth/2`) y el alto se adapta al
+     contenido medido en vez de ser fijo. Beneficia también a la paleta física.
+
+VERIFICACIÓN EN LA APP REAL (Playwright headless, campaña nueva → Cap.1 exploración): el reservorio muestra
+"Contiene: Agua — 100/100" y su aviso de derrame; "Extraer (requiere análisis)" aparece deshabilitado con el
+motivo; el banco y la estación se abren desde su panel contextual ("Fabricar" / "Fabricar sustancias") con sus
+sprites 2×2 bien encuadrados; la mesa química ya no muestra los botones de modo y la paleta se lee completa.
+Sin errores de consola en todo el recorrido.
+
+NO CUBIERTO POR TEST AUTOMÁTICO, a propósito: el "camina hasta el aparato" no tiene test en `/game` —
+`mission-runtime.ts` arrastra Phaser transitivamente (vía `floorplan-renderer`) y montar un mock de Phaser para
+un caso sería desproporcionado frente al estándar del proyecto para `/game` (smoke visual, no cobertura).
+Queda cubierto por la receta de playtest manual.
+
+ARCHIVOS
+ Nuevos: `engine/src/components/catalog/composite/composite-component-spec.types.ts`,
+ `engine/src/reservoir/{initial-reservoir-contents,factory-reservoir-contents,reservoir-parameters}.ts`.
+ Modificados: los 4 catálogos compuestos, `build-component-catalog.ts`, `save/{campaign-save-factory,
+ chapter-progression}.ts`, `index.ts`; en `/game`: `mission/{mission-runtime,mission-interaction-controller}.ts`,
+ `scenes/creative-workbench-scene.ts`, `ui/widgets/kenney-card-list.ts`, `i18n/{es,en}.ts`.
+
+SUITE: `/engine` 843 → 858 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
+
+Razón: ronda 1 de fixes del playtest de la Subfase 13e.

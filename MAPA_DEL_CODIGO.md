@@ -753,3 +753,25 @@
 
 - `ReservoirPanelInfo` en el contenido `instance`: contenido del reservorio + botones Aplicar/Trasvasar/Extraer, con el MOTIVO del bloqueo en el propio label (un botón gris y mudo es lo que impide descubrir que primero hay que analizar). El panel sigue sin conocer el catálogo: todo viene precalculado, mismo criterio que los hazards de 13d.
 - El botón MESA global del header **se eliminó**: la mesa se abre desde el panel contextual del aparato y entra fijada a su dominio, así que el toggle libre Física/Química también desapareció. La recolección de elementos de 12c.5 vuela ahora al banco de trabajo real del plano.
+
+## `engine/src/components/catalog/composite/composite-component-spec.types.ts` (nuevo, 13e ronda 1 de fixes)
+
+- `CompositeComponentSpec` extraída: estaba duplicada palabra por palabra en los 4 catálogos de arquetipo y las copias ya divergían (solo exploración tenía `footprint`). Los cuatro la importan y la re-exportan para no romper a sus consumidores.
+- Campo nuevo `contains?: ChemicalSubstanceId`: la sustancia que un reservorio trae DE FÁBRICA. Es dato de catálogo; el estado vivo sigue siendo `Blueprint.reservoirContents`.
+
+## `engine/src/reservoir/initial-reservoir-contents.ts` · `factory-reservoir-contents.ts` (nuevo, 13e ronda 1)
+
+- `indexFactoryReservoirContents` (puro, sobre specs) + `deriveInitialReservoirContents` (instancias → entradas llenas a `capacity`), y el singleton atado al catálogo real. **Es lo que faltaba para que 13e fuera jugable**: hasta acá todos los reservorios nacían vacíos, así que el ciclo extraer → sintetizar no tenía de dónde arrancar. Filtra el `RES(E)` de las baterías de 13b.
+- Lo consumen `save/campaign-save-factory.ts` (campaña nueva) y `save/chapter-progression.ts` (semillas de capítulo).
+
+## `engine/src/reservoir/reservoir-parameters.ts` (nuevo, 13e ronda 1)
+
+- `EXTRACTION_BATCH_UNITS`: unidades por tarea de extracción. Con los tanques sembrados llenos, vaciar uno de un saque daba materia prima infinita; topear por tarea convierte la escasez en TIEMPO (cada lote es un viaje), en vez de autorar 21 cantidades a mano.
+
+## `game/src/ui/widgets/kenney-card-list.ts` (modificado, 13e ronda 1)
+
+- **Fix de un bug preexistente**: rexUI ancla cada hijo de un sizer por su CENTRO, pero las tarjetas dibujaban sus hijos con `origin(0,0)` desde ese punto — media tarjeta caía fuera de la máscara del `scrollablePanel` ("se ve cortado a la derecha de cada tarjeta"). Hijos relativos al centro (`left = -cardWidth/2`) + alto adaptativo al contenido medido en vez de fijo.
+
+## `game/src/scenes/creative-workbench-scene.ts` (modificado, 13e ronda 1)
+
+- `CHEM_COLUMNS`: el modo química deja de heredar el layout del grid físico (que no usa) y pasa a tres columnas — paleta → selección → resultado — sobre el alto completo. "Modo cableado"/"modo borrar" solo se crean en modo físico.

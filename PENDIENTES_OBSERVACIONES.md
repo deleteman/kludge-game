@@ -287,6 +287,13 @@ dónde, y qué costaría arreglarlo.
      punto 16 de este archivo.
    - **Fuera de alcance a propósito**: mezclar dos sustancias DENTRO de un reservorio (sería abrir la
      resolución de identidad de mezclas dentro de un tanque — otro sistema, no un detalle pendiente).
+   **Completado en la ronda 1 de fixes de playtest (2026-08-07)**: 13e dejó los escritores construidos pero
+   NADIE poblaba `reservoirContents` al crear la partida, así que todos los reservorios nacían vacíos y el
+   ciclo no tenía de dónde arrancar (el operador lo reportó sobre el reservorio de agua del Cap.1). La
+   sustancia de cada reservorio pasó de comentario a dato (`CompositeComponentSpec.contains`, 21 entradas) y se
+   deriva al crear la campaña y al sembrar un capítulo (`reservoir/initial-reservoir-contents.ts`), llenando a
+   `capacity`. Para que eso no regale materia prima infinita, la extracción se topea por tarea
+   (`EXTRACTION_BATCH_UNITS`).
 
 10. ✅ RESUELTO (Fase 13e). **Capa `fluido` del plano (11f) anima con una heurística sin dato de caudal real.** A diferencia de
     `ventilacion` (deriva de `pressureKpa` real) y `electrico`/`senal` (derivan de `unpoweredSectionIds`/
@@ -471,3 +478,17 @@ dónde, y qué costaría arreglarlo.
     `game/assets/sprites/components/estacion-quimica.png`, 2×2 celdas cada uno. `component-sprite-registry.ts`
     los descubre solo vía `import.meta.glob`, sin wiring extra — falta confirmar visualmente en playtest que el
     encuadre 2×2 se ve bien.
+
+25. **El último botón del panel de acciones queda fuera de su caja de fondo** (detectado al verificar 13e
+    ronda 1 con Playwright). Con la sección de reservorio (texto de contenido + 3 botones) el panel de una
+    instancia llega a 5 botones, y el `backdrop` deja el último ("Extraer…") sin fondo detrás: se lee sobre el
+    mapa y pierde contraste. `renderMissionActionPanel` YA dimensiona el fondo al contenido real
+    (`claim()`/`renderedHeight`, arreglado en 13d ronda 2) y `stackButtonEnabled` llama a `claim`, así que la
+    causa no es obvia — hace falta medir `container.getData(ACTION_PANEL_HEIGHT_KEY)` contra el `cursorY`
+    final. Puramente estético: el botón se ve, se lee y funciona.
+
+26. **El panel de acciones titula con el `instanceId`, no con el nombre del componente.** Se lee
+    "RESERVORIO-AGUA-RECICLADA — OK" en vez de "Reservorio de agua reciclada". Viene de `instanceTitle(name,
+    condition)` en `mission-interaction-controller.ts`, que recibe el id crudo cuando la instancia no está en
+    `nameByComponentId`. Preexistente a 13e, visible en cualquier pieza sembrada; el tooltip de la misma pieza
+    sí muestra el nombre bueno.

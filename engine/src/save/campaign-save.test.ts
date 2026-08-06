@@ -67,6 +67,32 @@ describe("createNewCampaignSave", () => {
     });
   }
 
+  /**
+   * Bug reportado en el playtest de 13e: el reservorio de agua reciclada del
+   * Cap.1 aparecía vacío, así que no se podía analizar ni extraer y todo el
+   * ciclo de sustancias quedaba sin arrancar. La sustancia existía solo como
+   * comentario en el catálogo; ahora es dato (`contains`).
+   */
+  it("los reservorios sembrados nacen con su contenido de fábrica (13e ronda 1)", () => {
+    const save = buildSave("exploracion");
+    const agua = save.shipState.reservoirContents.find(
+      (entry) => entry.componentInstanceId === "semilla-semilla-reservorio-agua",
+    );
+    expect(agua).toBeDefined();
+    expect(agua?.substanceId).toBe("agua");
+    expect(agua?.amount).toBe(100);
+  });
+
+  it("cada entrada de reservoirContents referencia una instancia real del plano", () => {
+    // `blueprint-integrity.ts` ya trata una referencia colgante como error;
+    // este test lo fija desde el lado del sembrado.
+    const save = buildSave("exploracion");
+    const instanceIds = new Set(save.shipState.placedComponents.map((c) => c.instanceId));
+    for (const entry of save.shipState.reservoirContents) {
+      expect(instanceIds.has(entry.componentInstanceId)).toBe(true);
+    }
+  });
+
   it("rejects an initial crew selection exceeding archetype capacity (GDD 6.2)", () => {
     expect(() =>
       createNewCampaignSave({

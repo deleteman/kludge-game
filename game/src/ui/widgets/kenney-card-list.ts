@@ -20,8 +20,18 @@ export interface KenneyCardItem {
   readonly onClick?: () => void;
 }
 
-const CARD_HEIGHT = 54;
+/**
+ * Alto MÍNIMO de tarjeta (13e ronda 1 de fixes). Antes era un alto FIJO y el
+ * título se pintaba sin `wordWrap`, así que un nombre largo se salía por la
+ * derecha de la tarjeta — reportado en el playtest de 13e sobre la paleta
+ * química, que además ganó un sufijo de stock (`×N`). Ahora la tarjeta crece
+ * hasta contener su contenido real.
+ */
+const CARD_MIN_HEIGHT = 54;
 const SWATCH_SIZE = 20;
+/** Margen del texto respecto del swatch, y respiro superior/inferior. */
+const TEXT_LEFT = 10 + SWATCH_SIZE / 2 + 12;
+const CARD_PADDING_Y = 8;
 
 /**
  * Lista vertical con scroll de "tarjetas" (swatch de color + nombre + líneas
@@ -68,41 +78,67 @@ export function createKenneyCardList(
   }
 
   const cardWidth = width - 24;
+  const textWidth = cardWidth - TEXT_LEFT - 10;
   for (const item of items) {
     const card = scene.add.container(0, 0);
+    /*
+     * Los hijos se posicionan RELATIVOS AL CENTRO del container, no a su
+     * esquina (13e ronda 1 de fixes). rexUI ancla cada hijo de un sizer por su
+     * centro; como antes los hijos usaban `origin(0,0)` a partir de ese punto,
+     * la tarjeta entera se dibujaba hacia la DERECHA del centro y la máscara
+     * del `scrollablePanel` le cortaba la mitad derecha — que es exactamente el
+     * "se ve cortado a la derecha de cada tarjeta" del playtest.
+     */
+    const left = -cardWidth / 2;
+    // Los textos se crean ANTES que el fondo para poder medir su alto real y
+    // dimensionar la tarjeta a su contenido (antes el fondo tenía alto fijo y
+    // el texto largo lo desbordaba).
+    const title = scene.add
+      .text(left + TEXT_LEFT, 0, item.title, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "13px",
+        color: HEADER_COLOR,
+        wordWrap: { width: textWidth, useAdvancedWrap: true },
+      })
+      .setOrigin(0, 0);
+    const detail =
+      item.detailLines && item.detailLines.length > 0
+        ? scene.add
+            .text(left + TEXT_LEFT, 0, item.detailLines.join(" · "), {
+              fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+              fontSize: "10px",
+              color: LABEL_COLOR,
+              wordWrap: { width: textWidth, useAdvancedWrap: true },
+            })
+            .setOrigin(0, 0)
+        : undefined;
+    // Alto real del contenido ya envuelto, con un mínimo para que una tarjeta
+    // de una sola línea no quede raquítica.
+    const contentHeight = title.height + (detail ? detail.height + 4 : 0);
+    const cardHeight = Math.max(CARD_MIN_HEIGHT, contentHeight + CARD_PADDING_Y * 2);
+    const top = -cardHeight / 2;
+    title.setY(top + CARD_PADDING_Y);
+    detail?.setY(title.y + title.height + 4);
+
     const cardBg = scene.add
-      .rectangle(0, 0, cardWidth, CARD_HEIGHT, 0x1a2030, CARD_BG_ALPHA)
+      .rectangle(left, top, cardWidth, cardHeight, 0x1a2030, CARD_BG_ALPHA)
       .setOrigin(0, 0)
       .setStrokeStyle(1, item.color, 0.9);
     card.add(cardBg);
     card.add(
-      scene.add.rectangle(10, CARD_HEIGHT / 2, SWATCH_SIZE, SWATCH_SIZE, item.color, 1).setOrigin(0.5),
+      scene.add.rectangle(left + 10 + SWATCH_SIZE / 2, 0, SWATCH_SIZE, SWATCH_SIZE, item.color, 1).setOrigin(0.5),
     );
-    card.add(
-      scene.add
-        .text(10 + SWATCH_SIZE / 2 + 12, 8, item.title, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "13px",
-          color: HEADER_COLOR,
-        })
-        .setOrigin(0, 0),
-    );
-    if (item.detailLines && item.detailLines.length > 0) {
-      card.add(
-        scene.add
-          .text(10 + SWATCH_SIZE / 2 + 12, 28, item.detailLines.join(" · "), {
-            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-            fontSize: "10px",
-            color: LABEL_COLOR,
-            wordWrap: { width: cardWidth - SWATCH_SIZE - 34 },
-          })
-          .setOrigin(0, 0),
-      );
+    card.add(title);
+    if (detail) {
+      card.add(detail);
     }
-    card.setSize(cardWidth, CARD_HEIGHT);
+    card.setSize(cardWidth, cardHeight);
     if (item.onClick) {
       const onClick = item.onClick;
-      card.setInteractive(new Phaser.Geom.Rectangle(0, 0, cardWidth, CARD_HEIGHT), Phaser.Geom.Rectangle.Contains);
+      card.setInteractive(
+        new Phaser.Geom.Rectangle(left, top, cardWidth, cardHeight),
+        Phaser.Geom.Rectangle.Contains,
+      );
       if (card.input) {
         // Cursor custom en vez del puntero del sistema (12c.7, obs #2).
         card.input.cursor = UI_POINTER_CURSOR_CSS;

@@ -6,6 +6,7 @@ import { createCrewTask } from "../tasks/task-factory.js";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
 import { MutableElementStock } from "../inventory/mutable-element-stock.js";
+import { EXTRACTION_BATCH_UNITS } from "../reservoir/reservoir-parameters.js";
 import { TransientGasInjection } from "./section-gas-injection.js";
 import { UnanalyzedSubstanceError } from "../reservoir/substance-composition.js";
 import { createPhysicalComponentFactory } from "../components/physical-component-factory.js";
@@ -723,6 +724,28 @@ describe("createShipTaskEffect — sustancias (13e)", () => {
       ).toThrow(UnanalyzedSubstanceError);
       expect(elementStock.get()).toEqual({});
       expect(shipState.get().reservoirContents[0]?.amount).toBe(3);
+    });
+
+    it("saca solo el LOTE pedido, no el tanque entero (13e ronda 1)", () => {
+      // Con los reservorios sembrados llenos, vaciar uno de un saque daría
+      // materia prima infinita: la UI encola `EXTRACTION_BATCH_UNITS` por tarea.
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 100 }]),
+      );
+      const elementStock = new MutableElementStock({});
+      extractEffect(shipState, elementStock, [AGUA])(
+        task("t1", "extract-elements", {
+          kind: "extract-elements",
+          instanceId: TANQUE_A,
+          amount: EXTRACTION_BATCH_UNITS,
+        }),
+      );
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(100 - EXTRACTION_BATCH_UNITS);
+      // Agua = 2 H + 1 O por unidad.
+      expect(elementStock.get()).toEqual({
+        [HIDROGENO]: EXTRACTION_BATCH_UNITS * 2,
+        [OXIGENO]: EXTRACTION_BATCH_UNITS,
+      });
     });
 
     it("un reservorio vacío es un no-op", () => {

@@ -11,6 +11,8 @@ import {
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
 import { emptyPowerState } from "../power/power.types.js";
+import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
+import { FACTORY_RESERVOIR_CONTENTS } from "../reservoir/factory-reservoir-contents.js";
 
 export interface CreateNewCampaignSaveInput {
   readonly id: CampaignSaveId;
@@ -65,7 +67,11 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
       updatedAt: now,
     },
     placedComponents,
-    reservoirContents: [],
+    // Subfase 13e (fix de playtest ronda 1): los reservorios nacen LLENOS con la
+    // sustancia que declara su catálogo (`contains`). Antes esto era `[]` y
+    // nada lo poblaba nunca, así que el ciclo de sustancias no tenía de dónde
+    // sacar materia prima en partida real.
+    reservoirContents: deriveInitialReservoirContents(placedComponents, FACTORY_RESERVOIR_CONTENTS),
     // Nodos emisor/receptor SIN cable — el jugador los conecta con el modo cableado.
     signalGraph: { nodes: [...(chapter01Seed?.signalNodes ?? [])], edges: [] },
     // Sin snapshot todavía: `MissionAtmosphereRuntime` siembra aire estándar por

@@ -25,6 +25,7 @@ import type {
   SignalNodeId,
 } from "engine";
 
+import { EXTRACTION_BATCH_UNITS } from "engine";
 import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
@@ -637,7 +638,10 @@ export class MissionInteractionController {
             .replace("{capacity}", String(capacity)),
         transferSubstance: t("ui.floorplan.mission.inspector.transfer-substance"),
         applySubstance: t("ui.floorplan.mission.inspector.apply-substance"),
-        extractElements: t("ui.floorplan.mission.inspector.extract-elements"),
+        extractElements: t("ui.floorplan.mission.inspector.extract-elements").replace(
+          "{amount}",
+          String(EXTRACTION_BATCH_UNITS),
+        ),
         extractionBlocked: (reason) =>
           t(`ui.floorplan.mission.inspector.extract-blocked.${reason}`),
         openFabricator: (domain) => t(`ui.floorplan.mission.inspector.fabricate.${domain}`),
@@ -722,10 +726,13 @@ export class MissionInteractionController {
         onExtractElements: (instanceId) => {
           const content = this.mission.reservoirContentOf(instanceId);
           if (!this.selectedActorIdValue || !content) return;
+          // Un LOTE por tarea, no el tanque entero (13e ronda 1): con los
+          // reservorios sembrados llenos, vaciar uno de un saque daba materia
+          // prima infinita. Vaciarlo cuesta varias tareas y varios viajes.
           this.mission.queueExtractElements(
             this.selectedActorIdValue,
             instanceId,
-            content.amount,
+            Math.min(EXTRACTION_BATCH_UNITS, content.amount),
           );
           this.callbacks.onTaskQueued();
         },
