@@ -6,7 +6,7 @@ import type { SectionId } from "../../atmosphere/section.types.js";
 import type { ShipArchetype } from "../../floorplan/floorplan.types.js";
 import { SHIP_ARCHETYPES } from "../../floorplan/floorplan.types.js";
 import type { CrisisDefinition, CrisisDefinitionId } from "../crisis-definition.types.js";
-import type { AtomicPartsStock } from "../../inventory/inventory.types.js";
+import type { AtomicPartsStock, ElementStock } from "../../inventory/inventory.types.js";
 
 /**
  * "Primer Aviso" (docs/Primeras_8_crisis.md, capítulo 1). Disparador: un
@@ -55,6 +55,15 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   "indicador-led": { nuevo: 1 },
   "junta-hermetica": { nuevo: 1 },
 } as AtomicPartsStock;
+
+/**
+ * Subfase 13e: el capítulo 1 arranca SIN elementos químicos, mismo criterio de
+ * escasez que el stock de piezas de arriba. Los elementos se consiguen
+ * extrayéndolos de los reservorios sembrados en la nave (GDD 5.4.1), lo que
+ * obliga a analizar antes de extraer y encadena las dos mecánicas nuevas en
+ * vez de regalar la síntesis.
+ */
+export const CHAPTER_01_INITIAL_ELEMENT_STOCK: ElementStock = {};
 
 /**
  * 2º paso del capítulo (señal simple, `docs/Primeras_8_crisis.md`): un sensor

@@ -44,7 +44,19 @@ import {
   createCrewTask,
   createDefaultCrisisResolutionRegistry,
   createDefaultCrisisTriggerRegistry,
+  consumeElements,
+  contentOf,
   createShipTaskEffect,
+  elementsPerUnit,
+  extractionBlockedReason,
+  findFabricators,
+  instanceFabricatorDomain,
+  instanceReservoirCapacity,
+  isFluidTransferReachable,
+  FluidOperationRegistry,
+  MutableElementStock,
+  pourInto,
+  TransientGasInjection,
   deriveMixtureHazardPreview,
   durationMultiplierFor,
   baseDurationFor,
@@ -102,9 +114,29 @@ import type {
   SectionId,
   ShipFloorplan,
   SignalEdgeId,
+  FabricatorDomain,
+  FluidFlow,
   SignalNodeId,
+  SubstanceCompositionContext,
   TrajectoryPreviewStep,
 } from "engine";
+
+/**
+ * Unidades que rinde una síntesis (Subfase 13e). Fijo y no proporcional a los
+ * elementos gastados: la resolución de identidad de GDD 5.3 es cualitativa
+ * (qué sustancia sale), no estequiométrica — modelar rendimiento por cantidad
+ * sería justo la simulación química real que CLAUDE.md descarta. Ajustable en
+ * el balanceo de la Fase 23.
+ */
+const SYNTHESIS_YIELD_UNITS = 10;
+
+/**
+ * Segundos de referencia sobre los que se reparte el caudal de una operación de
+ * fluido (13e). No es la duración real de la tarea (que varía por tier del
+ * tripulante): solo la escala para convertir "cuántas unidades" en "qué tan
+ * intenso se ve el conducto".
+ */
+const FLUID_OPERATION_REFERENCE_SECONDS = 10;
 
 /** Acciones del core loop con afinidad de especialidad (GDD 6.6); `combine` = fabricar en la mesa (11c.2). */
 type ModulatedTaskType =
@@ -116,7 +148,11 @@ type ModulatedTaskType =
   // Subfase 13d — tareas de asegurado, con afinidad de Ingeniero.
   | "cut-power"
   | "purge-reservoir"
-  | "discharge-source";
+  | "discharge-source"
+  // Subfase 13e — ciclo de vida de una sustancia.
+  | "transfer-substance"
+  | "apply-substance"
+  | "extract-elements";
 
 /**
  * Orquestador de una misión en curso (Fase 10d) — el equivalente en `/game` de
@@ -241,6 +277,8 @@ export class MissionRuntime {
    * `pendingFabrications`).
    */
   private readonly pendingSynthesis = new Map<CrewTaskId, ChemicalSubstanceId>();
+  /** Estación química donde depositar el resultado al completarse (13e). */
+  private readonly pendingSynthesisStation = new Map<CrewTaskId, PlacedComponentInstanceId>();
   /**
    * Sustancias ya analizadas por "Analizar Sustancia" (Fase 11e) — estado
    * durable y re-consultado en cada render del tooltip (no un toast de un solo
@@ -248,12 +286,35 @@ export class MissionRuntime {
    * por evento hacia `/game`.
    */
   private readonly analyzedSubstanceIds = new Set<ChemicalSubstanceId>();
+  /**
+   * Subfase 13e: inventario de elementos y procedencia de las mezclas. Los dos
+   * viajan en el guardado (`schemaVersion` 5) — la procedencia porque sin ella
+   * una "Mezcla sin identificar" sería indescomponible para siempre, y las
+   * analizadas porque pasaron de ser flavor a PRECONDICIÓN de la extracción.
+   */
+  readonly elementStock: MutableElementStock;
+  private substanceProvenance: Record<string, ReadonlyArray<ChemicalSubstanceId>>;
+  /** Buffer de sustancias vertidas sobre la atmósfera, drenado por el runtime de atmósfera. */
+  private readonly gasInjection = new TransientGasInjection();
+  /**
+   * Operaciones de fluido en curso (13e, deuda #10) — de acá sale el caudal
+   * REAL con que se anima la capa `fluido` del plano, en vez de la heurística
+   * prestada del booleano de energía.
+   */
+  readonly fluidOperations = new FluidOperationRegistry();
+  /** Caudal declarado por una tarea al encolarse; se activa al empezar y se retira al terminar. */
+  private readonly pendingFluidFlows = new Map<CrewTaskId, FluidFlow>();
   private taskCounter = 0;
 
   constructor(save: CampaignSaveState) {
     this.shipFloorplan = CANONICAL_SHIP_FLOORPLANS[save.metadata.archetype];
     this.shipState = new MutableShipState(save.shipState);
     this.atomicStock = new MutableAtomicStock(save.atomicStock);
+    this.elementStock = new MutableElementStock(save.elementStock ?? {});
+    this.substanceProvenance = { ...(save.substanceProvenance ?? {}) };
+    for (const substanceId of save.analyzedSubstanceIds ?? []) {
+      this.analyzedSubstanceIds.add(substanceId);
+    }
     this.activeCrew = save.crew.filter((actor) => save.activeCrewIds.includes(actor.id));
     this.crewState = new MutableCrewState(this.activeCrew);
     // Fase 11d.4: contenido de enemigo por capítulo (hoy solo el capítulo 2,
@@ -358,6 +419,10 @@ export class MissionRuntime {
         }),
         this.leakSink.asSinkSource(),
       ),
+      // Subfase 13e: sustancias VERTIDAS sobre la sección ("Aplicar aquí").
+      // Es el primer escritor real de un `ChemicalSubstanceId` en
+      // `atmosphere.gases`; hasta ahora solo existían lectores.
+      this.gasInjection.asInjectionSource(),
     );
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
@@ -410,6 +475,15 @@ export class MissionRuntime {
             setActor: (actor) => this.crewState.set(actor),
           },
         },
+        // Subfase 13e: inventario de elementos, buffer atmosférico y catálogo
+        // químico + procedencia, para las tres tareas de sustancias.
+        {
+          elementStock: this.elementStock,
+          gasInjection: this.gasInjection,
+          // Función y no objeto: se consulta en CADA ejecución de tarea, para
+          // que analizar una sustancia a mitad de misión cuente de inmediato.
+          composition: () => this.substanceCompositionContext(),
+        },
       ),
     });
 
@@ -429,9 +503,33 @@ export class MissionRuntime {
       const substanceId = this.pendingSynthesis.get(event.taskId);
       if (substanceId) {
         this.pendingSynthesis.delete(event.taskId);
-        this.availableSubstanceIds = [...this.availableSubstanceIds, substanceId];
+        const stationInstanceId = this.pendingSynthesisStation.get(event.taskId);
+        this.pendingSynthesisStation.delete(event.taskId);
+        // Subfase 13e: la sustancia se deposita en el reservorio de salida de
+        // la estación en vez de quedar como un id flotante. Como
+        // `reservoirContents` ya se serializa, persiste sola.
+        if (stationInstanceId) {
+          this.depositSynthesis(stationInstanceId, substanceId);
+        } else {
+          this.availableSubstanceIds = [...this.availableSubstanceIds, substanceId];
+        }
       }
     });
+
+    // Caudal de fluido (13e): la operación vive exactamente mientras la tarea
+    // corre, así que se engancha a su ciclo de vida en vez de a un tick propio.
+    this.coreLoopEvents.on("task-started", (event) => {
+      const flow = this.pendingFluidFlows.get(event.taskId);
+      if (flow) {
+        this.fluidOperations.begin(event.taskId, flow);
+      }
+    });
+    for (const kind of ["task-completed", "task-cancelled", "task-failed"] as const) {
+      this.coreLoopEvents.on(kind, (event) => {
+        this.fluidOperations.end(event.taskId);
+        this.pendingFluidFlows.delete(event.taskId);
+      });
+    }
 
     // "Analizar Sustancia" (Fase 11e): el efecto revela la identidad, no muta
     // el `Blueprint` — este listener solo actualiza el estado "analizada" que
@@ -754,9 +852,18 @@ export class MissionRuntime {
     const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
     const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
     this.ensureAt(actorId, targetSectionId);
+    const taskId = this.nextTaskId();
+    // Purgar también mueve fluido (13e): la tarea de asegurado de 13d gana
+    // representación en la capa `fluido` sin cambiar su comportamiento.
+    this.declareFluidFlow(
+      taskId,
+      targetSectionId,
+      undefined,
+      this.reservoirContentOf(instanceId)?.amount ?? 0,
+    );
     this.scheduler.enqueue(
       createCrewTask({
-        id: this.nextTaskId(),
+        id: taskId,
         actorId,
         type: "purge-reservoir",
         targetSectionId,
@@ -797,6 +904,205 @@ export class MissionRuntime {
         targetSectionId,
         payload: { kind: "discharge-source", instanceId },
         estimatedDurationSeconds: this.modulatedDuration("discharge-source", actorId),
+      }),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Subfase 13e — destino real de sustancias
+  // -------------------------------------------------------------------------
+
+  /**
+   * Deposita el resultado de una síntesis en el reservorio de salida de la
+   * estación. Si desborda, el excedente se pierde: la capacidad de la estación
+   * es real y medir mal cuesta material (Principio 5).
+   */
+  private depositSynthesis(
+    stationInstanceId: PlacedComponentInstanceId,
+    substanceId: ChemicalSubstanceId,
+  ): void {
+    const ship = this.shipState.get();
+    const capacity = this.reservoirCapacityOf(stationInstanceId) ?? SYNTHESIS_YIELD_UNITS;
+    try {
+      const poured = pourInto(
+        ship.reservoirContents,
+        stationInstanceId,
+        substanceId,
+        SYNTHESIS_YIELD_UNITS,
+        capacity,
+      );
+      this.shipState.set({ ...ship, reservoirContents: poured.contents });
+    } catch {
+      // La estación ya contenía otra sustancia: hay que purgarla antes. La
+      // síntesis se pierde — el aviso lo da la UI, acá no se rompe la misión.
+      this.availableSubstanceIds = [...this.availableSubstanceIds, substanceId];
+    }
+  }
+
+  /** Capacidad de sustancia de un reservorio, `undefined` si la pieza no lo es. */
+  reservoirCapacityOf(instanceId: PlacedComponentInstanceId): number | undefined {
+    const instance = this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId);
+    return instance && instanceReservoirCapacity(instance, this.componentRegistry);
+  }
+
+  /** Contenido actual de un reservorio (sustancia + cantidad), o `undefined` si está vacío. */
+  reservoirContentOf(instanceId: PlacedComponentInstanceId) {
+    return contentOf(this.shipState.get().reservoirContents, instanceId);
+  }
+
+  /** ¿Esta instancia es un reservorio de sustancia (G/L/T, no una batería)? */
+  isSubstanceReservoirInstance(instanceId: PlacedComponentInstanceId): boolean {
+    return this.reservoirCapacityOf(instanceId) !== undefined;
+  }
+
+  /**
+   * Dominio de mesa que habilita una pieza (13e). La UI lo consulta para
+   * decidir qué ofrece el panel contextual — sin conocer el catálogo ni ningún
+   * `ComponentId` literal.
+   */
+  fabricatorDomainOfInstance(instanceId: PlacedComponentInstanceId): FabricatorDomain | undefined {
+    const instance = this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId);
+    return instance && instanceFabricatorDomain(instance, this.componentRegistry);
+  }
+
+  /** Reservorios (distintos del propio) a los que se puede trasvasar desde `fromInstanceId`. */
+  transferTargetsFor(
+    fromInstanceId: PlacedComponentInstanceId,
+  ): ReadonlyArray<PlacedComponentInstanceId> {
+    const ship = this.shipState.get();
+    return ship.placedComponents
+      .filter(
+        (instance) =>
+          instance.instanceId !== fromInstanceId &&
+          instanceReservoirCapacity(instance, this.componentRegistry) !== undefined &&
+          isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId),
+      )
+      .map((instance) => instance.instanceId);
+  }
+
+  /**
+   * Motivo por el que NO se puede extraer de este reservorio, o `undefined` si
+   * se puede. Devolver el motivo (y no un booleano) es lo que permite a la UI
+   * decir "requiere análisis" en vez de un botón gris sin explicación.
+   */
+  extractionBlockedFor(
+    instanceId: PlacedComponentInstanceId,
+  ): "empty" | "unanalyzed" | "unknown-composition" | undefined {
+    const content = this.reservoirContentOf(instanceId);
+    if (!content) {
+      return "empty";
+    }
+    return extractionBlockedReason(content.substanceId, this.substanceCompositionContext());
+  }
+
+  /** Composición ya revelada de una sustancia analizada — `undefined` si sigue oculta. */
+  compositionOf(substanceId: ChemicalSubstanceId): ReadonlyArray<ChemicalSubstanceId> | undefined {
+    try {
+      return elementsPerUnit(substanceId, this.substanceCompositionContext());
+    } catch {
+      return undefined;
+    }
+  }
+
+  private substanceCompositionContext(): SubstanceCompositionContext {
+    return {
+      registry: this.chemicalRegistry,
+      provenance: this.substanceProvenance,
+      analyzedSubstanceIds: [...this.analyzedSubstanceIds],
+    };
+  }
+
+  /**
+   * Declara el caudal que una tarea de fluido va a mover. Se activa recién al
+   * EMPEZAR la tarea (`task-started`) y se retira al terminar, así que el
+   * conducto se anima exactamente mientras dura la operación.
+   *
+   * El caudal se reparte sobre la duración base de la tarea para que trasvasar
+   * mucho no se vea igual que trasvasar poco.
+   */
+  private declareFluidFlow(
+    taskId: CrewTaskId,
+    fromSectionId: SectionId | undefined,
+    toSectionId: SectionId | undefined,
+    amount: number,
+  ): void {
+    if (!fromSectionId || amount <= 0) {
+      return;
+    }
+    this.pendingFluidFlows.set(taskId, {
+      fromSectionId,
+      toSectionId: toSectionId === fromSectionId ? undefined : toSectionId,
+      rate: amount / FLUID_OPERATION_REFERENCE_SECONDS,
+    });
+  }
+
+  /** "Trasvasar sustancia" (13e): de un reservorio a otro. */
+  queueTransferSubstance(
+    actorId: CrewActorId,
+    fromInstanceId: PlacedComponentInstanceId,
+    toInstanceId: PlacedComponentInstanceId,
+    amount: number,
+  ): void {
+    const targetSectionId = this.sectionIdOfInstance(fromInstanceId);
+    this.ensureAt(actorId, targetSectionId);
+    const taskId = this.nextTaskId();
+    this.declareFluidFlow(taskId, targetSectionId, this.sectionIdOfInstance(toInstanceId), amount);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: taskId,
+        actorId,
+        type: "transfer-substance",
+        targetSectionId,
+        payload: { kind: "transfer-substance", fromInstanceId, toInstanceId, amount },
+        estimatedDurationSeconds: this.modulatedDuration("transfer-substance", actorId),
+      }),
+    );
+  }
+
+  /** "Aplicar aquí" (13e): vierte el contenido sobre la atmósfera de la sección. */
+  queueApplySubstance(
+    actorId: CrewActorId,
+    fromInstanceId: PlacedComponentInstanceId,
+    sectionId: SectionId,
+    amount: number,
+  ): void {
+    this.ensureAt(actorId, sectionId);
+    const taskId = this.nextTaskId();
+    this.declareFluidFlow(taskId, this.sectionIdOfInstance(fromInstanceId), sectionId, amount);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: taskId,
+        actorId,
+        type: "apply-substance",
+        targetSectionId: sectionId,
+        payload: { kind: "apply-substance", fromInstanceId, sectionId, amount },
+        estimatedDurationSeconds: this.modulatedDuration("apply-substance", actorId),
+      }),
+    );
+  }
+
+  /** "Extraer elementos" (13e, GDD 5.4.1): descompone el contenido en su materia prima. */
+  queueExtractElements(
+    actorId: CrewActorId,
+    instanceId: PlacedComponentInstanceId,
+    amount: number,
+  ): void {
+    const targetSectionId = this.sectionIdOfInstance(instanceId);
+    this.ensureAt(actorId, targetSectionId);
+    const taskId = this.nextTaskId();
+    this.declareFluidFlow(taskId, targetSectionId, undefined, amount);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: taskId,
+        actorId,
+        type: "extract-elements",
+        targetSectionId,
+        payload: { kind: "extract-elements", instanceId, amount },
+        estimatedDurationSeconds: this.modulatedDuration("extract-elements", actorId),
       }),
     );
   }
@@ -884,11 +1190,54 @@ export class MissionRuntime {
     );
   }
 
-  /** Sustancias sintetizadas ya disponibles en esta misión (11c.3), consumidas por el inspector de sustancias (Fase 11e). */
+  /**
+   * Sustancias presentes en la nave (11c.3, ampliado en 13e). Ya no es solo la
+   * bolsa abstracta de ids sintetizados: incluye TODO lo que hay en los
+   * reservorios del plano, así que el panel de Sustancias por fin puede decir
+   * DÓNDE está cada una (`substanceLocations`). `availableSubstanceIds` queda
+   * como respaldo para una síntesis que no encontró estación donde depositarse.
+   */
   get availableSubstances(): ReadonlyArray<ChemicalSubstanceDefinition> {
-    return this.availableSubstanceIds
+    const ids = new Set<ChemicalSubstanceId>(this.availableSubstanceIds);
+    for (const entry of this.shipState.get().reservoirContents) {
+      if (entry.amount > 0) {
+        ids.add(entry.substanceId);
+      }
+    }
+    return [...ids]
       .map((id) => this.chemicalRegistry.get(id))
       .filter((definition): definition is ChemicalSubstanceDefinition => definition !== undefined);
+  }
+
+  /**
+   * Celda del banco de trabajo, si la nave conserva uno (13e). La usa la
+   * animación de recolección de elementos (12c.5) como destino, ahora que la
+   * mesa dejó de tener botón en el header.
+   */
+  benchCell(): { readonly x: number; readonly y: number } | undefined {
+    const instanceId = findFabricators(this.shipState.get(), this.componentRegistry, "fisica")[0];
+    if (!instanceId) {
+      return undefined;
+    }
+    const instance = this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId);
+    return instance?.placement.position;
+  }
+
+  /** Nombre legible de una sustancia del catálogo — la UI no toca el registry. */
+  substanceNameOf(substanceId: ChemicalSubstanceId): string | undefined {
+    return this.chemicalRegistry.get(substanceId)?.name;
+  }
+
+  /** Reservorios que contienen una sustancia dada, con su cantidad (13e). */
+  substanceLocations(
+    substanceId: ChemicalSubstanceId,
+  ): ReadonlyArray<{ readonly instanceId: PlacedComponentInstanceId; readonly amount: number }> {
+    return this.shipState
+      .get()
+      .reservoirContents.filter((entry) => entry.substanceId === substanceId && entry.amount > 0)
+      .map((entry) => ({ instanceId: entry.componentInstanceId, amount: entry.amount }));
   }
 
   /** true si "Analizar Sustancia" (Fase 11e) ya reveló los valores de riesgo de esta sustancia. */
@@ -950,7 +1299,17 @@ export class MissionRuntime {
   queueSynthesis(
     actorId: CrewActorId,
     selectedElementIds: ReadonlyArray<ChemicalSubstanceId>,
+    stationInstanceId?: PlacedComponentInstanceId,
   ): string | undefined {
+    // Subfase 13e: sintetizar dejó de ser gratis. El stock se descuenta AL
+    // ENCOLAR (no al completar) por el mismo motivo que `install` consume su
+    // pieza al encolarse: encolar dos síntesis con material para una sola
+    // dejaría la segunda fallando en ejecución, que es el bug ya registrado
+    // como observación 8 para las piezas físicas.
+    const remaining = consumeElements(this.elementStock.get(), selectedElementIds);
+    if (!remaining) {
+      return undefined;
+    }
     const outcome = synthesizeSubstance(
       this.reactionResolver,
       this.chemicalRegistry,
@@ -960,8 +1319,21 @@ export class MissionRuntime {
     if (!outcome.result) {
       return undefined;
     }
+    this.elementStock.set(remaining);
+    // Procedencia (13e): de qué se hizo. Oculta al jugador hasta que un Médico
+    // la analice, pero es lo único que permitirá descomponer una mezcla que no
+    // tiene receta en el catálogo.
+    if (!this.substanceProvenance[outcome.result.id]) {
+      this.substanceProvenance = {
+        ...this.substanceProvenance,
+        [outcome.result.id]: [...selectedElementIds],
+      };
+    }
     const taskId = this.nextTaskId();
     this.pendingSynthesis.set(taskId, outcome.result.id);
+    if (stationInstanceId) {
+      this.pendingSynthesisStation.set(taskId, stationInstanceId);
+    }
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
@@ -1276,6 +1648,11 @@ export class MissionRuntime {
       shipState: { ...this.blueprint, sectionAtmospheres: this.atmosphereRuntime.toSnapshots() },
       crew: updatedCrew,
       atomicStock: this.atomicStock.get(),
+      // Subfase 13e: el inventario de elementos, la procedencia de las mezclas
+      // y las sustancias analizadas dejan de morir con la sesión.
+      elementStock: this.elementStock.get(),
+      substanceProvenance: this.substanceProvenance,
+      analyzedSubstanceIds: [...this.analyzedSubstanceIds],
     };
   }
 }

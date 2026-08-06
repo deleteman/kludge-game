@@ -3,7 +3,8 @@ import type { Blueprint } from "../blueprint/blueprint.types.js";
 import type { ShipArchetype } from "../floorplan/floorplan.types.js";
 import type { CrewActor, CrewActorId } from "../crew/crew-actor.types.js";
 import type { CrisisDefinitionId } from "../crisis/crisis-definition.types.js";
-import type { AtomicPartsStock } from "../inventory/inventory.types.js";
+import type { AtomicPartsStock, ElementStock } from "../inventory/inventory.types.js";
+import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 
 /**
  * Estado dinámico de una partida de campaña (GDD 15.4: "la instancia de una
@@ -56,4 +57,29 @@ export interface CampaignSaveState {
    * `campaign-save-factory.ts` al resto de piezas.
    */
   readonly atomicStock: AtomicPartsStock;
+  /**
+   * Stock de elementos químicos disponibles para sintetizar (Subfase 13e).
+   * Nuevo en `metadata.schemaVersion` 5. Arranca vacío en el capítulo 1: los
+   * elementos se consiguen extrayéndolos de reservorios (GDD 5.4.1), no de
+   * fábrica.
+   */
+  readonly elementStock: ElementStock;
+  /**
+   * De qué elementos se hizo cada sustancia sintetizada en esta campaña
+   * (Subfase 13e). Existe porque una "Mezcla sin identificar" no tiene receta
+   * en el catálogo y sin este dato sería indescomponible para siempre: es la
+   * única forma de que la extracción sepa qué devolver.
+   *
+   * Está OCULTA al jugador hasta que un Médico analice la sustancia
+   * (`analyzedSubstanceIds`) — el motor la conoce desde el momento de la
+   * síntesis, la ficción no.
+   */
+  readonly substanceProvenance: Readonly<Record<string, ReadonlyArray<ChemicalSubstanceId>>>;
+  /**
+   * Sustancias ya analizadas (tarea `analyze-substance`, Fase 11e). Hasta 13e
+   * este set vivía solo en memoria de `MissionRuntime` y se perdía al guardar,
+   * lo que era tolerable cuando el análisis solo revelaba números; ahora es una
+   * PRECONDICIÓN de la extracción, así que tiene que persistir.
+   */
+  readonly analyzedSubstanceIds: ReadonlyArray<ChemicalSubstanceId>;
 }

@@ -3564,3 +3564,111 @@ Archivos: `game/src/ui/widgets/mission-action-panel.ts`, `game/src/mission/missi
 `game/src/scenes/floorplan-scene.ts`.
 Suite: `/game` 36 y `/engine` 733 sin cambios. `tsc --noEmit` limpio en ambos; `eslint` sin errores nuevos.
 Razón: segunda ronda de playtest manual del operador sobre la Subfase 13d.
+
+================================================================================
+2026-08-06 — Subfase 13e: Destino Real de Sustancias (Obs 4 + deudas #9 y #10)
+================================================================================
+
+Hasta hoy una sustancia sintetizada en la mesa era un id flotante: se resolvía bien, se registraba en el
+catálogo químico y quedaba en `availableSubstanceIds`, pero no tenía cantidad, ni ubicación en el plano, ni
+sobrevivía al guardado, y lo único que se podía hacer con ella era analizarla. En paralelo, la paleta química
+ofrecía el `ELEMENT_CATALOG` completo sin restricción: sintetizar no costaba nada. Esta subfase le da a una
+sustancia un ciclo de vida completo — extraer → sintetizar → almacenar → transportar → aplicar — con
+ubicación física y coste real.
+
+DECISIÓN DE FONDO (ciclo de preguntas con el operador, 2026-08-06)
+`nuevo-orden.md` planteaba "¿extender `ReservoirProperty` con sustancia+cantidad o montar un runtime aparte?".
+La respuesta resultó ser ninguna de las dos: `Blueprint.reservoirContents` (`{componentInstanceId,
+substanceId, amount}`) YA modelaba exactamente eso, ya se serializaba y ya lo consumía 13d — lo único que
+faltaba eran ESCRITORES (hasta ahora solo se vaciaba). `ReservoirProperty` es dato de CATÁLOGO, compartido por
+todas las instancias de una pieza; el contenido es estado dinámico por instancia. `RES.capacity` pasa a ser el
+tope. Sin bump de `Blueprint.schemaVersion`; sí de `CampaignSaveState` (4→5).
+
+QUÉ SE HIZO
+
+1. Aparatos de fabricación (Obs 4)
+   Propiedad funcional nueva `FAB` (`FabricatorProperty {tag:"FAB"; domain:"fisica"|"quimica"}`), con el GDD
+   §5.1 actualizado. Es de HABILITACIÓN, no de trabajo: no produce efecto físico, solo declara que desde esa
+   pieza se abre la mesa — por eso no es un `ACT`, misma clase de aclaración que 11h hizo con LED/LCD dentro de
+   `REC`. Existe como propiedad y no como lista de ids por el Principio 1.
+   Dos compuestos nuevos (`catalog/composite/taller.ts`): `banco-de-trabajo` (FAB física + EST) y
+   `estacion-quimica` (FAB química + RES(L) capacity 50 + EST), ambos 2×2, sembrados en los 4 arquetipos
+   (`initial-ship-state.ts`). Celdas verificadas: en exploración contra el mapa REAL (walls/objects + todos los
+   objetos de anclajes/conductos/semillas/luces + las 5 células fotovoltaicas), en los otros 3 contra el
+   bounding box de sección y los anclajes, mismo criterio y mismas limitaciones que el resto de posiciones de
+   referencia de esos arquetipos.
+   El botón MESA global del header se ELIMINÓ. La mesa se abre desde el panel de acciones contextual del
+   aparato ("Fabricar" / "Fabricar sustancias") y entra ya fijada a su dominio, así que el toggle libre
+   Física/Química de `creative-workbench-scene.ts` también desapareció — un banco no sintetiza sustancias.
+   Efecto colateral resuelto: la animación de recolección de elementos de 12c.5 volaba hacia ese botón; ahora
+   apunta al banco de trabajo REAL del plano (`MissionRuntime.benchCell()`), que además es más diegético.
+
+2. Inventario de elementos y extracción (deuda #9, GDD 5.4.1)
+   `ElementStock` + `inventory/element-ledger.ts`, sin buckets de desgaste a diferencia de `AtomicPartsStock`:
+   una sustancia no acumula historia entre usos. `consumeElements` devuelve `null` sin descontar parcialmente,
+   mismo contrato que `consumeStock`.
+   Tarea `extract-elements`: descompone la sustancia de un reservorio en sus elementos y los acredita. Tres
+   caminos de resolución de composición (`reservoir/substance-composition.ts`): receta del catálogo →
+   procedencia registrada al sintetizar → indescomponible. PRECONDICIÓN en los tres: la sustancia debe estar
+   ANALIZADA. Eso convierte `analyze-substance` (11e) de flavor en puerta real y le da su segundo consumidor.
+   La paleta química deja de ofrecer todo el catálogo: muestra unidades disponibles por elemento y se
+   deshabilita a cero. Cap.1 arranca con `elementStock` vacío, mismo criterio de escasez que el stock de piezas
+   ("sin stock → inspeccionar → desarmar → reutilizar") — y como ni Cap.1 ni Cap.2 usan síntesis, no se
+   re-balancea contenido ya validado.
+
+3. Destinos de una sustancia
+   Tres tareas nuevas con el patrón exacto de 13d (tipo + payload + duración + afinidad + case en
+   `ship-task-effect.ts` + queue en `MissionRuntime` + panel + i18n): `transfer-substance`, `apply-substance`,
+   `extract-elements`. De paso se exportaron desde `index.ts` los tres payloads de 13d, que esa fase se saltó.
+   `apply-substance` es el PRIMER ESCRITOR REAL de un `ChemicalSubstanceId` en `atmosphere.gases`
+   (`mission/section-gas-injection.ts`): todo el camino lector — `contaminantAt`, `sectionCorrosiveLevel`,
+   `HazardousAtmosphereHazardRule` — existía desde 13a sin que nadie escribiera nunca. El gas entra DESPLAZANDO
+   al resto proporcionalmente, con la suma de fracciones acotada a 1 (un test encontró que sin ese tope verter
+   100 unidades en un armario lo llenaba 5 veces).
+   Alcance del trasvase: `assertFluidTransferReachable` es el espejo exacto de `assertSignalWiringReachable`
+   reutilizando `sectionsConnectedByConduit(..., "fluido", ...)` — intra-sección libre, cross-section exige
+   conducto, misma política fail-open. Un reservorio contiene UNA sustancia a la vez: verter otra lanza
+   `ReservoirOccupiedError` y hay que purgar antes, lo que le da un segundo uso a `purge-reservoir` de 13d.
+
+4. Caudal de fluido real (deuda #10)
+   Sin construir una simulación de transporte continuo (que ningún capítulo pide todavía), el caudal se deriva
+   de las operaciones REALMENTE en curso: `FluidOperationRegistry` (`mission/fluid-operations.ts`) poblado por
+   trasvase/vertido/extracción/purga y enganchado al ciclo de vida de la tarea. `conduitFlowIntensity` gana un
+   `fluidIntensity` propio y deja de reutilizar el booleano de cicatriz de energía de `electrico`. Sin operación
+   viva el conducto queda QUIETO — correcto, no un bug, mismo criterio que 11f.4 documentó para `senal` en
+   calma.
+   `nave-exploracion` ya tenía 3 conductos `fluido` autorados por el operador, pero ninguno alcanzaba las
+   secciones relevantes: se autoraron 2 más (`bodega-carga`↔`pasillo-central`, `soporte-vital`↔`pasillo-central`)
+   para conectar los aparatos y el reservorio de agua sembrado a esa red. Fijado por test.
+
+5. Persistencia
+   `CampaignSaveState` 4→5: `elementStock`, `substanceProvenance` y `analyzedSubstanceIds`. Los dos últimos
+   vivían solo en memoria de `MissionRuntime` y morían con la sesión — tolerable cuando analizar solo revelaba
+   números, no ahora que es precondición de la extracción. Migración "campo ausente ⇒ vacío", mismo criterio que
+   v3→v4 con `atomicStock`. Las sustancias en reservorio persisten solas, porque `reservoirContents` ya viajaba.
+   `availableSubstances` pasa a derivarse también de `reservoirContents`, así que el panel de Sustancias del HUD
+   por fin puede decir DÓNDE está cada una (`substanceLocations`).
+
+ARCHIVOS
+ Nuevos: `engine/src/reservoir/{reservoir-ledger,reservoir-query,fluid-transfer-reachability,substance-composition}.ts`,
+ `engine/src/inventory/{element-ledger,mutable-element-stock}.ts`,
+ `engine/src/mission/{section-gas-injection,fluid-operations}.ts`,
+ `engine/src/components/fabricator-query.ts`, `engine/src/components/catalog/composite/taller.ts`.
+ Modificados: `properties/functional.types.ts`, `tasks/{task.types,task-parameters}.ts`, `crew/crew-affinity.ts`,
+ `mission/{ship-task-effect,mission-atmosphere-runtime}.ts`, `save/{campaign-save.types,campaign-save-serializer,
+ campaign-save-factory}.ts`, `floorplan/initial-ship-state.ts`, `crisis/campaign/chapter-01-primer-aviso.ts`,
+ `floorplan/maps/nave-exploracion.json`, `index.ts`; en `/game`: `mission/{mission-runtime,
+ mission-interaction-controller,conduit-flow-heuristics}.ts`, `ui/widgets/mission-action-panel.ts`,
+ `scenes/{floorplan-scene,creative-workbench-scene}.ts`, `i18n/{es,en}.ts`. Docs: `GDD_nave_sistemas.md` §5.1 y 7.0.
+
+SUITE: `/engine` 833 → 843 tests, `/game` 36, `tsc --noEmit` limpio en ambos paquetes.
+
+SPRITES: el operador colocó `banco-de-trabajo.png` y `estacion-quimica.png` en
+`game/assets/sprites/components/` durante la sesión (2×2 celdas cada uno). `component-sprite-registry.ts` los
+descubre solo por `import.meta.glob`, sin wiring extra — falta confirmar el encuadre 2×2 en playtest.
+
+FUERA DE ALCANCE A PROPÓSITO (anotado en PENDIENTES como #22/#23/#24): mezclar dos sustancias dentro de un
+reservorio, runtime de transporte continuo de fluido, selector de destino/cantidad al trasvasar.
+
+Razón: cerrar la Subfase 13e de `nuevo-orden.md`, substrato del Cap.7 (Fase 20) y del hueco de motor
+"todo lector, ningún escritor" que 13a dejó anotado sobre `atmosphere.gases`.

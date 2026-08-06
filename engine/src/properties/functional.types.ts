@@ -57,6 +57,26 @@ export interface ReservoirProperty {
   readonly powerUnits?: number;
 }
 
+/** Dominio de fabricación que habilita un aparato `FAB` (Subfase 13e). */
+export type FabricatorDomain = "fisica" | "quimica";
+
+/**
+ * Aparato de fabricación (Subfase 13e, GDD 5.1 extendido). Es una propiedad de
+ * HABILITACIÓN, no de trabajo: declara que la pieza permite abrir la mesa de
+ * creación en un dominio concreto (`fisica` = ensamblar componentes,
+ * `quimica` = sintetizar sustancias). No produce efecto físico por sí misma,
+ * por eso no es un `ACT` — misma clase de aclaración semántica que 11h hizo
+ * con LED/LCD.
+ *
+ * Existe como propiedad y no como lista de `ComponentId` para respetar el
+ * Principio 1 (emergencia sobre recetas): cualquier pieza que la declare
+ * habilita su mesa, sin que el motor conozca ids literales.
+ */
+export interface FabricatorProperty {
+  readonly tag: "FAB";
+  readonly domain: FabricatorDomain;
+}
+
 export interface ConductorProperty {
   readonly tag: "COND";
   readonly resourceType: ResourceType;
@@ -74,6 +94,7 @@ export type FunctionalProperty =
   | ReceptorProperty
   | ActuatorProperty
   | ReservoirProperty
+  | FabricatorProperty
   | ConductorProperty
   | StructureProperty;
 

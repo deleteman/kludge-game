@@ -13,6 +13,8 @@ export type {
   ActuatorProperty,
   ConductorProperty,
   EmitterProperty,
+  FabricatorDomain,
+  FabricatorProperty,
   FunctionalProperties,
   FunctionalProperty,
   ReceptorProperty,
@@ -352,11 +354,17 @@ export type { CrewActor, CrewActorId, CrewActorStatus } from "./crew/crew-actor.
 // Modelo de tarea y su máquina de estados
 export type {
   AnalyzeSubstanceTaskPayload,
+  ApplySubstanceTaskPayload,
   ConnectTaskPayload,
   CrewTask,
   CrewTaskId,
+  CutPowerTaskPayload,
+  DischargeSourceTaskPayload,
   DismantleTaskPayload,
+  ExtractElementsTaskPayload,
   InstallTaskPayload,
+  PurgeReservoirTaskPayload,
+  TransferSubstanceTaskPayload,
   TaskEffect,
   TaskEffectResult,
   TaskPayload,
@@ -436,6 +444,13 @@ export type { BarkEventType } from "./crew/bark-bank.js";
 // ---------------------------------------------------------------------------
 
 export { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "./floorplan/initial-ship-state.js";
+// Subfase 13e: resolución de aparatos de fabricación por propiedad `FAB`.
+export {
+  fabricatorDomainOf,
+  findFabricators,
+  hasFabricator,
+  instanceFabricatorDomain,
+} from "./components/fabricator-query.js";
 export type {
   CampaignSaveId,
   CampaignSaveMetadata,
@@ -553,6 +568,7 @@ export {
   CHAPTER_01_BLOCKED_SECTION_ID,
   CHAPTER_01_BY_ARCHETYPE,
   CHAPTER_01_INITIAL_ATOMIC_STOCK,
+  CHAPTER_01_INITIAL_ELEMENT_STOCK,
   CHAPTER_01_INITIAL_COMPONENT_BY_ARCHETYPE,
   CHAPTER_01_PRIMER_AVISO,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
@@ -599,7 +615,7 @@ export {
   dismantleHazardContext,
 } from "./mission/ship-task-effect.js";
 export type { SalvageHazardDeps } from "./mission/ship-task-effect.js";
-export type { AtomicPartsStock, WearBuckets } from "./inventory/inventory.types.js";
+export type { AtomicPartsStock, ElementStock, WearBuckets } from "./inventory/inventory.types.js";
 export {
   hasStock,
   stockOf,
@@ -628,6 +644,60 @@ export type { RandomSource } from "./simulation/random-source.js";
 export { sequenceRandom, systemRandom } from "./simulation/random-source.js";
 export { aggregateCreationMaterial } from "./workbench/creation-material-aggregation.js";
 export { MutableAtomicStock } from "./inventory/mutable-atomic-stock.js";
+// Subfase 13e: inventario de elementos químicos (sin buckets de desgaste).
+export {
+  consumeElements,
+  creditElementList,
+  creditElements,
+  elementStockOf,
+  hasElements,
+  missingElements,
+  tallyElements,
+} from "./inventory/element-ledger.js";
+export { MutableElementStock } from "./inventory/mutable-element-stock.js";
+
+// ---------------------------------------------------------------------------
+// Subfase 13e — Destino real de sustancias: reservorios, extracción, estación
+// ---------------------------------------------------------------------------
+export {
+  contentOf,
+  drawFrom,
+  emptyReservoir,
+  freeCapacity,
+  pourInto,
+  ReservoirLedgerError,
+  ReservoirOccupiedError,
+} from "./reservoir/reservoir-ledger.js";
+export type { DrawResult, PourResult, ReservoirContents } from "./reservoir/reservoir-ledger.js";
+export {
+  instanceReservoirCapacity,
+  isSubstanceReservoir,
+  substanceReservoirProperty,
+} from "./reservoir/reservoir-query.js";
+export {
+  assertFluidTransferReachable,
+  FluidTransferError,
+  FluidTransferUnreachableError,
+  isFluidTransferReachable,
+  sectionOfInstance,
+} from "./reservoir/fluid-transfer-reachability.js";
+export {
+  elementsFromAmount,
+  elementsPerUnit,
+  extractionBlockedReason,
+  SubstanceCompositionError,
+  UnanalyzedSubstanceError,
+  UnknownCompositionError,
+} from "./reservoir/substance-composition.js";
+export type { SubstanceCompositionContext } from "./reservoir/substance-composition.js";
+export {
+  composeGasInjections,
+  GAS_FRACTION_PER_SUBSTANCE_UNIT,
+  TransientGasInjection,
+} from "./mission/section-gas-injection.js";
+export type { SectionGasInjectionSource } from "./mission/section-gas-injection.js";
+export { FluidOperationRegistry } from "./mission/fluid-operations.js";
+export type { FluidFlow } from "./mission/fluid-operations.js";
 export { CrisisRuntime } from "./mission/crisis-runtime.js";
 export type { CrisisRuntimeOptions } from "./mission/crisis-runtime.js";
 // Fase 11a — estado de señales vivo de la misión + adaptador del puerto de proyectiles.

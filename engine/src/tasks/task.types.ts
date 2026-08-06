@@ -34,7 +34,12 @@ export type TaskType =
   // Subfase 13d — tareas de ASEGURADO previas a un desmontaje peligroso.
   | "cut-power"
   | "purge-reservoir"
-  | "discharge-source";
+  | "discharge-source"
+  // Subfase 13e — ciclo de vida real de una sustancia: extraer → sintetizar →
+  // almacenar → transportar → aplicar.
+  | "transfer-substance"
+  | "apply-substance"
+  | "extract-elements";
 
 /**
  * Máquina de estados explícita de una tarea (CLAUDE.md: "State machine
@@ -143,6 +148,51 @@ export interface DischargeSourceTaskPayload {
   readonly instanceId: PlacedComponentInstanceId;
 }
 
+/**
+ * "Trasvasar sustancia" (Subfase 13e): mueve contenido de un reservorio a otro.
+ * Intra-sección es libre (el tripulante lo hace a mano); cruzar de sección
+ * exige un camino de conductos `fluido`, validado con
+ * `assertFluidTransferReachable` — mismo criterio que el cableado de señal de
+ * la Fase 11f, y la razón de que los conductos `fluido` dejen de ser decorado.
+ */
+export interface TransferSubstanceTaskPayload {
+  readonly kind: "transfer-substance";
+  readonly fromInstanceId: PlacedComponentInstanceId;
+  readonly toInstanceId: PlacedComponentInstanceId;
+  readonly amount: number;
+}
+
+/**
+ * "Aplicar sustancia" (Subfase 13e): vuelca contenido de un reservorio sobre la
+ * ATMÓSFERA de una sección. Es el primer escritor real de un
+ * `ChemicalSubstanceId` en `atmosphere.gases` — hasta 13e todo el camino lector
+ * (contaminantes, corrosión, hazards) existía sin nadie que escribiera. De acá
+ * sale el neutralizante del Cap.7.
+ */
+export interface ApplySubstanceTaskPayload {
+  readonly kind: "apply-substance";
+  readonly fromInstanceId: PlacedComponentInstanceId;
+  readonly sectionId: SectionId;
+  readonly amount: number;
+}
+
+/**
+ * "Extraer elementos" (Subfase 13e, GDD 5.4.1): descompone la sustancia de un
+ * reservorio en los elementos que la forman y los acredita al inventario, que
+ * es de dónde sale la materia prima para sintetizar.
+ *
+ * PRECONDICIÓN: la sustancia debe estar analizada (`analyze-substance`, Fase
+ * 11e). Se conoce la composición por la receta del catálogo o, si es una mezcla
+ * sin identificar, por la procedencia registrada al sintetizarla — pero el
+ * jugador no accede a ninguna de las dos hasta que un Médico la analice. Eso le
+ * da a `analyze-substance` un rol de puerta y no solo de flavor.
+ */
+export interface ExtractElementsTaskPayload {
+  readonly kind: "extract-elements";
+  readonly instanceId: PlacedComponentInstanceId;
+  readonly amount: number;
+}
+
 export type TaskPayload =
   | DismantleTaskPayload
   | InstallTaskPayload
@@ -150,7 +200,10 @@ export type TaskPayload =
   | AnalyzeSubstanceTaskPayload
   | CutPowerTaskPayload
   | PurgeReservoirTaskPayload
-  | DischargeSourceTaskPayload;
+  | DischargeSourceTaskPayload
+  | TransferSubstanceTaskPayload
+  | ApplySubstanceTaskPayload
+  | ExtractElementsTaskPayload;
 
 export interface CrewTask {
   readonly id: CrewTaskId;
@@ -203,6 +256,17 @@ export interface TaskEffectResult {
   }>;
   /** Sustancia cuya composición quedó revelada por "Analizar Sustancia" (Fase 11e). */
   readonly analyzedSubstanceId?: ChemicalSubstanceId;
+  /**
+   * Elementos químicos acreditados al inventario por "Extraer elementos"
+   * (Subfase 13e), con repetidos según su proporción — `/game` los muestra en
+   * la notificación, igual que `obtained` para las piezas físicas.
+   */
+  readonly obtainedElements?: ReadonlyArray<ChemicalSubstanceId>;
+  /**
+   * Unidades que no cupieron al verter/trasvasar y se perdieron (13e). Sirve
+   * para avisar al jugador de que midió mal; no es un error.
+   */
+  readonly overflowAmount?: number;
 }
 
 /**

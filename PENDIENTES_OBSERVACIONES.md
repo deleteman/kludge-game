@@ -52,7 +52,16 @@
    devolver el `Tween` para poder trackearlo también. Gap aceptado: el tween interno de `landingSquash`
    (aterrizaje, dentro de `hopMove`) queda fuera del tracking por ser corto y cosmético.
 
-4. Las sustancias quimicas deberían poder sintetizarse solamente desde un aparato especifico. al hacerle click a la "estación quimica" (nombre que se puede mejorar) el menú contextual debería ser "Fabricar sustancias" y "Desmontar".
+4. ✅ RESUELTO (Fase 13e). Las sustancias quimicas deberían poder sintetizarse solamente desde un aparato especifico. al hacerle click a la "estación quimica" (nombre que se puede mejorar) el menú contextual debería ser "Fabricar sustancias" y "Desmontar".
+   Resuelto: propiedad funcional nueva `FAB` (`FabricatorProperty`, GDD §5.1 actualizado) y dos compuestos
+   nuevos en `engine/src/components/catalog/composite/taller.ts` — `banco-de-trabajo` (`FAB(fisica)`) y
+   `estacion-quimica` (`FAB(quimica)` + `RES(L)` de salida) — sembrados en los 4 arquetipos
+   (`floorplan/initial-ship-state.ts`). El botón MESA global del header se eliminó: la mesa se abre desde el
+   panel de acciones contextual del aparato ("Fabricar" / "Fabricar sustancias") y entra ya fijada a su
+   dominio, así que el toggle libre Física/Química de `creative-workbench-scene.ts` también desapareció. El
+   motor identifica el aparato por PROPIEDAD (`components/fabricator-query.ts`), nunca por `ComponentId`
+   (Principio 1). La animación de recolección de elementos (12c.5) pasó a apuntar al banco real del plano en
+   vez del botón que ya no existe.
 
 5. ✅ RESUELTO (Fase 12c.6). El texto al crear las sustancias quimicas se sale del modal de confirmacion.
    Resuelto: `confirmSynthesis` (`creative-workbench-scene.ts`) dibujaba el nombre de la sustancia (20px) sin
@@ -231,7 +240,7 @@ dónde, y qué costaría arreglarlo.
    cada parte en su offset (con fallback a placeholder por parte que falte). Es el plano de MISIÓN; el #7 (la mesa) ya
    estaba resuelto por separado.
 
-9. ⚠️ PARCIALMENTE RESUELTO (Fase 11e). **Una sustancia sintetizada (11c.3) queda disponible pero sin destino de uso.** `MissionRuntime.queueSynthesis`
+9. ✅ RESUELTO (Fase 13e). **Una sustancia sintetizada (11c.3) queda disponible pero sin destino de uso.** `MissionRuntime.queueSynthesis`
    resuelve la identidad de la mezcla (`engine/src/chemistry/production/synthesize-substance.ts`, vía
    `ReactionResolver`+`NamedRecipeIndex` sobre el catálogo real) y, al completarse la tarea `combine`, la
    expone en `MissionRuntime.availableSubstances` — pero nada en `/game` la consume todavía. Dos huecos
@@ -256,11 +265,30 @@ dónde, y qué costaría arreglarlo.
    ubicación propia en el plano.
    **Tocado por la Subfase 13d, sin cerrarse**: `Blueprint.reservoirContents` (que SÍ tiene
    `substanceId`/`amount`) pasó a tener consecuencia — desmontar un reservorio lleno derrama
-   (`dismantle-spill`) y la tarea `purge-reservoir` lo ventea de forma controlada. Lo que sigue igual: no hay
-   forma de LLENAR un reservorio ni de verter una sustancia sintetizada en él, ni mecánica de extracción /
-   inventario de elementos. Ambos siguen siendo alcance de 13e.
+   (`dismantle-spill`) y la tarea `purge-reservoir` lo ventea de forma controlada.
+   **Resuelto en Fase 13e.** Decisión de fondo: NO se extendió `ReservoirProperty` ni se creó un runtime
+   paralelo (la disyuntiva que planteaba el texto de arriba) — `Blueprint.reservoirContents` YA modelaba
+   sustancia+cantidad por instancia y ya se serializaba; lo único que faltaba eran ESCRITORES. `RES.capacity`
+   pasa a ser el tope. Sin bump de `Blueprint.schemaVersion`.
+   - Escritores nuevos en `engine/src/reservoir/reservoir-ledger.ts` (`pourInto`/`drawFrom`/`emptyReservoir`,
+     puros). Regla: un reservorio contiene UNA sustancia a la vez; verter otra se rechaza
+     (`ReservoirOccupiedError`) y hay que purgarlo antes — le da un segundo uso a `purge-reservoir` (13d).
+   - La síntesis deposita en el reservorio de salida de la estación química en vez de dejar un id flotante, así
+     que la sustancia gana ubicación en el plano y persiste sola.
+   - Mecánica de extracción (GDD 5.4.1): tarea `extract-elements` + `ElementStock`/`element-ledger.ts`
+     (inventario de elementos, sin buckets de desgaste). La paleta química de la mesa deja de ofrecer el
+     `ELEMENT_CATALOG` completo: muestra unidades disponibles y se deshabilita a cero. **Precondición: la
+     sustancia debe estar analizada** (`analyze-substance`, 11e, que pasa de flavor a puerta real); la
+     composición sale de la receta de catálogo o de la PROCEDENCIA registrada al sintetizar
+     (`substanceProvenance`, guardado v5), oculta hasta el análisis.
+   - Tareas `transfer-substance` (trasvase, intra-sección libre / cross-section vía conducto `fluido`) y
+     `apply-substance` (vierte sobre la atmósfera de la sección) — esta última es el primer escritor real de un
+     `ChemicalSubstanceId` en `atmosphere.gases`, cerrando el hueco "todo lector, ningún escritor" anotado en el
+     punto 16 de este archivo.
+   - **Fuera de alcance a propósito**: mezclar dos sustancias DENTRO de un reservorio (sería abrir la
+     resolución de identidad de mezclas dentro de un tanque — otro sistema, no un detalle pendiente).
 
-10. **Capa `fluido` del plano (11f) anima con una heurística sin dato de caudal real.** A diferencia de
+10. ✅ RESUELTO (Fase 13e). **Capa `fluido` del plano (11f) anima con una heurística sin dato de caudal real.** A diferencia de
     `ventilacion` (deriva de `pressureKpa` real) y `electrico`/`senal` (derivan de `unpoweredSectionIds`/
     `signalGraph` reales), no existe en el motor ningún concepto de transporte de fluido entre secciones —
     `ReservoirProperty`/`ReservoirContent` es una cantidad estática por instancia de componente, no un
@@ -268,6 +296,15 @@ dónde, y qué costaría arreglarlo.
     cicatriz de energía que `electrico`, con una intensidad fija, sin granularidad propia. Resolver cuando
     exista una simulación real de fluidos/reservorios con transporte entre secciones — hueco relacionado
     con el punto 9 de este archivo (reservorios sin `substanceId`/`amount`).
+    Resuelto: sin construir una simulación de transporte continuo (que ningún capítulo pide todavía), el caudal
+    se deriva de las operaciones de fluido REALMENTE en curso — `FluidOperationRegistry`
+    (`engine/src/mission/fluid-operations.ts`), poblado por trasvase/vertido/extracción/purga y enganchado al
+    ciclo de vida de la tarea (`task-started` la activa, `task-completed`/`cancelled`/`failed` la retiran).
+    `conduitFlowIntensity` gana un `fluidIntensity` propio que normaliza ese caudal a [0,1], con la misma forma
+    que `ventilationIntensity` deriva de `pressureKpa`. Sin operación viva el conducto queda QUIETO: es
+    correcto, no un bug — mismo criterio de diseño que 11f.4 documentó para los conductos `senal` en calma.
+    **Fuera de alcance a propósito**: un runtime de transporte continuo de fluido por conducto (reservorio →
+    conducto → reservorio por tick), que sería un dominio nuevo entero.
 
 11. ✅ RESUELTO (Fase 12a). **Capa `estructural` del HUD (11f) es un botón sin dato ni overlay detrás — decisión de alcance
     explícita.** El texto original de la Subfase 11f mencionaba una capa "estructural" que no corresponde a
@@ -303,6 +340,12 @@ dónde, y qué costaría arreglarlo.
     (`pasillo-central`↔`soporte-vital`, necesario para el Cap.1). Sigue pendiente: `senal` en los otros 3
     arquetipos y conductos `fluido` en general (estos últimos, además, hoy solo reaccionan al booleano de
     energía — ver punto 10).
+    **Parcial (Fase 13e)**: `nave-exploracion` ya tenía 3 conductos `fluido` autorados por el operador
+    (`tanques-combustible`↔`propulsion`, `pasillo-central`↔`propulsion`, `ingenieria`↔`pasillo-central`), pero
+    ninguno alcanzaba las secciones que 13e necesita. Se autoraron 2 más para conectar a esa red
+    `bodega-carga` (donde viven el banco de trabajo y la estación química) y `soporte-vital` (donde está el
+    reservorio de agua reciclada sembrado), fijados por test en `mission/fluid-operations.test.ts`. Sigue
+    pendiente: `senal` y `fluido` en investigación/guerra/médica (Fase 22a).
 
 14. **La capa `senal` está autorada solo en `nave-exploracion` — el resto queda sin cableado cross-section
     (Fase 11f.1).** Con la mecánica de cableado restringido (un cable de señal solo cruza a otra sección si
@@ -408,3 +451,23 @@ dónde, y qué costaría arreglarlo.
     rebota: `impact()` lo detiene en seco y pierde toda la inercia. Se aborda en la Subfase 13f, que necesita
     la colisión contra pared para dañar la sección (mismo patrón de inyección que `setMotionBlockedQuery` de
     13a, sin que `/engine` conozca Tiled).
+
+22. **No hay selector de destino al trasvasar una sustancia** (Subfase 13e, decisión de alcance explícita).
+    `onTransferSubstance` (`game/src/mission/mission-interaction-controller.ts`) toma el PRIMER reservorio
+    alcanzable que devuelve `MissionRuntime.transferTargetsFor`, sin preguntarle al jugador. Es suficiente hoy
+    porque con la red de conductos `fluido` recién autorada el conjunto alcanzable es de uno o dos, pero en
+    cuanto haya más reservorios en la misma red hace falta un modal de selección (mismo molde que
+    `install-picker-modal.ts`). Tampoco hay control de CUÁNTO trasvasar: se mueve todo el contenido.
+
+23. **Las claves i18n `ui.menu.workbench.mode-chemistry`/`mode-physical`/`chemistry-hint` quedaron sin
+    consumidor** (Subfase 13e). El toggle libre Física/Química de la mesa se eliminó al pasar el modo a
+    depender del aparato desde el que se abre (Obs 4), pero las claves siguen en `es.ts`/`en.ts`. Se dejan
+    porque son inofensivas y la auditoría total de i18n es la Fase 22c — anotado para que esa auditoría las
+    encuentre en vez de dar por hecho que se usan.
+
+24. ✅ RESUELTO (el operador los colocó durante la propia sesión de 13e). **Sprites de los dos aparatos de
+    fabricación.** Rutas:
+    `game/assets/sprites/components/banco-de-trabajo.png` y
+    `game/assets/sprites/components/estacion-quimica.png`, 2×2 celdas cada uno. `component-sprite-registry.ts`
+    los descubre solo vía `import.meta.glob`, sin wiring extra — falta confirmar visualmente en playtest que el
+    encuadre 2×2 se ve bien.

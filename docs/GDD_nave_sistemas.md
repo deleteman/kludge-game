@@ -52,6 +52,11 @@ Determinan qué "hace" un componente en el grafo de sistemas.
 | Reservorio + flujo | Almacena y libera un recurso (eléctrico/gas/líquido/térmico) | capacidad, tasa de descarga, tipo de recurso |
 | Conductor/aislante | Transmite o bloquea recurso entre nodos | capacidad máxima, tipo de recurso soportado |
 | Estructura/soporte | Da rigidez, anclaje o rango de movimiento a otra pieza | resistencia a daño, rango si es articulado |
+| Aparato de fabricación | Habilita la mesa de creación en un dominio concreto | dominio (física = ensamblar piezas / química = sintetizar sustancias) |
+
+**Sub-categoría conceptual — "aparato de fabricación" (`FAB`, Subfase 13e).** A diferencia del resto, `FAB` es una propiedad de HABILITACIÓN, no de trabajo: la pieza no produce ningún efecto físico por sí misma, solo declara que desde ella se puede abrir la mesa de creación. Por eso no se modela como `ACT` (que convierte energía en trabajo) — misma clase de aclaración semántica que se hizo en 11h con el Indicador LED y la Pantalla LCD dentro de `REC`.
+
+Existe como propiedad y no como una lista de componentes concretos por el Pilar de emergencia: cualquier pieza que declare `FAB` habilita su mesa, sin que el motor conozca ningún id de catálogo. Las dos piezas que la declaran hoy son el **Banco de trabajo** (`FAB(física)`) y la **Estación química** (`FAB(química)`), sembradas en los 4 arquetipos — la mesa dejó de ser un botón siempre disponible y pasa a abrirse desde el aparato, con su menú contextual ("Fabricar" / "Fabricar sustancias" + "Desmontar").
 
 ### 5.2 Propiedades de material (capa física, ortogonal a la funcional)
 
@@ -336,7 +341,7 @@ Cada arquetipo comparte el mismo motor de propiedades; lo que cambia es la abund
 
 ### 7.0 Leyenda de etiquetas
 
-**Funcionales**: `EM` Emisor de señal · `REC` Receptor de señal · `ACT` Actuador · `RES(tipo)` Reservorio+flujo, tipo = E/G/L/T (eléctrico/gas/líquido/térmico) · `COND(tipo)` Conductor · `EST` Estructura/soporte
+**Funcionales**: `EM` Emisor de señal · `REC` Receptor de señal · `ACT` Actuador · `RES(tipo)` Reservorio+flujo, tipo = E/G/L/T (eléctrico/gas/líquido/térmico) · `COND(tipo)` Conductor · `EST` Estructura/soporte · `FAB(dominio)` Aparato de fabricación, dominio = física/química (5.1)
 
 **Material**: `CE` conductividad eléctrica (A/M/B/N) · `CT` conductividad térmica (A/M/B) · `MAG` ferromagnético (Sí/No) · `RE` resistencia estructural (A/M/B) · `ES` estado (S/L/G)
 

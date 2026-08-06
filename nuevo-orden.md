@@ -292,7 +292,7 @@ Cierra el hueco de "riesgo al canibalizar" de Shipbreaker (cortar una tubería v
   indicador a nivel de sección en el plano (hoy el efecto ambiental de "sin energía" es binario: 0 unidades
   otorgadas o no) para distinguir "sección sin nada" de "sección a media máquina".
 
-#### Subfase 13e: Destino Real de Sustancias — Reservorios, Extracción y Estación Química
+#### Subfase 13e: Destino Real de Sustancias — Reservorios, Extracción y Estación Química ✅ CERRADA (2026-08-06)
 
 Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustancia sintetizada (11c.3) se resuelve y queda `available` pero no puede verterse en nada ni tiene ubicación propia en el plano. Es el mismo sistema — dar un destino real a las sustancias. Substrato del Cap.7 (Fase 20, neutralizante sintetizado en la mesa). **Pendiente de su propio ciclo de preguntas** antes de plan de implementación (mismo criterio que 12d / "Potenciar LED"): exige decidir si `ReservoirProperty` se extiende con sustancia+cantidad o si el estado vive en un runtime aparte paralelo a `MissionAtmosphereRuntime`.
 
@@ -303,6 +303,47 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
 * **Caudal de fluido real (deuda #10):** la capa `fluido` del plano anima hoy con una heurística sin dato de caudal (`conduit-flow-heuristics.ts` reutiliza el booleano de energía). Al existir transporte de fluido/reservorios entre secciones, alimentar la capa con el dato real de caudal.
 
 * Test unitario del vertido/extracción antes de integrar; caso de validación ligado al Cap.7.
+
+  **Cerrada:** ciclo de vida completo de una sustancia — *extraer → sintetizar → almacenar → transportar →
+  aplicar*. Decisión de fondo del ciclo de preguntas: NO se extendió `ReservoirProperty` ni se creó un runtime
+  paralelo (la disyuntiva que planteaba el texto original), porque `Blueprint.reservoirContents`
+  (`{componentInstanceId, substanceId, amount}`) ya modelaba sustancia+cantidad y ya se serializaba — solo le
+  faltaban ESCRITORES. Sin bump de `Blueprint.schemaVersion`; sí de `CampaignSaveState` (4→5).
+
+  - **Aparato (Obs 4):** propiedad funcional nueva `FAB` (`FabricatorProperty {tag:"FAB"; domain}`, GDD §5.1
+    actualizado) + dos compuestos nuevos (`banco-de-trabajo`, `estacion-quimica`, `catalog/composite/taller.ts`)
+    sembrados en los 4 arquetipos (`initial-ship-state.ts`, celdas verificadas contra el mapa real en
+    exploración). El botón MESA global del header desapareció: la mesa se abre desde el panel contextual del
+    aparato y entra ya fijada a su dominio (el toggle libre Física/Química se eliminó). La estación declara
+    además `RES(L)` = su reservorio de SALIDA, donde la síntesis deposita.
+  - **Inventario + extracción (deuda #9):** `ElementStock` + `element-ledger.ts` (sin buckets de desgaste: una
+    sustancia no acumula historia) y tarea `extract-elements`, que descompone la sustancia de un reservorio por
+    su receta de catálogo o, si es una "Mezcla sin identificar", por la **procedencia** registrada al
+    sintetizarla. **Precondición: la sustancia debe estar analizada** — `analyze-substance` (11e) pasa de flavor
+    a puerta real y gana su segundo consumidor. La paleta química deja de ofrecer el `ELEMENT_CATALOG` completo:
+    muestra unidades disponibles y se deshabilita a cero. Cap.1 arranca con `elementStock` vacío.
+  - **Destinos:** tres tareas nuevas (`transfer-substance`, `apply-substance`, `extract-elements`) con el patrón
+    de 13d. `apply-substance` es el **primer escritor real de un `ChemicalSubstanceId` en `atmosphere.gases`**
+    (`section-gas-injection.ts`) — todo el camino LECTOR (`contaminantAt`, `sectionCorrosiveLevel`,
+    `HazardousAtmosphereHazardRule`) existía desde 13a sin nadie que escribiera. El gas entra DESPLAZANDO al
+    resto, con la suma de fracciones acotada a 1.
+  - **Alcance de trasvase:** `assertFluidTransferReachable` es el espejo exacto de `assertSignalWiringReachable`
+    reutilizando `sectionsConnectedByConduit(..., "fluido", ...)`: intra-sección libre, cross-section exige
+    conducto. Un reservorio contiene UNA sustancia a la vez — verter otra se rechaza y hay que purgar antes
+    (`purge-reservoir` de 13d gana un segundo uso).
+  - **Caudal real (deuda #10):** `FluidOperationRegistry` publica las operaciones EN CURSO (trasvase, vertido,
+    extracción, purga) enganchadas al ciclo de vida de la tarea; `conduit-flow-heuristics.ts` deja de reutilizar
+    el booleano de energía. Sin operación viva el conducto queda quieto — correcto, mismo criterio que 11f.4
+    para `senal` en calma. Autorados 2 conductos `fluido` en `nave-exploracion` (bodega-carga y soporte-vital a
+    la red existente).
+  - **Persistencia:** `elementStock` + `substanceProvenance` + `analyzedSubstanceIds` en el guardado
+    (`schemaVersion` 5, migración "campo ausente ⇒ vacío"). Las sustancias en reservorio persisten solas.
+  - `/engine` 833 → 843 tests; `/game` 36; `tsc --noEmit` limpio en ambos.
+  - **Sprites:** el operador colocó `banco-de-trabajo.png` y `estacion-quimica.png` en
+    `game/assets/sprites/components/` durante la sesión; los descubre solo `component-sprite-registry.ts`.
+    Smoke visual in-game (incluido el encuadre 2×2) pendiente de playtest del operador.
+  - **Fuera de alcance a propósito** (anotado en `PENDIENTES_OBSERVACIONES.md`): mezclar dos sustancias dentro
+    de un reservorio, y un runtime de transporte continuo de fluido por conducto.
 
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 

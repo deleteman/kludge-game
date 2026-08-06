@@ -1,4 +1,5 @@
 import type { ComponentId } from "../components/physical-component.types.js";
+import type { GridPosition } from "../geometry/grid-position.types.js";
 import { DEFAULT_WEAR } from "../wear/wear.types.js";
 import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ShipArchetype } from "./floorplan.types.js";
@@ -47,18 +48,80 @@ const EXPLORACION_POWER_SOURCE_CELLS = [
   { x: 37, y: 10 },
 ] as const;
 
+/**
+ * Aparatos de fabricación (Subfase 13e). A diferencia de las fuentes de energía
+ * de arriba, estos SÍ se siembran en los 4 arquetipos: sin ellos no hay forma
+ * de abrir la mesa de creación, que dejó de ser un botón global y pasó a
+ * abrirse desde una pieza colocada (Obs 4). Un arquetipo sin banco de trabajo
+ * sería directamente injugable.
+ *
+ * Ambos son 2×2 (`footprint` de catálogo en `catalog/composite/taller.ts`).
+ * Celdas elegidas por sección temática y verificadas libres:
+ * - Exploración: contra el mapa REAL (`nave-exploracion.json`, capas
+ *   `walls`/`objects` + todos los objetos de `anclajes`/`conductos`/`semillas`/
+ *   `luces` + las 5 células fotovoltaicas de arriba). `taller` e `ingenieria`
+ *   no tienen ningún hueco 2×2 libre, así que ambos van a `bodega-carga`
+ *   (10 huecos disponibles) — almacén, ubicación plausible para un banco.
+ * - Guerra/Investigación/Médica: sus mapas no tienen tile art todavía (solo
+ *   `secciones`/`conductos`/`anclajes`), así que se verifican contra el
+ *   bounding box de la sección y los anclajes autorados, mismo criterio y
+ *   mismas limitaciones que el resto de posiciones de referencia de estos tres
+ *   arquetipos (ver `chapter-01-primer-aviso.ts`). Verificado además que
+ *   ninguna pisa las celdas del Capítulo 1 de su arquetipo.
+ */
+const FABRICATOR_CELLS_BY_ARCHETYPE: Record<
+  ShipArchetype,
+  { readonly bench: GridPosition; readonly chemistry: GridPosition }
+> = {
+  // `bodega-carga`: los únicos huecos 2×2 reales de la nave con tile art.
+  exploracion: { bench: { x: 11, y: 13 }, chemistry: { x: 16, y: 13 } },
+  // `ingenieria` + `armeria` (química de propelentes). La enfermería está
+  // ocupada por el puzzle del Cap.1 de este arquetipo.
+  guerra: { bench: { x: 26, y: 11 }, chemistry: { x: 20, y: 11 } },
+  // `ingenieria` + `laboratorio-quimico`, que existe literalmente para esto.
+  investigacion: { bench: { x: 25, y: 11 }, chemistry: { x: 9, y: 17 } },
+  // `ingenieria` + `farmacia`.
+  medica: { bench: { x: 26, y: 11 }, chemistry: { x: 17, y: 5 } },
+};
+
+const FABRICATOR_FOOTPRINT = { width: 2, height: 2 } as const;
+
+function fabricatorKit(archetype: ShipArchetype): ReadonlyArray<PlacedComponentInstance> {
+  const cells = FABRICATOR_CELLS_BY_ARCHETYPE[archetype];
+  return [
+    {
+      instanceId: "starter-banco-de-trabajo" as PlacedComponentInstanceId,
+      componentDefinitionId: "banco-de-trabajo" as ComponentId,
+      placement: { position: cells.bench, footprint: FABRICATOR_FOOTPRINT, rotation: 0 },
+      condition: "ok" as const,
+      wear: DEFAULT_WEAR,
+    },
+    {
+      instanceId: "starter-estacion-quimica" as PlacedComponentInstanceId,
+      componentDefinitionId: "estacion-quimica" as ComponentId,
+      placement: { position: cells.chemistry, footprint: FABRICATOR_FOOTPRINT, rotation: 0 },
+      condition: "ok" as const,
+      wear: DEFAULT_WEAR,
+    },
+  ];
+}
+
 function starterKit(archetype: ShipArchetype): ReadonlyArray<PlacedComponentInstance> {
+  const fabricators = fabricatorKit(archetype);
   if (archetype !== "exploracion") {
-    return [];
+    return fabricators;
   }
-  return EXPLORACION_POWER_SOURCE_CELLS.map((position, index) => ({
-    instanceId: `starter-celula-fotovoltaica-${index + 1}` as PlacedComponentInstanceId,
-    componentDefinitionId: "celula-fotovoltaica" as ComponentId,
-    placement: { position, footprint: { width: 1, height: 2 }, rotation: 0 },
-    condition: "ok" as const,
-    // Equipamiento de arranque: sale de fábrica, sin historia (13c).
-    wear: DEFAULT_WEAR,
-  }));
+  return [
+    ...fabricators,
+    ...EXPLORACION_POWER_SOURCE_CELLS.map((position, index): PlacedComponentInstance => ({
+      instanceId: `starter-celula-fotovoltaica-${index + 1}` as PlacedComponentInstanceId,
+      componentDefinitionId: "celula-fotovoltaica" as ComponentId,
+      placement: { position, footprint: { width: 1, height: 2 }, rotation: 0 },
+      condition: "ok" as const,
+      // Equipamiento de arranque: sale de fábrica, sin historia (13c).
+      wear: DEFAULT_WEAR,
+    })),
+  ];
 }
 
 export const INITIAL_SHIP_STATE_BY_ARCHETYPE: Record<

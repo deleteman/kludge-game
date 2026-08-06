@@ -4,6 +4,10 @@ import { MutableShipState } from "./mutable-ship-state.js";
 import { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
 import { createCrewTask } from "../tasks/task-factory.js";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
+import { MutableElementStock } from "../inventory/mutable-element-stock.js";
+import { TransientGasInjection } from "./section-gas-injection.js";
+import { UnanalyzedSubstanceError } from "../reservoir/substance-composition.js";
 import { createPhysicalComponentFactory } from "../components/physical-component-factory.js";
 import { MapEntityRegistry } from "../composition/entity-registry.js";
 import { nameAndRegisterCreation } from "../workbench/creation-naming.js";
@@ -518,5 +522,227 @@ describe("createShipTaskEffect", () => {
     expect(result).toEqual({ analyzedSubstanceId: substanceId });
     expect(shipState.get()).toEqual(fixtureShip());
     expect(atomicStock.get()).toEqual({});
+  });
+});
+
+/**
+ * Subfase 13e — ciclo de vida real de una sustancia. Mismo molde que los tests
+ * de 13d de arriba: `MutableShipState` + `createShipTaskEffect`, aserción sobre
+ * `shipState.get()`.
+ */
+describe("createShipTaskEffect — sustancias (13e)", () => {
+  const TANQUE_A = "tanque-a" as PlacedComponentInstanceId;
+  const TANQUE_B = "tanque-b" as PlacedComponentInstanceId;
+  const BODEGA = "bodega" as SectionId;
+  const AGUA = "agua" as ChemicalSubstanceId;
+  const HIDROGENO = "hidrogeno" as ChemicalSubstanceId;
+  const OXIGENO = "oxigeno" as ChemicalSubstanceId;
+
+  const { registry: componentRegistry } = buildComponentCatalog();
+  const RESERVORIO = "reservorio-agua-reciclada" as ComponentId; // RES/L, capacity 100
+
+  function shipWithTanks(contents: Blueprint["reservoirContents"]): Blueprint {
+    const tank = (instanceId: PlacedComponentInstanceId, x: number) => ({
+      instanceId,
+      componentDefinitionId: RESERVORIO,
+      placement: { position: { x, y: 0 }, footprint: { width: 2, height: 2 }, rotation: 0 as const },
+      condition: "ok" as const,
+      wear: "nuevo" as const,
+    });
+    return fixtureShip({
+      placedComponents: [tank(TANQUE_A, 0), tank(TANQUE_B, 4)],
+      reservoirContents: contents,
+    });
+  }
+
+  const task = (id: string, type: Parameters<typeof createCrewTask>[0]["type"], payload: unknown) =>
+    createCrewTask({
+      id: id as CrewTaskId,
+      actorId: ACTOR,
+      type,
+      payload: payload as never,
+    });
+
+  describe("transfer-substance", () => {
+    it("mueve contenido de un reservorio a otro", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 }]),
+      );
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      effect(
+        task("t1", "transfer-substance", {
+          kind: "transfer-substance",
+          fromInstanceId: TANQUE_A,
+          toInstanceId: TANQUE_B,
+          amount: 20,
+        }),
+      );
+      const contents = shipState.get().reservoirContents;
+      expect(contents.find((e) => e.componentInstanceId === TANQUE_A)?.amount).toBe(30);
+      expect(contents.find((e) => e.componentInstanceId === TANQUE_B)).toEqual({
+        componentInstanceId: TANQUE_B,
+        substanceId: AGUA,
+        amount: 20,
+      });
+    });
+
+    it("reporta el desborde cuando el destino no da abasto", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([
+          { componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 },
+          { componentInstanceId: TANQUE_B, substanceId: AGUA, amount: 95 },
+        ]),
+      );
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      const result = effect(
+        task("t1", "transfer-substance", {
+          kind: "transfer-substance",
+          fromInstanceId: TANQUE_A,
+          toInstanceId: TANQUE_B,
+          amount: 20,
+        }),
+      );
+      // Capacity 100: entran 5, se pierden 15.
+      expect(result?.overflowAmount).toBe(15);
+    });
+
+    it("un origen vacío es un no-op", () => {
+      const ship = shipWithTanks([]);
+      const shipState = new MutableShipState(ship);
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      effect(
+        task("t1", "transfer-substance", {
+          kind: "transfer-substance",
+          fromInstanceId: TANQUE_A,
+          toInstanceId: TANQUE_B,
+          amount: 20,
+        }),
+      );
+      expect(shipState.get().reservoirContents).toEqual([]);
+    });
+  });
+
+  describe("apply-substance", () => {
+    it("saca del reservorio e inyecta en la atmósfera de la sección", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 }]),
+      );
+      const gasInjection = new TransientGasInjection();
+      const effect = createShipTaskEffect(
+        shipState,
+        componentRegistry,
+        new MutableAtomicStock({}),
+        undefined,
+        {},
+        {},
+        { gasInjection },
+      );
+      effect(
+        task("t1", "apply-substance", {
+          kind: "apply-substance",
+          fromInstanceId: TANQUE_A,
+          sectionId: BODEGA,
+          amount: 10,
+        }),
+      );
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(40);
+      expect(gasInjection.asInjectionSource()().get(BODEGA)?.get(AGUA)).toBeGreaterThan(0);
+    });
+
+    it("sin fuente de inyección igual consume del reservorio (no se pierde el gesto a medias)", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 }]),
+      );
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      effect(
+        task("t1", "apply-substance", {
+          kind: "apply-substance",
+          fromInstanceId: TANQUE_A,
+          sectionId: BODEGA,
+          amount: 10,
+        }),
+      );
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(40);
+    });
+  });
+
+  describe("extract-elements", () => {
+    const { registry: chemicalRegistry } = buildChemicalCatalog();
+
+    function extractEffect(shipState: MutableShipState, elementStock: MutableElementStock, analyzed: ChemicalSubstanceId[]) {
+      return createShipTaskEffect(
+        shipState,
+        componentRegistry,
+        new MutableAtomicStock({}),
+        undefined,
+        {},
+        {},
+        {
+          elementStock,
+          composition: () => ({
+            registry: chemicalRegistry,
+            provenance: {},
+            analyzedSubstanceIds: analyzed,
+          }),
+        },
+      );
+    }
+
+    it("descompone la sustancia y acredita sus elementos al inventario", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 3 }]),
+      );
+      const elementStock = new MutableElementStock({});
+      const result = extractEffect(shipState, elementStock, [AGUA])(
+        task("t1", "extract-elements", {
+          kind: "extract-elements",
+          instanceId: TANQUE_A,
+          amount: 2,
+        }),
+      );
+      // Agua = 2 H + 1 O, por 2 unidades.
+      expect(elementStock.get()).toEqual({ [HIDROGENO]: 4, [OXIGENO]: 2 });
+      expect(result?.obtainedElements).toHaveLength(6);
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(1);
+    });
+
+    it("EXIGE análisis previo: sin él lanza y no toca nada", () => {
+      const ship = shipWithTanks([
+        { componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 3 },
+      ]);
+      const shipState = new MutableShipState(ship);
+      const elementStock = new MutableElementStock({});
+      expect(() =>
+        extractEffect(shipState, elementStock, [])(
+          task("t1", "extract-elements", {
+            kind: "extract-elements",
+            instanceId: TANQUE_A,
+            amount: 2,
+          }),
+        ),
+      ).toThrow(UnanalyzedSubstanceError);
+      expect(elementStock.get()).toEqual({});
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(3);
+    });
+
+    it("un reservorio vacío es un no-op", () => {
+      const shipState = new MutableShipState(shipWithTanks([]));
+      const elementStock = new MutableElementStock({});
+      extractEffect(shipState, elementStock, [AGUA])(
+        task("t1", "extract-elements", { kind: "extract-elements", instanceId: TANQUE_A, amount: 2 }),
+      );
+      expect(elementStock.get()).toEqual({});
+    });
+
+    it("sin dependencias de 13e cableadas es un no-op (retrocompatible)", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 3 }]),
+      );
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      effect(
+        task("t1", "extract-elements", { kind: "extract-elements", instanceId: TANQUE_A, amount: 2 }),
+      );
+      expect(shipState.get().reservoirContents[0]?.amount).toBe(3);
+    });
   });
 });

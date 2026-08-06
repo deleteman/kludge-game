@@ -24,7 +24,13 @@ export type AffinityAction =
   // existían, mismo caso que `combine`/`analyze-substance`.
   | "cut-power"
   | "purge-reservoir"
-  | "discharge-source";
+  | "discharge-source"
+  // Subfase 13e — manipular fluidos es trabajo de Ingeniero; descomponer una
+  // sustancia en sus elementos es trabajo de laboratorio, del Médico (mismo
+  // criterio que `analyze-substance`, GDD línea 242).
+  | "transfer-substance"
+  | "apply-substance"
+  | "extract-elements";
 
 /** Especialidad afín a cada acción (GDD 6.6, columna "Afinidad"). */
 export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = {
@@ -44,6 +50,9 @@ export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = 
   "cut-power": "ingeniero",
   "purge-reservoir": "ingeniero",
   "discharge-source": "ingeniero",
+  "transfer-substance": "ingeniero",
+  "apply-substance": "ingeniero",
+  "extract-elements": "medico",
 };
 
 /**
@@ -68,6 +77,10 @@ export const AFFINITY_DURATION_MULTIPLIER: Record<AffinityAction, Record<CrewTie
   "cut-power": { novato: 0.9, veterano: 0.75, experto: 0.6 },
   "purge-reservoir": { novato: 0.9, veterano: 0.75, experto: 0.6 },
   "discharge-source": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "transfer-substance": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "apply-substance": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  // Fila del Médico, igual que `analyze-substance`/`stabilize`.
+  "extract-elements": { novato: 0.85, veterano: 0.65, experto: 0.45 },
 };
 
 /** Regla general fuera de afinidad (GDD 6.6): +20% de tiempo, sin importar el tier. */

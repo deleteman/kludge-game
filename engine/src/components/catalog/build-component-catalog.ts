@@ -13,6 +13,7 @@ import { INVESTIGACION_CATALOG } from "./composite/investigacion.js";
 import { GUERRA_CATALOG } from "./composite/guerra.js";
 import { EXPLORACION_CATALOG } from "./composite/exploracion.js";
 import { MEDICA_CATALOG } from "./composite/medica.js";
+import { TALLER_CATALOG } from "./composite/taller.js";
 
 export function buildComponentCatalog(): {
   registry: EntityRegistry<ComponentId, PhysicalComponentDefinition>;
@@ -41,6 +42,8 @@ export function buildComponentCatalog(): {
     ...GUERRA_CATALOG,
     ...EXPLORACION_CATALOG,
     ...MEDICA_CATALOG,
+    // Kit base común a los 4 arquetipos (13e), no de un arquetipo concreto.
+    ...TALLER_CATALOG,
   ];
 
   // Separar composites por si dependen de otros composites.

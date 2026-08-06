@@ -3,7 +3,11 @@ import { INITIAL_SHIP_STATE_BY_ARCHETYPE } from "../floorplan/initial-ship-state
 import { CREW_CAPACITY_BY_ARCHETYPE, selectActiveCrew, type CrewRoster } from "../crew/crew-roster.js";
 import type { CrewActor } from "../crew/crew-actor.types.js";
 import type { Blueprint, PlacedComponentInstance } from "../blueprint/blueprint.types.js";
-import { CHAPTER_01_BY_ARCHETYPE, CHAPTER_01_INITIAL_ATOMIC_STOCK } from "../crisis/campaign/chapter-01-primer-aviso.js";
+import {
+  CHAPTER_01_BY_ARCHETYPE,
+  CHAPTER_01_INITIAL_ATOMIC_STOCK,
+  CHAPTER_01_INITIAL_ELEMENT_STOCK,
+} from "../crisis/campaign/chapter-01-primer-aviso.js";
 import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
 import { emptyPowerState } from "../power/power.types.js";
@@ -83,7 +87,9 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     metadata: {
       // 3→4 (Fase 13c): `atomicStock` pasa de `{pieza: n}` a buckets por
       // desgaste `{pieza: {nuevo: n}}`, ver `inventory/inventory.types.ts`.
-      schemaVersion: 4,
+      // 4→5 (Subfase 13e): `elementStock` + `substanceProvenance` +
+      // `analyzedSubstanceIds` — la química deja de vivir solo en memoria.
+      schemaVersion: 5,
       id: input.id,
       name: input.name,
       archetype: input.archetype,
@@ -102,6 +108,12 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // stock inicial (vacío a propósito, rework "sin stock → desarmar →
     // reutilizar") es directamente el stock con el que arranca la partida.
     atomicStock: CHAPTER_01_INITIAL_ATOMIC_STOCK,
+    // Subfase 13e: mismo criterio de escasez que el stock de piezas — los
+    // elementos se extraen de los reservorios de la nave (GDD 5.4.1), no
+    // aparecen de fábrica. Nada analizado ni sintetizado todavía.
+    elementStock: CHAPTER_01_INITIAL_ELEMENT_STOCK,
+    substanceProvenance: {},
+    analyzedSubstanceIds: [],
   };
 }
 

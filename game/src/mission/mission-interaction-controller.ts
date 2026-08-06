@@ -20,6 +20,7 @@ import type {
   GridPosition,
   PhysicalComponentDefinition,
   PlacedComponentInstance,
+  PlacedComponentInstanceId,
   SignalEdgeId,
   SignalNodeId,
 } from "engine";
@@ -40,6 +41,7 @@ import {
   type InstallPickerOption,
   type InstallPickerTab,
 } from "../ui/widgets/install-picker-modal.js";
+import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 import type { MissionRuntime } from "./mission-runtime.js";
@@ -74,6 +76,12 @@ export interface MissionInteractionCallbacks {
   readonly markAsHudObject: (obj: Phaser.GameObjects.GameObject) => void;
   /** Se llama cuando cambia la celda seleccionada (click en el plano / vuelta a idle) — el llamador reposiciona el marcador persistente de celda. */
   readonly onSelectionChanged: () => void;
+  /**
+   * Abre la mesa de creación desde un aparato del plano (Subfase 13e). La mesa
+   * dejó de tener botón global: el dominio (física/química) sale de la propia
+   * pieza, así que la escena solo necesita el `instanceId`.
+   */
+  readonly onOpenFabricator: (instanceId: PlacedComponentInstanceId) => void;
 }
 
 /**
@@ -477,6 +485,28 @@ export class MissionInteractionController {
     });
   }
 
+  /**
+   * Estado del reservorio para el panel (13e). Devuelve `undefined` si la pieza
+   * no es un reservorio de sustancia — así el panel no pinta la sección de
+   * contenido para una batería o un chip.
+   */
+  private buildReservoirInfo(
+    instanceId: PlacedComponentInstanceId,
+  ): ReservoirPanelInfo | undefined {
+    const capacity = this.mission.reservoirCapacityOf(instanceId);
+    if (capacity === undefined) {
+      return undefined;
+    }
+    const content = this.mission.reservoirContentOf(instanceId);
+    return {
+      substanceName: content && this.mission.substanceNameOf(content.substanceId),
+      amount: content?.amount ?? 0,
+      capacity,
+      extractionBlocked: this.mission.extractionBlockedFor(instanceId),
+      canTransfer: this.mission.transferTargetsFor(instanceId).length > 0,
+    };
+  }
+
   private findInstanceAtCell(position: GridPosition): PlacedComponentInstance | undefined {
     return this.mission.blueprint.placedComponents.find((instance) =>
       occupiedCells(instance.placement).some((cell) => cell.x === position.x && cell.y === position.y),
@@ -563,6 +593,14 @@ export class MissionInteractionController {
             ...this.actionPanelContent,
             dismantleHazards: this.mission.dismantleHazardsFor(this.actionPanelContent.instanceId),
             canDischargeSource: this.mission.canDischargeSource(this.actionPanelContent.instanceId),
+            // Subfase 13e: mismo criterio de "derivado del mundo vivo" — el
+            // contenido de un reservorio cambia mientras el panel está abierto
+            // (una extracción en curso lo vacía), y analizar una sustancia
+            // desbloquea la extracción sin cerrar el panel.
+            reservoir: this.buildReservoirInfo(this.actionPanelContent.instanceId),
+            fabricatorDomain: this.mission.fabricatorDomainOfInstance(
+              this.actionPanelContent.instanceId,
+            ),
           }
         : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
@@ -591,6 +629,18 @@ export class MissionInteractionController {
             : t("ui.floorplan.mission.inspector.analyze-substance"),
         substancesTitle: t("ui.floorplan.mission.inspector.substances-title"),
         substanceAnalyzedSuffix: t("ui.floorplan.mission.inspector.substance-analyzed-suffix"),
+        reservoirEmpty: t("ui.floorplan.mission.inspector.reservoir-empty"),
+        reservoirContents: (substanceName, amount, capacity) =>
+          t("ui.floorplan.mission.inspector.reservoir-contents")
+            .replace("{substance}", substanceName)
+            .replace("{amount}", String(amount))
+            .replace("{capacity}", String(capacity)),
+        transferSubstance: t("ui.floorplan.mission.inspector.transfer-substance"),
+        applySubstance: t("ui.floorplan.mission.inspector.apply-substance"),
+        extractElements: t("ui.floorplan.mission.inspector.extract-elements"),
+        extractionBlocked: (reason) =>
+          t(`ui.floorplan.mission.inspector.extract-blocked.${reason}`),
+        openFabricator: (domain) => t(`ui.floorplan.mission.inspector.fabricate.${domain}`),
         close: t("ui.floorplan.mission.inspector.close"),
       },
       {
@@ -639,6 +689,47 @@ export class MissionInteractionController {
           this.setActionPanelContent({ kind: "idle" });
           this.callbacks.onTaskQueued();
         },
+        // Subfase 13e — acciones de sustancias. Todas mantienen el panel
+        // abierto: encadenar analizar → extraer → trasvasar es el flujo normal,
+        // cerrarlo en cada paso obligaría a re-seleccionar la pieza cada vez.
+        onApplySubstance: (instanceId) => {
+          const sectionId = this.mission.sectionIdOfInstance(instanceId);
+          const content = this.mission.reservoirContentOf(instanceId);
+          if (!this.selectedActorIdValue || !sectionId || !content) return;
+          this.mission.queueApplySubstance(
+            this.selectedActorIdValue,
+            instanceId,
+            sectionId,
+            content.amount,
+          );
+          this.callbacks.onTaskQueued();
+        },
+        onTransferSubstance: (instanceId) => {
+          const content = this.mission.reservoirContentOf(instanceId);
+          // MVP de destino (13e): el primer reservorio alcanzable. Un selector
+          // de destino es UI nueva y no hace falta todavía — con conductos
+          // `fluido` sin autorar, el conjunto alcanzable es como mucho de uno.
+          const target = this.mission.transferTargetsFor(instanceId)[0];
+          if (!this.selectedActorIdValue || !content || !target) return;
+          this.mission.queueTransferSubstance(
+            this.selectedActorIdValue,
+            instanceId,
+            target,
+            content.amount,
+          );
+          this.callbacks.onTaskQueued();
+        },
+        onExtractElements: (instanceId) => {
+          const content = this.mission.reservoirContentOf(instanceId);
+          if (!this.selectedActorIdValue || !content) return;
+          this.mission.queueExtractElements(
+            this.selectedActorIdValue,
+            instanceId,
+            content.amount,
+          );
+          this.callbacks.onTaskQueued();
+        },
+        onOpenFabricator: (instanceId) => this.callbacks.onOpenFabricator(instanceId),
         onSelectSubstance: (substanceId) => this.selectSubstance(substanceId),
         markAsHudObject: (obj) => this.callbacks.markAsHudObject(obj),
         onClose: () => this.setActionPanelContent({ kind: "idle" }),

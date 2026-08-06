@@ -29,6 +29,14 @@ import {
 import type { MutableShipState } from "./mutable-ship-state.js";
 import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
+import { creditElementList } from "../inventory/element-ledger.js";
+import type { MutableElementStock } from "../inventory/mutable-element-stock.js";
+import { contentOf, drawFrom, pourInto } from "../reservoir/reservoir-ledger.js";
+import { instanceReservoirCapacity } from "../reservoir/reservoir-query.js";
+import { assertFluidTransferReachable } from "../reservoir/fluid-transfer-reachability.js";
+import { elementsFromAmount } from "../reservoir/substance-composition.js";
+import type { SubstanceCompositionContext } from "../reservoir/substance-composition.js";
+import type { TransientGasInjection } from "./section-gas-injection.js";
 
 type ComponentRegistry = EntityRegistry<ComponentId, PhysicalComponentDefinition>;
 
@@ -70,6 +78,25 @@ export interface SalvageHazardDeps {
   readonly handler?: DismantleHazardHandlerDeps;
 }
 
+/**
+ * Dependencias opcionales de 13e (destino real de sustancias). Mismo criterio
+ * que `SalvageHazardDeps`: sin ellas, las tres tareas nuevas son un no-op y
+ * nada del comportamiento anterior cambia. Solo la misión real las cablea.
+ */
+export interface SubstanceFlowDeps {
+  /** Inventario vivo de elementos, al que acredita "Extraer elementos". */
+  readonly elementStock?: MutableElementStock;
+  /** Buffer de inyección atmosférica, al que escribe "Aplicar sustancia". */
+  readonly gasInjection?: TransientGasInjection;
+  /**
+   * Catálogo químico + procedencia + analizadas, para resolver la composición.
+   * Es una FUNCIÓN y no un objeto porque se consulta en cada ejecución de
+   * tarea: una sustancia analizada a mitad de misión tiene que contar, y una
+   * foto tomada al construir el runtime no lo reflejaría.
+   */
+  readonly composition?: () => SubstanceCompositionContext;
+}
+
 export interface DismantleWearDeps {
   /** Azar inyectado; sin él el desmontaje nunca degrada (ver `wear/dismantle-wear.ts`). */
   readonly random?: RandomSource;
@@ -95,6 +122,7 @@ export function createShipTaskEffect(
   floorplan?: ShipFloorplan,
   wearDeps: DismantleWearDeps = {},
   salvageDeps: SalvageHazardDeps = {},
+  substanceDeps: SubstanceFlowDeps = {},
 ): TaskEffect {
   return (task: CrewTask): TaskEffectResult | void => {
     const payload = task.payload;
@@ -259,8 +287,94 @@ export function createShipTaskEffect(
         });
         return;
       }
+      case "transfer-substance": {
+        // Trasvase entre reservorios (13e). La restricción de alcance se valida
+        // acá además de en el preview de `/game`, por la misma razón que
+        // `connect` valida el cableado: defensa en profundidad, no doble UX.
+        const ship = shipState.get();
+        if (floorplan) {
+          assertFluidTransferReachable(
+            ship,
+            floorplan,
+            payload.fromInstanceId,
+            payload.toInstanceId,
+          );
+        }
+        const drawn = drawFrom(ship.reservoirContents, payload.fromInstanceId, payload.amount);
+        if (drawn.drawn === 0 || !drawn.substanceId) {
+          return;
+        }
+        const capacity = reservoirCapacityOf(ship, payload.toInstanceId, componentRegistry);
+        const poured = pourInto(
+          drawn.contents,
+          payload.toInstanceId,
+          drawn.substanceId,
+          drawn.drawn,
+          capacity,
+        );
+        shipState.set({ ...ship, reservoirContents: poured.contents });
+        return poured.overflow > 0 ? { overflowAmount: poured.overflow } : undefined;
+      }
+      case "apply-substance": {
+        // Verter sobre la ATMÓSFERA de una sección (13e). Primer escritor real
+        // de un `ChemicalSubstanceId` en `atmosphere.gases`: hasta ahora todo
+        // el camino lector (contaminantes, corrosión, hazards) existía sin
+        // nadie que escribiera.
+        const ship = shipState.get();
+        const drawn = drawFrom(ship.reservoirContents, payload.fromInstanceId, payload.amount);
+        if (drawn.drawn === 0 || !drawn.substanceId) {
+          return;
+        }
+        shipState.set({ ...ship, reservoirContents: drawn.contents });
+        substanceDeps.gasInjection?.inject(payload.sectionId, drawn.substanceId, drawn.drawn);
+        return;
+      }
+      case "extract-elements": {
+        // Descomposición en elementos (13e, GDD 5.4.1). `elementsFromAmount`
+        // lanza si la sustancia no está analizada o si no se conoce su
+        // composición — el gate de UX vive en `/game`, esto es el respaldo.
+        const ship = shipState.get();
+        const content = contentOf(ship.reservoirContents, payload.instanceId);
+        if (!content || !substanceDeps.composition || !substanceDeps.elementStock) {
+          return;
+        }
+        const obtainedElements = elementsFromAmount(
+          content.substanceId,
+          Math.min(payload.amount, content.amount),
+          substanceDeps.composition(),
+        );
+        if (obtainedElements.length === 0) {
+          return;
+        }
+        // Solo se consume lo que realmente se descompuso en unidades enteras.
+        const consumedUnits = Math.min(Math.floor(payload.amount), content.amount);
+        const drawn = drawFrom(ship.reservoirContents, payload.instanceId, consumedUnits);
+        shipState.set({ ...ship, reservoirContents: drawn.contents });
+        substanceDeps.elementStock.set(
+          creditElementList(substanceDeps.elementStock.get(), obtainedElements),
+        );
+        return { obtainedElements };
+      }
     }
   };
+}
+
+/**
+ * Capacidad de sustancia de un reservorio destino. Sin registry o sin
+ * propiedad `RES` cae a `Infinity`: no inventar un tope arbitrario que haría
+ * desaparecer material en silencio — el desborde tiene que ser una decisión
+ * del catálogo, no del código.
+ */
+function reservoirCapacityOf(
+  ship: Blueprint,
+  instanceId: PlacedComponentInstanceId,
+  componentRegistry: ComponentRegistry,
+): number {
+  const instance = ship.placedComponents.find((entry) => entry.instanceId === instanceId);
+  if (!instance) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return instanceReservoirCapacity(instance, componentRegistry) ?? Number.POSITIVE_INFINITY;
 }
 
 /**

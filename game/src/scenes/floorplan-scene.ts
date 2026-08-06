@@ -3,6 +3,7 @@ import {
   ATOMIC_COMPONENT_CATALOG,
   GRID_CELL_SIZE_PX,
   advanceChapterProgress,
+  elementStockOf,
   resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
@@ -138,7 +139,7 @@ import { loadAuthoredLights } from "../render/shadows/authored-lights.js";
 import { rectEdges } from "../render/shadows/occluder-edges.js";
 import { effectiveFootprintExtent } from "engine";
 import type { Segment } from "../render/shadows/visibility-polygon.js";
-import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
+import { preloadUiAssets } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
 import { renderPowerAllocationSlider, type PowerAllocationSliderHandle } from "../ui/widgets/power-allocation-slider.js";
@@ -371,6 +372,11 @@ export class FloorplanScene extends Phaser.Scene {
   private playPauseButton?: Phaser.GameObjects.GameObject;
   private wireModeButton?: Phaser.GameObjects.GameObject;
   private objectivesButton?: Phaser.GameObjects.GameObject;
+  /**
+   * Banco de trabajo del plano (Subfase 13e): ya no es un botón del header —
+   * se conserva la referencia solo como DESTINO de la animación de recolección
+   * de elementos (12c.5), que sigue teniendo sentido apuntando al aparato real.
+   */
   private workbenchButton?: Phaser.GameObjects.GameObject;
   /** Panel de objetivos (briefing) — modal informativo togglead por su botón (playtest #15). */
   private objectivesPanel?: Phaser.GameObjects.Container;
@@ -616,6 +622,7 @@ export class FloorplanScene extends Phaser.Scene {
           this.updateWireHighlights();
         },
         markAsHudObject: (obj) => this.markAsHudObject(obj),
+        onOpenFabricator: (instanceId) => this.openWorkbench(instanceId),
         onSelectionChanged: () => this.updateSelectedHighlight(),
         onWireSelectionChanged: () => this.updateWireHighlights(),
       },
@@ -765,7 +772,6 @@ export class FloorplanScene extends Phaser.Scene {
     this.updatePlayPauseButton();
     this.updateWireModeButton();
     this.createObjectivesButton();
-    this.createWorkbenchButton();
     this.createLayersButton();
     this.redrawEnergyControls();
 
@@ -2012,30 +2018,6 @@ export class FloorplanScene extends Phaser.Scene {
     this.markAsHudObject(this.energyPriorityPanel);
   }
 
-  private createWorkbenchButton(): void {
-    (this.workbenchButton as Phaser.GameObjects.GameObject | undefined)?.destroy();
-    // La mesa solo se abre en planificación; en ejecución el botón se muestra
-    // atenuado para que su inactividad se vea (además del `setStatus` de respaldo
-    // si igual se clickea) — feedback que faltaba (playtest 11c.2).
-    const enabled = this.mission.coreLoop.mode === "planning";
-    const button = createKenneyButton(
-      this.rex,
-      WORKBENCH_BUTTON_X,
-      HEADER_HEIGHT / 2,
-      t("ui.floorplan.mission.workbench"),
-      {
-        width: 130,
-        height: 30,
-        fontSize: "12px",
-        iconTextureKey: UI_TEXTURE_KEYS.iconWorkbench,
-        onClick: () => this.openWorkbench(),
-      },
-    ).setDepth(RENDER_DEPTH.hudContent);
-    button.setAlpha(enabled ? 1 : 0.45);
-    this.workbenchButton = button;
-    this.markAsHudObject(this.workbenchButton);
-  }
-
   /**
    * Abre la mesa de creación como overlay sobre la misión pausada (11c.2). Solo
    * en planificación (el reloj congelado ya se garantiza en pausa, coherente con
@@ -2044,7 +2026,7 @@ export class FloorplanScene extends Phaser.Scene {
    * se encola una tarea `combine` y la creación queda disponible para instalar
    * recién al completarse (materialización diferida, `MissionRuntime`).
    */
-  private openWorkbench(): void {
+  private openWorkbench(stationInstanceId: PlacedComponentInstanceId): void {
     if (this.mission.coreLoop.mode !== "planning") {
       this.setStatus(t("ui.floorplan.mission.workbench-need-pause"));
       return;
@@ -2054,6 +2036,13 @@ export class FloorplanScene extends Phaser.Scene {
       this.setStatus(t("ui.floorplan.mission.workbench-need-actor"));
       return;
     }
+    // Subfase 13e: la mesa se abre desde un APARATO del plano y entra directo
+    // en su dominio — el toggle libre Física/Química desapareció, porque un
+    // banco de trabajo no sintetiza sustancias ni al revés (Obs 4).
+    const domain = this.mission.fabricatorDomainOfInstance(stationInstanceId);
+    if (!domain) {
+      return;
+    }
 
     // Bloquea el input del plano mientras la mesa está encima, para que un click
     // sobre el fondo del modal no llegue al mapa de la misión de atrás.
@@ -2061,6 +2050,9 @@ export class FloorplanScene extends Phaser.Scene {
     // Handoff de un solo uso (NO por `scene.data`, que Phaser retiene y filtraba
     // el contexto al modo creativo — ver `setPendingMissionWorkbenchContext`).
     setPendingMissionWorkbenchContext({
+      domain,
+      elementStockOf: (elementId: ChemicalSubstanceId) =>
+        elementStockOf(this.mission.elementStock.get(), elementId),
       onFabricate: (definition: PhysicalComponentDefinition) => {
         this.mission.queueFabrication(actorId, definition);
         this.nameByComponentId.set(definition.id as string, definition.name);
@@ -2068,11 +2060,11 @@ export class FloorplanScene extends Phaser.Scene {
         this.redrawQueuePanel();
       },
       onSynthesize: (selectedElementIds: ReadonlyArray<ChemicalSubstanceId>) => {
-        const name = this.mission.queueSynthesis(actorId, selectedElementIds);
+        const name = this.mission.queueSynthesis(actorId, selectedElementIds, stationInstanceId);
         this.setStatus(
           name
             ? t("ui.floorplan.mission.workbench-synthesizing").replace("{name}", name)
-            : t("ui.floorplan.mission.workbench-synthesizing-generic"),
+            : t("ui.floorplan.mission.workbench-no-elements"),
         );
         this.redrawQueuePanel();
       },
@@ -3427,7 +3419,6 @@ export class FloorplanScene extends Phaser.Scene {
       }
       case "core-loop-mode-changed": {
         this.updatePlayPauseButton();
-        this.createWorkbenchButton();
         this.redrawEnergyControls();
         this.updateHeader();
         // Fase 11a.3: el fantasma se calcula UNA vez al entrar en pausa (el
@@ -3663,8 +3654,18 @@ export class FloorplanScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const startX = (cell.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom;
     const startY = HEADER_HEIGHT + (cell.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom;
-    const targetX = WORKBENCH_BUTTON_X;
-    const targetY = HEADER_HEIGHT / 2;
+    // Subfase 13e: la mesa dejó de ser un botón del header, así que los
+    // elementos recolectados vuelan al BANCO DE TRABAJO real del plano — más
+    // diegético que el destino anterior, y sigue leyéndose como "esto va a
+    // parar a algún lado" (12c.5). Sin banco visible (destruido), caen al
+    // centro del header, que es donde estaba el botón.
+    const bench = this.mission.benchCell();
+    const targetX = bench
+      ? (bench.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom
+      : WORKBENCH_BUTTON_X;
+    const targetY = bench
+      ? HEADER_HEIGHT + (bench.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom
+      : HEADER_HEIGHT / 2;
 
     // Partícula coleccionable por elemento con trayectoria en arco hacia la mesa
     // (12c.5). El detalle textual legible (qué se obtuvo) va por el sistema de

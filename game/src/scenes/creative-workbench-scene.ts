@@ -17,6 +17,7 @@ import {
   occupiedCells,
 } from "engine";
 import type {
+  FabricatorDomain,
   ChemicalSubstanceId,
   ChemicalTag,
   ComponentId,
@@ -35,7 +36,7 @@ import { HEADER_COLOR, LABEL_COLOR, chemicalElementColor, chemicalResultColor } 
 import { renderWorkbench } from "../render/workbench-renderer.js";
 import { preloadComponentSprites } from "../render/component-sprite-registry.js";
 import { UI_FONT_FAMILY } from "../ui/fonts.js";
-import { preloadUiAssets, UI_TEXTURE_KEYS } from "../ui/ui-asset-registry.js";
+import { preloadUiAssets } from "../ui/ui-asset-registry.js";
 import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyList } from "../ui/widgets/kenney-list.js";
@@ -68,6 +69,19 @@ const GRID_SIZE = { width: 12, height: 8 };
  * selección actual, antes de confirmar.
  */
 export interface MissionWorkbenchContext {
+  /**
+   * Dominio del APARATO desde el que se abrió la mesa (Subfase 13e). La mesa
+   * ya no elige libremente: un banco de trabajo no sintetiza sustancias ni una
+   * estación química ensambla piezas (Obs 4), así que el modo viene fijado y el
+   * toggle libre desaparece.
+   */
+  readonly domain: FabricatorDomain;
+  /**
+   * Unidades disponibles de un elemento (13e). La paleta química deja de
+   * ofrecer el `ELEMENT_CATALOG` completo sin límite: sintetizar cuesta
+   * materia prima real, que sale de extraerla de un reservorio (GDD 5.4.1).
+   */
+  readonly elementStockOf: (elementId: ChemicalSubstanceId) => number;
   readonly onFabricate: (definition: PhysicalComponentDefinition) => void;
   readonly onSynthesize: (selectedElementIds: ReadonlyArray<ChemicalSubstanceId>) => void;
   readonly onPreviewSynthesis: (
@@ -119,6 +133,12 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
    * (los elementos no tienen footprint en el modelo de datos — ver nota de
    * diseño del plan). Solo alternable en contexto de misión.
    */
+  /**
+   * Subfase 13e: en misión el modo lo fija el APARATO (`MissionWorkbenchContext
+   * .domain`), no un toggle. El modo creativo (sin contexto de misión) sigue
+   * siendo físico, que es lo único que puede hacer sin dónde depositar una
+   * sustancia.
+   */
   private mode: "fisica" | "quimica" = "fisica";
   private selectedElements: ChemicalSubstanceId[] = [];
   private palettePanel?: ScrollablePanel;
@@ -163,6 +183,8 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     // (ver `setPendingMissionWorkbenchContext`). En modo creativo queda undefined.
     this.missionContext = pendingMissionContext;
     pendingMissionContext = undefined;
+    // Subfase 13e: el aparato decide el modo (Obs 4), no el jugador.
+    this.mode = this.missionContext?.domain ?? "fisica";
 
     // En misión la mesa es un modal sobre el plano pausado: fondo opaco para
     // tapar la misión de atrás y bloquear su lectura visual (11c.2). En modo
@@ -219,37 +241,6 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         this.setStatus(t("ui.menu.workbench.delete-mode-hint"));
       },
     });
-
-    // Toggle Física/Química (11c.3, principio 7 — una sola mesa, no un editor
-    // aparte): solo tiene sentido en misión, porque `queueSynthesis` vive en
-    // `MissionRuntime` y el modo creativo todavía no tiene dónde guardar una
-    // sustancia sintetizada (sin reservorio con sustancia propia todavía).
-    if (missionContext) {
-      createKenneyButton(
-        self,
-        920,
-        70,
-        this.mode === "fisica" ? t("ui.menu.workbench.mode-chemistry") : t("ui.menu.workbench.mode-physical"),
-        {
-          width: 200,
-          iconTextureKey: UI_TEXTURE_KEYS.iconChemistry,
-          onClick: () => {
-            this.mode = this.mode === "fisica" ? "quimica" : "fisica";
-            this.armedComponentId = undefined;
-            this.wireFirstNode = undefined;
-            this.deleteMode = false;
-            this.selectedElements = [];
-            this.renderPalette(self);
-            this.setStatus(
-              this.mode === "quimica"
-                ? t("ui.menu.workbench.chemistry-hint")
-                : t("ui.menu.workbench.header"),
-            );
-            this.redraw();
-          },
-        },
-      );
-    }
 
     createKenneyButton(self, 730, 620, this.actionButtonLabel(missionContext), {
       width: 240,
@@ -321,16 +312,35 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     // Modo química (feedback de playtest 11c.3): tarjetas con color real
     // curado por elemento + todas sus propiedades químicas, no una lista de
     // texto plano — el jugador necesita ver con qué está combinando.
-    const cards = ELEMENT_CATALOG.map((spec) => ({
-      color: chemicalElementColor(spec.id),
-      title: spec.name,
-      detailLines: spec.data.tags.map((tag) => this.chemicalTagLabel(tag)),
-      onClick: () => {
-        this.selectedElements = [...this.selectedElements, spec.id];
-        this.setStatus(`+ ${spec.name}`);
-        this.redraw();
-      },
-    }));
+    // Subfase 13e: cada tarjeta muestra las unidades DISPONIBLES y se
+    // deshabilita a cero. El stock se descuenta al confirmar (`queueSynthesis`),
+    // así que acá se resta también lo ya elegido en esta sesión de mesa — si no,
+    // el jugador podría seleccionar 5 hidrógenos teniendo 2.
+    const stockOfElement = (id: ChemicalSubstanceId): number => {
+      const owned = this.missionContext?.elementStockOf(id) ?? 0;
+      const alreadyPicked = this.selectedElements.filter((picked) => picked === id).length;
+      return owned - alreadyPicked;
+    };
+    const cards = ELEMENT_CATALOG.map((spec) => {
+      const remaining = stockOfElement(spec.id);
+      return {
+        color: chemicalElementColor(spec.id),
+        title: `${spec.name} ×${remaining}`,
+        detailLines:
+          remaining > 0
+            ? spec.data.tags.map((tag) => this.chemicalTagLabel(tag))
+            : [t("ui.menu.workbench.element-empty")],
+        onClick: () => {
+          if (remaining <= 0) {
+            this.setStatus(t("ui.menu.workbench.element-empty"));
+            return;
+          }
+          this.selectedElements = [...this.selectedElements, spec.id];
+          this.setStatus(`+ ${spec.name}`);
+          this.redraw();
+        },
+      };
+    });
     this.palettePanel = createKenneyCardList(
       self,
       1000,

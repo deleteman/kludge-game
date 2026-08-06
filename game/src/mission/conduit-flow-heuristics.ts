@@ -22,12 +22,21 @@ const VENTILATION_PRESSURE_RANGE_KPA = 20;
 const ELECTRICO_FIXED_INTENSITY = 0.7;
 const SENAL_FIXED_INTENSITY = 0.7;
 /**
- * `fluido` no tiene ningún dato de caudal real en el motor (`ReservoirContent`
- * es por instancia de componente, no transporte entre secciones) — reutiliza
- * el mismo booleano de cicatriz de energía que `electrico` como aproximación
- * deliberada. Documentado como deuda técnica en `PENDIENTES_OBSERVACIONES.md`.
+ * `fluido` (Subfase 13e, cierra la deuda #10): dejó de reutilizar el booleano
+ * de cicatriz de energía de `electrico` y ahora deriva del caudal REAL de las
+ * operaciones en curso (`MissionRuntime.fluidOperations`: trasvase, vertido,
+ * extracción, purga). Sin ninguna operación viva el conducto queda quieto —
+ * es correcto, no un bug: mismo criterio que 11f.4 dejó documentado para los
+ * conductos `senal` en calma.
+ *
+ * `EPSILON` evita que un goteo residual encienda la animación; `RANGE`
+ * normaliza a [0,1] igual que `VENTILATION_PRESSURE_RANGE_KPA` hace con la
+ * presión. `FLOOR` garantiza que una operación válida siempre se VEA, aunque
+ * sea de una sola unidad.
  */
-const FLUIDO_FIXED_INTENSITY = 0.6;
+const FLUID_FLOW_EPSILON = 0.05;
+const FLUID_FLOW_RANGE = 2;
+const FLUID_FLOW_FLOOR_INTENSITY = 0.35;
 
 /**
  * Precalcula, una vez por frame de misión, qué secciones tienen AL MENOS un
@@ -55,12 +64,28 @@ export function conduitFlowIntensity(
     case "electrico":
       return poweredIntensity(conduit, mission, ELECTRICO_FIXED_INTENSITY);
     case "fluido":
-      return poweredIntensity(conduit, mission, FLUIDO_FIXED_INTENSITY);
+      return fluidIntensity(conduit, mission);
     case "senal":
       return signalIntensity(conduit, activeSignalSections);
     default:
       return { active: false, intensity: 0 };
   }
+}
+
+/**
+ * Caudal real de las operaciones de fluido que tocan este par de secciones
+ * (13e). A diferencia del resto de los tipos, no hay estado "en reposo" que
+ * mostrar: un conducto de fluido sin nadie moviendo nada está quieto.
+ */
+function fluidIntensity(conduit: ConduitConnection, mission: MissionRuntime): ConduitFlowIntensity {
+  if (conduit.initialAperture === 0) return { active: false, intensity: 0 };
+  const rate = mission.fluidOperations.rateBetween(conduit.a, conduit.b);
+  if (rate <= FLUID_FLOW_EPSILON) return { active: false, intensity: 0 };
+  const normalized = Math.min(1, rate / FLUID_FLOW_RANGE);
+  return {
+    active: true,
+    intensity: Math.max(FLUID_FLOW_FLOOR_INTENSITY, normalized),
+  };
 }
 
 /** Válvula sellada de fábrica (`initialAperture === 0`) fuerza flujo apagado, sin importar presión. */

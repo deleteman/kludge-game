@@ -11,6 +11,7 @@ import {
   toSectionAtmosphereSnapshot,
 } from "../atmosphere/atmosphere-snapshot.types.js";
 import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
+import type { SectionGasInjectionSource } from "./section-gas-injection.js";
 
 /**
  * Atmósfera VIVA de una misión (Fase 11b) — hasta esta fase, `diffuse()` y el
@@ -58,6 +59,13 @@ export class MissionAtmosphereRuntime implements Tickable {
     shipFloorplan: ShipFloorplan,
     initialSnapshots: ReadonlyArray<SectionAtmosphereSnapshot>,
     private readonly sinkSource?: SectionPressureSinkSource,
+    /**
+     * Subfase 13e: sustancias que ENTRAN a la atmósfera de una sección
+     * (verter un neutralizante, un derrame). Mismo patrón DI que `sinkSource`
+     * y, como él, opcional: sin fuente el comportamiento es idéntico al
+     * anterior a 13e.
+     */
+    private readonly gasInjectionSource?: SectionGasInjectionSource,
   ) {
     const model = deriveAtmosphereModel(shipFloorplan);
     const snapshotBySection = new Map(initialSnapshots.map((snapshot) => [snapshot.sectionId, snapshot]));
@@ -78,6 +86,11 @@ export class MissionAtmosphereRuntime implements Tickable {
   }
 
   tick(ctx: TickContext): void {
+    // Las inyecciones se aplican ANTES de difundir, para que el gas recién
+    // vertido se reparta por los conductos en el mismo tick en vez de esperar
+    // al siguiente — verter algo y no ver nada moverse hasta un tick después
+    // se leería como que la acción no hizo nada.
+    this.applyGasInjections();
     diffuse(this.sectionsById, this.connections, ctx);
     if (!this.sinkSource) {
       return;
@@ -97,6 +110,51 @@ export class MissionAtmosphereRuntime implements Tickable {
         PRESSURE_RECOVERY_CEILING_KPA,
         Math.max(PRESSURE_SINK_FLOOR_KPA, runtime.atmosphere.pressureKpa - rateKpaPerSecond * ctx.dtSeconds),
       );
+    }
+  }
+
+  /**
+   * Suma las fracciones inyectadas este tick (Subfase 13e). El gas entra
+   * DESPLAZANDO al resto proporcionalmente en vez de sumarse por encima: la
+   * suma de fracciones de una sección no puede pasar de 1 (el "hueco" que
+   * queda por debajo de 1 es vacío, no un gas implícito — ver
+   * `atmosphere-composition.types.ts`). Verter algo en una sección llena de
+   * aire desplaza aire; eso es lo que hace que un tóxico sea peligroso y que
+   * un neutralizante llegue a tocar lo que hay que neutralizar.
+   */
+  private applyGasInjections(): void {
+    if (!this.gasInjectionSource) {
+      return;
+    }
+    for (const [sectionId, bySubstance] of this.gasInjectionSource()) {
+      const runtime = this.sectionsById.get(sectionId);
+      if (!runtime) {
+        continue;
+      }
+      const requested = [...bySubstance.values()].reduce((total, fraction) => total + fraction, 0);
+      if (requested <= 0) {
+        continue;
+      }
+      // Se muta el Map en sitio (la referencia es `readonly`, el contenido no)
+      // — mismo criterio que `diffuse()`.
+      const gases = runtime.atmosphere.gases;
+      const occupied = [...gases.values()].reduce((total, fraction) => total + fraction, 0);
+      // Una sección no admite más de su propio volumen: verter 100 unidades en
+      // un armario no lo llena 5 veces. Lo que excede se pierde — el exceso ya
+      // salió del reservorio, y ese coste es intencional (Principio 5).
+      const admitted = Math.min(requested, 1);
+      const admittedRatio = admitted / requested;
+      // Lo que no cabe en el vacío disponible se hace sitio a costa del resto.
+      const displaced = Math.max(0, Math.min(occupied, admitted - Math.max(0, 1 - occupied)));
+      if (displaced > 0 && occupied > 0) {
+        const keepRatio = (occupied - displaced) / occupied;
+        for (const [gasKey, fraction] of gases) {
+          gases.set(gasKey, fraction * keepRatio);
+        }
+      }
+      for (const [substanceId, fraction] of bySubstance) {
+        gases.set(substanceId, (gases.get(substanceId) ?? 0) + fraction * admittedRatio);
+      }
     }
   }
 

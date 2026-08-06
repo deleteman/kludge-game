@@ -106,3 +106,65 @@ describe("campaign-save-serializer round trip", () => {
     expect(() => deserializeCampaignSave(JSON.stringify(broken))).toThrow(CampaignSaveParseError);
   });
 });
+
+/**
+ * Subfase 13e: `schemaVersion` 4→5. Un save de v4 no trae ninguno de los tres
+ * campos de química, así que se migra a vacío en vez de romper la carga —
+ * mismo criterio con que v3 se migró al ausentarse `atomicStock`.
+ */
+describe("campaign-save-serializer — migración 4→5 (química, 13e)", () => {
+  function v4SaveJson(): string {
+    const save = buildSave("exploracion");
+    const legacy: Record<string, unknown> = {
+      ...save,
+      metadata: { ...save.metadata, schemaVersion: 4 },
+    };
+    delete legacy.elementStock;
+    delete legacy.substanceProvenance;
+    delete legacy.analyzedSubstanceIds;
+    return JSON.stringify(legacy);
+  }
+
+  it("un save v4 carga con los campos de química vacíos", () => {
+    const restored = deserializeCampaignSave(v4SaveJson());
+    expect(restored.elementStock).toEqual({});
+    expect(restored.substanceProvenance).toEqual({});
+    expect(restored.analyzedSubstanceIds).toEqual([]);
+  });
+
+  it("una campaña nueva nace en v5 sin elementos ni sustancias analizadas", () => {
+    const save = buildSave("exploracion");
+    expect(save.metadata.schemaVersion).toBe(5);
+    expect(save.elementStock).toEqual({});
+    expect(save.analyzedSubstanceIds).toEqual([]);
+  });
+
+  it("el stock de elementos y la procedencia sobreviven un round-trip", () => {
+    const save = {
+      ...buildSave("medica"),
+      elementStock: { hidrogeno: 4, oxigeno: 2 },
+      substanceProvenance: { "mezcla-sin-identificar-1": ["hidrogeno", "hidrogeno", "cloro"] },
+      analyzedSubstanceIds: ["mezcla-sin-identificar-1"],
+    } as unknown as ReturnType<typeof buildSave>;
+    const restored = deserializeCampaignSave(serializeCampaignSave(save));
+    expect(restored.elementStock).toEqual({ hidrogeno: 4, oxigeno: 2 });
+    expect(restored.substanceProvenance).toEqual({
+      "mezcla-sin-identificar-1": ["hidrogeno", "hidrogeno", "cloro"],
+    });
+    expect(restored.analyzedSubstanceIds).toEqual(["mezcla-sin-identificar-1"]);
+  });
+
+  it("rechaza cantidades de elemento negativas o fraccionarias", () => {
+    const save = buildSave("guerra");
+    for (const bad of [-1, 1.5, "3"]) {
+      const broken = { ...save, elementStock: { hidrogeno: bad } };
+      expect(() => deserializeCampaignSave(JSON.stringify(broken))).toThrow(CampaignSaveParseError);
+    }
+  });
+
+  it("rechaza una procedencia que no sea una lista de ids", () => {
+    const save = buildSave("guerra");
+    const broken = { ...save, substanceProvenance: { agua: "hidrogeno" } };
+    expect(() => deserializeCampaignSave(JSON.stringify(broken))).toThrow(CampaignSaveParseError);
+  });
+});

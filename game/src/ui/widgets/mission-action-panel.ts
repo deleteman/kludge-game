@@ -4,6 +4,7 @@ import type {
   ComponentCondition,
   ComponentId,
   DismantleHazardKind,
+  FabricatorDomain,
   Footprint,
   FunctionalProperty,
   GridPosition,
@@ -50,6 +51,18 @@ export type ActionPanelContent =
       readonly dismantleHazards?: ReadonlyArray<DismantleHazardKind>;
       /** La pieza es una fuente con carga propia todavía sin descargar (13d, fix ronda 1). */
       readonly canDischargeSource?: boolean;
+      /**
+       * Contenido del reservorio (Subfase 13e), ya resuelto por el llamador:
+       * qué sustancia, cuánta y de qué capacidad. `undefined` = la pieza no es
+       * un reservorio de sustancia. El panel solo pinta — no conoce el catálogo
+       * ni `ReservoirProperty`, mismo criterio que con los hazards de 13d.
+       */
+      readonly reservoir?: ReservoirPanelInfo;
+      /**
+       * Dominio de mesa que habilita esta pieza (13e): la mesa dejó de ser un
+       * botón global y se abre desde el aparato. `undefined` = no es un aparato.
+       */
+      readonly fabricatorDomain?: FabricatorDomain;
     }
   | { readonly kind: "empty"; readonly position: GridPosition }
   | {
@@ -89,6 +102,22 @@ export interface SubstanceDetailLine {
   readonly icon: string;
 }
 
+/**
+ * Estado de un reservorio tal como lo pinta el panel (Subfase 13e). Todo ya
+ * resuelto por el llamador, incluido el MOTIVO por el que no se puede extraer
+ * — para que el botón deshabilitado explique por qué en vez de quedar gris y
+ * mudo.
+ */
+export interface ReservoirPanelInfo {
+  readonly substanceName?: string;
+  readonly amount: number;
+  readonly capacity: number;
+  /** `undefined` = se puede extraer. */
+  readonly extractionBlocked?: "empty" | "unanalyzed" | "unknown-composition";
+  /** Hay al menos un reservorio alcanzable al que trasvasar (conducto `fluido` mediante). */
+  readonly canTransfer: boolean;
+}
+
 /** Una sustancia disponible para analizar (Fase 11e), listada en `substances-list`. */
 export interface AvailableSubstanceEntry {
   readonly substanceId: ChemicalSubstanceId;
@@ -118,6 +147,16 @@ export interface ActionPanelLabels {
   /** Título de la lista de sustancias disponibles (`substances-list`). */
   readonly substancesTitle: string;
   readonly substanceAnalyzedSuffix: string;
+  /** Subfase 13e — contenido del reservorio y sus acciones. */
+  readonly reservoirEmpty: string;
+  readonly reservoirContents: (substanceName: string, amount: number, capacity: number) => string;
+  readonly transferSubstance: string;
+  readonly applySubstance: string;
+  readonly extractElements: string;
+  /** Motivo por el que la extracción está bloqueada, para que el botón gris se explique. */
+  readonly extractionBlocked: (reason: "empty" | "unanalyzed" | "unknown-composition") => string;
+  /** Abre la mesa desde el aparato: "Fabricar" (física) / "Fabricar sustancias" (química). */
+  readonly openFabricator: (domain: FabricatorDomain) => string;
   /** "Cerrar" (deselección manual, fix de playtest 11e — ver doc de la función). */
   readonly close: string;
 }
@@ -131,6 +170,11 @@ export interface ActionPanelCallbacks {
   /** Encola "Descargar fuente" (13d, fix ronda 1) sobre esta batería/panel. */
   readonly onDischargeSource: (instanceId: PlacedComponentInstanceId) => void;
   readonly onOpenInstallPicker: (position: GridPosition) => void;
+  /** Subfase 13e — acciones sobre un reservorio y apertura de la mesa desde el aparato. */
+  readonly onTransferSubstance: (instanceId: PlacedComponentInstanceId) => void;
+  readonly onApplySubstance: (instanceId: PlacedComponentInstanceId) => void;
+  readonly onExtractElements: (instanceId: PlacedComponentInstanceId) => void;
+  readonly onOpenFabricator: (instanceId: PlacedComponentInstanceId) => void;
   readonly onAnalyzeSubstance: (substanceId: ChemicalSubstanceId) => void;
   readonly onSelectSubstance: (substanceId: ChemicalSubstanceId) => void;
   /** La lista de sustancias es un widget rexUI aparte de la display list de la escena (ver `kenney-list.ts`) — necesita su propio registro de HUD. */
@@ -352,6 +396,20 @@ export function renderMissionActionPanel(
       cursorY += 36;
       claim(cursorY);
     };
+    /** Igual que `stackButton` pero con `enabled` explícito (13e: botones que se explican deshabilitados). */
+    const stackButtonEnabled = (label: string, enabled: boolean, onClick: () => void): void => {
+      container.add(
+        createKenneyButton(scene, width / 2, cursorY + 15, label, {
+          width: width - 40,
+          height: 30,
+          fontSize: "11px",
+          enabled,
+          onClick,
+        }),
+      );
+      cursorY += 36;
+      claim(cursorY);
+    };
 
     // Cortar la energía de la sección no asegura una FUENTE con carga propia,
     // así que para una batería se ofrece la descarga y no el corte.
@@ -366,6 +424,56 @@ export function renderMissionActionPanel(
     // corresponde ofrecer la descarga — el panel no conoce el catálogo.
     if (content.canDischargeSource) {
       stackButton(labels.dischargeSource, () => callbacks.onDischargeSource(content.instanceId));
+    }
+
+    // Subfase 13e — aparato de fabricación: la mesa se abre desde acá, no desde
+    // un botón global del header.
+    if (content.fabricatorDomain) {
+      stackButton(labels.openFabricator(content.fabricatorDomain), () =>
+        callbacks.onOpenFabricator(content.instanceId),
+      );
+    }
+
+    // Subfase 13e — reservorio: qué contiene y qué se puede hacer con eso.
+    const reservoir = content.reservoir;
+    if (reservoir) {
+      const contentsText =
+        reservoir.substanceName && reservoir.amount > 0
+          ? labels.reservoirContents(reservoir.substanceName, reservoir.amount, reservoir.capacity)
+          : labels.reservoirEmpty;
+      const contentsLabel = scene.add
+        .text(20, cursorY, contentsText, {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "11px",
+          color: LABEL_COLOR,
+          wordWrap: { width: width - 40, useAdvancedWrap: true },
+        })
+        .setOrigin(0, 0);
+      container.add(contentsLabel);
+      cursorY += contentsLabel.height + 8;
+      claim(cursorY);
+
+      const hasContents = reservoir.amount > 0;
+      stackButtonEnabled(
+        labels.applySubstance,
+        hasSelectedActor && hasContents,
+        () => callbacks.onApplySubstance(content.instanceId),
+      );
+      stackButtonEnabled(
+        labels.transferSubstance,
+        hasSelectedActor && hasContents && reservoir.canTransfer,
+        () => callbacks.onTransferSubstance(content.instanceId),
+      );
+      // El botón de extraer lleva el MOTIVO en el propio label cuando está
+      // bloqueado: un botón gris sin explicación es exactamente lo que hace
+      // que el jugador no descubra que primero tiene que analizar.
+      stackButtonEnabled(
+        reservoir.extractionBlocked
+          ? labels.extractionBlocked(reservoir.extractionBlocked)
+          : labels.extractElements,
+        hasSelectedActor && !reservoir.extractionBlocked,
+        () => callbacks.onExtractElements(content.instanceId),
+      );
     }
   } else if (content.kind === "empty") {
     const installCenter = Math.max(flowY + 17, contentTop + 68);

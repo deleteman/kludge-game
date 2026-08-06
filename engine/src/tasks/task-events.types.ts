@@ -1,6 +1,5 @@
 import type { DomainEventBase } from "../simulation/domain-event.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
-import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { CrewTaskId, TaskEffectResult, TaskType } from "./task.types.js";
 

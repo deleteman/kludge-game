@@ -28,6 +28,12 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   "cut-power": 5,
   "purge-reservoir": 6,
   "discharge-source": 8,
+  // Subfase 13e: manipular fluidos es más lento que abrir una válvula de
+  // purga — hay que medir, trasvasar sin derramar. La extracción es la más
+  // cara de las tres: es trabajo de laboratorio, no de fontanería.
+  "transfer-substance": 10,
+  "apply-substance": 8,
+  "extract-elements": 14,
 };
 
 /** Duración base de un tipo de tarea (segundos). Punto único de lectura de la tabla. */

@@ -1,3 +1,4 @@
+import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { ComponentWear } from "../wear/wear.types.js";
 
@@ -25,3 +26,18 @@ export type WearBuckets = Partial<Record<ComponentWear, number>>;
  * intercambiables entre sí, pero no con uno `nuevo`.
  */
 export type AtomicPartsStock = Partial<Record<ComponentId, WearBuckets>>;
+
+/**
+ * Stock de ELEMENTOS químicos disponibles para sintetizar (Subfase 13e, GDD
+ * 5.4.1: "se obtienen extrayéndolos de equipamiento... o de depósitos
+ * limitados"). Clave ausente = cero unidades.
+ *
+ * Hasta 13e la paleta química de la mesa ofrecía el `ELEMENT_CATALOG` completo
+ * sin restricción, así que sintetizar no costaba nada — este tipo es lo que
+ * convierte la síntesis en una decisión de recurso escaso.
+ *
+ * Sin buckets de desgaste, a diferencia de `AtomicPartsStock`: una sustancia no
+ * se desgasta ni acumula historia entre usos. Dos unidades de hidrógeno son
+ * intercambiables sin más.
+ */
+export type ElementStock = Partial<Record<ChemicalSubstanceId, number>>;

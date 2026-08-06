@@ -27,7 +27,14 @@ export function deserializeCampaignSave(json: string): CampaignSaveState {
 
   // Save pre-schemaVersion-3: sin `atomicStock` — se completa con stock vacío
   // antes de validar/devolver, así el resto del motor nunca ve el campo ausente.
-  const withStock: CampaignSaveState = { ...parsed, atomicStock: parsed.atomicStock ?? {} };
+  // Ídem schemaVersion < 5 (Subfase 13e) con los tres campos de química.
+  const withStock: CampaignSaveState = {
+    ...parsed,
+    atomicStock: parsed.atomicStock ?? {},
+    elementStock: parsed.elementStock ?? {},
+    substanceProvenance: parsed.substanceProvenance ?? {},
+    analyzedSubstanceIds: parsed.analyzedSubstanceIds ?? [],
+  };
 
   try {
     assertBlueprintIntegrity(withStock.shipState);
@@ -132,6 +139,50 @@ function assertIsCampaignSaveShape(value: unknown): asserts value is CampaignSav
         }
         assertNonNegativeInteger(quantity, `CampaignSaveState.atomicStock.${id}.${wear}`);
       }
+    }
+  }
+
+  assertChemistryStateShape(value);
+}
+
+/**
+ * Campos de química de la Subfase 13e (`schemaVersion` 5). Los tres son
+ * opcionales al leer: un save anterior simplemente no los trae y se migra a
+ * vacío en `deserializeCampaignSave`, mismo criterio que `atomicStock`.
+ */
+function assertChemistryStateShape(value: Record<string, unknown>): void {
+  const { elementStock, substanceProvenance, analyzedSubstanceIds } = value;
+
+  if (elementStock !== undefined) {
+    if (!isPlainObject(elementStock)) {
+      throw new CampaignSaveParseError("CampaignSaveState.elementStock must be an object");
+    }
+    for (const [id, quantity] of Object.entries(elementStock)) {
+      assertNonNegativeInteger(quantity, `CampaignSaveState.elementStock.${id}`);
+    }
+  }
+
+  if (substanceProvenance !== undefined) {
+    if (!isPlainObject(substanceProvenance)) {
+      throw new CampaignSaveParseError("CampaignSaveState.substanceProvenance must be an object");
+    }
+    for (const [id, elements] of Object.entries(substanceProvenance)) {
+      if (!Array.isArray(elements) || elements.some((element) => typeof element !== "string")) {
+        throw new CampaignSaveParseError(
+          `CampaignSaveState.substanceProvenance.${id} must be an array of element ids`,
+        );
+      }
+    }
+  }
+
+  if (analyzedSubstanceIds !== undefined) {
+    if (
+      !Array.isArray(analyzedSubstanceIds) ||
+      analyzedSubstanceIds.some((id) => typeof id !== "string")
+    ) {
+      throw new CampaignSaveParseError(
+        "CampaignSaveState.analyzedSubstanceIds must be an array of strings",
+      );
     }
   }
 }
