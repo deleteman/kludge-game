@@ -18,7 +18,10 @@
  * derrame al desmontar), solo aplica lo que el mundo le da este tick.
  */
 
-import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import type {
+  ChemicalSubstanceDefinition,
+  ChemicalSubstanceId,
+} from "../chemistry/chemical-substance.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 
 /** Fracción de gas a AÑADIR por sección y sustancia en este tick. */
@@ -28,13 +31,55 @@ export type SectionGasInjectionSource = () => ReadonlyMap<
 >;
 
 /**
- * Fracción de volumen que aporta UNA unidad de sustancia vertida. Con una
- * sección típica, verter el contenido de un reservorio pequeño satura el aire
- * de forma perceptible sin llenarlo de golpe. Ajustable con el balanceo de la
- * Fase 23; vive acá y no incrustado en el efecto de tarea para que sea un
- * parámetro y no un número mágico.
+ * Fracción de volumen que aporta una unidad de sustancia vertida **por unidad
+ * de volumen de la sección**. Ajustable con el balanceo de la Fase 23.
+ *
+ * Ronda 3 de fixes de playtest: antes era la fracción absoluta por unidad, sin
+ * dividir por el volumen, así que 50 unidades llenaban CUALQUIER sección al
+ * 100% — desmontar un reservorio de 100 dejaba el O2 en cero y disparaba la
+ * alerta de soporte vital. Además de ser injugable, incumplía
+ * `docs/Especificacion_datos_tecnicos.md` §4, que dice explícitamente que "el
+ * % se calcula sobre el volumen total, no un valor fijo". El valor se recalibró
+ * al pasar a dividirse: con una sección típica (~20 celdas) un reservorio de
+ * 100 unidades de gas satura de forma perceptible sin asfixiar la nave.
  */
-export const GAS_FRACTION_PER_SUBSTANCE_UNIT = 0.02;
+export const GAS_FRACTION_PER_SUBSTANCE_UNIT = 0.2;
+
+/**
+ * ¿Esta sustancia puede estar EN EL AIRE? (ronda 3 de fixes de playtest).
+ *
+ * Hasta acá cualquier sustancia vertida o derramada se convertía en atmósfera y
+ * desplazaba oxígeno, así que un tanque de agua asfixiaba una sala igual que un
+ * tóxico. El discriminador NO es el tag `VOLAT` — ese solo alimenta las reglas
+ * de combustión/ignición y lo llevan apenas 4 sustancias, con estados G/S/L/L.
+ * El dato correcto ya existía y lo declaran todas las entradas de ambos
+ * catálogos: `ChemicalSubstanceData.state`.
+ *
+ * Un gas va al aire por definición; un líquido volátil se evapora. Todo lo
+ * demás (el agua, `state: "L"` + `INERTE`) queda como charco en el piso — que
+ * ya tiene su representación visual y su aviso de derrame desde 13d/13e, así
+ * que "no afecta la atmósfera" no significa "no pasa nada".
+ */
+export function isAirborneSubstance(substance: ChemicalSubstanceDefinition | undefined): boolean {
+  if (!substance) {
+    return false;
+  }
+  return (
+    substance.data.state === "G" || substance.data.tags.some((tag) => tag.name === "VOLAT")
+  );
+}
+
+/**
+ * Dependencias del mundo que la inyección necesita para decidir. Se inyectan en
+ * vez de importarse porque `/engine` nunca importa catálogos ni planos: los
+ * recibe (mismo criterio que `SubstanceFlowDeps` o `SalvageHazardDeps`).
+ */
+export interface GasInjectionDeps {
+  /** Definición de la sustancia, para leer su estado de materia y sus tags. */
+  readonly substanceOf?: (substanceId: ChemicalSubstanceId) => ChemicalSubstanceDefinition | undefined;
+  /** Volumen de la sección receptora (`sectionArea`), para escalar la fracción. */
+  readonly sectionVolumeOf?: (sectionId: SectionId) => number | undefined;
+}
 
 /**
  * Buffer de inyecciones puntuales, consumido y vaciado por tick — mismo molde
@@ -47,13 +92,30 @@ export const GAS_FRACTION_PER_SUBSTANCE_UNIT = 0.02;
 export class TransientGasInjection {
   private pending = new Map<SectionId, Map<ChemicalSubstanceId, number>>();
 
-  /** Encola `amount` unidades de sustancia sobre una sección. */
+  /**
+   * Sin dependencias se comporta como antes de la ronda 3 (toda sustancia es
+   * aérea, volumen 1): los tests unitarios previos siguen valiendo y ningún
+   * llamador queda obligado a cablearlas. La misión real sí las pasa.
+   */
+  constructor(private readonly deps: GasInjectionDeps = {}) {}
+
+  /**
+   * Encola `amount` unidades de sustancia sobre una sección. Una sustancia que
+   * no puede estar en el aire (un líquido inerte) se descarta acá: se derramó,
+   * pero al piso, no a la atmósfera.
+   */
   inject(sectionId: SectionId, substanceId: ChemicalSubstanceId, amount: number): void {
     if (amount <= 0) {
       return;
     }
+    if (this.deps.substanceOf && !isAirborneSubstance(this.deps.substanceOf(substanceId))) {
+      return;
+    }
+    // Sin volumen resoluble se cae a 1 (no dividir) en vez de descartar: mismo
+    // criterio fail-open que el resto del motor ante un plano incompleto.
+    const volume = Math.max(1, this.deps.sectionVolumeOf?.(sectionId) ?? 1);
     const bySubstance = this.pending.get(sectionId) ?? new Map<ChemicalSubstanceId, number>();
-    const fraction = amount * GAS_FRACTION_PER_SUBSTANCE_UNIT;
+    const fraction = (amount * GAS_FRACTION_PER_SUBSTANCE_UNIT) / volume;
     bySubstance.set(substanceId, (bySubstance.get(substanceId) ?? 0) + fraction);
     this.pending.set(sectionId, bySubstance);
   }

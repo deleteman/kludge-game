@@ -56,6 +56,15 @@ export const RENDER_DEPTH = {
    */
   hudBackground: 20,
   hudContent: 21,
+  /**
+   * Paneles FLOTANTES que se posicionan sobre el mapa (el panel de acciones de
+   * misión). Necesitan depth propio por encima de `hudContent` (ronda 3 de
+   * fixes de 13e): compartían el 21 con la tira de tripulación, y como
+   * `redrawCrewStrip` destruye y re-crea la tira, cada reconstrucción la
+   * reinsertaba al final de la display list y quedaba TAPANDO el panel —
+   * escondiendo sus últimos botones y haciendo difícil clickearlos.
+   */
+  hudFloatingPanel: 25,
   /** Pila de notificaciones transitorias (12c.7) — por encima del HUD normal, por debajo de los diálogos bloqueantes. */
   notification: 29,
   hudModal: 30,

@@ -223,6 +223,7 @@ export function renderMissionActionPanel(
   scene: SceneWithRexUI,
   width: number,
   height: number,
+  maxHeight: number,
   content: ActionPanelContent,
   hasSelectedActor: boolean,
   labels: ActionPanelLabels,
@@ -580,15 +581,106 @@ export function renderMissionActionPanel(
     claim(detailY + 12 + 17);
   }
 
-  // El alto que pidió el llamador es un MÍNIMO, no un techo (13d ronda 2): con
-  // dos o tres avisos de riesgo y sus botones, el contenido pasa de largo y el
-  // fondo tiene que acompañar en vez de recortarlo.
-  const renderedHeight = Math.max(height, contentBottom + 16);
+  // El alto que pidió el llamador es un MÍNIMO (13d ronda 2): con dos o tres
+  // avisos de riesgo y sus botones, el contenido pasa de largo y el fondo tiene
+  // que acompañar. Pero `maxHeight` sí es un techo (13e ronda 3): sin él el
+  // panel crecía hasta salirse de la pantalla y su último botón —"Extraer"—
+  // quedaba fuera de vista, sin scroll ni recorte que lo delataran.
+  const naturalHeight = Math.max(height, contentBottom + 16);
+  const renderedHeight = Math.min(naturalHeight, maxHeight);
   backdrop.setSize(width + 20, renderedHeight);
+
+  if (naturalHeight > renderedHeight) {
+    attachPanelScroll(scene, container, backdrop, width, renderedHeight, naturalHeight);
+  }
+
   // El alto REAL, para que la escena pueda mantener el panel dentro de pantalla
   // y bloquear los clicks sobre toda su superficie (si el clamp siguiera usando
   // el alto nominal, la parte que sobresale dejaría pasar el click al mapa).
   container.setData(ACTION_PANEL_HEIGHT_KEY, renderedHeight);
 
   return container;
+}
+
+/**
+ * Convierte el panel en una ventana con scroll cuando su contenido no entra en
+ * `maxHeight` (13e ronda 3).
+ *
+ * Se implementa moviendo el contenido ya apilado a un sub-container enmascarado
+ * en vez de reconstruirlo dentro de un `ScrollablePanel` de rexUI: todo el
+ * cuerpo de `renderMissionActionPanel` posiciona sus hijos en coordenadas
+ * ABSOLUTAS respecto del origen del panel, y rexUI re-centra a sus hijos — la
+ * conversión habría obligado a reescribir el apilado entero y a romper el
+ * anclaje que `updateActionPanelAnchor` calcula cada frame.
+ *
+ * La máscara es un `Graphics` DENTRO del container, así que hereda su transform
+ * y sigue al panel mientras la escena lo reposiciona, sin sincronización manual.
+ */
+function attachPanelScroll(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  backdrop: Phaser.GameObjects.Rectangle,
+  width: number,
+  viewportHeight: number,
+  contentHeight: number,
+): void {
+  const scrollable = container.list.filter((child) => child !== backdrop);
+  container.remove(scrollable);
+  const viewport = scene.add.container(0, 0);
+  viewport.add(scrollable);
+  container.add(viewport);
+
+  const maskShape = scene.make.graphics({}, false);
+  maskShape.fillStyle(0xffffff);
+  maskShape.fillRect(-10, -8, width + 20, viewportHeight);
+  container.add(maskShape);
+  viewport.setMask(maskShape.createGeometryMask());
+
+  // Recorrido disponible: lo que sobra por debajo del viewport.
+  const maxScroll = contentHeight - viewportHeight;
+  let scroll = 0;
+  const applyScroll = (delta: number): void => {
+    scroll = Phaser.Math.Clamp(scroll + delta, 0, maxScroll);
+    viewport.setY(-scroll);
+  };
+
+  // Rueda del mouse sobre el área del panel. Se engancha a la escena y no a un
+  // hijo interactivo porque los botones ya capturan el puntero: un `setInteractive`
+  // sobre el fondo se los comería.
+  const onWheel = (
+    pointer: Phaser.Input.Pointer,
+    _over: unknown,
+    _dx: number,
+    dy: number,
+  ): void => {
+    // El panel vive en la cámara HUD, así que su `x`/`y` YA son coordenadas de
+    // pantalla y se comparan directo con las del puntero.
+    const originX = container.x - 10;
+    const originY = container.y - 8;
+    if (
+      pointer.x < originX ||
+      pointer.x > originX + width + 20 ||
+      pointer.y < originY ||
+      pointer.y > originY + viewportHeight
+    ) {
+      return;
+    }
+    applyScroll(dy);
+  };
+  scene.input.on("wheel", onWheel);
+  container.once(Phaser.GameObjects.Events.DESTROY, () => {
+    scene.input.off("wheel", onWheel);
+    maskShape.destroy();
+  });
+
+  // Indicador de que hay más contenido: sin esto el recorte es indistinguible
+  // de "no hay más acciones", que es justo el problema que se está corrigiendo.
+  const moreHint = scene.add
+    .text(width / 2 - 10, viewportHeight - 20, "▾", {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "12px",
+      color: LABEL_COLOR,
+    })
+    .setOrigin(0.5, 0);
+  container.add(moreHint);
 }

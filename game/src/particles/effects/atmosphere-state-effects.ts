@@ -26,26 +26,56 @@ export interface GasCloudState {
   readonly tint: number;
 }
 
+/**
+ * Por debajo de esta concentración no se pinta nada (ronda 3 de fixes de 13e).
+ * La difusión reparte trazas mínimas por toda la nave conexa a ~10%/s, así que
+ * sin umbral una fuga en una sala terminaba encendiendo una nube en las ocho
+ * secciones — ruido visual que ahoga la señal de dónde está el problema real.
+ */
+const CLOUD_VISIBILITY_THRESHOLD = 0.05;
+
+/**
+ * Velocidad a la que la nube MOSTRADA persigue a la concentración real, en
+ * fracción por segundo. El motor puede saltar de 0 a 1 en un solo tick (un
+ * reservorio que se vacía de golpe); sin este suavizado la nube aparecía
+ * instantáneamente a pleno, en vez de expandirse. No altera el estado del
+ * motor: es solo cómo se dibuja.
+ */
+const CLOUD_RAMP_PER_SECOND = 0.6;
+
 export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): StateDrivenEffect<GasCloudState> {
   let scene: EffectScene | undefined;
   let px = 0;
   let py = 0;
   let emitter: Phaser.GameObjects.Particles.ParticleEmitter | undefined;
+  /** Concentración que se está DIBUJANDO, persiguiendo a la real con retardo. */
+  let shown = 0;
 
   return {
     start(s: EffectScene, position: GridPosition): void {
       scene = s;
       ({ px, py } = toPixel(position));
+      shown = 0;
     },
-    update(state: GasCloudState): void {
+    update(state: GasCloudState, deltaSeconds = 1 / 60): void {
       if (!scene) return;
-      if (state.concentration <= 0) {
+      const target = state.concentration > CLOUD_VISIBILITY_THRESHOLD ? state.concentration : 0;
+      // Persecución exponencial: sube y baja gradualmente, y nunca de un salto.
+      const step = Math.min(1, CLOUD_RAMP_PER_SECOND * deltaSeconds);
+      shown += (target - shown) * step;
+      if (shown <= 0.01) {
+        shown = 0;
         emitter?.stop();
         return;
       }
-      const quantity = Math.max(1, Math.round(state.concentration * 12));
+      const quantity = Math.max(1, Math.round(shown * 12));
+      // La opacidad también acompaña: con solo `quantity`, una nube naciente y
+      // una saturada se veían igual de densas y el crecimiento no se leía. Va
+      // en el alpha del EMISOR (multiplica al de cada partícula) y no en el op
+      // `alpha` del config, que solo admite número y borraría el desvanecido.
+      const opacity = 0.25 + Math.min(1, shown) * 0.75;
       if (!emitter) {
-        const radius = 6 + state.concentration * 20;
+        const radius = 6 + shown * 20;
         // Config COMPLETO en la creación (fix 11f.4): incluye `quantity`/`tint`/
         // `x`/`y` para NO depender de un `setConfig` posterior, que recarga
         // todos los ops del emisor y deja los ausentes (`scale`/`speed`/
@@ -62,15 +92,17 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
           x: spreadRange(radius),
           y: spreadRange(radius),
         });
+        emitter.setAlpha(opacity);
         onEmitterCreated?.(emitter);
         return;
       }
       if (!emitter.emitting) emitter.start();
-      // Densidad ∝ concentración y color por tag se actualizan con setters
-      // puntuales (nunca `setConfig`, que borraría el resto de ops). El radio de
-      // dispersión queda fijo al de creación: no hay setter tipado para los ops
-      // x/y y no justifica un cast por un matiz de un efecto aún no visible.
+      // Densidad, opacidad y color se actualizan con setters puntuales (nunca
+      // `setConfig`, que borraría el resto de ops). El radio de dispersión queda
+      // fijo al de creación: no hay setter tipado para los ops x/y y no
+      // justifica un cast por un matiz.
       emitter.setQuantity(quantity);
+      emitter.setAlpha(opacity);
       emitter.setParticleTint(state.tint);
     },
     stop(): void {

@@ -6,6 +6,7 @@ import {
   type SectionGasInjectionSource,
 } from "./section-gas-injection.js";
 import { MissionAtmosphereRuntime } from "./mission-atmosphere-runtime.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
@@ -67,6 +68,67 @@ describe("TransientGasInjection", () => {
     injection.inject(BODEGA, ACIDO, 0);
     injection.inject(BODEGA, ACIDO, -4);
     expect(injection.isEmpty).toBe(true);
+  });
+});
+
+/**
+ * Ronda 3 de fixes de playtest de 13e. Desmontar un reservorio de agua lleno
+ * (100 unidades) dejaba el O2 de la sección en CERO y disparaba la alerta de
+ * soporte vital, porque toda sustancia se volvía atmósfera y la fracción no se
+ * dividía por el volumen de la sección — esto último incumpliendo
+ * `docs/Especificacion_datos_tecnicos.md` §4.
+ */
+describe("TransientGasInjection — qué llega al aire y cuánto (ronda 3)", () => {
+  const registry = buildChemicalCatalog().registry;
+  const deps = {
+    substanceOf: (id: ChemicalSubstanceId) => registry.get(id),
+    sectionVolumeOf: (sectionId: SectionId) => (sectionId === BODEGA ? 10 : 20),
+  };
+  const AGUA = "agua" as ChemicalSubstanceId; // state "L", INERTE
+  const AMONIACO = "amoniaco" as ChemicalSubstanceId; // state "G", TOX(M)
+  const COMBUSTIBLE = "combustible-de-motor" as ChemicalSubstanceId; // state "L", VOLAT
+
+  it("el agua NO llega al aire: es un líquido inerte, se derrama al piso", () => {
+    const injection = new TransientGasInjection(deps);
+    injection.inject(BODEGA, AGUA, 100);
+    expect(injection.isEmpty).toBe(true);
+  });
+
+  it("un gas sí llega al aire", () => {
+    const injection = new TransientGasInjection(deps);
+    injection.inject(BODEGA, AMONIACO, 5);
+    expect(injection.asInjectionSource()().get(BODEGA)?.get(AMONIACO)).toBeGreaterThan(0);
+  });
+
+  it("un líquido VOLÁTIL también llega al aire: se evapora", () => {
+    const injection = new TransientGasInjection(deps);
+    injection.inject(BODEGA, COMBUSTIBLE, 5);
+    expect(injection.asInjectionSource()().get(BODEGA)?.get(COMBUSTIBLE)).toBeGreaterThan(0);
+  });
+
+  it("la misma cantidad en una sección del DOBLE de volumen da la mitad de fracción", () => {
+    const injection = new TransientGasInjection(deps);
+    injection.inject(BODEGA, AMONIACO, 10); // volumen 10
+    injection.inject(PUENTE, AMONIACO, 10); // volumen 20
+    const emitted = injection.asInjectionSource()();
+    expect(emitted.get(PUENTE)!.get(AMONIACO)!).toBeCloseTo(emitted.get(BODEGA)!.get(AMONIACO)! / 2);
+  });
+
+  it("un reservorio entero de gas satura pero no asfixia de golpe una sección grande", () => {
+    const injection = new TransientGasInjection(deps);
+    injection.inject(PUENTE, AMONIACO, 100); // 100 * 0.2 / 20 = 1.0 … caso límite
+    injection.inject(BODEGA, AMONIACO, 20); // 20 * 0.2 / 10 = 0.4
+    const emitted = injection.asInjectionSource()();
+    // Lo relevante del fix: la fracción DEPENDE del volumen, no es absoluta.
+    expect(emitted.get(BODEGA)!.get(AMONIACO)!).toBeCloseTo(0.4);
+  });
+
+  it("sin dependencias se comporta como antes: no filtra ni divide", () => {
+    const injection = new TransientGasInjection();
+    injection.inject(BODEGA, AGUA, 5);
+    expect(injection.asInjectionSource()().get(BODEGA)?.get(AGUA)).toBeCloseTo(
+      5 * GAS_FRACTION_PER_SUBSTANCE_UNIT,
+    );
   });
 });
 

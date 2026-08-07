@@ -258,6 +258,13 @@ const MAP_VIEWPORT_WIDTH = SIDE_PANEL_X - 10;
 const CREW_STRIP_HEIGHT = 118;
 const MAP_VIEWPORT_HEIGHT = 720 - HEADER_HEIGHT - CREW_STRIP_HEIGHT;
 const CREW_STRIP_Y = HEADER_HEIGHT + MAP_VIEWPORT_HEIGHT;
+/**
+ * Techo del panel de acciones (13e ronda 3). Se acota al alto del VIEWPORT DEL
+ * MAPA, no al de la pantalla: por encima está el header y por debajo la tira de
+ * tripulación, y el panel invadiendo esa franja es lo que lo hacía difícil de
+ * clickear. Pasado el techo, el panel hace scroll interno.
+ */
+const ACTION_PANEL_MAX_HEIGHT = MAP_VIEWPORT_HEIGHT - 16;
 /** Caja de la cola unificada (esquina sup-izq y alto) — reutilizada por el hit-test/scroll. */
 const QUEUE_BOX_X = SIDE_PANEL_X - 10;
 const QUEUE_BOX_Y = OBJECTIVES_STRIP_Y + OBJECTIVES_STRIP_HEIGHT;
@@ -616,6 +623,7 @@ export class FloorplanScene extends Phaser.Scene {
       {
         actionPanelWidth: ACTION_PANEL_WIDTH,
         actionPanelHeight: ACTION_PANEL_HEIGHT,
+        actionPanelMaxHeight: ACTION_PANEL_MAX_HEIGHT,
       },
       {
         setStatus: (text) => this.setStatus(text),
@@ -1225,7 +1233,11 @@ export class FloorplanScene extends Phaser.Scene {
         y: HEADER_HEIGHT + (cell.y * CELL + CELL / 2 - camera.scrollY) * camera.zoom,
       };
       const maxX = SIDE_PANEL_X - 10 - ACTION_PANEL_WIDTH - 20;
-      const maxY = 720 - panelHeight - 8;
+      // Contra la tira de tripulación, no contra el borde de pantalla (13e
+      // ronda 3): el panel se metía debajo de la tira, que ocupa los 118px
+      // inferiores, escondiendo sus últimos botones. Con el techo de
+      // `ACTION_PANEL_MAX_HEIGHT` este clamp nunca se invierte.
+      const maxY = CREW_STRIP_Y - panelHeight - 8;
       x = Phaser.Math.Clamp(rawPoint.x + ACTION_PANEL_ANCHOR_OFFSET_X, 10, maxX);
       y = Phaser.Math.Clamp(rawPoint.y + ACTION_PANEL_ANCHOR_OFFSET_Y, HEADER_HEIGHT + 8, maxY);
     } else {

@@ -406,6 +406,31 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     seleccionado y la tira de tripulación no entra en el viewport headless de 720px — cubierto por tests del
     motor y por la receta manual. `/engine` 858 → 863 tests.
 
+  **Ronda 3 de fixes de playtest (2026-08-08)** — la ronda 2 conectó los volcados a la atmósfera; el playtest
+  mostró que la conexión era correcta pero la MAGNITUD absurda:
+  - **Desmontar un reservorio lleno asfixiaba la nave entera.** Tres errores apilados:
+    `GAS_FRACTION_PER_SUBSTANCE_UNIT` era la fracción ABSOLUTA por unidad (50 unidades llenaban cualquier
+    sección al 100 %, y un reservorio trae 100), incumpliendo la espec de datos §4 que exige calcular el % **sobre
+    el volumen total** — ahora se divide por `sectionArea`; CUALQUIER sustancia se volvía atmósfera, así que un
+    tanque de agua asfixiaba igual que un tóxico — ahora solo `state === "G"` o tag `VOLAT` llegan al aire
+    (`isAirborneSubstance`), el resto se derrama al piso; y la propia ronda 2 multiplicó la exposición de esa
+    constante al hacer que purga y derrame la usaran. **Nota de diseño:** `VOLAT` no significa gaseoso (lo
+    llevan 4 sustancias con estados G/S/L/L y solo alimenta reglas de combustión); el discriminador correcto
+    ya existía en `ChemicalSubstanceData.state`.
+  - **Tests que mentían:** `dismantle-hazard.integration.test.ts` construía la inyección sin dependencias y
+    afirmaba que el agua contamina — verde justo sobre lo que se corrigió. Cableado con las deps de producción
+    y ampliado con el caso contrario. Otro test comparaba dos `undefined` sin afirmar nada.
+  - **La nube aparecía de golpe en todas las secciones:** `createGasLeakEffect` no tenía umbral ni suavizado.
+    Ahora la concentración mostrada persigue a la real con retardo, hay umbral de visibilidad y la opacidad
+    acompaña a la densidad.
+  - **"Extraer" no se veía y el panel costaba clickear:** el panel crecía sin techo (~350 px típicos sobre un
+    nominal de 220) sin scroll ni recorte, y compartía depth con la tira de tripulación, que lo tapaba al
+    re-crearse. Ahora tiene `actionPanelMaxHeight` con scroll interno por rueda, depth propio
+    (`hudFloatingPanel`) y el clamp mide contra la tira, no contra el borde de pantalla. **Cierra la
+    observación #25.**
+  - **Botones deshabilitados ilegibles:** texto gris sobre fondo atenuado al 40 %; las dos atenuaciones se
+    sumaban y anulaban el patrón de "motivo en el label" introducido en la ronda 2. `/engine` 863 → 870 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

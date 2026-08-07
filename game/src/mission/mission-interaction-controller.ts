@@ -57,6 +57,13 @@ export interface MissionInteractionGeometry {
    */
   readonly actionPanelWidth: number;
   readonly actionPanelHeight: number;
+  /**
+   * Techo del panel (ronda 3 de fixes de 13e). `actionPanelHeight` es solo el
+   * MÍNIMO: el contenido lo hace crecer, y sin techo un reservorio con avisos de
+   * riesgo se pasaba del borde inferior de la pantalla dejando su último botón
+   * ("Extraer") fuera de vista. Superado el techo, el panel hace scroll interno.
+   */
+  readonly actionPanelMaxHeight: number;
 }
 
 export const STRUCTURAL_RESISTANCE_LEVEL_KEY: Readonly<Record<"A" | "M" | "B", string>> = {
@@ -613,6 +620,7 @@ export class MissionInteractionController {
       this.scene,
       this.geometry.actionPanelWidth,
       this.geometry.actionPanelHeight,
+      this.geometry.actionPanelMaxHeight,
       content,
       this.selectedActorIdValue !== undefined,
       {
@@ -759,7 +767,9 @@ export class MissionInteractionController {
         onClose: () => this.setActionPanelContent({ kind: "idle" }),
       },
     );
-    this.actionPanelContainer.setDepth(RENDER_DEPTH.hudContent);
+    // Depth propio, por encima de la tira de tripulación (ronda 3): con el
+    // empate en `hudContent` la tira lo tapaba al re-crearse.
+    this.actionPanelContainer.setDepth(RENDER_DEPTH.hudFloatingPanel);
     this.callbacks.markAsHudObject(this.actionPanelContainer);
   }
 

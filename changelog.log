@@ -3872,3 +3872,69 @@ ENTREGABLE DE ESTE TURNO: solo documentación, por decisión del operador. No se
 
 Razón: la pregunta del operador destapó que el sistema de energía de 13b no gatea nada; se documenta como
 subfase en vez de parchearlo dentro de 13e.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-08 — Subfase 13e: fixes de playtest, RONDA 3 (magnitud del volcado y legibilidad del panel).
+
+A) DESMONTAR UN RESERVORIO LLENO ASFIXIABA LA NAVE ENTERA. Cadena de tres errores apilados:
+   1. `GAS_FRACTION_PER_SUBSTANCE_UNIT` era la fracción ABSOLUTA por unidad, sin dividir por el volumen de la
+      sección: 50 unidades llenaban cualquier sección al 100%. Un reservorio trae 100, así que al desmontarlo
+      el O2 caía a cero en un tick → soporte vital `critical` (el indicador sale solo de la fracción de O2) →
+      overlay de alerta. Incumplía además `docs/Especificacion_datos_tecnicos.md` §4, que dice explícitamente
+      que "el % se calcula sobre el volumen total, no un valor fijo". Ahora se divide por `sectionArea` y la
+      constante se recalibró (0.02 → 0.2, ya dividida).
+   2. CUALQUIER sustancia se volvía atmósfera: un tanque de agua asfixiaba una sala igual que un tóxico. Nuevo
+      `isAirborneSubstance`: solo `state === "G"` o tag `VOLAT` llegan al aire; el resto se derrama al piso
+      (que ya tiene charco y aviso desde 13d/13e, así que "no afecta la atmósfera" no es "no pasa nada").
+      NOTA DE DISEÑO: el operador pidió "solo las volátiles", pero `VOLAT` NO significa gaseoso — lo llevan 4
+      sustancias con estados G/S/L/L y solo alimenta reglas de combustión. El discriminador correcto ya
+      existía: `ChemicalSubstanceData.state`, declarado por todas las entradas de ambos catálogos. Se le
+      señaló al operador antes de implementar.
+   3. La ronda 2 (purga y derrame → atmósfera) fue correcta en intención pero multiplicó la exposición de una
+      constante que ya estaba sin balancear: antes solo la disparaba `apply-substance`, que es deliberado.
+
+   `TransientGasInjection` recibe ahora `substanceOf`/`sectionVolumeOf` por inyección de dependencia (mismo
+   criterio que `SubstanceFlowDeps`: `/engine` no importa catálogos ni planos, los recibe). Sin dependencias
+   se comporta como antes, así que los tests previos siguen valiendo.
+
+   TESTS QUE MENTÍAN: `dismantle-hazard.integration.test.ts` construía la inyección SIN dependencias y
+   afirmaba que el agua contamina la sección — pasaba en verde justo sobre el comportamiento que se corrigió.
+   Se cableó con las mismas deps que producción, se cambió el fixture a un gas donde la aserción lo requiere,
+   y se añadió el caso "el agua derrama pero NO contamina el aire". El test de "purgado y derramado van al
+   mismo sitio" comparaba dos `undefined` (pasaba sin afirmar nada); ahora usa un gas y exige > 0.
+
+B) LA NUBE APARECÍA DE GOLPE EN TODAS LAS SECCIONES. `createGasLeakEffect` no tenía suavizado alguno: la
+   cantidad de partículas saltaba con la concentración, el alpha era fijo y no había umbral, así que las
+   trazas que la difusión reparte por toda la nave conexa encendían las 8 secciones. Ahora hay umbral de
+   visibilidad, persecución exponencial de la concentración mostrada (crece y se apaga gradual) y opacidad
+   proporcional además de la densidad.
+
+C) "EXTRAER" NO SE VEÍA Y COSTABA CLICKEAR EL PANEL. Dos causas distintas:
+   - El panel crecía sin techo (~350px típicos, ~470 con varios hazards, sobre un nominal de 220) sin scroll
+     ni recorte. "Extraer" es el último botón y la ronda 2 le agregó la línea de ayuda debajo. Ahora tiene
+     `actionPanelMaxHeight` (el alto del viewport del mapa) y, superado, hace scroll interno con la rueda,
+     con un indicador "▾". Implementado con máscara sobre un sub-container y no con `ScrollablePanel` de
+     rexUI porque todo el apilado usa coordenadas absolutas y rexUI re-centra a sus hijos. Cierra la
+     observación #25.
+   - El panel y la tira de tripulación compartían `RENDER_DEPTH.hudContent` (21) en la misma cámara; como
+     `redrawCrewStrip` destruye y re-crea la tira, cada reconstrucción la reinsertaba al final de la display
+     list y quedaba TAPANDO el panel. Nuevo `RENDER_DEPTH.hudFloatingPanel` (25) + el clamp del anclaje pasa
+     a medir contra `CREW_STRIP_Y` en vez del borde de pantalla.
+
+D) BOTONES DESHABILITADOS ILEGIBLES. `#6b7280` sobre un fondo que además bajaba a `alpha 0.4`: las dos
+   atenuaciones se sumaban. Desde 13e los labels deshabilitados llevan el MOTIVO, así que un label ilegible
+   anulaba el propio patrón. Texto a `#3c4250` y fondo a `alpha 0.75`.
+
+VERIFICADO EN LA APP REAL (Playwright): los cuatro botones del reservorio se leen ("Purgar (se pierde el
+contenido)", "Verter en la sección", "Trasvasar a otro reservorio", "Extraer (requiere análisis)"), "Extraer"
+es visible, el panel entero queda dentro del viewport del mapa sin invadir la tira de tripulación, y soporte
+vital sigue en verde. Sin errores de consola.
+
+NO VERIFICADO EN LA APP, se dice explícitamente: el desmontaje del tanque de agua sin alerta y la expansión
+gradual de la nube exigen un tripulante seleccionado, y la tira de tripulación no entra en el viewport de
+720px del headless (observación #28). Lo primero está cubierto por test de integración del motor; el
+suavizado visual de la nube no tiene test automático (estándar de `/game`: smoke visual).
+
+SUITE: `/engine` 863 → 870 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
+
+Razón: ronda 3 de fixes del playtest de la Subfase 13e.

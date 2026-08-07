@@ -13,6 +13,8 @@ import type { CrewDomainEvent } from "../crew/crew-events.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
+import { sectionArea } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
@@ -37,6 +39,7 @@ const CONDUCTOR = "conductor-1" as PlacedComponentInstanceId;
 const BATTERY = "bateria-1" as PlacedComponentInstanceId;
 const TANK = "tanque-1" as PlacedComponentInstanceId;
 const AGUA = "agua" as ChemicalSubstanceId;
+const AMONIACO = "amoniaco" as ChemicalSubstanceId;
 
 /** Catálogo real: `cable-cobre` debe existir para que el desmontaje acredite stock. */
 const REGISTRY = buildComponentCatalog().registry;
@@ -149,7 +152,18 @@ function scenario() {
   salvageEvents.onAny((event) => seenSalvage.push(event));
   crewEvents.onAny((event) => seenCrew.push(event));
 
-  const gasInjection = new TransientGasInjection();
+  // Con las MISMAS dependencias que cablea la misión real (ronda 3): solo los
+  // gases y volátiles llegan al aire, y la fracción se escala por el volumen.
+  // Sin ellas este test pasaba en verde afirmando que el agua contamina, que es
+  // justo lo que se corrigió.
+  const chemicalRegistry = buildChemicalCatalog().registry;
+  const gasInjection = new TransientGasInjection({
+    substanceOf: (id) => chemicalRegistry.get(id),
+    sectionVolumeOf: (id) => {
+      const section = floorplan.sections.find((entry) => entry.id === id);
+      return section && sectionArea(section);
+    },
+  });
   const effect = createShipTaskEffect(
     shipState,
     REGISTRY,
@@ -353,16 +367,38 @@ describe("Subfase 13d — riesgo sistémico al desmontar (integración)", () => 
    * nada. El charco era cosmético — justo lo contrario del principio 6.
    */
   describe("el derrame llega a la atmósfera de la sección (13e ronda 2)", () => {
-    it("desmontar un reservorio con contenido derrama Y contamina la sección", () => {
+    it("desmontar un reservorio de GAS derrama Y contamina la sección", () => {
+      const { shipState, seenSalvage, gasInjection, dismantleTank } = scenario();
+      // El tanque de fábrica trae agua; para este caso se cambia a un gas.
+      const ship = shipState.get();
+      shipState.set({
+        ...ship,
+        reservoirContents: [{ componentInstanceId: TANK, substanceId: AMONIACO, amount: 40 }],
+      });
+
+      dismantleTank();
+
+      expect(seenSalvage.map((event) => event.kind)).toEqual(["dismantle-spill"]);
+      // La fuente publica FRACCIONES atmosféricas, escaladas por el volumen de
+      // la sección (3 celdas en el fixture), no unidades de sustancia.
+      expect(gasInjection.asInjectionSource()().get(SECTION)?.get(AMONIACO)).toBeCloseTo(
+        (40 * GAS_FRACTION_PER_SUBSTANCE_UNIT) / 3,
+      );
+    });
+
+    /**
+     * El bug de la ronda 3: desmontar el reservorio de agua del Cap.1 dejaba el
+     * O2 de la sección en cero y disparaba la alerta de soporte vital. Un
+     * líquido inerte se derrama al PISO — tiene su charco y su aviso, pero no
+     * es atmósfera.
+     */
+    it("desmontar un reservorio de AGUA derrama pero NO contamina el aire (ronda 3)", () => {
       const { seenSalvage, gasInjection, dismantleTank } = scenario();
 
       dismantleTank();
 
       expect(seenSalvage.map((event) => event.kind)).toEqual(["dismantle-spill"]);
-      // La fuente publica FRACCIONES atmosféricas, no unidades de sustancia.
-      expect(gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA)).toBeCloseTo(
-        40 * GAS_FRACTION_PER_SUBSTANCE_UNIT,
-      );
+      expect(gasInjection.isEmpty).toBe(true);
     });
 
     it("purgar antes evita el derrame: el tanque ya está vacío al desmontarlo", () => {
@@ -376,13 +412,26 @@ describe("Subfase 13d — riesgo sistémico al desmontar (integración)", () => 
     });
 
     it("lo purgado y lo derramado van al MISMO sitio: purgar no hace desaparecer la sustancia", () => {
-      const purged = scenario();
+      // Con un gas, para que la aserción compare un valor real y no dos
+      // `undefined` (con agua ambos lados serían vacíos y el test pasaría sin
+      // afirmar nada).
+      const withGas = (s: ReturnType<typeof scenario>) => {
+        const ship = s.shipState.get();
+        s.shipState.set({
+          ...ship,
+          reservoirContents: [{ componentInstanceId: TANK, substanceId: AMONIACO, amount: 40 }],
+        });
+        return s;
+      };
+      const purged = withGas(scenario());
       purged.purgeTank();
-      const spilled = scenario();
+      const spilled = withGas(scenario());
       spilled.dismantleTank();
 
-      expect(purged.gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA)).toBe(
-        spilled.gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA),
+      const purgedFraction = purged.gasInjection.asInjectionSource()().get(SECTION)?.get(AMONIACO);
+      expect(purgedFraction).toBeGreaterThan(0);
+      expect(purgedFraction).toBe(
+        spilled.gasInjection.asInjectionSource()().get(SECTION)?.get(AMONIACO),
       );
     });
   });

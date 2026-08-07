@@ -479,7 +479,7 @@ dónde, y qué costaría arreglarlo.
     los descubre solo vía `import.meta.glob`, sin wiring extra — falta confirmar visualmente en playtest que el
     encuadre 2×2 se ve bien.
 
-25. **El último botón del panel de acciones queda fuera de su caja de fondo** (detectado al verificar 13e
+25. ✅ RESUELTO (13e ronda 3). **El último botón del panel de acciones queda fuera de su caja de fondo** (detectado al verificar 13e
     ronda 1 con Playwright). Con la sección de reservorio (texto de contenido + 3 botones) el panel de una
     instancia llega a 5 botones, y el `backdrop` deja el último ("Extraer…") sin fondo detrás: se lee sobre el
     mapa y pierde contraste. `renderMissionActionPanel` YA dimensiona el fondo al contenido real
@@ -524,3 +524,14 @@ dónde, y qué costaría arreglarlo.
     (`floorplan-scene.ts`) muestra `powered` por componente usando `isInstancePowered`, que hoy devuelve `true`
     para todo porque ninguna pieza del catálogo declara `powerDraw`. No hay forma de que diga otra cosa hasta
     que se implemente la Subfase 13g; queda anotado para no diagnosticarlo dos veces.
+
+32. **`GAS_FRACTION_PER_SUBSTANCE_UNIT` pendiente de balanceo (Fase 23).** En la ronda 3 de 13e pasó a ser
+    fracción por unidad **por unidad de volumen de sección** (se divide por `sectionArea`), y se recalibró de
+    0.02 a 0.2 para compensar la división. El valor es plausible pero no está jugado en profundidad: con una
+    sección de ~20 celdas, un reservorio de 100 unidades de gas satura al 100 %. Revisar junto al resto de
+    parámetros numéricos cuando se haga el balanceo.
+
+33. **El suavizado de la nube de gas no tiene test automático.** `createGasLeakEffect` ganó umbral,
+    persecución exponencial y opacidad proporcional (13e ronda 3), todo verificable solo a ojo. Es coherente
+    con el estándar de `/game` (smoke visual, no cobertura), pero queda anotado: si el comportamiento se
+    rompe, ninguna suite lo va a decir.

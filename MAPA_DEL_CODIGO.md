@@ -817,3 +817,25 @@
 - `fabricatorBlocked` en el contenido de instancia; `transferBlocked`/`applyBlocked`/`reservoirHint`/
   `openFabricatorBlocked` en los labels. Todos los botones del bloque de reservorio llevan el motivo en el
   label cuando están deshabilitados, no solo "Extraer".
+
+## `engine/src/mission/section-gas-injection.ts` (modificado, 13e ronda 3)
+- `isAirborneSubstance(substance)` — solo `state === "G"` o tag `VOLAT` pueden estar en el aire; un líquido
+  inerte (el agua) se derrama al piso y no desplaza oxígeno. El discriminador es el ESTADO DE MATERIA, no el
+  tag: `VOLAT` lo llevan 4 sustancias con estados G/S/L/L y solo alimenta reglas de combustión.
+- `GasInjectionDeps {substanceOf, sectionVolumeOf}` — inyectadas al construir `TransientGasInjection`. La
+  fracción pasa a dividirse por el volumen de la sección, como exige la espec de datos §4. Sin dependencias el
+  comportamiento es el previo a la ronda 3.
+
+## `game/src/particles/effects/atmosphere-state-effects.ts` (modificado, 13e ronda 3)
+- `CLOUD_VISIBILITY_THRESHOLD` + `CLOUD_RAMP_PER_SECOND`: la nube tiene umbral de visibilidad y su
+  concentración mostrada persigue a la real con retardo, en vez de saltar. La opacidad del emisor acompaña a
+  la densidad.
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 3)
+- `attachPanelScroll(...)` — convierte el panel en ventana con scroll (máscara sobre un sub-container + rueda
+  del mouse + indicador "▾") cuando el contenido excede `maxHeight`. No usa `ScrollablePanel` de rexUI porque
+  todo el apilado del panel usa coordenadas absolutas y rexUI re-centra a sus hijos.
+
+## `game/src/render/render-depths.ts` (modificado, 13e ronda 3)
+- `hudFloatingPanel: 25` — depth propio para el panel de acciones flotante, entre `hudContent` y
+  `notification`. Compartir el 21 con la tira de tripulación hacía que la tira lo tapara al re-crearse.

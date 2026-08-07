@@ -15,7 +15,17 @@ import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
  * para el canvas de juego, no para UI de menú sobre estos assets).
  */
 const BUTTON_TEXT_COLOR = "#20242c";
-const BUTTON_TEXT_COLOR_DISABLED = "#6b7280";
+/**
+ * Deshabilitado tiene que LEERSE, no adivinarse (ronda 3 de fixes de 13e). Era
+ * `#6b7280` sobre un fondo que además se atenuaba a `alpha 0.4`: las dos
+ * atenuaciones se sumaban y el texto desaparecía. Desde 13e los labels
+ * deshabilitados llevan el MOTIVO ("Extraer (requiere análisis)", "Fabricar
+ * (pausá primero)"), así que un label ilegible anula el propio patrón: el
+ * jugador ve un botón gris mudo, que es exactamente lo que se quiso evitar.
+ */
+const BUTTON_TEXT_COLOR_DISABLED = "#3c4250";
+/** Atenuación del fondo en estado deshabilitado: suficiente para distinguirlo, no para borrarlo. */
+const DISABLED_BACKGROUND_ALPHA = 0.75;
 
 export interface KenneyButtonOptions {
   readonly width?: number;
@@ -49,7 +59,7 @@ export function createKenneyButton(
 
   const background = scene.add.image(0, 0, textureKey).setDisplaySize(width, height);
   if (!enabled) {
-    background.setAlpha(0.4);
+    background.setAlpha(DISABLED_BACKGROUND_ALPHA);
   }
 
   // Icono opcional a la izquierda del texto (12c.1). rexUI lo coloca antes del
@@ -59,7 +69,7 @@ export function createKenneyButton(
     options.iconTextureKey && scene.textures.exists(options.iconTextureKey)
       ? scene.add.image(0, 0, options.iconTextureKey).setDisplaySize(iconSize, iconSize)
       : undefined;
-  if (icon && !enabled) icon.setAlpha(0.4);
+  if (icon && !enabled) icon.setAlpha(DISABLED_BACKGROUND_ALPHA);
 
   const button = scene.rexUI.add
     .label({

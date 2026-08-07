@@ -62,6 +62,7 @@ import {
   baseDurationFor,
   isCompositeEntity,
   sectionCombustionAtmosphere,
+  sectionArea,
   sectionContainingCell,
   synthesizeSubstance,
   systemRandom,
@@ -304,8 +305,20 @@ export class MissionRuntime {
    */
   readonly elementStock: MutableElementStock;
   private substanceProvenance: Record<string, ReadonlyArray<ChemicalSubstanceId>>;
-  /** Buffer de sustancias vertidas sobre la atmósfera, drenado por el runtime de atmósfera. */
-  private readonly gasInjection = new TransientGasInjection();
+  /**
+   * Buffer de sustancias vertidas sobre la atmósfera, drenado por el runtime de
+   * atmósfera. Las dos consultas son closures y no valores porque este campo se
+   * inicializa ANTES del cuerpo del constructor: se resuelven al inyectar, no
+   * al declarar. Con ellas (ronda 3) solo los gases y volátiles llegan al aire,
+   * y la fracción se escala por el volumen de la sección.
+   */
+  private readonly gasInjection = new TransientGasInjection({
+    substanceOf: (substanceId) => this.chemicalRegistry.get(substanceId),
+    sectionVolumeOf: (sectionId) => {
+      const section = this.shipFloorplan.sections.find((entry) => entry.id === sectionId);
+      return section && sectionArea(section);
+    },
+  });
   /**
    * Operaciones de fluido en curso (13e, deuda #10) — de acá sale el caudal
    * REAL con que se anima la capa `fluido` del plano, en vez de la heurística
