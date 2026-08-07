@@ -3830,3 +3830,45 @@ ARCHIVOS
 SUITE: `/engine` 858 → 863 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
 
 Razón: ronda 2 de fixes del playtest de la Subfase 13e.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-07 — Auditoría de gating por energía → se abre la Subfase 13g (solo documentación).
+
+PREGUNTA DEL OPERADOR: ¿las mesas de creación dejan de funcionar si su sección no tiene energía? ¿Y el chip
+de circuito genérico en soporte vital?
+
+RESPUESTA: no, ninguna de las dos — y al auditarlo el hueco resultó ser mucho mayor que las mesas. La Fase
+13b construyó toda la maquinaria de reparto (presupuesto, asignación por sección, triaje de prioridad por
+componente, déficit) pero NADA declara demanda:
+
+ - Ninguna pieza del catálogo declara `powerDraw`. El campo solo existe dentro de `ActuatorProperty`
+   (`properties/functional.types.ts:34`), en la lógica de reparto y en tests. Como `allocateComponentPower`
+   deriva la demanda de ahí, `isInstancePowered` devuelve `true` para TODO, siempre: el nivel 2 del reparto
+   es funcionalmente inerte.
+ - El runtime de señales SÍ implementa el gating (`mission-signal-runtime.ts:105-127`), pero por dos vías
+   muertas: `unpoweredSections()` (cicatriz permanente, vacía en campaña nueva) e `isInstancePowered`
+   (siempre true). Ninguna consulta `sectionHasNoPowerGranted`, que es el único predicado con señal real.
+   Por eso un chip en una sección a oscuras evalúa y emite normalmente.
+ - Química, atmósfera y todas las tareas de tripulación (fabricar/sintetizar/analizar/extraer) no consultan
+   energía en ningún punto.
+ - Hoy cortar la energía produce SOLO oscuridad + parpadeo y que desmontar ahí no chispee (13d es el único
+   consumidor con gating real, y usa `isInstanceEnergized`, no `isInstancePowered`).
+
+CHOQUE CON EL DISEÑO, señalado antes de decidir: el GDD §5.1 dice que `FAB` es propiedad de HABILITACIÓN y
+que "por eso no se modela como `ACT` (que convierte energía en trabajo)" — línea escrita en 13e. Gatear las
+mesas por energía es un cambio sobre esa línea, no una omisión.
+
+DECISIONES DEL CICLO DE PREGUNTAS: subfase propia dentro de la Fase 13 (no un fix de 13e); `powerDraw`
+declarado POR PIEZA y no derivado de propiedades (es lo que hace útil el triaje de prioridad de 13b); las DOS
+mesas exigen energía; y una tarea en curso FALLA con aviso si su sección pierde la energía (principio 5).
+
+ENTREGABLE DE ESTE TURNO: solo documentación, por decisión del operador. No se tocó código.
+ - `nuevo-orden.md`: añadida la Subfase 13g "Consumo Eléctrico Real — que el reparto de energía gatee algo",
+   tras 13f, con el estado auditado, el alcance y el criterio de cierre.
+ - `PENDIENTES_OBSERVACIONES.md`: #29 (el docblock de `sectionHasNoPowerGranted` se declara cosmético pero ya
+   se usa para gating real), #30 (dos fuentes distintas para "sección sin energía" en la misma pantalla: la
+   capa HUD usa la cicatriz permanente y el overlay el déficit vivo), #31 (el inspector de prioridad siempre
+   dice "alimentado" y no puede decir otra cosa hasta 13g).
+
+Razón: la pregunta del operador destapó que el sistema de energía de 13b no gatea nada; se documenta como
+subfase en vez de parchearlo dentro de 13e.

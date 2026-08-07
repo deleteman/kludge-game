@@ -428,6 +428,38 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
 
 * Test unitario por escritor de daño + integración "una explosión abre una brecha que drena presión"; la cicatriz permanente debe sobrevivir un round-trip de guardado.
 
+#### Subfase 13g: Consumo Eléctrico Real — que el reparto de energía gatee algo (2026-08-07)
+
+Surgida del playtest de 13e ronda 2: el operador preguntó si las mesas de creación dejan de funcionar cuando su sección no tiene energía, y si pasa lo mismo con un chip lógico en soporte vital. **La respuesta es que no, y el hueco no son las mesas: 13b construyó toda la maquinaria de reparto — presupuesto, asignación por sección, triaje de prioridad por componente, déficit — pero nada declara DEMANDA, así que los dos predicados de gating que el motor expone están degenerados.**
+
+Estado auditado antes de planificar:
+
+* **Ninguna pieza del catálogo declara `powerDraw`.** El campo solo aparece en `properties/functional.types.ts:34` (dentro de `ActuatorProperty`), en la lógica de reparto y en tests. Como `allocateComponentPower` (`power-allocation.ts:131`) calcula la demanda leyendo ese campo, **`isInstancePowered` devuelve `true` para todo, siempre** — el nivel 2 del reparto es funcionalmente inerte y el inspector de prioridad dice "alimentado" hasta con la sección a cero.
+
+* **El runtime de señales SÍ implementa el gating, por dos vías que están muertas** (`mission-signal-runtime.ts:105-127`): `powerScars.unpoweredSections()`, que devuelve la cicatriz PERMANENTE (`permanentlyDisconnectedSectionIds`, vacía en campaña nueva), e `isInstancePowered`, siempre `true`. Ninguna consulta `sectionHasNoPowerGranted`, que es el único predicado con señal real. **Un chip en una sección a oscuras evalúa y emite normalmente.**
+
+* **Química, atmósfera y todas las tareas de tripulación ignoran la energía**: fabricar, sintetizar, analizar y extraer no la consultan en ningún punto.
+
+* Hoy cortar la energía a una sección produce **solo** oscuridad + parpadeo, y que desmontar ahí no chispee (13d, el único consumidor con gating funcional real — vía `isInstanceEnergized`, no vía `isInstancePowered`). El dial de reparto mueve agujas que no controlan nada.
+
+Alcance de la subfase:
+
+* **`powerDraw` sube de `ActuatorProperty` a dato de componente.** Hoy vive dentro del tag `ACT`, así que una pieza que no es actuador — un chip lógico, un sensor, una mesa — no tiene dónde declarar consumo. Pasa a `PhysicalComponentDefinition.data`, junto a `footprint`, que ya sienta el precedente de "dato de componente que no es un tag del GDD". Migrar el único lector (`power-allocation.ts:131`) para que haya **una sola fuente de verdad**, no dos. Decisión del ciclo de preguntas: consumo **declarado por pieza**, no derivado de propiedades — porque es lo que permite que una pieza se quede sin energía aunque su sección tenga algo, que es justamente para lo que existe el triaje de prioridad de 13b.
+
+* **Poblar `powerDraw` en el catálogo**, data-driven: tabla de consumos por clase en `engine/src/power/power-parameters.ts` (molde de `salvage-parameters.ts`), no literales dispersos por los catálogos. Criterio de partida — sensores/chips/indicadores 1, actuadores 2, mesas y equipamiento pesado 3. Los números concretos son de balanceo (Fase 23); lo que cierra esta subfase es que **existan y se respeten**.
+
+* **Señales:** al declararse la demanda, `isInstancePowered` deja de ser siempre-`true` y el gating que `outputOf` ya implementa empieza a funcionar solo. Revisar además el fail-open de `mission-power-runtime.ts:112-118` (toda instancia sin sección resoluble se fuerza a alimentada) y la vía muerta de `unpoweredSections()`.
+
+* **Mesas (`FAB`):** banco y estación declaran `powerDraw` (decisión del operador: **las dos**, no solo la química); `openWorkbench` (`floorplan-scene.ts`) gana su tercer guard y el botón dice el motivo. El panel de acciones **ya soporta esto**: `fabricatorBlocked` es un motivo tipado (13e ronda 2) hoy con un solo valor `"execution"` — se le añade `"unpowered"` y el patrón de label queda igual.
+
+* **Tarea en curso:** si la sección pierde energía mientras se ejecuta, la tarea pasa a `failed` con notificación (decisión del operador; principio 5 — quedarse sin energía a mitad de una síntesis cuesta algo). `task-failed` y su aviso ya existen: falta el gancho que lo dispare.
+
+* **Legibilidad (principio 6):** hoy la falta de energía se ve **por sección** (tinte + luz parpadeante, `redrawUnpoweredSectionScar`) pero no **por componente**. Una pieza apagada por triaje dentro de una sección con energía parcial no se distingue de una encendida — hace falta su representación, o el gating es invisible.
+
+* **GDD:** revisar §5.1 (la línea de `FAB` escrita en 13e dice que no se modela como `ACT` porque no convierte energía en trabajo). Sigue sin ser `ACT` — no hace trabajo físico sobre el mundo — pero sí **requiere alimentación para operar**. Documentar `powerDraw` como dato de componente y no como campo de `ACT`.
+
+* **Cierre:** un chip en una sección a 0 unidades no emite; las dos mesas no se abren y lo dicen; cortar la energía a mitad de una síntesis la hace fallar con aviso; y una pieza apagada se distingue a simple vista de una encendida. Tests unitarios de reparto con demanda real + integración "sección a oscuras ⇒ la señal no llega".
+
 
 
 ### Fase 14 — Capítulo 2: "Ecos en el Pasillo"

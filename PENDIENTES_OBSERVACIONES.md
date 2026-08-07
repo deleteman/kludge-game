@@ -505,3 +505,22 @@ dónde, y qué costaría arreglarlo.
     hay forma de seleccionar un tripulante. En el juego real el operador sí la ve, así que puede ser un mínimo
     de resolución no declarado. Conviene decidir si 1280×720 es soportado y, si lo es, ajustar el layout; está
     relacionado con #25, que es el mismo problema de alto en pequeño.
+
+29. **`sectionHasNoPowerGranted` se documenta como cosmético pero ya se usa para gating real.** Su docblock en
+    `engine/src/power/mission-power-runtime.ts` dice textualmente que es "puramente cosmético… nunca por gating
+    de señales/HUD", y sin embargo 13d lo consume para decidir si desmontar una pieza chispea
+    (`dismantle-hazard-rules.ts` vía `SalvageHazardDeps.sectionHasGrantedPower`), y la Subfase 13g lo va a usar
+    más. Corregir el comentario para que describa lo que el predicado realmente es: la única consulta de
+    energía con señal viva. Detectado al auditar la pregunta del operador sobre las mesas sin energía.
+
+30. **Dos fuentes distintas para "sección sin energía" en la misma pantalla.** La capa HUD "energia"
+    (`game/src/scenes/floorplan-scene.ts`, `drawEnergyLayer`) resuelve el estado leyendo
+    `blueprint.unpoweredSectionIds` — la cicatriz PERMANENTE, hoy siempre vacía en campaña nueva — mientras el
+    overlay del plano (`redrawUnpoweredSectionScar`) usa `sectionHasNoPowerGranted`, que es el déficit vivo.
+    Resultado: el plano pinta una sección a oscuras y la capa de energía no. Se resuelve solo en parte con 13g;
+    conviene unificar la fuente explícitamente.
+
+31. **El inspector de prioridad energética siempre dice "alimentado".** `openEnergyPriorityPanel`
+    (`floorplan-scene.ts`) muestra `powered` por componente usando `isInstancePowered`, que hoy devuelve `true`
+    para todo porque ninguna pieza del catálogo declara `powerDraw`. No hay forma de que diga otra cosa hasta
+    que se implemente la Subfase 13g; queda anotado para no diagnosticarlo dos veces.
