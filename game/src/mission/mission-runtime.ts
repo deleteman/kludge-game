@@ -68,6 +68,7 @@ import {
   toReactant,
   totalPowerBudget,
   MapEntityRegistry,
+  GAS,
 } from "engine";
 import type {
   ComponentWear,
@@ -84,6 +85,7 @@ import type {
   Blueprint,
   ChemicalSubstanceDefinition,
   ChemicalSubstanceId,
+  ChemicalTag,
   ComponentId,
   CoreLoopDomainEvent,
   CrewActor,
@@ -137,6 +139,14 @@ const SYNTHESIS_YIELD_UNITS = 10;
  * intenso se ve el conducto".
  */
 const FLUID_OPERATION_REFERENCE_SECONDS = 10;
+
+/**
+ * Gases de la atmósfera NORMAL (`GAS`, GDD 5.5). Se excluyen de la lectura
+ * visual de `airborneSubstanceAt`: pintar una nube por el nitrógeno que
+ * respira la tripulación sería ruido permanente en las 8 secciones. Cualquier
+ * otra clave del mapa es un `ChemicalSubstanceId` (convención de 13a).
+ */
+const BASELINE_GAS_KEYS = new Set<string>(Object.values(GAS));
 
 /** Acciones del core loop con afinidad de especialidad (GDD 6.6); `combine` = fabricar en la mesa (11c.2). */
 type ModulatedTaskType =
@@ -847,7 +857,11 @@ export class MissionRuntime {
     );
   }
 
-  /** "Purgar reservorio" (13d): vacía el contenido antes de desmontar la pieza. */
+  /**
+   * "Purgar reservorio" (13d): vacía el contenido antes de desmontar la pieza.
+   * Desde 13e (ronda 2) lo purgado se vuelca en la sección, así que la tarea
+   * lleva su `sectionId` — la misma que ya calculaba para el viaje.
+   */
   queuePurgeReservoir(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
     const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
     const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
@@ -867,7 +881,7 @@ export class MissionRuntime {
         actorId,
         type: "purge-reservoir",
         targetSectionId,
-        payload: { kind: "purge-reservoir", instanceId },
+        payload: { kind: "purge-reservoir", instanceId, sectionId: targetSectionId },
         estimatedDurationSeconds: this.modulatedDuration("purge-reservoir", actorId),
       }),
     );
@@ -1648,6 +1662,55 @@ export class MissionRuntime {
       }
     }
     return worst;
+  }
+
+  /**
+   * Sustancia DOMINANTE en el aire de una sección, sin filtrar por tag (13e,
+   * ronda 2). Consulta hermana de `contaminantAt` y deliberadamente separada de
+   * ella: aquella responde "qué me lastima" (y por eso solo mira TOX/CORR),
+   * esta responde "qué se ve". Mezclarlas es lo que hacía que verter agua fuera
+   * INVISIBLE — el motor la metía en `atmosphere.gases` y el plano no pintaba
+   * nada, justo lo contrario del principio 6.
+   *
+   * Devuelve dato de dominio (concentración + tags); el color lo decide quien
+   * pinta, con `chemicalSubstanceColor`.
+   */
+  airborneSubstanceAt(sectionId: SectionId):
+    | {
+        readonly concentration: number;
+        readonly substanceId: ChemicalSubstanceId;
+        readonly tags: ReadonlyArray<ChemicalTag>;
+      }
+    | undefined {
+    const atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId);
+    if (!atmosphere) {
+      return undefined;
+    }
+    let dominant:
+      | { concentration: number; substanceId: ChemicalSubstanceId; tags: ReadonlyArray<ChemicalTag> }
+      | undefined;
+    for (const [gasKey, concentration] of atmosphere.gases) {
+      // O2/N2/CO2 son la atmósfera NORMAL: pintarlas sería ruido constante.
+      // Cualquier otra clave es un `ChemicalSubstanceId` (convención de 13a).
+      if (concentration <= 0 || BASELINE_GAS_KEYS.has(gasKey)) {
+        continue;
+      }
+      if (dominant && concentration <= dominant.concentration) {
+        continue;
+      }
+      const substanceId = gasKey as ChemicalSubstanceId;
+      dominant = {
+        concentration,
+        substanceId,
+        tags: this.chemicalRegistry.get(substanceId)?.data.tags ?? [],
+      };
+    }
+    return dominant;
+  }
+
+  /** Tags de una sustancia, para que quien pinta derive su color (13e ronda 2). */
+  substanceTagsOf(substanceId: ChemicalSubstanceId): ReadonlyArray<ChemicalTag> {
+    return this.chemicalRegistry.get(substanceId)?.data.tags ?? [];
   }
 
   /**

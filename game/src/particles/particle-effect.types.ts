@@ -23,9 +23,27 @@ export type DomainEventOfKind<K extends DomainEvent["kind"]> = Extract<DomainEve
  * `CombustionEvent` no tiene `sectionId`/`ref`) — quien conoce dónde ocurrió
  * el evento (el driver de Fase 10, o la escena de galería en Fase 8) la pasa.
  */
+/**
+ * Datos que el efecto NO puede derivar del evento solo (13e ronda 2). El caso
+ * concreto: el tinte de un derrame depende de qué sustancia era, y traducir
+ * `ChemicalSubstanceId` → color exige el registro químico, que vive en el
+ * runtime de misión. Meter el color en el `DomainEvent` haría que `/engine`
+ * conociera la capa visual, que es justo lo que la separación motor/render
+ * prohíbe. Opcional: quien no lo pasa se queda con el color por defecto del
+ * efecto.
+ */
+export interface EventEffectOptions {
+  readonly tint?: number;
+}
+
 export interface EventDrivenEffect<K extends DomainEvent["kind"] = DomainEvent["kind"]> {
   readonly kind: K;
-  trigger(scene: Phaser.Scene, position: GridPosition, event: DomainEventOfKind<K>): void;
+  trigger(
+    scene: Phaser.Scene,
+    position: GridPosition,
+    event: DomainEventOfKind<K>,
+    options?: EventEffectOptions,
+  ): void;
 }
 
 /**

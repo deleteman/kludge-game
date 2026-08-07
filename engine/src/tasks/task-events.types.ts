@@ -39,6 +39,18 @@ export interface TaskCompletedEvent extends DomainEventBase {
   readonly obtained?: TaskEffectResult["obtained"];
   /** Sustancia revelada por "Analizar Sustancia" (Fase 11e). Ver `TaskEffectResult`. */
   readonly analyzedSubstanceId?: ChemicalSubstanceId;
+  /**
+   * Resultados de las tareas de sustancia (13e). Se declaran acá por la misma
+   * razón que dice el comentario de `obtained`: el efecto YA los calculaba y
+   * los devolvía en su `TaskEffectResult`, pero al no estar en el evento se
+   * quedaban en el motor sin que nada fallara al compilar — extraer acreditaba
+   * elementos en silencio y un desborde perdía material sin avisar (fix de
+   * playtest ronda 2).
+   */
+  readonly obtainedElements?: TaskEffectResult["obtainedElements"];
+  readonly overflowAmount?: number;
+  readonly pouredSubstanceId?: ChemicalSubstanceId;
+  readonly pouredAmount?: number;
 }
 
 /**

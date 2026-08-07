@@ -3751,3 +3751,82 @@ ARCHIVOS
 SUITE: `/engine` 843 → 858 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
 
 Razón: ronda 1 de fixes del playtest de la Subfase 13e.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-07 — Subfase 13e: fixes de playtest, RONDA 2 (comunicación y consecuencia visible).
+
+Los cinco puntos del operador se redujeron a TRES causas raíz, todas de "el motor hace lo correcto y la
+pantalla no lo cuenta".
+
+A) `purge-reservoir` había quedado desactualizado respecto de 13e. Su comentario decía textualmente que el
+   contenido se venteaba "porque no existe todavía un destino real para las sustancias (deuda #9, Subfase
+   13e)" — 13e cerró esa deuda y nadie volvió a esa rama. Ahora la purga VUELCA sobre la atmósfera de la
+   sección por la misma vía que `apply-substance` (`TransientGasInjection`), y devuelve
+   `{pouredSubstanceId, pouredAmount}`. El payload gana `sectionId` (opcional: sin sección resoluble el
+   reservorio se vacía igual, porque la purga nunca debe fallar — es la vía de escape del hazard de 13d).
+   Consecuencia de UX que reportó el operador: purgó un tanque lleno sin ir a desmontarlo, perdió sus 100
+   unidades de agua y con ellas la única materia prima de la nave — de ahí su "no tengo químicos en la mesa
+   química", porque la paleta se alimenta de `elementStock` y a `elementStock` solo lo acredita
+   `extract-elements`. Purgar y extraer NO compiten (purgar = tirar la carga para desmontar sin derrame;
+   extraer = cosechar 5 unidades por viaje sin vaciar el tanque), pero se dibujaban juntos sin decir qué
+   hacía cada uno.
+
+B) El scheduler no propagaba los resultados de tarea. `TaskEffectResult` YA declaraba `obtainedElements` y
+   `overflowAmount`, y los efectos YA los devolvían, pero `task-scheduler.ts::completeTask` solo copiaba
+   `obtained` y `analyzedSubstanceId` al evento — así que morían en el motor sin que nada fallara al
+   compilar. Resultado: extraer acreditaba elementos en silencio y un desborde perdía material sin avisar.
+   `TaskCompletedEvent` gana los cuatro campos y `FloorplanScene.notifySubstanceTaskResult` los convierte en
+   notificaciones (extraer → success con el desglose agrupado; purgar → warning con lo perdido; verter →
+   info; desborde → warning). Se añadió el test de scheduler que faltaba y que habría atrapado el olvido.
+
+C) El panel de acciones no conocía el modo del core loop, así que el botón de la mesa se dibujaba siempre
+   habilitado y el único gate (dentro de `openWorkbench`) comunicaba el rechazo con `setStatus`, un texto
+   discreto en el header que el jugador no mira al clickear en el plano. Ahora el contenido lleva
+   `fabricatorBlocked` y el botón dice "Fabricar (pausá primero)"; el rechazo residual pasa a
+   `NotificationCenter`. Los guards se mantienen como defensa en profundidad.
+
+LEGIBILIDAD VISUAL (principio 6, pedido explícito del operador). Al auditarlo apareció que el hueco era más
+grande que la purga nueva:
+ - El derrame de 13d emitía su evento y pintaba un charco, pero la sustancia NUNCA entraba a
+   `atmosphere.gases`: moría con la instancia. El charco era cosmético y arrancar un tanque de tóxico no
+   contaminaba nada. Ahora el case `dismantle` inyecta en la sección reusando la decisión de la propia regla
+   (`substanceId`/`amount` del `DismantleSpillEvent`).
+ - El tinte del charco era FIJO (`0x6fc4a8`): agua y ácido dejaban la misma mancha. Se añadió
+   `chemicalSubstanceColor(id, tags)` a la paleta (elemento curado > color por tag > neutro) y
+   `EventEffectOptions.tint` para que el llamador lo inyecte sin que `/engine` conozca colores.
+ - La nube de sección solo se pintaba con tag TOX/CORR, así que verter agua era literalmente INVISIBLE.
+   Nueva consulta hermana `airborneSubstanceAt` (cualquier sustancia no-baseline, con sus tags) para el uso
+   VISUAL; `contaminantAt` no se toca y sigue siendo la de daño y la que dispara el siseo de alarma —
+   mezclar "qué me lastima" con "qué se ve" era la causa del bug.
+ - `firePouredSubstance` se extrajo del efecto de derrame porque ahora hay TRES formas de mojar el piso
+   (derrame, verter, purgar) y son el mismo fenómeno; sin extraerlo había que fabricar eventos falsos.
+
+BUG ENCONTRADO CORRIENDO EL JUEGO (no en revisión de código): tras pausar, el botón seguía diciendo "pausá
+primero". El handler de `core-loop-mode-changed` no llamaba a `refreshActionPanel`, así que el panel quedaba
+congelado con el modo viejo. Corregido y re-verificado.
+
+Además: la paleta química con stock 0 mostraba las 29 tarjetas del catálogo en ×0, que se lee como "el juego
+está roto" y no como "te falta materia prima". Ahora lleva una línea de estado vacío que dice de dónde salen
+los elementos.
+
+VERIFICACIÓN EN LA APP REAL (Playwright headless, campaña nueva → Cap.1 exploración): el panel del reservorio
+muestra "Purgar (se pierde el contenido)", "Contiene: Agua — 100/100", "Verter en la sección", "Trasvasar a
+otro reservorio", "Extraer (requiere análisis)" y la línea de ayuda; el botón del banco dice "Fabricar (pausá
+primero)" en ejecución y vuelve a "Fabricar" al pausar SIN reabrir el panel. Sin errores de consola.
+
+NO VERIFICADO EN LA APP, se dice explícitamente: la notificación de purga y su charco necesitan un tripulante
+seleccionado, y la tira de tripulación no entra en el viewport de 720px del headless. Ese camino queda cubierto
+por los tests del motor (purga → inyección en la sección; resultados → evento `task-completed`) y por la receta
+de playtest manual.
+
+ARCHIVOS
+ Modificados en `/engine`: `mission/ship-task-effect.ts`, `tasks/{task.types,task-events.types,task-scheduler}.ts`
+ y sus tests + `mission/dismantle-hazard.integration.test.ts`.
+ Modificados en `/game`: `scenes/{floorplan-scene,creative-workbench-scene}.ts`,
+ `mission/{mission-runtime,mission-interaction-controller}.ts`, `ui/widgets/mission-action-panel.ts`,
+ `particles/{effect-registry,particle-effect.types}.ts`, `particles/effects/salvage-hazard-effect.ts`,
+ `render/palette.ts`, `i18n/{es,en}.ts`.
+
+SUITE: `/engine` 858 → 863 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
+
+Razón: ronda 2 de fixes del playtest de la Subfase 13e.

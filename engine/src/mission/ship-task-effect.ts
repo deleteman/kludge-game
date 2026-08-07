@@ -171,6 +171,17 @@ export function createShipTaskEffect(
             salvageDeps.elapsedSecondsOf?.() ?? 0,
             salvageDeps.handler ?? {},
           );
+          // El derrame llega a la ATMÓSFERA de la sección (13e, fix de playtest
+          // ronda 2). Hasta acá `dismantle-spill` emitía su evento y pintaba un
+          // charco, pero la sustancia moría con la instancia: el derrame era
+          // cosmético y desmontar un tanque lleno de tóxico no contaminaba
+          // nada. Se reusa la decisión de la regla (`substanceId`/`amount` del
+          // evento) en vez de volver a inspeccionar `reservoirContents`.
+          for (const event of hazard.events) {
+            if (event.kind === "dismantle-spill" && event.sectionId) {
+              substanceDeps.gasInjection?.inject(event.sectionId, event.substanceId, event.amount);
+            }
+          }
         }
         // Tercera consecuencia de un desmontaje inseguro (13d): la pieza sale
         // un escalón peor de lo que la tirada de GDD §6.5 ya decidió. Arrancar
@@ -275,17 +286,27 @@ export function createShipTaskEffect(
         return;
       }
       case "purge-reservoir": {
-        // Purga CONTROLADA (13d): el contenido se ventea, no se derrama ni
-        // vuelve al inventario — no existe todavía un destino real para las
-        // sustancias (deuda #9, Subfase 13e).
+        // Purga CONTROLADA (13d): vaciar el reservorio para poder desmontarlo
+        // sin derrame. Hasta 13e el contenido se venteaba a la nada por falta
+        // de destino (deuda #9, ya cerrada); ahora se vuelca sobre la sección
+        // por la MISMA vía que `apply-substance` — no duplicar la inyección,
+        // es el mismo fenómeno con otra intención. Sigue sin volver al
+        // inventario: purgar es tirar la carga, no cosecharla (para eso está
+        // `extract-elements`).
         const ship = shipState.get();
-        shipState.set({
-          ...ship,
-          reservoirContents: ship.reservoirContents.filter(
-            (entry) => entry.componentInstanceId !== payload.instanceId,
-          ),
-        });
-        return;
+        const content = contentOf(ship.reservoirContents, payload.instanceId);
+        if (!content) {
+          return;
+        }
+        const drawn = drawFrom(ship.reservoirContents, payload.instanceId, content.amount);
+        shipState.set({ ...ship, reservoirContents: drawn.contents });
+        if (drawn.drawn === 0 || !drawn.substanceId) {
+          return;
+        }
+        if (payload.sectionId) {
+          substanceDeps.gasInjection?.inject(payload.sectionId, drawn.substanceId, drawn.drawn);
+        }
+        return { pouredSubstanceId: drawn.substanceId, pouredAmount: drawn.drawn };
       }
       case "transfer-substance": {
         // Trasvase entre reservorios (13e). La restricción de alcance se valida
@@ -327,7 +348,7 @@ export function createShipTaskEffect(
         }
         shipState.set({ ...ship, reservoirContents: drawn.contents });
         substanceDeps.gasInjection?.inject(payload.sectionId, drawn.substanceId, drawn.drawn);
-        return;
+        return { pouredSubstanceId: drawn.substanceId, pouredAmount: drawn.drawn };
       }
       case "extract-elements": {
         // Descomposición en elementos (13e, GDD 5.4.1). `elementsFromAmount`

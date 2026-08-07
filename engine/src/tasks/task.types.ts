@@ -126,13 +126,27 @@ export interface CutPowerTaskPayload {
 
 /**
  * "Purgar reservorio" (Subfase 13d): vacía de forma controlada el contenido de
- * un reservorio antes de desmontarlo. La sustancia se ventea — no vuelve al
- * inventario, porque no existe todavía un destino real para las sustancias
- * (deuda #9, Subfase 13e).
+ * un reservorio antes de desmontarlo.
+ *
+ * Hasta 13e la sustancia se venteaba a la nada, porque no existía un destino
+ * real para las sustancias (deuda #9). Ese destino ya existe, así que la purga
+ * **vuelca en la atmósfera de la sección** igual que `apply-substance`: purgar
+ * agua es inofensivo, purgar un tóxico contamina la sala. La diferencia entre
+ * las dos tareas es la INTENCIÓN (asegurar la pieza vs. usar la sustancia), no
+ * el destino — y así la pérdida se ve en pantalla en vez de desaparecer sin
+ * rastro (principio 6).
  */
 export interface PurgeReservoirTaskPayload {
   readonly kind: "purge-reservoir";
   readonly instanceId: PlacedComponentInstanceId;
+  /**
+   * Sección que recibe lo purgado. La resuelve el llamador, que ya la calcula
+   * para el viaje. Opcional porque el plano puede no resolverla: en ese caso el
+   * reservorio se vacía igual (la purga NUNCA debe fallar, es la vía de escape
+   * del hazard de 13d) y solo se pierde el volcado — mismo criterio fail-open
+   * que `assertFluidTransferReachable`.
+   */
+  readonly sectionId?: SectionId;
 }
 
 /**
@@ -267,6 +281,14 @@ export interface TaskEffectResult {
    * para avisar al jugador de que midió mal; no es un error.
    */
   readonly overflowAmount?: number;
+  /**
+   * Sustancia y cantidad volcadas sobre la atmósfera de una sección (13e, fix
+   * de playtest ronda 2). Un solo par para `apply-substance` y
+   * `purge-reservoir` porque es el mismo fenómeno físico; quien consume el
+   * evento distingue la intención por `type`, que ya viaja en él.
+   */
+  readonly pouredSubstanceId?: ChemicalSubstanceId;
+  readonly pouredAmount?: number;
 }
 
 /**

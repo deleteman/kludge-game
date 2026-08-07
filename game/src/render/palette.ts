@@ -362,6 +362,25 @@ export function chemicalResultColor(tags: ReadonlyArray<ChemicalTag>): number {
 }
 
 /**
+ * Color de CUALQUIER sustancia (elemento o compuesto), 13e ronda 2. Un charco
+ * de agua y uno de ácido no pueden verse iguales (principio 6), y hasta acá
+ * todo derrame se pintaba con un verde-agua fijo y toda nube de sección con uno
+ * de dos colores por tag.
+ *
+ * Prioriza el color CURADO del elemento sobre el genérico del tag: si la
+ * sustancia está en `CHEMICAL_ELEMENT_COLORS` esa entrada es más específica
+ * que "es tóxica". Un compuesto (agua, ácido) cae al color de su primer tag, y
+ * lo que no tenga ni una cosa ni la otra, al neutro.
+ */
+export function chemicalSubstanceColor(
+  id: ChemicalSubstanceId | string,
+  tags: ReadonlyArray<ChemicalTag> = [],
+): number {
+  const curated = CHEMICAL_ELEMENT_COLORS[id as string];
+  return curated ?? chemicalResultColor(tags);
+}
+
+/**
  * Color por fracción [0,1] de un valor "de salud" genérico (verde → ámbar →
  * rojo) — extraído de `crew-strip.ts` (Fase 9) a la paleta compartida en
  * Subfase 11g para que `ship-status-hud.ts` use el mismo corte de 3 niveles

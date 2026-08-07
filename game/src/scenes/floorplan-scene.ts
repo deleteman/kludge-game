@@ -24,6 +24,7 @@ import type {
   PlacedComponentInstanceId,
   ScriptedRoute,
   SectionId,
+  TaskCompletedEvent,
   TaskType,
 } from "engine";
 
@@ -64,6 +65,7 @@ import {
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
 import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
+import { firePouredSubstance } from "../particles/effects/salvage-hazard-effect.js";
 import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
 import { AUDIO_KEYS, preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { pickSoundKey } from "../audio/audio-utils.js";
@@ -97,6 +99,7 @@ import {
   OBJECTIVE_DONE_COLOR,
   screenAlertFlickerAlpha,
   SCREEN_ALERT_TINT,
+  chemicalSubstanceColor,
   SEALED_VALVE_COLOR,
   sectionScarFlickerAlpha,
   SELECTED_CELL_COLOR,
@@ -960,7 +963,21 @@ export class FloorplanScene extends Phaser.Scene {
       // (a diferencia de la combustión), así que la partícula se pinta
       // exactamente donde estaba la pieza que el tripulante acaba de arrancar.
       this.mission.salvageEvents.onAny((event) => {
-        fireEventEffect(this, event.position, event);
+        // El charco toma el color de LA sustancia derramada (13e ronda 2): con
+        // un tinte fijo, agua y ácido dejaban la misma mancha.
+        fireEventEffect(
+          this,
+          event.position,
+          event,
+          event.kind === "dismantle-spill"
+            ? {
+                tint: chemicalSubstanceColor(
+                  event.substanceId,
+                  this.mission.substanceTagsOf(event.substanceId),
+                ),
+              }
+            : undefined,
+        );
         fireEventSound(this, event);
         this.notifications?.push({
           title: t(`ui.floorplan.notification.${event.kind}`),
@@ -2027,13 +2044,25 @@ export class FloorplanScene extends Phaser.Scene {
    * recién al completarse (materialización diferida, `MissionRuntime`).
    */
   private openWorkbench(stationInstanceId: PlacedComponentInstanceId): void {
+    // Los dos guards siguen siendo la defensa en profundidad; lo que cambió en
+    // 13e ronda 2 es CÓMO se comunica el rechazo. `setStatus` escribe una línea
+    // discreta en el header que el jugador no mira al hacer clic en el plano,
+    // así que el clic parecía no hacer nada. Ahora el botón ya avisa que hay
+    // que pausar (`fabricatorBlocked`) y este camino, si se llega igual, lo
+    // dice con una notificación.
     if (this.mission.coreLoop.mode !== "planning") {
-      this.setStatus(t("ui.floorplan.mission.workbench-need-pause"));
+      this.notifications?.push({
+        title: t("ui.floorplan.mission.workbench-need-pause"),
+        type: "warning",
+      });
       return;
     }
     const actorId = this.interaction.selectedActorId;
     if (!actorId) {
-      this.setStatus(t("ui.floorplan.mission.workbench-need-actor"));
+      this.notifications?.push({
+        title: t("ui.floorplan.mission.workbench-need-actor"),
+        type: "warning",
+      });
       return;
     }
     // Subfase 13e: la mesa se abre desde un APARATO del plano y entra directo
@@ -2498,20 +2527,25 @@ export class FloorplanScene extends Phaser.Scene {
       effects.freezing.update({ temperatureCelsius }, deltaSeconds);
       effects.heatVapor.update({ temperatureCelsius }, deltaSeconds);
 
-      // Clasificar TOX vs CORR es del que pinta (comentario de
-      // `atmosphere-state-effects.ts`): reutiliza el MISMO `CLOUD_TINT` que
-      // `hazard-effect.ts` ya usa para el burst discreto del mismo fenómeno
-      // (principio 6 — una fuga de gas se ve igual sea cual sea el disparador).
-      const contaminant = this.mission.contaminantAt(sectionId);
-      const concentration = contaminant?.concentration ?? 0;
+      // Se pinta CUALQUIER sustancia en el aire, no solo la que hace daño
+      // (13e ronda 2). Antes esto leía `contaminantAt`, que filtra a TOX/CORR:
+      // verter o derramar agua era literalmente invisible aunque el motor la
+      // tuviera en `atmosphere.gases`, y dos sustancias del mismo tag se veían
+      // idénticas. El color sale ahora de la sustancia concreta.
+      const airborne = this.mission.airborneSubstanceAt(sectionId);
+      const concentration = airborne?.concentration ?? 0;
       effects.gasLeak.update(
         {
           concentration,
-          tint: CLOUD_TINT[contaminant?.tag === "TOX" ? "toxic-threshold" : "corrosive-exposure"],
+          tint: airborne
+            ? chemicalSubstanceColor(airborne.substanceId, airborne.tags)
+            : CLOUD_TINT["corrosive-exposure"],
         },
         deltaSeconds,
       );
-      effects.gasLeakSound.update({ concentration });
+      // El SONIDO sigue atado al contaminante peligroso: el siseo de fuga
+      // tóxica es una alarma, y sonarla por vapor de agua sería mentir.
+      effects.gasLeakSound.update({ concentration: this.mission.contaminantAt(sectionId)?.concentration ?? 0 });
     }
   }
 
@@ -3359,6 +3393,7 @@ export class FloorplanScene extends Phaser.Scene {
             this.lastSubstancesCount = subs.length;
             this.lastCreationsCount = creations.length;
           }
+          this.notifySubstanceTaskResult(event);
           // Bark de resultado al TERMINAR una acción asignada ("listo").
           this.barkForActor(event.actorId, "success");
         }
@@ -3427,8 +3462,77 @@ export class FloorplanScene extends Phaser.Scene {
         // reanudar — el token real (`redrawProjectileTokens`, en `update()`)
         // retoma el relevo.
         this.redrawTrajectoryGhost();
+        // El panel de acciones depende del modo desde 13e ronda 2 (el botón de
+        // la mesa se deshabilita en ejecución). Sin este refresco el label
+        // quedaba congelado en "pausá primero" DESPUÉS de pausar — verificado
+        // corriendo el juego, no en revisión de código.
+        this.interaction.refreshActionPanel();
         break;
       }
+    }
+  }
+
+  /**
+   * Feedback de las tareas de sustancia (13e, fix de playtest ronda 2).
+   *
+   * Las cuatro terminaban EN SILENCIO: el motor calculaba el resultado, lo
+   * devolvía en su `TaskEffectResult`… y ahí moría, porque el scheduler no lo
+   * copiaba al evento. El operador purgó su único tanque de agua y no vio nada
+   * — ni cuánto perdía al aceptar, ni que había ocurrido al terminar.
+   */
+  private notifySubstanceTaskResult(event: TaskCompletedEvent): void {
+    if (event.obtainedElements && event.obtainedElements.length > 0) {
+      // Agrupado por elemento: "×10 Hidrógeno" se lee, diez líneas iguales no.
+      const counts = new Map<string, number>();
+      for (const id of event.obtainedElements) {
+        counts.set(id as string, (counts.get(id as string) ?? 0) + 1);
+      }
+      this.notifications?.push({
+        title: t("ui.floorplan.notification.elements-extracted"),
+        lines: [...counts].map(
+          ([id, count]) =>
+            `×${count} ${this.mission.substanceNameOf(id as ChemicalSubstanceId) ?? id}`,
+        ),
+        type: "success",
+      });
+    }
+    if (event.pouredSubstanceId && event.pouredAmount) {
+      const name = this.mission.substanceNameOf(event.pouredSubstanceId) ?? event.pouredSubstanceId;
+      // Purgar es una PÉRDIDA y verter es un uso deliberado: mismo fenómeno
+      // físico, distinta intención, distinto tono de aviso.
+      const purged = event.type === "purge-reservoir";
+      this.notifications?.push({
+        title: t(
+          purged
+            ? "ui.floorplan.notification.reservoir-purged"
+            : "ui.floorplan.notification.substance-poured",
+        ),
+        lines: [`${name} — ${event.pouredAmount}`],
+        type: purged ? "warning" : "info",
+      });
+      // Y se VE dónde cayó: el mismo charco del derrame de 13d, en la celda de
+      // la tarea (principio 6 — el motor lo metió en la atmósfera, así que la
+      // pantalla tiene que mostrarlo).
+      const task = this.mission.scheduler.getTask(event.taskId);
+      const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(event.actorId);
+      if (cell) {
+        firePouredSubstance(
+          this,
+          cell,
+          event.pouredAmount,
+          chemicalSubstanceColor(
+            event.pouredSubstanceId,
+            this.mission.substanceTagsOf(event.pouredSubstanceId),
+          ),
+        );
+      }
+    }
+    if (event.overflowAmount && event.overflowAmount > 0) {
+      this.notifications?.push({
+        title: t("ui.floorplan.notification.transfer-overflow"),
+        lines: [`${event.overflowAmount}`],
+        type: "warning",
+      });
     }
   }
 

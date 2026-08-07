@@ -370,6 +370,42 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     "Contiene: Agua — 100/100", aviso de derrame, "Extraer (requiere análisis)" deshabilitado, y la paleta con
     el texto completo. `/engine` 843 → 858 tests.
 
+  **Ronda 2 de fixes de playtest (2026-08-07)** — cinco reportes, tres causas raíz, todas de "el motor hace lo
+  correcto y la pantalla no lo cuenta":
+  - **`purge-reservoir` había quedado desactualizado respecto de 13e.** Su propio comentario decía que el
+    contenido se venteaba a la nada "porque no existe todavía un destino real para las sustancias (deuda #9,
+    Subfase 13e)" — 13e cerró esa deuda y nadie volvió a esa rama. Ahora la purga **vuelca sobre la atmósfera
+    de la sección** por la misma vía que `apply-substance`. El operador purgó un tanque lleno sin ir a
+    desmontarlo, perdió sus 100 unidades de agua y con ellas la única materia prima de la nave — de ahí su "no
+    tengo químicos en la mesa química". Purgar y extraer NO compiten (purgar = tirar la carga para desmontar
+    sin derrame; extraer = cosechar 5 por viaje sin vaciar el tanque), pero se dibujaban juntos sin decir qué
+    hacía cada uno: ahora se renombraron ("Purgar (se pierde el contenido)", "Verter en la sección",
+    "Trasvasar a otro reservorio"), los deshabilitados llevan el motivo en el label y el bloque tiene línea de
+    ayuda.
+  - **El scheduler no propagaba los resultados de tarea.** `TaskEffectResult` ya declaraba `obtainedElements`
+    y `overflowAmount` y los efectos ya los devolvían, pero `completeTask` solo copiaba `obtained` y
+    `analyzedSubstanceId` al evento — morían en el motor sin que nada fallara al compilar. Las cuatro acciones
+    de sustancia ahora notifican por `NotificationCenter`. Añadido el test de scheduler que faltaba.
+  - **El panel de acciones no conocía el modo del core loop**, así que el botón de la mesa se dibujaba siempre
+    habilitado y el único gate avisaba con `setStatus` (texto discreto del header). Ahora dice "Fabricar
+    (pausá primero)". **Bug encontrado corriendo el juego**: el handler de `core-loop-mode-changed` no
+    refrescaba el panel, así que al pausar el label quedaba congelado.
+  - **Legibilidad visual (principio 6, pedido del operador).** Al auditarlo el hueco era mayor que la purga
+    nueva: el derrame de 13d emitía evento y charco pero la sustancia **nunca entraba a `atmosphere.gases`**
+    (moría con la instancia — el charco era cosmético); el tinte del charco era FIJO, así que agua y ácido
+    dejaban la misma mancha; y la nube de sección solo se pintaba con tag TOX/CORR, o sea que verter agua era
+    **invisible**. Ahora: el desmontaje inyecta en la sección reusando la decisión de la propia regla; nueva
+    `chemicalSubstanceColor` + `EventEffectOptions.tint` (sin que `/engine` conozca colores); y consulta
+    hermana `airborneSubstanceAt` para el uso VISUAL, dejando `contaminantAt` como la de daño y la del siseo
+    de alarma — mezclar "qué me lastima" con "qué se ve" era la causa.
+  - **Paleta química vacía:** con stock 0 mostraba las 29 tarjetas del catálogo en ×0, que se lee como "el
+    juego está roto". Ahora lleva línea de estado vacío que dice de dónde salen los elementos.
+  - Verificado en la app real con Playwright: panel del reservorio con las etiquetas y la ayuda nuevas, y el
+    botón del banco alternando "Fabricar (pausá primero)" ↔ "Fabricar" al pausar sin reabrir el panel. **No
+    verificado en la app** (se deja dicho): la notificación de purga y su charco exigen tripulante
+    seleccionado y la tira de tripulación no entra en el viewport headless de 720px — cubierto por tests del
+    motor y por la receta manual. `/engine` 858 → 863 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

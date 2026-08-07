@@ -492,3 +492,16 @@ dónde, y qué costaría arreglarlo.
     condition)` en `mission-interaction-controller.ts`, que recibe el id crudo cuando la instancia no está en
     `nameByComponentId`. Preexistente a 13e, visible en cualquier pieza sembrada; el tooltip de la misma pieza
     sí muestra el nombre bueno.
+
+27. **No hay selector de destino ni de cantidad al trasvasar** (registrado en 13e como #22, ampliado tras la
+    ronda 2). "Trasvasar a otro reservorio" toma el primer destino alcanzable y mueve TODO el contenido. Con
+    el aviso de desborde de la ronda 2 el jugador ya se entera de lo que pierde, pero sigue sin poder elegir.
+    Cuando se implemente, el motor ya lo soporta: `TransferSubstanceTaskPayload` lleva `amount` y
+    `transferTargetsFor` devuelve la lista completa de destinos, no solo el primero.
+
+28. **La tira de tripulación no entra en un viewport de 720px de alto.** Detectado al verificar 13e ronda 2 con
+    Playwright: en 1280×720 (el tamaño del canvas) el panel de acciones de una instancia con reservorio se
+    dibuja hasta y más allá del borde inferior, y la tira de tripulación no aparece en absoluto — con lo cual no
+    hay forma de seleccionar un tripulante. En el juego real el operador sí la ve, así que puede ser un mínimo
+    de resolución no declarado. Conviene decidir si 1280×720 es soportado y, si lo es, ajustar el layout; está
+    relacionado con #25, que es el mismo problema de alto en pequeño.

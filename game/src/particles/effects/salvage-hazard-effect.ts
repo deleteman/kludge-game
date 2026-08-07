@@ -1,6 +1,11 @@
+import type Phaser from "phaser";
 import type { DismantleLeakEvent, DismantleSpillEvent } from "engine";
 
-import type { EventDrivenEffect, GridPosition } from "../particle-effect.types.js";
+import type {
+  EventDrivenEffect,
+  EventEffectOptions,
+  GridPosition,
+} from "../particle-effect.types.js";
 import {
   type EffectScene,
   spawnBurst,
@@ -28,6 +33,13 @@ import { RENDER_DEPTH } from "../../render/render-depths.js";
  */
 
 const SPARK_COLOR = 0xf2e07a;
+/**
+ * Color de respaldo del derrame. Era FIJO hasta 13e ronda 2, así que un charco
+ * de agua y uno de ácido se veían idénticos — dos fenómenos distintos con la
+ * misma lectura visual, justo lo que el principio 6 prohíbe. Ahora el llamador
+ * pasa el tinte derivado de la sustancia (`chemicalSubstanceColor`) y esto solo
+ * cubre el caso sin sustancia conocida.
+ */
 const SPILL_COLOR = 0x6fc4a8;
 const LEAK_COLOR = 0xbcd2e0;
 
@@ -57,45 +69,67 @@ export const dismantleSparkEffect: EventDrivenEffect<"dismantle-spark"> = {
   },
 };
 
+/**
+ * Salpicadura + charco de una sustancia que cae al piso. Extraído del efecto de
+ * derrame en 13e ronda 2 porque ahora hay TRES formas de mojar el suelo — el
+ * derrame accidental al desmontar (13d), verter deliberadamente en una sección
+ * y purgar un reservorio — y las tres son el mismo fenómeno físico. Dejarlo
+ * dentro del `EventDrivenEffect` obligaba a fabricar un `DismantleSpillEvent`
+ * falso para las otras dos.
+ */
+export function firePouredSubstance(
+  scene: Phaser.Scene,
+  position: GridPosition,
+  amount: number,
+  tint: number = SPILL_COLOR,
+): void {
+  const { px, py } = toPixel(position);
+  // Salpicadura: gotas bajas y lentas, cayendo alrededor de la celda.
+  spawnBurst(
+    scene as EffectScene,
+    px,
+    py,
+    {
+      lifespan: 600,
+      speed: { min: 20, max: 55 },
+      gravityY: 120,
+      scale: { start: textureScale(14), end: textureScale(4) },
+      quantity: 12,
+      frequency: 25,
+      tint,
+      x: spreadRange(8),
+      y: spreadRange(6),
+    },
+    600,
+    CIRCLE_TEXTURES,
+  );
+  // Charco persistente: cuanto más se volcó, más grande.
+  spawnDecal(
+    scene as EffectScene,
+    px,
+    py,
+    DIRT_TEXTURES[0],
+    {
+      radiusPx: 10 + Math.min(amount, 20),
+      tint,
+      alpha: 0.45,
+      growMs: 300,
+      holdMs: 8000,
+      fadeMs: 4000,
+    },
+    RENDER_DEPTH.bloodDecal,
+  );
+}
+
 export const dismantleSpillEffect: EventDrivenEffect<"dismantle-spill"> = {
   kind: "dismantle-spill",
-  trigger(scene, position: GridPosition, event: DismantleSpillEvent): void {
-    const { px, py } = toPixel(position);
-    // Salpicadura: gotas bajas y lentas, cayendo alrededor de la celda.
-    spawnBurst(
-      scene as EffectScene,
-      px,
-      py,
-      {
-        lifespan: 600,
-        speed: { min: 20, max: 55 },
-        gravityY: 120,
-        scale: { start: textureScale(14), end: textureScale(4) },
-        quantity: 12,
-        frequency: 25,
-        tint: SPILL_COLOR,
-        x: spreadRange(8),
-        y: spreadRange(6),
-      },
-      600,
-      CIRCLE_TEXTURES,
-    );
-    // Charco persistente: cuanto más había en el reservorio, más grande.
-    spawnDecal(
-      scene as EffectScene,
-      px,
-      py,
-      DIRT_TEXTURES[0],
-      {
-        radiusPx: 10 + Math.min(event.amount, 20),
-        tint: SPILL_COLOR,
-        alpha: 0.45,
-        growMs: 300,
-        holdMs: 8000,
-        fadeMs: 4000,
-      },
-      RENDER_DEPTH.bloodDecal,
-    );
+  trigger(
+    scene,
+    position: GridPosition,
+    event: DismantleSpillEvent,
+    options?: EventEffectOptions,
+  ): void {
+    firePouredSubstance(scene, position, event.amount, options?.tint ?? SPILL_COLOR);
   },
 };
 

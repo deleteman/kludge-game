@@ -164,6 +164,8 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
   private mode: "fisica" | "quimica" = "fisica";
   private selectedElements: ChemicalSubstanceId[] = [];
   private palettePanel?: ScrollablePanel;
+  /** Aviso de "no tenés elementos" sobre la paleta química (13e ronda 2). */
+  private paletteEmptyHint?: Phaser.GameObjects.Text;
   private readonly componentRegistry = new MapEntityRegistry<ComponentId, PhysicalComponentDefinition>();
   private readonly factory = createPhysicalComponentFactory(this.componentRegistry);
   private readonly nameByComponentId = new Map(
@@ -308,6 +310,8 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
     // dejaba fantasmas visuales del panel viejo y un listener de `wheel` vivo
     // que crasheaba al scrollear el panel nuevo. Sin argumento sí cascada bien.
     this.palettePanel?.destroy();
+    this.paletteEmptyHint?.destroy();
+    this.paletteEmptyHint = undefined;
 
     if (this.mode === "fisica") {
       const items = ATOMIC_COMPONENT_CATALOG.map((spec) => ({
@@ -366,12 +370,34 @@ export class CreativeWorkbenchScene extends Phaser.Scene {
         },
       };
     });
+    // Sin NADA en stock, el catálogo entero se pinta en ×0: 29 tarjetas grises
+    // que se leen como "el juego está roto", no como "te falta materia prima"
+    // (playtest 13e ronda 2 — el operador purgó su único tanque y llegó acá sin
+    // pista de qué había pasado). La línea dice de dónde salen los elementos.
+    const totalStock = ELEMENT_CATALOG.reduce((sum, spec) => sum + stockOfElement(spec.id), 0);
+    if (totalStock <= 0) {
+      this.paletteEmptyHint = self.add
+        .text(
+          CHEM_COLUMNS.palette.centerX,
+          CHEM_COLUMNS.top,
+          t("ui.menu.workbench.palette-empty-hint"),
+          {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "11px",
+            color: "#f0c674",
+            align: "center",
+            wordWrap: { width: CHEM_COLUMNS.palette.width - 20, useAdvancedWrap: true },
+          },
+        )
+        .setOrigin(0.5, 0);
+    }
+    const hintHeight = this.paletteEmptyHint ? this.paletteEmptyHint.height + 10 : 0;
     this.palettePanel = createKenneyCardList(
       self,
       CHEM_COLUMNS.palette.centerX,
-      CHEM_COLUMNS.top + CHEM_COLUMNS.height / 2,
+      CHEM_COLUMNS.top + hintHeight + (CHEM_COLUMNS.height - hintHeight) / 2,
       CHEM_COLUMNS.palette.width,
-      CHEM_COLUMNS.height,
+      CHEM_COLUMNS.height - hintHeight,
       cards,
     );
   }

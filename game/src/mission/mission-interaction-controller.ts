@@ -602,6 +602,11 @@ export class MissionInteractionController {
             fabricatorDomain: this.mission.fabricatorDomainOfInstance(
               this.actionPanelContent.instanceId,
             ),
+            // La mesa exige pausa (13e ronda 2). Se deriva acá, con el resto
+            // del estado vivo, para que el botón se re-habilite solo al pausar
+            // sin tener que cerrar y reabrir el panel.
+            fabricatorBlocked:
+              this.mission.coreLoop.mode === "planning" ? undefined : ("execution" as const),
           }
         : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
@@ -644,7 +649,19 @@ export class MissionInteractionController {
         ),
         extractionBlocked: (reason) =>
           t(`ui.floorplan.mission.inspector.extract-blocked.${reason}`),
+        transferBlocked: (reason) =>
+          t(`ui.floorplan.mission.inspector.transfer-blocked.${reason}`),
+        applyBlocked: (reason) => t(`ui.floorplan.mission.inspector.apply-blocked.${reason}`),
+        reservoirHint: (hasContents) =>
+          hasContents
+            ? t("ui.floorplan.mission.inspector.reservoir-hint").replace(
+                "{amount}",
+                String(EXTRACTION_BATCH_UNITS),
+              )
+            : t("ui.floorplan.mission.inspector.reservoir-hint-empty"),
         openFabricator: (domain) => t(`ui.floorplan.mission.inspector.fabricate.${domain}`),
+        openFabricatorBlocked: (domain) =>
+          t(`ui.floorplan.mission.inspector.fabricate-blocked.${domain}`),
         close: t("ui.floorplan.mission.inspector.close"),
       },
       {

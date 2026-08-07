@@ -454,12 +454,20 @@ describe("createShipTaskEffect", () => {
     expect(shipState.get().powerState.sectionAllocations).toEqual([{ sectionId: "puente", units: 2 }]);
   });
 
-  it("purge-reservoir empties the instance contents without spilling anything (13d)", () => {
+  /**
+   * 13e ronda 2: la purga dejó de ventear a la nada. Lo purgado se vuelca sobre
+   * la atmósfera de la sección — el mismo destino que `apply-substance`, porque
+   * es el mismo fenómeno físico con otra intención. Sigue sin volver al
+   * inventario: purgar es tirar la carga, no cosecharla.
+   */
+  it("purge-reservoir vacía la instancia y vuelca el contenido en la sección (13e ronda 2)", () => {
     const instanceId = "tanque-1" as PlacedComponentInstanceId;
+    const acido = "acido" as ChemicalSubstanceId;
+    const purgeSection = "bodega" as SectionId;
     const shipState = new MutableShipState(
       fixtureShip({
         reservoirContents: [
-          { componentInstanceId: instanceId, substanceId: "acido" as ChemicalSubstanceId, amount: 8 },
+          { componentInstanceId: instanceId, substanceId: acido, amount: 8 },
           {
             componentInstanceId: "otro" as PlacedComponentInstanceId,
             substanceId: "agua" as ChemicalSubstanceId,
@@ -469,22 +477,65 @@ describe("createShipTaskEffect", () => {
       }),
     );
     const atomicStock = new MutableAtomicStock({});
-    const effect = createShipTaskEffect(shipState, EMPTY_REGISTRY, atomicStock);
+    const gasInjection = new TransientGasInjection();
+    const effect = createShipTaskEffect(
+      shipState,
+      EMPTY_REGISTRY,
+      atomicStock,
+      undefined,
+      {},
+      {},
+      { gasInjection },
+    );
 
-    effect(
+    const result = effect(
       createCrewTask({
         id: "t1" as CrewTaskId,
         actorId: ACTOR,
         type: "purge-reservoir",
-        payload: { kind: "purge-reservoir", instanceId },
+        payload: { kind: "purge-reservoir", instanceId, sectionId: purgeSection },
       }),
     );
 
     expect(shipState.get().reservoirContents).toEqual([
       { componentInstanceId: "otro", substanceId: "agua", amount: 2 },
     ]);
-    // La sustancia se ventea: no vuelve al inventario (deuda #9 sigue en 13e).
+    expect(gasInjection.asInjectionSource()().get(purgeSection)?.get(acido)).toBeGreaterThan(0);
+    // Se informa lo perdido para que `/game` pueda avisarlo: purgar 8 unidades
+    // en silencio es lo que hizo que el operador tirara su única materia prima.
+    expect(result).toEqual({ pouredSubstanceId: acido, pouredAmount: 8 });
+    // Purgar NO devuelve nada al inventario: para cosechar está `extract-elements`.
     expect(atomicStock.get()).toEqual({});
+  });
+
+  it("purge-reservoir sobre un reservorio ya vacío no falla ni inyecta nada", () => {
+    const shipState = new MutableShipState(fixtureShip({ reservoirContents: [] }));
+    const gasInjection = new TransientGasInjection();
+    const effect = createShipTaskEffect(
+      shipState,
+      EMPTY_REGISTRY,
+      new MutableAtomicStock({}),
+      undefined,
+      {},
+      {},
+      { gasInjection },
+    );
+
+    const result = effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "purge-reservoir",
+        payload: {
+          kind: "purge-reservoir",
+          instanceId: "tanque-1" as PlacedComponentInstanceId,
+          sectionId: "bodega" as SectionId,
+        },
+      }),
+    );
+
+    expect(result).toBeUndefined();
+    expect(gasInjection.asInjectionSource()().size).toBe(0);
   });
 
   it("discharge-source records the source and is idempotent (13d, fix ronda 1)", () => {

@@ -775,3 +775,45 @@
 ## `game/src/scenes/creative-workbench-scene.ts` (modificado, 13e ronda 1)
 
 - `CHEM_COLUMNS`: el modo química deja de heredar el layout del grid físico (que no usa) y pasa a tres columnas — paleta → selección → resultado — sobre el alto completo. "Modo cableado"/"modo borrar" solo se crean en modo físico.
+
+## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 2)
+- `purge-reservoir` deja de borrar la entrada a mano: usa `drawFrom` + `gasInjection.inject(sectionId, …)` —
+  la misma vía que `apply-substance`, porque es el mismo fenómeno físico con otra intención — y devuelve
+  `{pouredSubstanceId, pouredAmount}`. `apply-substance` devuelve el mismo par.
+- El case `dismantle` inyecta en la sección el contenido de los `dismantle-spill` que emitió la regla: hasta
+  acá la sustancia derramada moría con la instancia sin llegar nunca a `atmosphere.gases`.
+
+## `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificado, 13e ronda 2)
+- `TaskCompletedEvent` y la emisión de `completeTask` propagan `obtainedElements`, `overflowAmount`,
+  `pouredSubstanceId` y `pouredAmount`. Es el único punto de traducción efecto→evento; sin esto los cuatro
+  campos se calculaban y se perdían dentro del motor.
+
+## `game/src/particles/particle-effect.types.ts` + `effect-registry.ts` (modificado, 13e ronda 2)
+- `EventEffectOptions {tint?}` como 4º parámetro opcional de `EventDrivenEffect.trigger` y de
+  `fireEventEffect`: permite que el color de un efecto dependa de datos que solo `/game` puede resolver (el
+  registro químico) sin que `/engine` conozca colores.
+
+## `game/src/particles/effects/salvage-hazard-effect.ts` (modificado, 13e ronda 2)
+- `firePouredSubstance(scene, position, amount, tint)` — salpicadura + charco, extraído del efecto de derrame
+  porque ahora hay tres formas de mojar el piso (derrame al desmontar, verter, purgar). `dismantleSpillEffect`
+  delega en él.
+
+## `game/src/render/palette.ts` (modificado, 13e ronda 2)
+- `chemicalSubstanceColor(id, tags)` — color de cualquier sustancia: elemento curado > color por primer tag >
+  neutro. Usado por el charco y por la nube de sección, que antes tenían colores fijos.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 2)
+- `airborneSubstanceAt(sectionId)` — sustancia dominante en el aire SIN filtrar por tag, para uso visual;
+  hermana de `contaminantAt`, que sigue siendo la de daño y la del siseo de alarma. `substanceTagsOf` expone
+  los tags para que quien pinta derive el color. `BASELINE_GAS_KEYS` excluye O2/N2/CO2.
+- `queuePurgeReservoir` pasa la `sectionId` en el payload (la que ya calculaba para el viaje).
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 2)
+- `notifySubstanceTaskResult(event)` — notificación por cada resultado de tarea de sustancia y charco visible
+  en la celda de la tarea. El rechazo de `openWorkbench` pasa de `setStatus` a `NotificationCenter`.
+- El handler de `core-loop-mode-changed` refresca el panel de acciones (el botón de la mesa depende del modo).
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 2)
+- `fabricatorBlocked` en el contenido de instancia; `transferBlocked`/`applyBlocked`/`reservoirHint`/
+  `openFabricatorBlocked` en los labels. Todos los botones del bloque de reservorio llevan el motivo en el
+  label cuando están deshabilitados, no solo "Extraer".

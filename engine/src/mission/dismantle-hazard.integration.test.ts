@@ -17,6 +17,11 @@ import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import type { SalvageDomainEvent } from "../salvage/salvage-hazard.types.js";
+import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import {
+  GAS_FRACTION_PER_SUBSTANCE_UNIT,
+  TransientGasInjection,
+} from "./section-gas-injection.js";
 
 /**
  * Subfase 13d — el test que `nuevo-orden.md` pide textualmente: "desmontar
@@ -30,6 +35,8 @@ const ACTOR_ID = "crew-1" as CrewActorId;
 const SECTION = "sala-motores" as SectionId;
 const CONDUCTOR = "conductor-1" as PlacedComponentInstanceId;
 const BATTERY = "bateria-1" as PlacedComponentInstanceId;
+const TANK = "tanque-1" as PlacedComponentInstanceId;
+const AGUA = "agua" as ChemicalSubstanceId;
 
 /** Catálogo real: `cable-cobre` debe existir para que el desmontaje acredite stock. */
 const REGISTRY = buildComponentCatalog().registry;
@@ -54,7 +61,13 @@ function fixtureFloorplan(): ShipFloorplan {
     archetype: "exploracion",
     nameKey: "fixture",
     gridSize: { width: 2, height: 2 },
-    sections: [{ id: SECTION, nameKey: "fixture-section", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }],
+    sections: [
+      {
+        id: SECTION,
+        nameKey: "fixture-section",
+        cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+      },
+    ],
     conduits: [],
     anchors: [],
     componentSeeds: [],
@@ -88,8 +101,16 @@ function fixtureShip(): Blueprint {
         condition: "ok",
         wear: "nuevo",
       },
+      // Reservorio con contenido, para el derrame (13e ronda 2).
+      {
+        instanceId: TANK,
+        componentDefinitionId: "reservorio-agua-reciclada" as ComponentId,
+        placement: { position: { x: 0, y: 1 }, footprint: { width: 2, height: 2 }, rotation: 0 },
+        condition: "ok",
+        wear: "nuevo",
+      },
     ],
-    reservoirContents: [],
+    reservoirContents: [{ componentInstanceId: TANK, substanceId: AGUA, amount: 40 }],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
     unpoweredSectionIds: [],
@@ -128,6 +149,7 @@ function scenario() {
   salvageEvents.onAny((event) => seenSalvage.push(event));
   crewEvents.onAny((event) => seenCrew.push(event));
 
+  const gasInjection = new TransientGasInjection();
   const effect = createShipTaskEffect(
     shipState,
     REGISTRY,
@@ -150,6 +172,7 @@ function scenario() {
         setActor: (actor) => crew.set(actor),
       },
     },
+    { gasInjection },
   );
 
   const dismantle = () =>
@@ -192,16 +215,39 @@ function scenario() {
       }),
     );
 
+  const dismantleTank = () =>
+    effect(
+      createCrewTask({
+        id: "t-dismantle-tank" as CrewTaskId,
+        actorId: ACTOR_ID,
+        type: "dismantle",
+        payload: { kind: "dismantle", instanceId: TANK },
+      }),
+    );
+
+  const purgeTank = () =>
+    effect(
+      createCrewTask({
+        id: "t-purge" as CrewTaskId,
+        actorId: ACTOR_ID,
+        type: "purge-reservoir",
+        payload: { kind: "purge-reservoir", instanceId: TANK, sectionId: SECTION },
+      }),
+    );
+
   return {
     shipState,
     crew,
     powerRuntime,
     seenSalvage,
     seenCrew,
+    gasInjection,
     dismantle,
     cutPower,
     dischargeSource,
     dismantleBattery,
+    dismantleTank,
+    purgeTank,
   };
 }
 
@@ -229,7 +275,10 @@ describe("Subfase 13d — riesgo sistémico al desmontar (integración)", () => 
     expect(seenCrew).toEqual([]);
     expect(crew.get(ACTOR_ID)?.hp).toBe(100);
     expect(result?.obtained?.[0]).toMatchObject({ wear: "nuevo", degraded: false });
-    expect(shipState.get().placedComponents.map((entry) => entry.instanceId)).toEqual([BATTERY]);
+    expect(shipState.get().placedComponents.map((entry) => entry.instanceId)).toEqual([
+      BATTERY,
+      TANK,
+    ]);
   });
 
   it("the safe state is derived, not a flag: re-assigning power makes it risky again", () => {
@@ -295,5 +344,46 @@ describe("Subfase 13d — riesgo sistémico al desmontar (integración)", () => 
     dismantle();
 
     expect(seenSalvage).toEqual([]);
+  });
+
+  /**
+   * Fix de playtest 13e ronda 2. El derrame emitía su evento y `/game` pintaba
+   * un charco, pero la sustancia moría con la instancia: no entraba a
+   * `atmosphere.gases`, así que arrancar un tanque de tóxico no contaminaba
+   * nada. El charco era cosmético — justo lo contrario del principio 6.
+   */
+  describe("el derrame llega a la atmósfera de la sección (13e ronda 2)", () => {
+    it("desmontar un reservorio con contenido derrama Y contamina la sección", () => {
+      const { seenSalvage, gasInjection, dismantleTank } = scenario();
+
+      dismantleTank();
+
+      expect(seenSalvage.map((event) => event.kind)).toEqual(["dismantle-spill"]);
+      // La fuente publica FRACCIONES atmosféricas, no unidades de sustancia.
+      expect(gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA)).toBeCloseTo(
+        40 * GAS_FRACTION_PER_SUBSTANCE_UNIT,
+      );
+    });
+
+    it("purgar antes evita el derrame: el tanque ya está vacío al desmontarlo", () => {
+      const { seenSalvage, dismantleTank, purgeTank } = scenario();
+
+      purgeTank();
+      dismantleTank();
+
+      // Purgar sigue siendo la vía de escape del hazard, como en 13d.
+      expect(seenSalvage).toEqual([]);
+    });
+
+    it("lo purgado y lo derramado van al MISMO sitio: purgar no hace desaparecer la sustancia", () => {
+      const purged = scenario();
+      purged.purgeTank();
+      const spilled = scenario();
+      spilled.dismantleTank();
+
+      expect(purged.gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA)).toBe(
+        spilled.gasInjection.asInjectionSource()().get(SECTION)?.get(AGUA),
+      );
+    });
   });
 });

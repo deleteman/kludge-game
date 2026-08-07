@@ -278,6 +278,10 @@ export class TaskScheduler implements Tickable {
       elapsedSeconds: ctx.elapsedSeconds,
       obtained: result?.obtained,
       analyzedSubstanceId: result?.analyzedSubstanceId,
+      obtainedElements: result?.obtainedElements,
+      overflowAmount: result?.overflowAmount,
+      pouredSubstanceId: result?.pouredSubstanceId,
+      pouredAmount: result?.pouredAmount,
     });
     this.refreshActorStatus(task.actorId);
   }

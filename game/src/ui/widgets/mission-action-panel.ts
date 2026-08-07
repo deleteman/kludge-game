@@ -63,6 +63,13 @@ export type ActionPanelContent =
        * botón global y se abre desde el aparato. `undefined` = no es un aparato.
        */
       readonly fabricatorDomain?: FabricatorDomain;
+      /**
+       * La mesa no se puede abrir en modo ejecución (13e ronda 2). El guard
+       * real vive en `FloorplanScene.openWorkbench`; esto es lo que hace que el
+       * botón lo DIGA en vez de aceptar el clic y rebotar con un texto discreto
+       * en el header que el jugador no ve.
+       */
+      readonly fabricatorBlocked?: "execution";
     }
   | { readonly kind: "empty"; readonly position: GridPosition }
   | {
@@ -153,10 +160,22 @@ export interface ActionPanelLabels {
   readonly transferSubstance: string;
   readonly applySubstance: string;
   readonly extractElements: string;
-  /** Motivo por el que la extracción está bloqueada, para que el botón gris se explique. */
+  /**
+   * Motivo por el que cada acción está bloqueada, para que el botón gris se
+   * explique. Los tres siguen el mismo molde que `extractionBlocked`, que ya
+   * existía desde 13e: en la ronda 2 el operador reportó que tras purgar "las
+   * opciones del reservorio desaparecen" — no desaparecían, quedaban grises sin
+   * decir por qué, que es lo mismo de cara al jugador.
+   */
   readonly extractionBlocked: (reason: "empty" | "unanalyzed" | "unknown-composition") => string;
+  readonly transferBlocked: (reason: "empty" | "no-target") => string;
+  readonly applyBlocked: (reason: "empty") => string;
+  /** Línea de contexto del bloque de reservorio: qué hace cada acción y cómo se rellena si está vacío. */
+  readonly reservoirHint: (hasContents: boolean) => string;
   /** Abre la mesa desde el aparato: "Fabricar" (física) / "Fabricar sustancias" (química). */
   readonly openFabricator: (domain: FabricatorDomain) => string;
+  /** Mismo botón, deshabilitado por estar en ejecución (13e ronda 2): la mesa exige pausa. */
+  readonly openFabricatorBlocked: (domain: FabricatorDomain) => string;
   /** "Cerrar" (deselección manual, fix de playtest 11e — ver doc de la función). */
   readonly close: string;
 }
@@ -429,8 +448,13 @@ export function renderMissionActionPanel(
     // Subfase 13e — aparato de fabricación: la mesa se abre desde acá, no desde
     // un botón global del header.
     if (content.fabricatorDomain) {
-      stackButton(labels.openFabricator(content.fabricatorDomain), () =>
-        callbacks.onOpenFabricator(content.instanceId),
+      const blocked = content.fabricatorBlocked === "execution";
+      stackButtonEnabled(
+        blocked
+          ? labels.openFabricatorBlocked(content.fabricatorDomain)
+          : labels.openFabricator(content.fabricatorDomain),
+        hasSelectedActor && !blocked,
+        () => callbacks.onOpenFabricator(content.instanceId),
       );
     }
 
@@ -453,20 +477,26 @@ export function renderMissionActionPanel(
       cursorY += contentsLabel.height + 8;
       claim(cursorY);
 
+      // Los TRES botones llevan el MOTIVO en el propio label cuando están
+      // bloqueados: un botón gris sin explicación es exactamente lo que hace
+      // que el jugador no descubra que primero tiene que analizar, y lo que
+      // hizo que tras purgar el panel pareciera haberse quedado sin opciones.
       const hasContents = reservoir.amount > 0;
       stackButtonEnabled(
-        labels.applySubstance,
+        hasContents ? labels.applySubstance : labels.applyBlocked("empty"),
         hasSelectedActor && hasContents,
         () => callbacks.onApplySubstance(content.instanceId),
       );
+      const transferBlocked = !hasContents
+        ? "empty"
+        : !reservoir.canTransfer
+          ? "no-target"
+          : undefined;
       stackButtonEnabled(
-        labels.transferSubstance,
-        hasSelectedActor && hasContents && reservoir.canTransfer,
+        transferBlocked ? labels.transferBlocked(transferBlocked) : labels.transferSubstance,
+        hasSelectedActor && !transferBlocked,
         () => callbacks.onTransferSubstance(content.instanceId),
       );
-      // El botón de extraer lleva el MOTIVO en el propio label cuando está
-      // bloqueado: un botón gris sin explicación es exactamente lo que hace
-      // que el jugador no descubra que primero tiene que analizar.
       stackButtonEnabled(
         reservoir.extractionBlocked
           ? labels.extractionBlocked(reservoir.extractionBlocked)
@@ -474,6 +504,22 @@ export function renderMissionActionPanel(
         hasSelectedActor && !reservoir.extractionBlocked,
         () => callbacks.onExtractElements(content.instanceId),
       );
+
+      // Línea de contexto: sin ella "Verter en la sección" y "Purgar" se leen
+      // como sinónimos, y un reservorio vacío es un callejón sin salida sin
+      // pista de cómo rellenarlo. Mismo patrón que el `emptyHint` de una celda
+      // libre, que ya resolvió este problema en el playtest de la Fase 11d.
+      const hint = scene.add
+        .text(20, cursorY, labels.reservoirHint(hasContents), {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "10px",
+          color: LABEL_COLOR,
+          wordWrap: { width: width - 40, useAdvancedWrap: true },
+        })
+        .setOrigin(0, 0);
+      container.add(hint);
+      cursorY += hint.height + 6;
+      claim(cursorY);
     }
   } else if (content.kind === "empty") {
     const installCenter = Math.max(flowY + 17, contentTop + 68);

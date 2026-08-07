@@ -82,6 +82,45 @@ describe("task-scheduler: single-actor execution", () => {
     expect(completed).toMatchObject({ analyzedSubstanceId: substanceId });
   });
 
+  /**
+   * 13e ronda 2. Los efectos de sustancia YA devolvían estos campos y el
+   * `TaskEffectResult` YA los declaraba, pero el scheduler solo copiaba
+   * `obtained` y `analyzedSubstanceId` al evento — así que morían acá y
+   * `/game` no tenía cómo enterarse: extraer acreditaba elementos en silencio y
+   * un desborde perdía material sin avisar. Este test es el que faltaba para
+   * que ese olvido no compile en verde.
+   */
+  it("forwards every substance result from the effect into task-completed (13e ronda 2)", () => {
+    const effect = vi.fn(() => ({
+      obtainedElements: ["hidrogeno", "hidrogeno", "oxigeno"] as never,
+      overflowAmount: 7,
+      pouredSubstanceId: "agua" as never,
+      pouredAmount: 12,
+    }));
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((e) => events.push(e));
+    const scheduler = new TaskScheduler({ effect, emitter });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "extract-elements",
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    scheduler.tick(tickOf(2));
+
+    expect(events.find((e) => e.kind === "task-completed")).toMatchObject({
+      obtainedElements: ["hidrogeno", "hidrogeno", "oxigeno"],
+      overflowAmount: 7,
+      pouredSubstanceId: "agua",
+      pouredAmount: 12,
+    });
+  });
+
   it("updates the actor's logical section after a go-to task", () => {
     const scheduler = new TaskScheduler();
     scheduler.enqueue(

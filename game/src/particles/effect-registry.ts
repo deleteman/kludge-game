@@ -1,7 +1,11 @@
 import type { DomainEvent } from "engine";
 import type Phaser from "phaser";
 
-import type { EventDrivenEffect, GridPosition } from "./particle-effect.types.js";
+import type {
+  EventDrivenEffect,
+  EventEffectOptions,
+  GridPosition,
+} from "./particle-effect.types.js";
 import { combustionEffect } from "./effects/combustion-effect.js";
 import { crewDamagedEffect, crewDeathEffect } from "./effects/crew-death-effect.js";
 import { corrosiveExposureEffect, toxicThresholdEffect } from "./effects/hazard-effect.js";
@@ -55,7 +59,8 @@ export function fireEventEffect(
   scene: Phaser.Scene,
   position: GridPosition,
   event: DomainEvent,
+  options?: EventEffectOptions,
 ): void {
   const effect = EFFECTS_BY_KIND[event.kind] as EventDrivenEffect | undefined;
-  effect?.trigger(scene, position, event);
+  effect?.trigger(scene, position, event, options);
 }
