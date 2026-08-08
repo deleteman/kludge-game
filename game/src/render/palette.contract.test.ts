@@ -11,6 +11,13 @@ import {
   CRISIS_WARNING_CSS,
   CRISIS_SAFE_CSS,
   TAG_CATEGORY_COLORS,
+  ANCHOR_COLOR,
+  CHEMICAL_TAG_COLORS,
+  CHEMICAL_ELEMENT_COLORS,
+  CHEMICAL_COMPOUND_COLORS,
+  CHEMICAL_ELEMENT_FALLBACK_COLOR,
+  chemicalSubstanceColor,
+  WALL_COLOR,
   healthFractionColor,
   LED_ACTIVE_TINT,
   CORE_LOOP_MODE_COLORS,
@@ -107,5 +114,38 @@ describe("categoría de tag (Eje B) es ortogonal al Eje A", () => {
 
   it("funcional y material son distinguibles entre sí", () => {
     expect(TAG_CATEGORY_COLORS.functional).not.toBe(TAG_CATEGORY_COLORS.material);
+  });
+});
+
+/**
+ * 13e ronda 4. `CHEMICAL_TAG_COLORS.INERTE`, `CHEMICAL_ELEMENT_FALLBACK_COLOR` y
+ * `ANCHOR_COLOR` valían los tres `0x8a949e`: tres significados distintos con un
+ * mismo color, que es lo que el principio 6 prohíbe. En la práctica hacía que un
+ * charco de agua fuera indistinguible del suelo y de las paredes.
+ */
+describe("colores de sustancia distinguibles (principio 6)", () => {
+  it("inerte, desconocida y anclaje no comparten color", () => {
+    const trio = [CHEMICAL_TAG_COLORS.INERTE, CHEMICAL_ELEMENT_FALLBACK_COLOR, ANCHOR_COLOR];
+    expect(new Set(trio).size).toBe(trio.length);
+  });
+
+  it("ningún color de sustancia coincide con el de las paredes", () => {
+    const all = [
+      ...Object.values(CHEMICAL_ELEMENT_COLORS),
+      ...Object.values(CHEMICAL_COMPOUND_COLORS),
+      ...Object.values(CHEMICAL_TAG_COLORS),
+      CHEMICAL_ELEMENT_FALLBACK_COLOR,
+    ];
+    expect(all).not.toContain(WALL_COLOR);
+  });
+
+  it("un compuesto del catálogo tiene color propio y no cae al de su tag", () => {
+    // El agua es INERTE: sin entrada curada se pintaba con el gris genérico.
+    expect(chemicalSubstanceColor("agua", [{ name: "INERTE" }])).toBe(CHEMICAL_COMPOUND_COLORS.agua);
+    expect(chemicalSubstanceColor("agua", [{ name: "INERTE" }])).not.toBe(CHEMICAL_TAG_COLORS.INERTE);
+  });
+
+  it("una sustancia desconocida sin tags cae al neutro", () => {
+    expect(chemicalSubstanceColor("mezcla-sin-identificar-1")).toBe(CHEMICAL_ELEMENT_FALLBACK_COLOR);
   });
 });

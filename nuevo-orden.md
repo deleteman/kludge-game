@@ -431,6 +431,25 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
   - **Botones deshabilitados ilegibles:** texto gris sobre fondo atenuado al 40 %; las dos atenuaciones se
     sumaban y anulaban el patrón de "motivo en el label" introducido en la ronda 2. `/engine` 863 → 870 tests.
 
+  **Ronda 4 de fixes de playtest (2026-08-08)** — tres hallazgos, dos de ellos regresiones de la ronda 2:
+  - **El click atravesaba el panel de acciones** hasta el botón "Prioridad" del reparto de energía. No era
+    `depth`: Phaser hace hit-test contra TODOS los objetos interactivos y las listas `ignore` de cámara solo
+    afectan al RENDER; un objeto de MUNDO evaluado contra la `hudCamera` tiene un **área de click fantasma**. Y
+    `topOnly` no desempataba porque ordena por el índice en el `renderList` de la cámara, donde los `Label` de
+    rexUI no aparecen. Regla adoptada: **el elemento más arriba es el único que recibe el click**, implementada
+    globalmente sobrescribiendo `input.sortGameObjects` con un orden por profundidad EFECTIVA (la del container
+    más externo).
+  - **El agua derramada no se veía.** Tres causas: el charco no se marcaba como objeto de mundo (el "bug de
+    doble cámara" que el resto de efectos ya evita); iba a `bloodDecal` (1), **debajo de las sombras y del
+    overlay de la propia pieza**; y su color caía al gris `0x8a949e`, que era el **mismo valor exacto** que el
+    de "sustancia desconocida" y el de anclaje, y casi el de las paredes. Ahora hay colores curados por
+    compuesto, un `RENDER_DEPTH.substanceSpill` propio, y un test de contrato que impide que esos colores
+    vuelvan a colapsar.
+  - **No había forma de analizar la sustancia desde el panel del reservorio:** decía "Extraer (requiere
+    análisis)" y el único camino era el botón "Sustancias (N)" del HUD. El runtime ya mandaba al tripulante al
+    reservorio correcto; faltaba el botón, que ahora va **antes** de "Extraer" y no cierra el panel — como el
+    comentario de las otras acciones de 13e ya decía que debía ser. `/game` 36 → 40 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

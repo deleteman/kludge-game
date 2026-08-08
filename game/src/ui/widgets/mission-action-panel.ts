@@ -123,6 +123,14 @@ export interface ReservoirPanelInfo {
   readonly extractionBlocked?: "empty" | "unanalyzed" | "unknown-composition";
   /** Hay al menos un reservorio alcanzable al que trasvasar (conducto `fluido` mediante). */
   readonly canTransfer: boolean;
+  /**
+   * Sustancia contenida y si ya fue analizada (13e ronda 4). El panel decía
+   * "Extraer (requiere análisis)" sin ofrecer NINGUNA forma de analizarla: el
+   * único camino era el botón "Sustancias (N)" del HUD, que el jugador no tiene
+   * por qué relacionar con el reservorio que está mirando.
+   */
+  readonly substanceId?: ChemicalSubstanceId;
+  readonly analyzed?: boolean;
 }
 
 /** Una sustancia disponible para analizar (Fase 11e), listada en `substances-list`. */
@@ -498,6 +506,16 @@ export function renderMissionActionPanel(
         hasSelectedActor && !transferBlocked,
         () => callbacks.onTransferSubstance(content.instanceId),
       );
+      // ANTES de "Extraer", porque es su paso previo: analizar es lo que
+      // desbloquea la extracción, y leerlo en ese orden lo enseña solo.
+      if (reservoir.substanceId) {
+        const substanceId = reservoir.substanceId;
+        stackButtonEnabled(
+          labels.analyzeSubstance(reservoir.analyzed === true),
+          hasSelectedActor && hasContents && !reservoir.analyzed,
+          () => callbacks.onAnalyzeSubstance(substanceId),
+        );
+      }
       stackButtonEnabled(
         reservoir.extractionBlocked
           ? labels.extractionBlocked(reservoir.extractionBlocked)

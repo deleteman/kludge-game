@@ -82,10 +82,18 @@ export function firePouredSubstance(
   position: GridPosition,
   amount: number,
   tint: number = SPILL_COLOR,
+  /**
+   * Registro de los objetos creados (13e ronda 4). SIN esto el charco caía en
+   * el "bug de doble cámara" que el resto de efectos ya evita: la `hudCamera`
+   * lo pintaba también, sin scroll y fuera de sitio, así que el derrame no se
+   * veía donde tenía que verse. Es el mismo hook que usan los efectos
+   * state-driven (`ParticleEmitterHook`).
+   */
+  onObjectCreated?: (obj: Phaser.GameObjects.GameObject) => void,
 ): void {
   const { px, py } = toPixel(position);
   // Salpicadura: gotas bajas y lentas, cayendo alrededor de la celda.
-  spawnBurst(
+  const burst = spawnBurst(
     scene as EffectScene,
     px,
     py,
@@ -103,8 +111,12 @@ export function firePouredSubstance(
     600,
     CIRCLE_TEXTURES,
   );
+  // La salpicadura tampoco fijaba depth, así que quedaba en 0 — empatada con el
+  // suelo del tilemap.
+  burst.setDepth(RENDER_DEPTH.effect);
+  onObjectCreated?.(burst);
   // Charco persistente: cuanto más se volcó, más grande.
-  spawnDecal(
+  const decal = spawnDecal(
     scene as EffectScene,
     px,
     py,
@@ -112,13 +124,14 @@ export function firePouredSubstance(
     {
       radiusPx: 10 + Math.min(amount, 20),
       tint,
-      alpha: 0.45,
+      alpha: 0.6,
       growMs: 300,
       holdMs: 8000,
       fadeMs: 4000,
     },
-    RENDER_DEPTH.bloodDecal,
+    RENDER_DEPTH.substanceSpill,
   );
+  onObjectCreated?.(decal);
 }
 
 export const dismantleSpillEffect: EventDrivenEffect<"dismantle-spill"> = {
@@ -129,7 +142,13 @@ export const dismantleSpillEffect: EventDrivenEffect<"dismantle-spill"> = {
     event: DismantleSpillEvent,
     options?: EventEffectOptions,
   ): void {
-    firePouredSubstance(scene, position, event.amount, options?.tint ?? SPILL_COLOR);
+    firePouredSubstance(
+      scene,
+      position,
+      event.amount,
+      options?.tint ?? SPILL_COLOR,
+      options?.onObjectCreated,
+    );
   },
 };
 

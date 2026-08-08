@@ -603,6 +603,7 @@ export class FloorplanScene extends Phaser.Scene {
     // después — por eso pinta siempre último (ver comentario del campo).
     this.cameras.main.setViewport(0, HEADER_HEIGHT, MAP_VIEWPORT_WIDTH, MAP_VIEWPORT_HEIGHT);
     this.hudCamera = this.cameras.add(0, 0, 1280, 720);
+    this.installTopmostOnlyInput();
     // Filtro CRT (12c.4 → reestructurado en dos capas): brillo de fósforo retro
     // sobre el FRAME COMPLETO (mundo + HUD) — barrel/scanlines coherentes entre
     // ambas cámaras vía `gl_FragCoord` global (ver `crt-pipeline.ts`). Solo bajo
@@ -983,6 +984,8 @@ export class FloorplanScene extends Phaser.Scene {
                   event.substanceId,
                   this.mission.substanceTagsOf(event.substanceId),
                 ),
+                // Sin esto el charco cae en el bug de doble-cámara (ronda 4).
+                onObjectCreated: (obj) => this.markAsWorldObject(obj),
               }
             : undefined,
         );
@@ -1262,6 +1265,57 @@ export class FloorplanScene extends Phaser.Scene {
   /** Un objeto de mundo no se renderiza en `hudCamera` — solo en `cameras.main`. */
   private markAsWorldObject(obj: Phaser.GameObjects.GameObject): void {
     this.hudCamera.ignore(obj);
+  }
+
+  /**
+   * "El elemento de UI que está más arriba es el ÚNICO que recibe el click"
+   * (13e ronda 4). Phaser trae `topOnly` activo, pero su criterio de "más
+   * arriba" no sirve en esta escena y por eso el click atravesaba el panel de
+   * acciones hasta el botón "Prioridad" del reparto de energía que había detrás.
+   *
+   * Dos razones, ambas de Phaser y ninguna arreglable con `depth`:
+   *  1. El hit-test corre contra TODOS los objetos interactivos de la escena;
+   *     las listas `ignore` de cámara solo afectan al RENDER, nunca al input.
+   *     Un objeto de MUNDO evaluado contra la `hudCamera` (sin scroll y sin el
+   *     offset de viewport del mapa) tiene un área de click FANTASMA en pantalla.
+   *  2. El desempate nativo ordena por el índice en el `renderList` de la cámara
+   *     del puntero. Los `Label` de rexUI no entran en ese renderList, así que
+   *     `indexOf` da -1 → 0 para todos y el orden queda indefinido.
+   *
+   * El reemplazo ordena por profundidad EFECTIVA (la del container más externo,
+   * que es la capa real en pantalla: un botón dentro del panel cuenta como el
+   * panel, no como su depth local, que es 0). Descendente, porque `topOnly` se
+   * queda con el primero. Ordena in-place y devuelve el array, como el original.
+   */
+  private installTopmostOnlyInput(): void {
+    const effectiveDepth = (obj: Phaser.GameObjects.GameObject): number => {
+      let node = obj as Phaser.GameObjects.GameObject & {
+        depth?: number;
+        parentContainer?: Phaser.GameObjects.Container | null;
+      };
+      let depth = node.depth ?? 0;
+      while (node.parentContainer) {
+        node = node.parentContainer as typeof node;
+        // El container manda: su depth es la capa con la que se pinta el grupo.
+        depth = node.depth ?? depth;
+      }
+      return depth;
+    };
+    this.input.sortGameObjects = (gameObjects, pointer) => {
+      if (gameObjects.length < 2) {
+        return gameObjects;
+      }
+      const renderList = pointer?.camera?.renderList ?? [];
+      return gameObjects.sort((a, b) => {
+        const byDepth = effectiveDepth(b) - effectiveDepth(a);
+        if (byDepth !== 0) {
+          return byDepth;
+        }
+        // Empate exacto de capa: se conserva el criterio nativo (orden de
+        // display list), para no alterar el comportamiento dentro de una capa.
+        return Math.max(renderList.indexOf(b), 0) - Math.max(renderList.indexOf(a), 0);
+      });
+    };
   }
 
   /**
@@ -3536,6 +3590,7 @@ export class FloorplanScene extends Phaser.Scene {
             event.pouredSubstanceId,
             this.mission.substanceTagsOf(event.pouredSubstanceId),
           ),
+          (obj) => this.markAsWorldObject(obj),
         );
       }
     }

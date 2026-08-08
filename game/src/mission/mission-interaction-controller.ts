@@ -512,6 +512,10 @@ export class MissionInteractionController {
       capacity,
       extractionBlocked: this.mission.extractionBlockedFor(instanceId),
       canTransfer: this.mission.transferTargetsFor(instanceId).length > 0,
+      // 13e ronda 4: para poder ofrecer "Analizar" acá mismo y no obligar a
+      // pasar por la lista de sustancias del HUD.
+      substanceId: content?.substanceId,
+      analyzed: content ? this.mission.isSubstanceAnalyzed(content.substanceId) : undefined,
     };
   }
 
@@ -715,7 +719,14 @@ export class MissionInteractionController {
         onAnalyzeSubstance: (substanceId) => {
           if (!this.selectedActorIdValue) return;
           this.mission.queueAnalyzeSubstance(this.selectedActorIdValue, substanceId);
-          this.setActionPanelContent({ kind: "idle" });
+          // Desde el panel de un RESERVORIO se mantiene abierto (13e ronda 4),
+          // para ver cómo "Extraer (requiere análisis)" se desbloquea al
+          // terminar — es el flujo que describe el comentario de abajo. Desde la
+          // ficha de una sustancia suelta sí se cierra, porque esa ficha deja de
+          // tener acción posible.
+          if (this.actionPanelContent.kind !== "instance") {
+            this.setActionPanelContent({ kind: "idle" });
+          }
           this.callbacks.onTaskQueued();
         },
         // Subfase 13e — acciones de sustancias. Todas mantienen el panel

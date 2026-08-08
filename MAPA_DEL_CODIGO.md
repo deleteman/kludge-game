@@ -839,3 +839,19 @@
 ## `game/src/render/render-depths.ts` (modificado, 13e ronda 3)
 - `hudFloatingPanel: 25` — depth propio para el panel de acciones flotante, entre `hudContent` y
   `notification`. Compartir el 21 con la tira de tripulación hacía que la tira lo tapara al re-crearse.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 4)
+- `installTopmostOnlyInput()` — sobrescribe `input.sortGameObjects` para que el objeto de UI de capa más alta
+  sea el ÚNICO que recibe el click. El `topOnly` nativo no alcanza: ordena por el índice en el `renderList` de
+  la cámara del puntero, donde los `Label` de rexUI no entran, y el hit-test ignora las listas `ignore` de
+  cámara (que solo afectan al render), así que un objeto de mundo tiene área de click fantasma sobre el HUD.
+
+## `game/src/render/palette.ts` (modificado, 13e ronda 4)
+- `CHEMICAL_COMPOUND_COLORS` — color curado por compuesto del catálogo, consultado por
+  `chemicalSubstanceColor` antes de caer al color por tag. Sin esto el agua se pintaba con el gris genérico de
+  `INERTE`, que además era el mismo valor que el neutro de "desconocida" y que `ANCHOR_COLOR`; los tres son
+  ahora distintos y `palette.contract.test.ts` lo fija.
+
+## `game/src/particles/effects/salvage-hazard-effect.ts` (modificado, 13e ronda 4)
+- `firePouredSubstance` acepta un hook de registro de objetos, para que la escena les asigne cámara de mundo
+  (sin él caía en el bug de doble-cámara) y usa `RENDER_DEPTH.substanceSpill` en vez de `bloodDecal`.

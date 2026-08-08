@@ -332,8 +332,44 @@ export const CHEMICAL_ELEMENT_COLORS: Readonly<Record<string, number>> = {
   "nitrogeno-liquido": 0xc3e8ff,
 };
 
-/** Color neutro para una sustancia sin entrada curada (no debería ocurrir con el catálogo real, pero evita `undefined`). */
-export const CHEMICAL_ELEMENT_FALLBACK_COLOR = 0x8890a8;
+/**
+ * Colores curados de los COMPUESTOS del catálogo (13e ronda 4). La tabla de
+ * arriba solo cubre los 29 elementos, así que un compuesto caía al color de su
+ * primer tag — y el agua (`INERTE`) terminaba pintada con el mismo gris que las
+ * paredes, los anclajes y "sustancia desconocida". Un charco de agua era
+ * literalmente invisible sobre el suelo del plano.
+ */
+export const CHEMICAL_COMPOUND_COLORS: Readonly<Record<string, number>> = {
+  agua: 0x4aa8e8,
+  "sal-comun": 0xe8e4d8,
+  "acido-de-laboratorio": 0xc9e04c,
+  "dioxido-de-carbono": 0x7a8494,
+  amoniaco: 0x9ee06a,
+  "oxido-de-hierro": 0xb0553a,
+  peroxido: 0xd8f0ff,
+  "oxido-de-magnesio": 0xf0f0e4,
+  acero: 0x9aa4b4,
+  laton: 0xd0a44c,
+  "refrigerante-sintetico": 0x6fd8d0,
+  "combustible-de-motor": 0xff9a3c,
+  "acido-de-bateria": 0xd4e04c,
+  "base-de-laboratorio": 0x5c9ce8,
+  "disolvente-volatil": 0xe86ac0,
+  "anestesico-medico": 0xc8a8e8,
+  desinfectante: 0x8ce0d0,
+  "propelente-oxidante-municion": 0xffcb4a,
+  "fluido-biologico": 0xd0604c,
+  "sustancia-medica-generica": 0xe0f0f8,
+};
+
+/**
+ * Color neutro para una sustancia sin entrada curada. Tiene que ser DISTINTO de
+ * `CHEMICAL_TAG_COLORS.INERTE` y de `ANCHOR_COLOR`: hasta 13e ronda 4 los tres
+ * valían `0x8a949e`, o sea tres significados con un mismo color — exactamente
+ * lo que el principio 6 prohíbe, y la razón de que "no identificada", "inerte" y
+ * "anclaje" fueran indistinguibles en pantalla.
+ */
+export const CHEMICAL_ELEMENT_FALLBACK_COLOR = 0xb07acc;
 
 export function chemicalElementColor(id: ChemicalSubstanceId | string): number {
   return CHEMICAL_ELEMENT_COLORS[id as string] ?? CHEMICAL_ELEMENT_FALLBACK_COLOR;
@@ -351,7 +387,10 @@ export const CHEMICAL_TAG_COLORS: Readonly<Record<ChemicalTag["name"], number>> 
   COMB: 0xff8c42,
   ACID: 0xc9e04c,
   BASE: 0x4c8ce0,
-  INERTE: 0x8a949e,
+  // Distinto del neutro de "desconocida" y del de anclaje (ver
+  // `CHEMICAL_ELEMENT_FALLBACK_COLOR`), y alejado de `WALL_COLOR` para que un
+  // charco no se confunda con una pared.
+  INERTE: 0x6f8fa8,
   VOLAT: 0xe04ca0,
   TOX: 0x6adc7a,
   CORR: 0xd4a83f,
@@ -376,7 +415,7 @@ export function chemicalSubstanceColor(
   id: ChemicalSubstanceId | string,
   tags: ReadonlyArray<ChemicalTag> = [],
 ): number {
-  const curated = CHEMICAL_ELEMENT_COLORS[id as string];
+  const curated = CHEMICAL_ELEMENT_COLORS[id as string] ?? CHEMICAL_COMPOUND_COLORS[id as string];
   return curated ?? chemicalResultColor(tags);
 }
 

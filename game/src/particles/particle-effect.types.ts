@@ -34,6 +34,14 @@ export type DomainEventOfKind<K extends DomainEvent["kind"]> = Extract<DomainEve
  */
 export interface EventEffectOptions {
   readonly tint?: number;
+  /**
+   * Registro de los objetos que el efecto crea, para que la escena les asigne
+   * cámara de mundo (13e ronda 4). `fireEventEffect` es el camino genérico que
+   * NO asignaba cámara — el "bug de doble-cámara" documentado en
+   * `floorplan-scene.ts`: sin esto la `hudCamera` repinta el efecto sin scroll y
+   * el jugador no lo ve donde ocurrió.
+   */
+  readonly onObjectCreated?: (obj: Phaser.GameObjects.GameObject) => void;
 }
 
 export interface EventDrivenEffect<K extends DomainEvent["kind"] = DomainEvent["kind"]> {

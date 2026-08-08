@@ -26,6 +26,14 @@ export const RENDER_DEPTH = {
   dynamicShadows: 1.7,
   /** Tile layer "objects" (containerizada en el base) y overlay de componentes colocados (top-level): encima del suelo, debajo de paredes. */
   objects: 2,
+  /**
+   * Charco de sustancia derramada/vertida (13e ronda 4). No comparte depth con
+   * `bloodDecal` (1): ahí quedaba DEBAJO de las sombras dinámicas (1.7) y del
+   * overlay de componentes (2), o sea tapado por la propia pieza en cuya celda
+   * se derrama — por eso no se veía. Va sobre los objetos pero por debajo de la
+   * tripulación, que tiene que poder pisarlo.
+   */
+  substanceSpill: 2.5,
   /** Resaltado de la celda bajo el cursor (post-playtest #4) — objeto de MUNDO, encima del suelo/objetos, debajo de tripulación y paredes. */
   hoverHighlight: 3,
   /** Sprites/tokens de tripulantes (Fase 10d: círculo placeholder, sin sprite todavía — GDD §17) — encima de los objetos colocados, debajo de las paredes. */

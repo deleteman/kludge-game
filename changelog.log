@@ -3938,3 +3938,58 @@ suavizado visual de la nube no tiene test automático (estándar de `/game`: smo
 SUITE: `/engine` 863 → 870 tests, `/game` 36, `tsc --noEmit` y `eslint` limpios.
 
 Razón: ronda 3 de fixes del playtest de la Subfase 13e.
+
+────────────────────────────────────────────────────────────────────────────────
+2026-08-08 — Subfase 13e: fixes de playtest, RONDA 4 (input, visibilidad del charco, acceso a analizar).
+
+A) EL CLICK ATRAVESABA EL PANEL DE ACCIONES hasta el botón "Prioridad" del reparto de energía.
+   No era un problema de `depth`. Phaser hace hit-test contra TODOS los objetos interactivos de la escena, y
+   las listas `ignore` de cámara solo afectan al RENDER, nunca al input. El botón "Prioridad" es un objeto de
+   MUNDO; al evaluarse contra la `hudCamera` (sin scroll y sin el offset de viewport del mapa) sus coordenadas
+   de mundo se interpretan como coordenadas de pantalla y tiene un ÁREA DE CLICK FANTASMA. Y `topOnly`, que
+   está activo por defecto, no desempataba: `sortGameObjects` ordena por el índice en el `renderList` de la
+   cámara del puntero, donde los `Label` de rexUI no aparecen — `indexOf` da -1 → 0 para todos.
+   `actionPanelBounds` nunca fue un bloqueo de input: solo evitaba el click/hover/zoom hacia el MAPA.
+
+   Regla adoptada (operador): "el elemento de UI que está más arriba es el único que recibe el click, como si
+   fuera un modal". Implementada globalmente en `installTopmostOnlyInput()`: se sobrescribe
+   `input.sortGameObjects` con un orden por profundidad EFECTIVA (la del container más externo, que es la capa
+   real en pantalla — un botón dentro del panel cuenta como el panel, no como su depth local de 0),
+   descendente, cayendo al criterio nativo solo ante empate exacto de capa.
+
+B) EL AGUA DERRAMADA NO SE VEÍA. Tres causas, dos introducidas por mí en la ronda 2:
+   1. `firePouredSubstance` no marcaba sus objetos como de mundo → "bug de doble cámara" que el propio código
+      documenta en tres sitios: la `hudCamera` los repintaba sin scroll y fuera de lugar. Ahora acepta un hook
+      de registro y los dos llamadores le pasan `markAsWorldObject` (para el derrame al desmontar, vía
+      `EventEffectOptions.onObjectCreated`).
+   2. Depth: el charco iba a `bloodDecal` (1), por DEBAJO de las sombras dinámicas (1.7) y del overlay de
+      objetos (2) — o sea tapado por la propia pieza en cuya celda se derrama. La salpicadura ni siquiera
+      fijaba depth (quedaba en 0, empatada con el suelo). Nuevo `RENDER_DEPTH.substanceSpill` (2.5): sobre los
+      objetos, debajo de la tripulación, que tiene que poder pisarlo.
+   3. Color: `chemicalSubstanceColor("agua", [INERTE])` caía a `CHEMICAL_TAG_COLORS.INERTE` = 0x8a949e, el
+      MISMO valor exacto que `CHEMICAL_ELEMENT_FALLBACK_COLOR` y que `ANCHOR_COLOR`, y casi idéntico a
+      `WALL_COLOR`. Tres significados con un color es justo lo que el principio 6 prohíbe. Ahora hay
+      `CHEMICAL_COMPOUND_COLORS` (los 20 compuestos del catálogo, agua azul), los tres grises son distintos, y
+      `palette.contract.test.ts` fija que no vuelvan a colapsar ni a coincidir con el color de pared.
+   Nota: el `SPILL_COLOR` fijo que la ronda 2 reemplazó (verde-agua) era MÁS visible que lo que quedó — la
+   ronda 2 mejoró la intención y empeoró el resultado.
+
+C) NO HABÍA FORMA DE ANALIZAR LA SUSTANCIA DESDE EL PANEL DEL RESERVORIO. El panel decía "Extraer (requiere
+   análisis)" y el único camino para conseguirlo era el botón "Sustancias (N)" del HUD — callejón sin salida.
+   `queueAnalyzeSubstance` YA localizaba el reservorio y mandaba al tripulante allí; faltaba el botón. Se
+   añade "Analizar sustancia" ANTES de "Extraer" (es su paso previo, y en ese orden se enseña solo) y NO
+   cierra el panel, que es lo que el comentario de las otras tres acciones de 13e ya decía que debía pasar —
+   `onAnalyzeSubstance` lo cerraba, contradiciéndolo.
+
+VERIFICADO EN LA APP (Playwright): el panel muestra "Analizar sustancia"; una rueda de energía NO tapada por
+el panel sigue abriendo su modal de prioridad (la regresión que más riesgo tenía el cambio de input); sin
+errores de consola.
+
+NO VERIFICADO EN LA APP, se dice explícitamente: no logré construir en headless el solape EXACTO de un botón
+del panel sobre un botón "Prioridad" (el panel se ancla a la celda clickeada y las ruedas quedan alrededor).
+El caso que reportó el operador se prueba en un clic desde el juego; el mecanismo del fix está razonado y la
+no-regresión sí está comprobada.
+
+SUITE: `/engine` 870, `/game` 36 → 40 tests, `tsc --noEmit` y `eslint` limpios.
+
+Razón: ronda 4 de fixes del playtest de la Subfase 13e.
