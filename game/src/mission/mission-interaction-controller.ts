@@ -110,6 +110,15 @@ export class MissionInteractionController {
   private wireFirstNodeId?: SignalNodeId;
   private actionPanelContent: ActionPanelContent = { kind: "idle" };
   private actionPanelContainer?: Phaser.GameObjects.Container;
+  /**
+   * Posición manual del panel tras un arrastre (ronda 5, pedido del operador).
+   * Se limpia al cambiar el OBJETIVO del panel (nueva celda/instancia/sustancia
+   * seleccionada, o cierre) — el arrastre es un ajuste de ESTA selección, no
+   * una posición que persiga al jugador entre piezas distintas. Sobrevive a
+   * los rebuilds por refresco de contenido vivo (`refreshActionPanel`), que no
+   * tocan la selección.
+   */
+  private manualPanelPositionValue?: { readonly x: number; readonly y: number };
   /** Celda actualmente marcada (sobre la que se va a actuar); `undefined` sin selección. */
   private selectedCellValue?: GridPosition;
   private installPickerState?: {
@@ -194,6 +203,11 @@ export class MissionInteractionController {
   /** Reposiciona el panel de acciones flotante (Subfase 11g) — no-op si no hay panel montado (`idle`). Llamado cada frame por la escena. */
   repositionActionPanel(point: { readonly x: number; readonly y: number }): void {
     this.actionPanelContainer?.setPosition(point.x, point.y);
+  }
+
+  /** Posición manual del panel tras un arrastre (ronda 5), o `undefined` si sigue anclado a la selección. */
+  get manualPanelPosition(): { readonly x: number; readonly y: number } | undefined {
+    return this.manualPanelPositionValue;
   }
 
   private setSelectedCell(cell: GridPosition | undefined): void {
@@ -585,6 +599,9 @@ export class MissionInteractionController {
 
   private setActionPanelContent(content: ActionPanelContent): void {
     this.actionPanelContent = content;
+    // Nuevo objetivo de panel: el arrastre de la ronda 5 es un ajuste de ESTA
+    // selección, no una posición que persiga al jugador entre piezas distintas.
+    this.manualPanelPositionValue = undefined;
     // Volver a idle (tras desmontar/instalar) desmarca la celda seleccionada.
     if (content.kind === "idle") this.setSelectedCell(undefined);
     this.redrawActionPanel();
@@ -776,6 +793,9 @@ export class MissionInteractionController {
         onSelectSubstance: (substanceId) => this.selectSubstance(substanceId),
         markAsHudObject: (obj) => this.callbacks.markAsHudObject(obj),
         onClose: () => this.setActionPanelContent({ kind: "idle" }),
+        onPanelDragged: (x, y) => {
+          this.manualPanelPositionValue = { x, y };
+        },
       },
     );
     // Depth propio, por encima de la tira de tripulación (ronda 3): con el

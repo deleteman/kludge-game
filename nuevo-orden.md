@@ -450,6 +450,28 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     reservorio correcto; faltaba el botón, que ahora va **antes** de "Extraer" y no cierra el panel — como el
     comentario de las otras acciones de 13e ya decía que debía ser. `/game` 36 → 40 tests.
 
+  **Ronda 5 de fixes de playtest (2026-08-10)** — dos bugs con causa concreta; el tercer reporte (mesas sin
+  energía) es el hallazgo ya documentado de la Subfase 13g, confirmado sin regresión y explícitamente no
+  tocado en esta ronda:
+  - **El click sobre el FONDO del panel (no los botones) seguía atravesando.** La ronda 4 arregló el desempate
+    entre objetos interactivos superpuestos, pero el `backdrop` nunca fue interactivo (miedo de 13d a que se
+    comiera los clicks de los botones) — al no competir en el hit-test, el click al área vacía iba directo al
+    mundo debajo. Ese miedo ya no aplica con `installTopmostOnlyInput` desempatando por profundidad efectiva:
+    un backdrop interactivo pierde contra los botones (se agregan después) y gana contra el mundo. De paso,
+    pedido del operador: arrastre del panel por click&hold sobre el backdrop, con posición manual que se limpia
+    al cambiar de selección pero sobrevive a un rebuild por refresco de contenido vivo.
+  - **La síntesis no notificaba, solo sonaba.** Se detectaba comparando `availableSubstances.length`
+    antes/después — un `Set` deduplicado que no crecía (y por tanto no notificaba) si la sustancia sintetizada
+    ya existía en algún reservorio. Nuevo `MissionRuntime.materializedByTaskId` + `consumeMaterializedByTask`:
+    dato exacto tomado del mismo listener que ya materializa, en vez de un conteo indirecto. Corrige de paso el
+    mismo patrón frágil en la fabricación física.
+  - **La extracción de elementos de un reservorio no volaba ninguna "moneda"** hacia la mesa, a diferencia del
+    desmontaje físico. `benchCell` generalizado por dominio; nuevo helper `fireCollectionBurst` compartido; la
+    extracción vuela una moneda por sustancia distinta hacia la estación QUÍMICA (donde se consume
+    `elementStock`), no el banco físico. `/engine` 870, `/game` 40 tests (sin cambio de conteo — la lógica
+    nueva no agregó tests unitarios propios: input de Phaser sobre una escena real, sin arnés razonable de
+    test automático — verificado razonando sobre el código, determinista sin ambigüedad de dedupe).
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

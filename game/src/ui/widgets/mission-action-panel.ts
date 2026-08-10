@@ -208,6 +208,13 @@ export interface ActionPanelCallbacks {
   readonly markAsHudObject: (obj: Phaser.GameObjects.GameObject) => void;
   /** Deselección manual (fix de playtest 11e): vuelve el panel a `idle` sin tener que encolar ninguna acción. */
   readonly onClose: () => void;
+  /**
+   * Arrastre del panel por su backdrop (pedido del operador, ronda 5): se
+   * llama en vivo con la posición absoluta de PANTALLA mientras se arrastra
+   * (mismo criterio que `onChange` de `kenney-slider.ts`) — el llamador
+   * decide si esa posición sobrevive a un rebuild o se resetea.
+   */
+  readonly onPanelDragged?: (x: number, y: number) => void;
 }
 
 /**
@@ -247,8 +254,16 @@ export function renderMissionActionPanel(
   const backdrop = scene.add
     .rectangle(-10, -8, width + 20, height, 0x0a0a0f, 0.72)
     .setOrigin(0, 0)
-    .setStrokeStyle(1, 0x2a3040, 1);
+    .setStrokeStyle(1, 0x2a3040, 1)
+    // Ronda 5: interactivo para que el hit-test lo tome como candidato — sin
+    // esto el click sobre el área vacía del panel atravesaba directo a los
+    // controles de mundo debajo (`installTopmostOnlyInput` solo desempata
+    // entre objetos que YA compiten por el puntero). Sin handler propio de
+    // click: solo necesita estar en carrera para ganarle al mundo y perder
+    // frente a los botones (ver comentario de `attachPanelScroll` más abajo).
+    .setInteractive({ cursor: UI_POINTER_CURSOR_CSS, draggable: false });
   container.add(backdrop);
+  attachPanelDrag(scene, container, backdrop, callbacks);
 
   /** Punto más bajo ocupado por el contenido, para dimensionar el fondo al final. */
   let contentBottom = 0;
@@ -621,6 +636,51 @@ export function renderMissionActionPanel(
 }
 
 /**
+ * Arrastre del panel por click&hold sobre su backdrop (ronda 5, pedido del
+ * operador). Mismo patrón que `kenney-slider.ts`/`power-allocation-slider.ts`:
+ * `pointerdown` en la hit-zone local arranca el drag, `pointermove`/`pointerup`
+ * se enganchan GLOBALES en `scene.input` (el puntero se sale del backdrop
+ * durante el arrastre) y se desenganchan por referencia al destruirse el
+ * container — mismo criterio que `attachPanelScroll` con su listener de
+ * `wheel`. El container vive en la cámara HUD, así que sus coordenadas ya son
+ * de pantalla y se comparan/asignan directo con las del puntero.
+ */
+function attachPanelDrag(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  backdrop: Phaser.GameObjects.Rectangle,
+  callbacks: ActionPanelCallbacks,
+): void {
+  let dragging = false;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  const onDown = (pointer: Phaser.Input.Pointer): void => {
+    dragging = true;
+    offsetX = container.x - pointer.x;
+    offsetY = container.y - pointer.y;
+  };
+  backdrop.on("pointerdown", onDown);
+
+  const onMove = (pointer: Phaser.Input.Pointer): void => {
+    if (!dragging) return;
+    const x = pointer.x + offsetX;
+    const y = pointer.y + offsetY;
+    container.setPosition(x, y);
+    callbacks.onPanelDragged?.(x, y);
+  };
+  const onUp = (): void => {
+    dragging = false;
+  };
+  scene.input.on("pointermove", onMove);
+  scene.input.on("pointerup", onUp);
+  container.once(Phaser.GameObjects.Events.DESTROY, () => {
+    scene.input.off("pointermove", onMove);
+    scene.input.off("pointerup", onUp);
+  });
+}
+
+/**
  * Convierte el panel en una ventana con scroll cuando su contenido no entra en
  * `maxHeight` (13e ronda 3).
  *
@@ -662,9 +722,14 @@ function attachPanelScroll(
     viewport.setY(-scroll);
   };
 
-  // Rueda del mouse sobre el área del panel. Se engancha a la escena y no a un
-  // hijo interactivo porque los botones ya capturan el puntero: un `setInteractive`
-  // sobre el fondo se los comería.
+  // Rueda del mouse sobre el área del panel. Se engancha a la escena y no al
+  // backdrop porque `wheel` no es un evento de puntero por objeto en Phaser
+  // (no hay "wheel sobre este game object" nativo) — el chequeo de bounds de
+  // abajo hace ese trabajo a mano. (Ronda 5: el backdrop SÍ es interactivo
+  // desde hace unas líneas para el click/drag; eso ya no roba los clicks de
+  // los botones — ver `installTopmostOnlyInput` en `floorplan-scene.ts`, que
+  // desde la ronda 4 desempata por profundidad efectiva y orden de display
+  // list, así que un botón añadido después del backdrop siempre gana.)
   const onWheel = (
     pointer: Phaser.Input.Pointer,
     _over: unknown,

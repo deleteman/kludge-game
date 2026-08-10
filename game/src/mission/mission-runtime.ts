@@ -291,6 +291,20 @@ export class MissionRuntime {
   /** Estación química donde depositar el resultado al completarse (13e). */
   private readonly pendingSynthesisStation = new Map<CrewTaskId, PlacedComponentInstanceId>();
   /**
+   * Qué materializó cada tarea `combine` (ronda 5), consultable por
+   * `consumeMaterializedByTask`. `FloorplanScene` notificaba una síntesis
+   * comparando `availableSubstances.length` antes/después — ese getter es un
+   * `Set` deduplicado por sustancia, así que una segunda síntesis de la MISMA
+   * sustancia (ya presente en algún reservorio) no crecía el conteo y la
+   * notificación no disparaba, aunque el material sí se depositó. Este mapa
+   * guarda el dato exacto que ya se conoce en el mismo listener que
+   * materializa, sin pasar por ningún conteo indirecto.
+   */
+  private readonly materializedByTaskId = new Map<
+    CrewTaskId,
+    { readonly kind: "substance" | "creation"; readonly name: string }
+  >();
+  /**
    * Sustancias ya analizadas por "Analizar Sustancia" (Fase 11e) — estado
    * durable y re-consultado en cada render del tooltip (no un toast de un solo
    * uso como `obtained`), por eso vive en un Set aparte en vez de reenviarse
@@ -521,6 +535,7 @@ export class MissionRuntime {
       if (definition) {
         this.pendingFabrications.delete(event.taskId);
         this.customCreations = [...this.customCreations, definition];
+        this.materializedByTaskId.set(event.taskId, { kind: "creation", name: definition.name });
         return;
       }
       const substanceId = this.pendingSynthesis.get(event.taskId);
@@ -536,6 +551,8 @@ export class MissionRuntime {
         } else {
           this.availableSubstanceIds = [...this.availableSubstanceIds, substanceId];
         }
+        const name = this.chemicalRegistry.get(substanceId)?.name ?? substanceId;
+        this.materializedByTaskId.set(event.taskId, { kind: "substance", name });
       }
     });
 
@@ -1241,6 +1258,21 @@ export class MissionRuntime {
   }
 
   /**
+   * Lee y BORRA lo que materializó una tarea `combine` (ronda 5) — mismo
+   * patrón "drenar y limpiar" que `TransientGasInjection.asInjectionSource()`.
+   * `FloorplanScene` lo consulta al recibir `task-completed` para decidir
+   * exactamente qué notificar, en vez de comparar longitudes de listas
+   * deduplicadas (ver el comentario de `materializedByTaskId`).
+   */
+  consumeMaterializedByTask(
+    taskId: CrewTaskId,
+  ): { readonly kind: "substance" | "creation"; readonly name: string } | undefined {
+    const entry = this.materializedByTaskId.get(taskId);
+    this.materializedByTaskId.delete(taskId);
+    return entry;
+  }
+
+  /**
    * Sustancias presentes en la nave (11c.3, ampliado en 13e). Ya no es solo la
    * bolsa abstracta de ids sintetizados: incluye TODO lo que hay en los
    * reservorios del plano, así que el panel de Sustancias por fin puede decir
@@ -1262,10 +1294,13 @@ export class MissionRuntime {
   /**
    * Celda del banco de trabajo, si la nave conserva uno (13e). La usa la
    * animación de recolección de elementos (12c.5) como destino, ahora que la
-   * mesa dejó de tener botón en el header.
+   * mesa dejó de tener botón en el header. Generalizado a dominio (ronda 5):
+   * la materia prima química (`elementStock`) se consume en la estación
+   * QUÍMICA, no en el banco físico — antes hardcodeaba `"fisica"` porque era
+   * el único caso que existía.
    */
-  benchCell(): { readonly x: number; readonly y: number } | undefined {
-    const instanceId = findFabricators(this.shipState.get(), this.componentRegistry, "fisica")[0];
+  benchCell(domain: FabricatorDomain = "fisica"): { readonly x: number; readonly y: number } | undefined {
+    const instanceId = findFabricators(this.shipState.get(), this.componentRegistry, domain)[0];
     if (!instanceId) {
       return undefined;
     }

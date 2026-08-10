@@ -3993,3 +3993,53 @@ no-regresión sí está comprobada.
 SUITE: `/engine` 870, `/game` 36 → 40 tests, `tsc --noEmit` y `eslint` limpios.
 
 Razón: ronda 4 de fixes del playtest de la Subfase 13e.
+
+---
+
+[2026-08-10] Subfase 13e — fixes de playtest, ronda 5 (backdrop del panel, notificación de síntesis, moneda
+de extracción química).
+
+A) EL CLICK SOBRE EL FONDO DEL PANEL (NO LOS BOTONES) SEGUÍA ATRAVESANDO. La ronda 4 arregló el desempate
+   ENTRE objetos interactivos superpuestos (`installTopmostOnlyInput`), pero el `backdrop` del panel nunca fue
+   interactivo (decisión deliberada de 13d, por miedo a que se comiera los clicks de los botones) — como no
+   competía en el hit-test, un click sobre el área vacía del panel iba directo al objeto de mundo debajo, el
+   mismo síntoma que la ronda 4 resolvió solo para los botones. Ese miedo ya no aplica: con
+   `installTopmostOnlyInput` desempatando por profundidad efectiva y orden de display list, un backdrop
+   interactivo pierde contra los botones (se agregan después, mismo container) y gana contra el mundo.
+   `mission-action-panel.ts`: `backdrop.setInteractive()` sin handler de click propio.
+   De paso, pedido del operador: arrastre del panel por click&hold sobre el backdrop, mismo patrón de
+   `pointerdown` local + `pointermove`/`pointerup` globales en `scene.input` que ya usa `kenney-slider.ts`.
+   Nuevo callback `onPanelDragged`; `MissionInteractionController` gana `manualPanelPosition`, que se limpia al
+   cambiar el OBJETIVO del panel (nueva selección o cierre) pero sobrevive a un rebuild por refresco de
+   contenido vivo. `updateActionPanelAnchor` usa esa posición (con el mismo clamp de borde) en vez de recalcular
+   desde la celda cuando existe.
+
+B) LA SÍNTESIS NO NOTIFICABA, SOLO SONABA. `FloorplanScene` detectaba una síntesis comparando
+   `mission.availableSubstances.length` antes/después — ese getter es un `Set` deduplicado por sustancia que
+   incluye todo lo que hay en reservorios. Si la sustancia sintetizada YA EXISTÍA en algún reservorio con
+   `amount > 0` (segundo lote de la misma sustancia), el conteo no crecía y la notificación no disparaba,
+   aunque el material sí se depositó (`depositSynthesis`). El sonido (`barkForActor`) es independiente de ese
+   conteo, de ahí que sonara siempre y se viera solo a veces. Fix: `MissionRuntime` gana
+   `materializedByTaskId`, poblado en el mismo listener de `task-completed` que ya materializa con precisión
+   (sabe exactamente qué produjo cada `taskId`), y `consumeMaterializedByTask(taskId)` que lo lee y borra
+   (mismo patrón "drenar" que `TransientGasInjection.asInjectionSource()`). La fabricación física usaba el
+   mismo patrón frágil (`installableCreations.length`) y quedó corregida de paso. Se eliminan
+   `lastSubstancesCount`/`lastCreationsCount` de `FloorplanScene` (sin otros usos).
+
+C) LA EXTRACCIÓN DE ELEMENTOS DE UN RESERVORIO NO VOLABA NINGUNA "MONEDA". El desmontaje físico ya animaba una
+   partícula por pieza obtenida hacia el banco de trabajo (`fireElementCollection`/
+   `fireCollectibleToWorkbench`) — extraer elementos de un reservorio es el mismo tipo de evento ("obtuviste
+   materia prima") sin su representación. Se generalizó `benchCell(domain)` en `MissionRuntime` (antes
+   hardcodeaba `"fisica"`, reutilizando `findFabricators` que ya soporta el dominio) y se extrajo el bucle de
+   "stagear N monedas" a `fireCollectionBurst(originCell, targetCell, count)`, del que `fireElementCollection`
+   pasa a ser un caso fino. `notifySubstanceTaskResult` dispara una moneda por SUSTANCIA distinta (no por
+   unidad, mismo criterio que el desmontaje) hacia la estación QUÍMICA — es donde se consume `elementStock`,
+   no el banco físico.
+
+D) ENERGÍA (mesas funcionando sin sección energizada): NO se toca en esta ronda. Confirmado que es exactamente
+   el hallazgo ya documentado como Subfase 13g ("Consumo Eléctrico Real"), pendiente de implementación propia
+   (alcance grande) — no una regresión de esta ronda.
+
+SUITE: `/engine` 870 tests, `/game` 40 tests, `tsc --noEmit` y `eslint` limpios en ambos paquetes.
+
+Razón: ronda 5 de fixes del playtest de la Subfase 13e.

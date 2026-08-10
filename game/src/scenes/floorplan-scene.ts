@@ -459,9 +459,6 @@ export class FloorplanScene extends Phaser.Scene {
 
   /** Sistema de notificaciones transitorias (12c.7) — avisos legibles arriba-centro del mapa. */
   private notifications?: NotificationCenter;
-  /** Conteos previos para detectar qué materializó una tarea `combine` (síntesis vs. fabricación). */
-  private lastSubstancesCount = 0;
-  private lastCreationsCount = 0;
   /** Evita notificar objetivos ya completos en el primer render de la tira. */
   private objectivesNotifyReady = false;
 
@@ -798,9 +795,6 @@ export class FloorplanScene extends Phaser.Scene {
     this.notifications = new NotificationCenter(this, MAP_VIEWPORT_WIDTH / 2, HEADER_HEIGHT + 12, (obj) =>
       this.markAsHudObject(obj),
     );
-    this.lastSubstancesCount = this.mission.availableSubstances.length;
-    this.lastCreationsCount = this.mission.installableCreations.length;
-
     this.redrawCrewStrip();
     this.redrawQueuePanel();
     this.renderObjectivesStrip();
@@ -1229,7 +1223,19 @@ export class FloorplanScene extends Phaser.Scene {
     // más alto, y con el nominal se salía por abajo de la pantalla y dejaba
     // pasar al mapa los clicks sobre la parte que sobresalía.
     const panelHeight = this.interaction.actionPanelHeight;
-    if (cell) {
+    const manual = this.interaction.manualPanelPosition;
+    if (manual) {
+      // Arrastre del operador (ronda 5): se respeta la posición elegida, con
+      // el mismo clamp de borde que el anclaje automático — así un arrastre
+      // no puede sacar el panel de pantalla ni meterlo bajo la tira de
+      // tripulación. Se sigue llamando cada frame (como el caso automático):
+      // un rebuild del panel a mitad de misión no debe perder el lugar donde
+      // el jugador lo dejó.
+      const maxX = SIDE_PANEL_X - 10 - ACTION_PANEL_WIDTH - 20;
+      const maxY = CREW_STRIP_Y - panelHeight - 8;
+      x = Phaser.Math.Clamp(manual.x, 10, maxX);
+      y = Phaser.Math.Clamp(manual.y, HEADER_HEIGHT + 8, maxY);
+    } else if (cell) {
       const camera = this.cameras.main;
       const rawPoint = {
         x: (cell.x * CELL + CELL / 2 - camera.scrollX) * camera.zoom,
@@ -3436,28 +3442,24 @@ export class FloorplanScene extends Phaser.Scene {
             });
           }
           // Síntesis/fabricación completada (tarea `combine`, 12c.7): el motor ya
-          // materializó la sustancia/creación (su listener corre antes), así que se
-          // detecta por el crecimiento del conteo y se notifica el nombre.
+          // materializó la sustancia/creación (su listener corre antes) y guardó
+          // EXACTAMENTE qué produjo esta tarea (`materializedByTaskId`, ronda 5)
+          // — antes se detectaba comparando `availableSubstances.length` antes/
+          // después, un `Set` deduplicado que no crecía (y por tanto no
+          // notificaba) si la sustancia sintetizada ya existía en algún
+          // reservorio.
           if (event.type === "combine") {
-            const subs = this.mission.availableSubstances;
-            const creations = this.mission.installableCreations;
-            if (subs.length > this.lastSubstancesCount) {
-              const s = subs[subs.length - 1];
+            const materialized = this.mission.consumeMaterializedByTask(event.taskId);
+            if (materialized) {
               this.notifications?.push({
-                title: t("ui.floorplan.notification.synthesized"),
-                lines: s ? [s.name] : undefined,
-                type: "success",
-              });
-            } else if (creations.length > this.lastCreationsCount) {
-              const c = creations[creations.length - 1];
-              this.notifications?.push({
-                title: t("ui.floorplan.notification.fabricated"),
-                lines: c ? [c.name] : undefined,
+                title:
+                  materialized.kind === "substance"
+                    ? t("ui.floorplan.notification.synthesized")
+                    : t("ui.floorplan.notification.fabricated"),
+                lines: [materialized.name],
                 type: "success",
               });
             }
-            this.lastSubstancesCount = subs.length;
-            this.lastCreationsCount = creations.length;
           }
           this.notifySubstanceTaskResult(event);
           // Bark de resultado al TERMINAR una acción asignada ("listo").
@@ -3561,6 +3563,16 @@ export class FloorplanScene extends Phaser.Scene {
         ),
         type: "success",
       });
+      // Ronda 5: la extracción de un reservorio no volaba ninguna "moneda" —
+      // el desmontaje físico sí, y es el mismo tipo de evento ("obtuviste
+      // materia prima"). Una moneda por SUSTANCIA distinta (no por unidad,
+      // mismo criterio que `fireElementCollection`), hacia la estación
+      // QUÍMICA — es donde se consume `elementStock`, no el banco físico.
+      const task = this.mission.scheduler.getTask(event.taskId);
+      const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(event.actorId);
+      if (cell) {
+        this.fireCollectionBurst(cell, this.mission.benchCell("quimica"), counts.size);
+      }
     }
     if (event.pouredSubstanceId && event.pouredAmount) {
       const name = this.mission.substanceNameOf(event.pouredSubstanceId) ?? event.pouredSubstanceId;
@@ -3822,28 +3834,46 @@ export class FloorplanScene extends Phaser.Scene {
     cell: GridPosition,
     obtained: ReadonlyArray<{ readonly componentId: string; readonly quantity: number }>,
   ): void {
+    // Un botón de pieza física por TIPO obtenido (no por unidad) — mismo
+    // criterio que la extracción química de `fireCollectionBurst`.
+    this.fireCollectionBurst(cell, this.mission.benchCell("fisica"), obtained.length);
+  }
+
+  /**
+   * Stagea N "monedas" desde `originCell` hacia `targetCell` (banco de
+   * trabajo), con la misma trayectoria en arco y el mismo espaciado que ya
+   * usaba `fireElementCollection` para el desmontaje físico (12c.5). Extraído
+   * como helper común (ronda 5) porque la extracción de elementos de un
+   * reservorio químico necesitaba exactamente el mismo efecto hacia la
+   * ESTACIÓN QUÍMICA — antes solo existía para el banco físico, así que el
+   * mismo tipo de evento ("obtuviste materia prima") se veía distinto según
+   * el origen, violando el principio 6 (dos fenómenos iguales deben verse
+   * igual).
+   *
+   * Sin banco visible del dominio pedido (destruido/nunca construido), cae al
+   * centro del header, que es donde vivía el botón de mesa antes de 13e.
+   */
+  private fireCollectionBurst(
+    originCell: GridPosition,
+    targetCell: { readonly x: number; readonly y: number } | undefined,
+    count: number,
+  ): void {
     const cam = this.cameras.main;
-    const startX = (cell.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom;
-    const startY = HEADER_HEIGHT + (cell.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom;
-    // Subfase 13e: la mesa dejó de ser un botón del header, así que los
-    // elementos recolectados vuelan al BANCO DE TRABAJO real del plano — más
-    // diegético que el destino anterior, y sigue leyéndose como "esto va a
-    // parar a algún lado" (12c.5). Sin banco visible (destruido), caen al
-    // centro del header, que es donde estaba el botón.
-    const bench = this.mission.benchCell();
-    const targetX = bench
-      ? (bench.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom
+    const startX = (originCell.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom;
+    const startY = HEADER_HEIGHT + (originCell.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom;
+    const targetX = targetCell
+      ? (targetCell.x * CELL + CELL / 2 - cam.scrollX) * cam.zoom
       : WORKBENCH_BUTTON_X;
-    const targetY = bench
-      ? HEADER_HEIGHT + (bench.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom
+    const targetY = targetCell
+      ? HEADER_HEIGHT + (targetCell.y * CELL + CELL / 2 - cam.scrollY) * cam.zoom
       : HEADER_HEIGHT / 2;
 
     // Partícula coleccionable por elemento con trayectoria en arco hacia la mesa
     // (12c.5). El detalle textual legible (qué se obtuvo) va por el sistema de
     // notificaciones (12c.7), no como toasts de mundo por-elemento superpuestos.
-    obtained.forEach((_entry, index) => {
+    for (let index = 0; index < count; index++) {
       this.time.delayedCall(index * 90, () => this.fireCollectibleToWorkbench(startX, startY, targetX, targetY));
-    });
+    }
   }
 
   /**

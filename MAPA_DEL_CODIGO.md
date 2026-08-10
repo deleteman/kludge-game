@@ -855,3 +855,31 @@
 ## `game/src/particles/effects/salvage-hazard-effect.ts` (modificado, 13e ronda 4)
 - `firePouredSubstance` acepta un hook de registro de objetos, para que la escena les asigne cámara de mundo
   (sin él caía en el bug de doble-cámara) y usa `RENDER_DEPTH.substanceSpill` en vez de `bloodDecal`.
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 5)
+- `backdrop` gana `setInteractive()` (sin handler de click propio) — entra al hit-test de
+  `installTopmostOnlyInput`, cierra el agujero por el que el click al área vacía del panel atravesaba al mundo.
+- `attachPanelDrag(...)` — arrastre del panel por click&hold sobre el backdrop (`pointerdown` local +
+  `pointermove`/`pointerup` globales en `scene.input`, mismo patrón que `kenney-slider.ts`). Nuevo
+  `ActionPanelCallbacks.onPanelDragged?`.
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 5)
+- `manualPanelPosition` (getter) — posición manual tras un arrastre, escrita por `onPanelDragged`. Se limpia en
+  `setActionPanelContent` (cambio de objetivo del panel); sobrevive a un rebuild por `refreshActionPanel`.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 5)
+- `updateActionPanelAnchor()` — si `interaction.manualPanelPosition` existe, la usa (clampeada al mismo borde
+  que el anclaje automático) en vez de recalcular desde `selectedCell`.
+- Notificación de `combine` reemplazada: consume `mission.consumeMaterializedByTask(event.taskId)` en vez de
+  comparar `availableSubstances.length`/`installableCreations.length` (frágil ante deduplicación por `Set`).
+  Elimina `lastSubstancesCount`/`lastCreationsCount`.
+- `fireCollectionBurst(originCell, targetCell, count)` — helper extraído de `fireElementCollection` (stagea N
+  "monedas" en arco hacia una mesa). `notifySubstanceTaskResult` lo usa para volar una moneda por sustancia
+  distinta desde una extracción de reservorio hacia `mission.benchCell("quimica")`.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 5)
+- `materializedByTaskId` + `consumeMaterializedByTask(taskId)` — qué materializó cada tarea `combine`
+  (sustancia o creación), poblado en el mismo listener de `task-completed` que ya materializa. Patrón "drenar y
+  limpiar", mismo criterio que `TransientGasInjection.asInjectionSource()`.
+- `benchCell(domain: FabricatorDomain = "fisica")` — generalizado por dominio (antes hardcodeaba `"fisica"`),
+  reusando `findFabricators` que ya lo soporta.
