@@ -883,3 +883,13 @@
   limpiar", mismo criterio que `TransientGasInjection.asInjectionSource()`.
 - `benchCell(domain: FabricatorDomain = "fisica")` — generalizado por dominio (antes hardcodeaba `"fisica"`),
   reusando `findFabricators` que ya lo soporta.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 6)
+- `transferTargetsFor` exige `freeCapacity(...) > 0` además de capacidad de catálogo y alcanzabilidad — un
+  reservorio ya lleno deja de contar como destino válido (antes se ofrecía igual, y el motor perdía el 100%
+  del origen como "desborde total" al ejecutar).
+
+## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 6)
+- Caso `"transfer-substance"`: chequea `freeCapacity` del destino ANTES de `drawFrom` — con 0, la tarea es un
+  no-op (defensa en profundidad, cubre la carrera de que el destino se llene entre armar el panel y ejecutar
+  la tarea). El desborde PARCIAL (destino con algo de lugar, pero no todo) sigue igual que antes.

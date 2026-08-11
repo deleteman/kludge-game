@@ -4043,3 +4043,44 @@ D) ENERGÍA (mesas funcionando sin sección energizada): NO se toca en esta rond
 SUITE: `/engine` 870 tests, `/game` 40 tests, `tsc --noEmit` y `eslint` limpios en ambos paquetes.
 
 Razón: ronda 5 de fixes del playtest de la Subfase 13e.
+
+---
+
+[2026-08-11] Subfase 13e — fix de playtest, ronda 6 (pérdida total al trasvasar a un reservorio lleno).
+
+REPORTE DEL OPERADOR: al usar "Trasvasar a otro reservorio" perdió las 50 unidades completas del reservorio,
+aunque el aviso de desborde (ya existente desde la ronda 2) mostró correctamente "50 perdidas". El botón
+estaba habilitado sin ningún indicio de que la acción fuera a salir mal.
+
+CAUSA RAÍZ (dos capas, mismo bug):
+1. `transferTargetsFor` (`mission-runtime.ts`) aceptaba cualquier reservorio alcanzable que TUVIERA capacidad
+   de catálogo, sin chequear si le quedaba espacio LIBRE. Un reservorio ya lleno (el caso sembrado por defecto)
+   contaba igual como destino válido — `canTransfer` daba `true` y el botón se ofrecía como acción normal.
+2. `ship-task-effect.ts`, caso `"transfer-substance"`: `drawFrom` vaciaba el origen INCONDICIONALMENTE antes de
+   saber si el destino tenía lugar. Con el destino a capacidad completa, `pourInto` calculaba `room = 0`,
+   `poured = 0`, `overflow = amount` (el 100%) — y el `shipState.set` final persistía el origen ya drenado sin
+   que nada hubiera entrado al destino.
+
+Esto NO contradice el "aviso de desborde" de la ronda 2 — ese mecanismo sigue intacto y es el comportamiento
+deseado para el desborde PARCIAL (el jugador movió más de lo que cabía, y una parte se pierde como
+consecuencia — Principio 5). El bug es el caso degenerado de espacio libre CERO: en el MVP actual el jugador
+ni siquiera elige destino ni cantidad (se usa siempre el primer reservorio alcanzable, con el 100% del
+contenido), así que perder todo por un destino ya lleno no es una decisión mal medida — es un destino que
+nunca debió ofrecerse.
+
+FIX (dos capas, defensa en profundidad, mismo criterio que ya usa el propio código para la validación de
+alcance):
+- `transferTargetsFor` ahora exige `freeCapacity(...) > 0` además de capacidad de catálogo y alcanzabilidad —
+  un reservorio lleno cae al motivo ya existente `"no-target"`, sin necesidad de un motivo nuevo.
+- `ship-task-effect.ts` chequea `freeCapacity` del destino ANTES de `drawFrom`: si es 0, la tarea es un no-op
+  (mismo patrón que el caso ya existente de "origen vacío") — cubre la carrera en que el destino se llenó entre
+  que se armó el panel y que la tarea se ejecutó.
+
+Nuevo test: "un destino sin espacio libre es un no-op — no se pierde nada" (`ship-task-effect.test.ts`), dos
+tanques de capacidad 100 con el destino ya a 100/100 — ningún reservorio cambia y no hay `overflowAmount`. El
+test de desborde parcial existente (capacidad 100, 95 ocupadas → entran 5, se pierden 15) queda intacto.
+
+SUITE: `/engine` 870 → 871 tests, `/game` 40 tests (sin cambio — el filtro de `transferTargetsFor` delega en
+funciones ya cubiertas a nivel motor), `tsc --noEmit` y `eslint` limpios en ambos paquetes.
+
+Razón: ronda 6 de fixes del playtest de la Subfase 13e.

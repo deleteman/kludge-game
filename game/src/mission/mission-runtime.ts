@@ -50,6 +50,7 @@ import {
   elementsPerUnit,
   extractionBlockedReason,
   findFabricators,
+  freeCapacity,
   instanceFabricatorDomain,
   instanceReservoirCapacity,
   isFluidTransferReachable,
@@ -1013,18 +1014,29 @@ export class MissionRuntime {
     return instance && instanceFabricatorDomain(instance, this.componentRegistry);
   }
 
-  /** Reservorios (distintos del propio) a los que se puede trasvasar desde `fromInstanceId`. */
+  /**
+   * Reservorios (distintos del propio) a los que se puede trasvasar desde
+   * `fromInstanceId`. Ronda 6 de fixes de playtest: un reservorio ya lleno
+   * (`freeCapacity === 0`) NO cuenta como destino — antes contaba con solo
+   * tener capacidad de catálogo y ser alcanzable, así que "Trasvasar" se
+   * ofrecía como acción válida hacia un destino sin ningún lugar, y el motor
+   * drenaba el 100% del origen para perderlo entero como "desborde". El MVP
+   * no deja elegir destino ni cantidad (el primer alcanzable se usa entero),
+   * así que perder todo por un destino sin espacio no es una decisión mal
+   * medida del jugador — es un destino que nunca debió ofrecerse.
+   */
   transferTargetsFor(
     fromInstanceId: PlacedComponentInstanceId,
   ): ReadonlyArray<PlacedComponentInstanceId> {
     const ship = this.shipState.get();
     return ship.placedComponents
-      .filter(
-        (instance) =>
-          instance.instanceId !== fromInstanceId &&
-          instanceReservoirCapacity(instance, this.componentRegistry) !== undefined &&
-          isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId),
-      )
+      .filter((instance) => {
+        if (instance.instanceId === fromInstanceId) return false;
+        const capacity = instanceReservoirCapacity(instance, this.componentRegistry);
+        if (capacity === undefined) return false;
+        if (freeCapacity(ship.reservoirContents, instance.instanceId, capacity) <= 0) return false;
+        return isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId);
+      })
       .map((instance) => instance.instanceId);
   }
 

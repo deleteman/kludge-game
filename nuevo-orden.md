@@ -472,6 +472,21 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     nueva no agregó tests unitarios propios: input de Phaser sobre una escena real, sin arnés razonable de
     test automático — verificado razonando sobre el código, determinista sin ambigüedad de dedupe).
 
+  **Ronda 6 de fixes de playtest (2026-08-11)** — un solo bug, con dos capas de causa:
+  - **"Trasvasar a otro reservorio" perdía el 100% del contenido origen si el destino ya estaba lleno**, aunque
+    el aviso de desborde (correcto desde la ronda 2, y sigue intacto para el caso PARCIAL) mostrara cuánto se
+    perdió. `transferTargetsFor` solo chequeaba que el destino TUVIERA capacidad de catálogo, no que le
+    quedara espacio LIBRE — un reservorio lleno contaba igual como destino válido y el botón se ofrecía sin
+    aviso. Y en el motor, `drawFrom` vaciaba el origen incondicionalmente ANTES de saber si el destino podía
+    recibir algo, así que con espacio libre 0 se perdía el 100% como "desborde total". El MVP no deja elegir
+    destino ni cantidad (siempre el primer reservorio alcanzable, con el 100% del contenido), así que esto no
+    era una decisión mal medida del jugador — era un destino que nunca debió ofrecerse. Fix en dos capas
+    (mismo criterio de defensa en profundidad que ya usa la validación de alcance del propio archivo):
+    `transferTargetsFor` exige `freeCapacity > 0` (cae al motivo ya existente `"no-target"`), y
+    `ship-task-effect.ts` chequea `freeCapacity` del destino antes de `drawFrom` — con 0, la tarea es un no-op,
+    cubriendo también la carrera de que el destino se llenara entre armar el panel y ejecutar la tarea.
+    `/engine` 870 → 871 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.
@@ -528,9 +543,29 @@ Alcance de la subfase:
 
 
 
-### Fase 14 — Capítulo 2: "Ecos en el Pasillo"
+### Fase 14 — Capítulo 2 y Acoplamientos Cruzados de Motor
 
-* **Lógica Avanzada de Señales:** Diseñar el nivel de forma que requiera construir filtros AND/OR/NOT en la capa de señales utilizando sensores de movimiento y el chip de identificación de tripulación.
+Agrupa, con el mismo criterio que separó la Fase 13 de gaps de motor del contenido de campaña, los acoplamientos entre dominios detectados al auditar si el motor sostiene fallas verdaderamente sistémicas (análisis de sesión 2026-08-11, ver `PENDIENTES_OBSERVACIONES.md` #34 para los pares evaluados y diferidos). Se ubican antes del Cap.2 porque lo alimentan directamente — el sensor químico y el sensor térmico son insumo de su diseño de nivel.
+
+#### Subfase 14a: Dominio de Temperatura
+
+Sexto eje del motor junto a energía/presión/química/señales/estructura — especificado en el GDD §5.2 y la Especificación de datos técnicos (efecto térmico de neutralización ácido+base) pero sin ningún campo de estado hasta ahora. Entra antes de la demo por los efectos naturales que desbloquea (combustión con rastro real, tercer sensor del Cap.2, enfriador cableable), no solo por ser prerrequisito no declarado de la Fase 17 (Cap.4, caso de validación 2).
+
+* **Estado:** `temperatureC` en `SectionAtmosphere`/`SectionAtmosphereSnapshot`, nominal 20°C.
+* **Escritores:** reacción exotérmica (neutralización), sobrecarga eléctrica (`OverloadEvent` modo fire), combustión (`CombustionEvent`, proporcional a `intensity`), enfriador/regulador térmico activo (`ACT` nuevo, gateado por energía), deriva pasiva hacia nominal.
+* **Lectores:** conductividad `CE`/`CT` variable (modula `OverloadRule`), cambio de estado de sustancia (L↔S↔G), `thermalRegulatorOverloaded` real (hoy hardcodeado `false` en `MissionReactionRuntime`), quinto escritor de daño estructural (13f), sensor térmico nuevo (`triggerType: "temperatura"`, mismo molde que `pressureAwareEmitterInputs`).
+* Cierra el ciclo combustión→calor→cortocircuito→combustión: la cascada multi-salto que hoy el motor no sostiene.
+* Test unitario por escritor/lector + integración "combustión sube temperatura que degrada conductor".
+
+#### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
+
+* **Química → Señales:** nuevo `triggerType: "quimico"` en `EmitterProperty` + pieza "sensor químico" + `chemicalAwareEmitterInputs` (mismo molde que `pressureAwareEmitterInputs`), disparado por `contaminantAt`/`airborneSubstanceAt` sobre umbral.
+* **Señales → Química:** actuador `ACT` "válvula automática" — con señal activa ejecuta `drawFrom`/`emptyReservoir` (`reservoir-ledger.ts`) o bloquea `apply-substance`. Generaliza `SignalOutputReader`, hoy consumido solo por cinética (bobina electromagnética).
+* Con esto el Cap.2 gana un tercer tipo de sensor (junto al de movimiento y el térmico de 14a) para su diseño de nivel AND/OR/NOT, y el Cap.1 gana la primera herramienta de corte automático de una fuga.
+
+#### Subfase 14c: Capítulo 2 — "Ecos en el Pasillo"
+
+* **Lógica Avanzada de Señales:** Diseñar el nivel de forma que requiera construir filtros AND/OR/NOT en la capa de señales utilizando sensores de movimiento, químico y térmico (14a/14b) y el chip de identificación de tripulación.
 
 
 * **Amenaza Física Real:** Introducir el primer actor enemigo (11d) que el jugador deba neutralizar de forma activa para completar la misión.

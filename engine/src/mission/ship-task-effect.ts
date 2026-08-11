@@ -31,7 +31,7 @@ import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
 import { creditElementList } from "../inventory/element-ledger.js";
 import type { MutableElementStock } from "../inventory/mutable-element-stock.js";
-import { contentOf, drawFrom, pourInto } from "../reservoir/reservoir-ledger.js";
+import { contentOf, drawFrom, freeCapacity, pourInto } from "../reservoir/reservoir-ledger.js";
 import { instanceReservoirCapacity } from "../reservoir/reservoir-query.js";
 import { assertFluidTransferReachable } from "../reservoir/fluid-transfer-reachability.js";
 import { elementsFromAmount } from "../reservoir/substance-composition.js";
@@ -321,11 +321,23 @@ export function createShipTaskEffect(
             payload.toInstanceId,
           );
         }
+        // Defensa en profundidad (mismo criterio que la validación de alcance
+        // de arriba): el preview de `/game` ya excluye un destino sin lugar de
+        // `transferTargetsFor`, pero el estado pudo cambiar entre armar el
+        // panel y ejecutar la tarea (otro trasvase/síntesis llenó el destino
+        // mientras tanto). Sin este chequeo, `drawFrom` vaciaba el origen
+        // ANTES de saber si el destino podía recibir algo, y con capacidad 0
+        // se perdía el 100% del contenido como "desborde" — un fallo de
+        // guard, no la consecuencia de desborde PARCIAL que sí es deliberada
+        // (ver el test de "no da abasto" más abajo, que sigue intacto).
+        const capacity = reservoirCapacityOf(ship, payload.toInstanceId, componentRegistry);
+        if (freeCapacity(ship.reservoirContents, payload.toInstanceId, capacity) <= 0) {
+          return;
+        }
         const drawn = drawFrom(ship.reservoirContents, payload.fromInstanceId, payload.amount);
         if (drawn.drawn === 0 || !drawn.substanceId) {
           return;
         }
-        const capacity = reservoirCapacityOf(ship, payload.toInstanceId, componentRegistry);
         const poured = pourInto(
           drawn.contents,
           payload.toInstanceId,

@@ -658,6 +658,31 @@ describe("createShipTaskEffect — sustancias (13e)", () => {
       expect(result?.overflowAmount).toBe(15);
     });
 
+    it("un destino sin espacio libre es un no-op — no se pierde nada (fix ronda 6)", () => {
+      const shipState = new MutableShipState(
+        shipWithTanks([
+          { componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 },
+          { componentInstanceId: TANQUE_B, substanceId: AGUA, amount: 100 },
+        ]),
+      );
+      const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
+      const result = effect(
+        task("t1", "transfer-substance", {
+          kind: "transfer-substance",
+          fromInstanceId: TANQUE_A,
+          toInstanceId: TANQUE_B,
+          amount: 50,
+        }),
+      );
+      const contents = shipState.get().reservoirContents;
+      // Destino a capacidad completa (100/100): antes se drenaba el origen
+      // igual y las 50 unidades se perdían como "desborde total". Ahora la
+      // tarea es un no-op — ningún reservorio cambia.
+      expect(result?.overflowAmount).toBeUndefined();
+      expect(contents.find((e) => e.componentInstanceId === TANQUE_A)?.amount).toBe(50);
+      expect(contents.find((e) => e.componentInstanceId === TANQUE_B)?.amount).toBe(100);
+    });
+
     it("un origen vacío es un no-op", () => {
       const ship = shipWithTanks([]);
       const shipState = new MutableShipState(ship);
