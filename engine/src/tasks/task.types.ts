@@ -237,6 +237,15 @@ export interface CrewTask {
   /** Sección donde ocurre la tarea (Fase 5). Opcional para tareas sin lugar fijo. */
   readonly targetSectionId?: SectionId;
   /**
+   * Secciones que deben tener energía otorgada para que la tarea corra (ronda
+   * 11 de fixes de playtest 13e, "sin energía, la máquina no actúa"). Campo
+   * independiente de `targetSectionId`: trabajo manual del tripulante (ir a
+   * una sección, instalar, conectar) no lo declara y nunca se gatea; una
+   * tarea que mueve sustancia entre dos secciones (transferir, aplicar)
+   * declara AMBAS, no solo la de origen.
+   */
+  readonly powerSectionIds?: ReadonlyArray<SectionId>;
+  /**
    * Datos del efecto físico (Fase 10b), consumidos por el `TaskEffect` real —
    * no por el scheduler, que sigue sin conocer la semántica de cada tipo.
    * Ausente en tareas sin efecto sobre el plano (`go-to`) o cuyo tipo todavía

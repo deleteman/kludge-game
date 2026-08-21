@@ -307,14 +307,18 @@ describe("task-scheduler: linkDependency (GDD §4.3 'vincular')", () => {
 
 /**
  * Ronda 10 de fixes de playtest 13e: "si la máquina es capaz de realizar una
- * acción, esa acción queda deshabilitada si no tiene energía para hacerlo" —
- * salvo desmontaje y las tareas de asegurado de 13d, que existen precisamente
- * para operar sobre una sección sin energía.
+ * acción, esa acción queda deshabilitada si no tiene energía para hacerlo".
+ * Ronda 11: el gate pasa de "tipo exento" a `powerSectionIds` explícito por
+ * tarea (opt-in) — permite declarar más de una sección (transferir/aplicar
+ * sustancia gatean origen Y destino) sin un switch por tipo en el scheduler,
+ * y deja fuera del gate a `go-to`/`install`/`connect` (trabajo manual del
+ * tripulante) sin depender de una lista de exclusión.
  */
-describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () => {
+describe("task-scheduler: power gating (rondas 10-11 de fixes de playtest 13e)", () => {
   const SECTION = "bodega" as SectionId;
+  const OTHER_SECTION = "puente" as SectionId;
 
-  it("blocks a gateable task with reason 'no-power' when its section has no power granted", () => {
+  it("blocks a task with reason 'no-power' when a declared powerSectionIds section has no power granted", () => {
     const scheduler = new TaskScheduler({ isSectionUnpowered: (sectionId) => sectionId === SECTION });
     scheduler.enqueue(
       createCrewTask({
@@ -322,6 +326,7 @@ describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () 
         actorId: ENGINEER,
         type: "extract-elements",
         targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
         estimatedDurationSeconds: 1,
       }),
     );
@@ -346,6 +351,7 @@ describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () 
         actorId: ENGINEER,
         type: "transfer-substance",
         targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
         estimatedDurationSeconds: 1,
       }),
     );
@@ -364,6 +370,7 @@ describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () 
         actorId: ENGINEER,
         type: "apply-substance",
         targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
         estimatedDurationSeconds: 1,
       }),
     );
@@ -376,15 +383,51 @@ describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () 
     expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
   });
 
-  it.each(["dismantle", "cut-power", "purge-reservoir", "discharge-source"] as const)(
-    "does not gate the exempt task type '%s' even without power",
-    (exemptType) => {
+  it("blocks a task with two declared sections when only the SECOND one lacks power (transfer to an unpowered destination)", () => {
+    const scheduler = new TaskScheduler({ isSectionUnpowered: (sectionId) => sectionId === OTHER_SECTION });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "transfer-substance",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION, OTHER_SECTION],
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("blocked");
+  });
+
+  it("runs a task with two declared sections when BOTH have power", () => {
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => false });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "transfer-substance",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION, OTHER_SECTION],
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+  });
+
+  it.each(["dismantle", "cut-power", "purge-reservoir", "discharge-source", "go-to", "install", "connect"] as const)(
+    "does not gate task type '%s' even without power, since it never declares powerSectionIds",
+    (manualType) => {
       const scheduler = new TaskScheduler({ isSectionUnpowered: () => true });
       scheduler.enqueue(
         createCrewTask({
           id: id("t"),
           actorId: ENGINEER,
-          type: exemptType,
+          type: manualType,
           targetSectionId: SECTION,
           estimatedDurationSeconds: 1,
         }),
@@ -396,13 +439,14 @@ describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () 
     },
   );
 
-  it("does not gate a task without a targetSectionId", () => {
+  it("does not gate a task with an empty powerSectionIds even if its targetSectionId has no power", () => {
     const scheduler = new TaskScheduler({ isSectionUnpowered: () => true });
     scheduler.enqueue(
       createCrewTask({
         id: id("t"),
         actorId: ENGINEER,
         type: "combine",
+        targetSectionId: SECTION,
         estimatedDurationSeconds: 1,
       }),
     );

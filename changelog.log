@@ -4370,3 +4370,59 @@ SUITE: `/engine` 881 tests (873 + 8 nuevos de gating por energía), `/game` 40 t
 
 Razón: ronda 10 de fixes del playtest de la Subfase 13e + mecánica de energía transversal pedida por el
 operador al analizar la interacción entre transferencia de líquidos y zonas sin energía.
+
+2026-08-21 — Subfase 13e: fixes de playtest, ronda 11 (hover atenuado del selector + alcance del gating por
+energía).
+
+REPORTE: 1) en el selector de instalación, una fila bloqueada (atenuada, ronda 9/10) volvía a verse con el
+color de fondo NORMAL al alejar el mouse, en vez de volver a su atenuado — solo se corregía al clickear
+cualquier ítem (recreaba el modal entero); 2) "ir a sección" quedó bloqueada por la nueva regla de energía de
+la ronda 10, cuando caminar no debería depender de la energía de la sección destino; lo mismo con "instalar"
+(la pieza instalada simplemente no funcionará sin energía, pero instalarla es trabajo manual); 3) transferir
+desde un reservorio CON energía a uno SIN energía (bajada manualmente antes de transferir) no se bloqueaba —
+la transferencia se completaba igual.
+
+INVESTIGACIÓN DE CAUSA RAÍZ (dos agentes Explore) + una pregunta de alcance al operador (¿"conectar"/
+"combinar" son igual de manuales que "instalar"? → conectar sí, combinar no: la estación química opera como
+máquina real):
+- #1: `kenney-list.ts`, el handler `pointerout` restauraba el fondo con un alpha HARDCODEADO (`ROW_BG_ALPHA`,
+  el normal) sin mirar `dimmed` — que solo se usaba para el alpha inicial de la fila.
+- #2/#3: la regla de la ronda 10 gateaba por `task.targetSectionId` con una lista de tipos exentos
+  (`POWER_EXEMPT_TASK_TYPES`) — `queueGoTo`/`queueInstall` también fijan `targetSectionId` (para ubicación del
+  actor / posición de instalación), así que quedaban gateadas sin haber sido pensadas para eso.
+  `queueTransferSubstance` fija `targetSectionId` SOLO desde el origen — el destino se calculaba en la misma
+  función pero solo se usaba para la visualización de flujo, nunca para el gate, así que un destino sin
+  energía nunca bloqueaba nada.
+
+FIXES:
+1) `kenney-list.ts`: `pointerout` ahora restaura `dimmed ? 0.25 : ROW_BG_ALPHA` en vez del alpha normal fijo
+   — `dimmed` ya estaba en el scope del closure.
+2) Rediseño del gate de energía: de "tipo exento" (lista de exclusión) a `powerSectionIds` explícito por
+   tarea (opt-in). `CrewTask`/`CreateCrewTaskInput` (`task.types.ts`, `task-factory.ts`) ganan
+   `readonly powerSectionIds?: ReadonlyArray<SectionId>` — independiente de `targetSectionId`, que sigue
+   existiendo tal cual para la ubicación del actor y la animación de camino (sin tocar sus otros
+   consumidores). `TaskScheduler.resolveBlockingReason` itera `task.powerSectionIds ?? []` y bloquea con
+   `"no-power"` si CUALQUIERA de esas secciones no tiene energía — ausente/vacío nunca gatea.
+   `POWER_EXEMPT_TASK_TYPES` se elimina (ya no hace falta una lista de exclusión).
+3) `mission-runtime.ts`, población de `powerSectionIds` por `queue*`:
+   - `queueGoTo`, `queueDismantle`, `queueCutPower`, `queuePurgeReservoir`, `queueDischargeSource`,
+     `queueInstall`, `queueConnect`: sin `powerSectionIds` (nunca gateadas — confirmado con el operador que
+     "conectar" es tan manual como "instalar").
+   - `queueTransferSubstance`: `powerSectionIds: [origen, destino]` — transferir hacia una sección sin
+     energía ahora sí se bloquea, sin importar el estado del origen.
+   - `queueApplySubstance`: mismo criterio, `[sección de la instancia de origen, sección de destino]`.
+   - `queueExtractElements`, `queueAnalyzeSubstance`, `queueFabrication`/`queueSynthesis` (`combine`):
+     `powerSectionIds: [targetSectionId]` — mismo comportamiento que tenían en la ronda 10, migrado al nuevo
+     campo. La estación química (`combine`) se mantiene gateada por decisión explícita del operador.
+
+TESTS: `engine/src/tasks/task-scheduler.test.ts`, describe renombrado a "power gating (rondas 10-11...)" —
+casos nuevos de dos secciones (bloquea si cualquiera de las dos carece de energía, corre si ambas tienen),
+`go-to`/`install`/`connect` agregados a la lista de tipos que corren sin `powerSectionIds` aunque su
+`targetSectionId` esté sin energía, y un caso de `combine` con `targetSectionId` pero sin `powerSectionIds`
+(no gatea).
+
+SUITE: `/engine` 886 tests (881 + 5 nuevos/reescritos de gating), `/game` 40 tests (sin cambio), `tsc --noEmit`
+y `eslint` limpios en ambos paquetes.
+
+Razón: ronda 11 de fixes del playtest de la Subfase 13e — corrección de dos problemas de alcance en la regla
+de energía introducida en la ronda 10, más un bug visual puntual del selector de instalación.

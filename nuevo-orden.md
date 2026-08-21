@@ -592,6 +592,28 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     `/engine` 881 tests (873 + 8 nuevos de gating por energía en `task-scheduler.test.ts`), `/game` 40 tests
     (sin cambio).
 
+  **Ronda 11 de fixes de playtest (2026-08-21)** — un bug visual del selector de instalación y dos problemas
+  de alcance del gating por energía de la ronda 10, más una pregunta de alcance al operador (¿"conectar"/
+  "combinar" son igual de manuales que "instalar"? → conectar sí, combinar no: la estación química opera como
+  máquina real):
+  - **Hover-out no restauraba el atenuado**: `kenney-list.ts`, el `pointerout` de una fila restauraba un alpha
+    hardcodeado (el normal) en vez de `dimmed ? 0.25 : ROW_BG_ALPHA` — una fila bloqueada se veía "normal" tras
+    alejar el mouse hasta que el modal se reconstruía por completo al clickear cualquier ítem.
+  - **"Ir a sección" e "instalar" quedaban bloqueadas sin deber estarlo**: eran trabajo manual del tripulante,
+    gateadas por accidente porque también fijan `targetSectionId` (el mismo campo que leía el gate de la
+    ronda 10). "Conectar" (cablear señal) se suma a la lista de exentas por la misma razón, confirmado con el
+    operador.
+  - **Transferir a un destino sin energía no se bloqueaba**: `queueTransferSubstance` fijaba `targetSectionId`
+    SOLO desde el origen — el destino nunca se chequeaba para el gate.
+  - **Rediseño del mecanismo**: de "tipo exento" (lista de exclusión que hay que recordar ampliar) a
+    `powerSectionIds?: ReadonlyArray<SectionId>` explícito por tarea (opt-in), campo nuevo e independiente de
+    `targetSectionId` (que sigue existiendo para ubicación del actor/animación, sin tocar). El scheduler
+    bloquea si CUALQUIERA de las secciones declaradas no tiene energía — ausente/vacío nunca gatea. Transferir
+    y aplicar sustancia declaran AMBAS secciones (origen y destino); extraer/analizar/fabricar-sintetizar
+    declaran solo la suya, igual que antes; ir a sección/instalar/conectar/desmontar/las 3 tareas de asegurado
+    de 13d no declaran ninguna.
+    `/engine` 886 tests (881 + 5 nuevos/reescritos de gating), `/game` 40 tests (sin cambio).
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

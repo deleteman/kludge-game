@@ -1136,15 +1136,22 @@ export class MissionRuntime {
     amount: number,
   ): void {
     const targetSectionId = this.sectionIdOfInstance(fromInstanceId);
+    const toSectionId = this.sectionIdOfInstance(toInstanceId);
     this.ensureAt(actorId, targetSectionId);
     const taskId = this.nextTaskId();
-    this.declareFluidFlow(taskId, targetSectionId, this.sectionIdOfInstance(toInstanceId), amount);
+    this.declareFluidFlow(taskId, targetSectionId, toSectionId, amount);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
         type: "transfer-substance",
         targetSectionId,
+        // Ronda 11: gatea AMBOS extremos, no solo el origen — trasvasar
+        // desde una sección con energía a una sin energía debe bloquearse
+        // igual que al revés (el bug reportado era exactamente este caso).
+        powerSectionIds: [targetSectionId, toSectionId].filter(
+          (id): id is SectionId => id !== undefined,
+        ),
         payload: { kind: "transfer-substance", fromInstanceId, toInstanceId, amount },
         estimatedDurationSeconds: this.modulatedDuration("transfer-substance", actorId),
       }),
@@ -1160,13 +1167,19 @@ export class MissionRuntime {
   ): void {
     this.ensureAt(actorId, sectionId);
     const taskId = this.nextTaskId();
-    this.declareFluidFlow(taskId, this.sectionIdOfInstance(fromInstanceId), sectionId, amount);
+    const fromSectionId = this.sectionIdOfInstance(fromInstanceId);
+    this.declareFluidFlow(taskId, fromSectionId, sectionId, amount);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
         type: "apply-substance",
         targetSectionId: sectionId,
+        // Ronda 11: mismo criterio que transferir — gatea la sección de
+        // origen (de donde se saca la sustancia) Y la de destino.
+        powerSectionIds: [fromSectionId, sectionId].filter(
+          (id): id is SectionId => id !== undefined,
+        ),
         payload: { kind: "apply-substance", fromInstanceId, sectionId, amount },
         estimatedDurationSeconds: this.modulatedDuration("apply-substance", actorId),
       }),
@@ -1189,6 +1202,7 @@ export class MissionRuntime {
         actorId,
         type: "extract-elements",
         targetSectionId,
+        powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
         payload: { kind: "extract-elements", instanceId, amount },
         estimatedDurationSeconds: this.modulatedDuration("extract-elements", actorId),
       }),
@@ -1333,6 +1347,10 @@ export class MissionRuntime {
         actorId,
         type: "combine",
         targetSectionId,
+        // Ronda 11: fabricar SÍ gatea por energía — la estación química opera
+        // como una máquina real (confirmado con el operador), a diferencia de
+        // instalar/conectar/ir a sección, que son trabajo manual.
+        powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );
@@ -1466,6 +1484,7 @@ export class MissionRuntime {
         actorId,
         type: "analyze-substance",
         targetSectionId,
+        powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
         payload: { kind: "analyze-substance", substanceId },
         estimatedDurationSeconds: this.modulatedDuration("analyze-substance", actorId),
       }),
@@ -1531,6 +1550,8 @@ export class MissionRuntime {
         actorId,
         type: "combine",
         targetSectionId,
+        // Ronda 11: mismo criterio que `queueFabrication` — la estación gatea.
+        powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );

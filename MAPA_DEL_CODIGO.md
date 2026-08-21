@@ -1072,6 +1072,29 @@
 - Notificación de `task-blocked` distingue `event.reason === "no-power"` con la clave
   `ui.floorplan.notification.task-blocked-no-power` en vez del texto genérico.
 
+## `game/src/ui/widgets/kenney-list.ts` (modificado, 13e ronda 11)
+- `pointerout` restaura `dimmed ? 0.25 : ROW_BG_ALPHA` en vez de un alpha normal hardcodeado — una fila
+  atenuada (`muted`) ya no queda con el color de fondo normal tras alejar el mouse.
+
+## `engine/src/tasks/task.types.ts` + `task-factory.ts` (modificado, 13e ronda 11)
+- `CrewTask`/`CreateCrewTaskInput` ganan `readonly powerSectionIds?: ReadonlyArray<SectionId>` —
+  independiente de `targetSectionId` (que sigue existiendo para ubicación del actor/animación de camino).
+  Ausente/vacío = la tarea nunca se gatea por energía.
+
+## `engine/src/tasks/task-scheduler.ts` (modificado, 13e ronda 11)
+- `POWER_EXEMPT_TASK_TYPES` eliminado. `resolveBlockingReason` itera `task.powerSectionIds ?? []` y
+  bloquea con `"no-power"` si CUALQUIERA de esas secciones no tiene energía — reemplaza el gate por
+  `targetSectionId` + lista de tipos exentos de la ronda 10 (no podía expresar "dos secciones distintas"
+  sin un switch por tipo).
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 11)
+- `queueTransferSubstance`/`queueApplySubstance` pasan `powerSectionIds` con AMBAS secciones (origen y
+  destino) — corrige que transferir hacia un destino sin energía no se bloqueaba.
+- `queueExtractElements`/`queueAnalyzeSubstance`/`queueFabrication`/`queueSynthesis` pasan
+  `powerSectionIds: [targetSectionId]` (mismo comportamiento que la ronda 10, migrado al campo nuevo).
+- `queueGoTo`/`queueDismantle`/`queueCutPower`/`queuePurgeReservoir`/`queueDischargeSource`/`queueInstall`/
+  `queueConnect`: sin cambios — nunca fijan `powerSectionIds`, así que nunca se gatean.
+
 ## `game/src/i18n/es.ts` / `en.ts` (modificado, 13e ronda 10)
 - `blocked-missing-ingredients` deja de llevar `{names}`. Nueva clave
   `ui.floorplan.notification.task-blocked-no-power`.

@@ -8,6 +8,14 @@ export interface CreateCrewTaskInput {
   readonly actorId: CrewActorId;
   readonly type: TaskType;
   readonly targetSectionId?: SectionId;
+  /**
+   * Secciones que deben tener energía otorgada para que la tarea corra (ronda
+   * 11 de fixes de playtest 13e). Ausente/vacío = nunca se gatea por energía
+   * — el default correcto para trabajo manual del tripulante (ir a una
+   * sección, instalar, conectar), a diferencia de `targetSectionId`, que
+   * sigue existiendo para la ubicación del actor y no implica gating.
+   */
+  readonly powerSectionIds?: ReadonlyArray<SectionId>;
   readonly payload?: TaskPayload;
   readonly dependsOn?: ReadonlyArray<CrewTaskId>;
   /**
@@ -36,6 +44,7 @@ export function createCrewTask(input: CreateCrewTaskInput): CrewTask {
     actorId: input.actorId,
     type: input.type,
     targetSectionId: input.targetSectionId,
+    powerSectionIds: input.powerSectionIds,
     payload: input.payload,
     estimatedDurationSeconds: duration,
     dependsOn: input.dependsOn ? [...input.dependsOn] : [],

@@ -113,7 +113,11 @@ export function createKenneyList(
           row.setFillStyle(SECTION_FILL_COLORS[0], ROW_BG_ALPHA_HOVER);
           scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonHover), { volume: 0.25 });
         })
-        .on("pointerout", () => row.setFillStyle(SECTION_FILL_COLORS[0], ROW_BG_ALPHA))
+        // Ronda 11: restaurar al alpha ATENUADO de la fila, no siempre al
+        // normal — una fila `muted` (0.25) se quedaba en 0.6 tras el
+        // hover-out, indistinguible de una fila habilitada hasta que el
+        // modal se reconstruía por completo al clickear cualquier ítem.
+        .on("pointerout", () => row.setFillStyle(SECTION_FILL_COLORS[0], dimmed ? 0.25 : ROW_BG_ALPHA))
         .on("pointerdown", () => {
           scene.sound.play(pickSoundKey(AUDIO_KEYS.uiButtonClick), { volume: 0.4 });
           item.onClick();

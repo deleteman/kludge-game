@@ -2,7 +2,7 @@ import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { CrewActor, CrewActorId, CrewActorStatus } from "../crew/crew-actor.types.js";
-import type { CrewTask, CrewTaskId, TaskEffect, TaskType } from "./task.types.js";
+import type { CrewTask, CrewTaskId, TaskEffect } from "./task.types.js";
 import { TERMINAL_TASK_STATES } from "./task.types.js";
 import type { CoreLoopDomainEvent, TaskBlockedEvent } from "./task-events.types.js";
 import type { Tickable } from "./core-loop-mode.js";
@@ -49,20 +49,6 @@ export interface TaskSchedulerOptions {
    */
   readonly isSectionUnpowered?: (sectionId: SectionId) => boolean;
 }
-
-/**
- * Tipos de tarea exentos de la regla "sin energía, la máquina no actúa"
- * (ronda 10): el desmontaje y las tareas de asegurado de la Subfase 13d
- * existen precisamente para preparar o ejecutar una acción SOBRE una
- * sección que puede estar sin energía — gatearlas rompería el propio flujo
- * de seguridad que representan (confirmado con el operador).
- */
-const POWER_EXEMPT_TASK_TYPES: ReadonlySet<TaskType> = new Set<TaskType>([
-  "dismantle",
-  "cut-power",
-  "purge-reservoir",
-  "discharge-source",
-]);
 
 interface ActorRecord {
   status: CrewActorStatus;
@@ -356,12 +342,15 @@ export class TaskScheduler implements Tickable {
     if (awaiting !== undefined) {
       return { reason: "awaiting-dependency", blockingTaskId: awaiting };
     }
-    if (
-      task.targetSectionId !== undefined &&
-      !POWER_EXEMPT_TASK_TYPES.has(task.type) &&
-      this.isSectionUnpowered?.(task.targetSectionId)
-    ) {
-      return { reason: "no-power" };
+    // Ronda 11: gating explícito por `powerSectionIds`, no por tipo de tarea
+    // — evita una lista de exclusión que hay que recordar ampliar cada vez
+    // que aparece un tipo nuevo, y permite declarar MÁS de una sección (una
+    // tarea que mueve sustancia entre dos secciones distintas gatea ambas).
+    // Ausente/vacío = trabajo manual del tripulante, nunca se gatea.
+    for (const sectionId of task.powerSectionIds ?? []) {
+      if (this.isSectionUnpowered?.(sectionId)) {
+        return { reason: "no-power" };
+      }
     }
     return undefined;
   }
