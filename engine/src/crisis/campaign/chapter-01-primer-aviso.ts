@@ -45,15 +45,22 @@ export const CHAPTER_01_ACTUATOR_INSTANCE_ID =
  * arma `campaign-save-factory.ts` para el resto del catálogo.
  */
 // Subfase 11h: 1 unidad de Sensor de Presión + Pantalla LCD + Indicador LED
-// (para poder instalarlos sin desarmar nada) y 1 junta hermética de repuesto
-// (para reparar la fuga sembrada más abajo, ver `CHAPTER_01_SEAL_INSTANCE_ID`).
+// (para poder instalarlos sin desarmar nada) y 2 juntas herméticas de repuesto
+// (1 para reparar la fuga sembrada más abajo, ver `CHAPTER_01_SEAL_INSTANCE_ID`
+// — la otra es receta de `reservorio-agua-reciclada`, ver abajo). Ronda 8 de
+// fixes de playtest (13e): se suma `tubo-flexible`/`valvula-simple` — junto a
+// la junta hermética ya presente, completa exactamente la receta de un
+// segundo reservorio (1+1+2, `exploracion.ts`), gateada por stock real en el
+// selector de instalación (`MissionRuntime.hasRecipeStockFor`).
 export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // Repuestos de fábrica: el stock inicial del capítulo entra sin desgaste
   // (Fase 13c). El desgaste aparece al canibalizar piezas ya instaladas.
   "sensor-presion": { nuevo: 1 },
   "pantalla-lcd": { nuevo: 1 },
   "indicador-led": { nuevo: 1 },
-  "junta-hermetica": { nuevo: 1 },
+  "junta-hermetica": { nuevo: 2 },
+  "tubo-flexible": { nuevo: 1 },
+  "valvula-simple": { nuevo: 1 },
 } as AtomicPartsStock;
 
 /**

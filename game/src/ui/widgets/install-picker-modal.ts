@@ -8,18 +8,15 @@ import type {
   MaterialProperties,
 } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { HEADER_COLOR, LABEL_COLOR, TAG_CATEGORY_CSS } from "../../render/palette.js";
+import { CRISIS_WARNING_CSS, HEADER_COLOR, LABEL_COLOR, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { componentTextureKey, hasComponentSprite } from "../../render/component-sprite-registry.js";
 import { createKenneyButton } from "./kenney-button.js";
 import { createKenneyList } from "./kenney-list.js";
 import { createKenneyPanel } from "./kenney-panel.js";
-import { renderTabStrip } from "./tab-strip.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
-
-export type InstallPickerTab = "inventory" | "catalog";
 
 /**
  * Texto de una fila de la lista. Con buckets de desgaste (13c) la misma pieza
@@ -30,7 +27,17 @@ export type InstallPickerTab = "inventory" | "catalog";
 function optionRowLabel(option: InstallPickerOption, labels: InstallPickerLabels): string {
   const count = option.quantity !== undefined && option.quantity > 1 ? ` ×${option.quantity}` : "";
   const wear = option.wear && option.wear !== "nuevo" ? ` · ${labels.wearTag(option.wear)}` : "";
-  return `${option.name}${count}${wear}`;
+  // La fila explica el bloqueo directo en el texto (ronda 8): una fila
+  // deshabilitada no dispara `onSelect`, así que el motivo no puede depender
+  // de que el jugador la clickee para verlo en la ficha — CLAUDE.md, "nunca
+  // un botón gris mudo".
+  const reason =
+    option.blocked === "no-stock"
+      ? ` — ${labels.blockedNoStock}`
+      : option.blocked === "missing-ingredients"
+        ? ` — ${labels.blockedMissingIngredients(option.missingIngredientNames ?? [])}`
+        : "";
+  return `${option.name}${count}${wear}${reason}`;
 }
 
 export interface InstallPickerOption {
@@ -57,6 +64,15 @@ export interface InstallPickerOption {
    * las creaciones personalizadas del jugador, que se instalan gratis.
    */
   readonly consumesRecipe?: boolean;
+  /**
+   * Motivo de bloqueo (ronda 8 de fixes de playtest, unificación de "Inventario"
+   * y "Catálogo" en una sola lista): un atómico sin stock o un compuesto sin
+   * receta completa siguen apareciendo en la lista, deshabilitados, con el
+   * motivo — nunca un botón gris mudo (CLAUDE.md). `undefined` = instalable.
+   */
+  readonly blocked?: "no-stock" | "missing-ingredients";
+  /** Nombres de los ingredientes que faltan, solo cuando `blocked === "missing-ingredients"`. */
+  readonly missingIngredientNames?: ReadonlyArray<string>;
 }
 
 export interface InstallPickerLabels {
@@ -70,10 +86,9 @@ export interface InstallPickerLabels {
   /** Etiqueta corta del desgaste para la fila de la lista (Fase 13c). */
   readonly wearTag: (wear: ComponentWear) => string;
   readonly compositionTitle: string;
-  readonly inventoryTab: string;
-  readonly catalogTab: string;
-  /** Se muestra cuando se ve la pestaña "Catálogo" — no se puede instalar directo (solo informativo). */
-  readonly catalogHint: string;
+  /** Motivo mostrado en la ficha cuando el ítem seleccionado está bloqueado (ronda 8). */
+  readonly blockedNoStock: string;
+  readonly blockedMissingIngredients: (names: ReadonlyArray<string>) => string;
 }
 
 const MODAL_WIDTH = 720;
@@ -93,11 +108,12 @@ const PREVIEW_SIZE = 64;
 const MODAL_LEFT = MODAL_CENTER_X - MODAL_WIDTH / 2;
 const MODAL_RIGHT = MODAL_CENTER_X + MODAL_WIDTH / 2;
 // Título con `wordWrap` (ajuste post-playtest #2) — sin límite de ancho, un
-// título largo se salía del modal e invadía la fila de pestañas, que quedaba
-// a solo ~30px por debajo. Se separan más (+66/+100 en vez de +54/+88) para
-// dar aire aunque el título ocupe dos líneas.
-const TAB_ROW_Y = MODAL_CENTER_Y - MODAL_HEIGHT / 2 + 66;
-const CONTENT_TOP = MODAL_CENTER_Y - MODAL_HEIGHT / 2 + 100;
+// título largo se salía del modal e invadía el contenido, que quedaba a solo
+// ~30px por debajo. Se deja aire (+66) para que el título ocupe dos líneas
+// sin invadir la lista. Ronda 8: ya no hay fila de pestañas entre el título y
+// el contenido (lista unificada), así que el contenido sube a donde antes
+// arrancaba esa fila.
+const CONTENT_TOP = MODAL_CENTER_Y - MODAL_HEIGHT / 2 + 66;
 const CONTENT_BOTTOM = MODAL_CENTER_Y + MODAL_HEIGHT / 2 - 66;
 const LIST_CENTER_X = MODAL_LEFT + 24 + LIST_WIDTH / 2;
 const LIST_CENTER_Y = (CONTENT_TOP + CONTENT_BOTTOM) / 2;
@@ -128,13 +144,10 @@ const DESCRIPTION_BACKDROP_PADDING = 10;
  */
 export function renderInstallPickerModal(
   scene: SceneWithRexUI,
-  inventoryOptions: ReadonlyArray<InstallPickerOption>,
-  catalogOptions: ReadonlyArray<InstallPickerOption>,
-  activeTab: InstallPickerTab,
+  options: ReadonlyArray<InstallPickerOption>,
   selectedIndex: number,
   labels: InstallPickerLabels,
   callbacks: {
-    readonly onTabChange: (tab: InstallPickerTab) => void;
     readonly onSelect: (index: number) => void;
     readonly onInstall: (option: InstallPickerOption) => void;
     readonly onCancel: () => void;
@@ -153,7 +166,6 @@ export function renderInstallPickerModal(
   const centerX = MODAL_CENTER_X;
   const centerY = MODAL_CENTER_Y;
   const container = scene.add.container(0, 0);
-  const options = activeTab === "inventory" ? inventoryOptions : catalogOptions;
 
   container.add(scene.add.rectangle(centerX, centerY, 1280, 720, 0x000000, 0.55));
 
@@ -170,26 +182,6 @@ export function renderInstallPickerModal(
         wordWrap: { width: MODAL_WIDTH - 48 },
       })
       .setOrigin(0.5, 0),
-  );
-
-  // Pestañas (rework "sin stock → desarmar → reutilizar"): "Inventario" solo
-  // lista lo que hay stock real para instalar ya mismo; "Catálogo" es
-  // informativo (qué existe y qué requeriría fabricar), no instalable en esta
-  // iteración. `renderTabStrip` (playtest ronda 2) calcula el ancho de cada
-  // pestaña según su texto real — dos botones de ancho fijo se solapaban con
-  // labels largos como "Catálogo — Requiere Síntesis".
-  container.add(
-    renderTabStrip(
-      scene,
-      centerX,
-      TAB_ROW_Y,
-      [
-        { id: "inventory", label: labels.inventoryTab },
-        { id: "catalog", label: labels.catalogTab },
-      ],
-      activeTab,
-      (tab) => callbacks.onTabChange(tab as InstallPickerTab),
-    ),
   );
 
   // La lista NO se agrega al Container nativo: el recorte de rexUI es una
@@ -211,6 +203,10 @@ export function renderInstallPickerModal(
       return {
         text: index === selectedIndex ? `> ${label}` : label,
         onClick: () => callbacks.onSelect(index),
+        // Fila bloqueada: greyed + sin click (ronda 8) — el motivo ya se lee
+        // en el propio texto de la fila (`optionRowLabel`), así que no hace
+        // falta poder clickearla para enterarse de por qué.
+        enabled: !option.blocked,
       };
     }),
   ).setDepth(RENDER_DEPTH.hudModal);
@@ -268,32 +264,15 @@ export function renderInstallPickerModal(
     );
   }
 
-  if (activeTab === "catalog") {
-    // Encima de la fila de botones (`centerY + MODAL_HEIGHT/2 - 32`), con
-    // margen para 2 líneas de texto sin invadirlos (ajuste post-playtest #2:
-    // antes quedaba a solo 10px del botón, se solapaban con texto largo).
-    container.add(
-      scene.add
-        .text(centerX, centerY + MODAL_HEIGHT / 2 - 76, labels.catalogHint, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "10px",
-          color: LABEL_COLOR,
-          align: "center",
-          wordWrap: { width: MODAL_WIDTH - 48 },
-        })
-        .setOrigin(0.5, 0),
-    );
-  }
-
   container.add(
     createKenneyButton(scene, centerX - 120, centerY + MODAL_HEIGHT / 2 - 32, labels.install, {
       width: 200,
-      // Pestaña "Catálogo": solo informativa en esta iteración, no dispara
-      // fabricación — el botón queda deshabilitado aunque haya un ítem
-      // seleccionado (decisión confirmada con el operador).
-      enabled: activeTab === "inventory" && selected !== undefined,
+      // Ronda 8: un ítem bloqueado no puede confirmarse aunque haya quedado
+      // seleccionado (p. ej. el default `selectedIndex = 0` cuando no hay
+      // NINGÚN ítem instalable) — mismo criterio, ahora sobre un solo campo.
+      enabled: selected !== undefined && !selected.blocked,
       onClick: () => {
-        if (selected) callbacks.onInstall(selected);
+        if (selected && !selected.blocked) callbacks.onInstall(selected);
       },
     }),
   );
@@ -361,6 +340,25 @@ function renderSelectedComponentSheet(
   );
 
   let lineY = y + PREVIEW_SIZE + 20;
+
+  // Motivo de bloqueo (ronda 8): mismo ámbar de aviso que el resto de la UI
+  // usa para "esto está bloqueado y por qué" — no un color nuevo.
+  if (option.blocked) {
+    const reason =
+      option.blocked === "no-stock" ? labels.blockedNoStock : labels.blockedMissingIngredients(option.missingIngredientNames ?? []);
+    sheet.add(
+      scene.add
+        .text(x, lineY, `⚠ ${reason}`, {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "12px",
+          color: CRISIS_WARNING_CSS,
+          wordWrap: { width: DESCRIPTION_WIDTH },
+        })
+        .setOrigin(0, 0),
+    );
+    lineY += 26;
+  }
+
   for (const property of option.functional ?? []) {
     sheet.add(
       scene.add

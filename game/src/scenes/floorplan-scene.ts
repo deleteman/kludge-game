@@ -22,6 +22,7 @@ import type {
   KineticDomainEvent,
   PhysicalComponentDefinition,
   PlacedComponentInstanceId,
+  PlacedFootprint,
   ScriptedRoute,
   SectionId,
   TaskCompletedEvent,
@@ -38,9 +39,11 @@ import {
   sectionCentroidPx,
   type FloorplanLayerId,
   type FloorplanRender,
+  drawConduitLine,
+  drawConduitMarker,
 } from "../render/floorplan-renderer.js";
 import type { ConduitPath } from "../render/conduit-path.js";
-import { computeSignalWireRoute } from "../render/conduit-path.js";
+import { computeConduitRoute, computeSignalWireRoute } from "../render/conduit-path.js";
 import { createConduitPathFlowEffect, type ConduitPathFlowState } from "../particles/effects/conduit-flow-effect.js";
 import {
   computeSectionSignalActivity,
@@ -332,6 +335,8 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly ledLights = new Map<PlacedComponentInstanceId, Phaser.GameObjects.PointLight>();
   /** Texto de Pantalla LCD por instancia (Subfase 11h) — actualizado con throttle, ver `updateLcdDisplays`. */
   private lcdDisplays: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Text> = new Map();
+  /** Sprites reales por instancia (13e ronda 8) — permite tintar la pieza misma al resaltar un candidato de trasvase, ver `updateTransferMode`. */
+  private componentSprites: ReadonlyMap<PlacedComponentInstanceId, ReadonlyArray<Phaser.GameObjects.Image>> = new Map();
   /** Throttle de `updateLcdDisplays` (Subfase 11h, doc fuente §2: 250-500ms, no por frame). */
   private lcdRedrawAccumulatorMs = 0;
   /** Tokens de proyectiles ferromagnéticos en vuelo (Fase 11a.3) — redibujado cada frame en ejecución. */
@@ -391,10 +396,22 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private transferModeButton?: Phaser.GameObjects.GameObject;
   private transferDimOverlay?: Phaser.GameObjects.Rectangle;
-  private transferHighlights: Phaser.GameObjects.Arc[] = [];
+  /** Contorno de footprint por candidato (ronda 8: reemplaza el círculo suelto — resalta la pieza misma). */
+  private transferHighlights: Phaser.GameObjects.Rectangle[] = [];
+  /** Sprites reales tintados por el modo de trasvase (ronda 8) — se restauran a su tinte original al salir/recalcular. */
+  private transferTintedSprites: Array<{ sprite: Phaser.GameObjects.Image; originalTint: number }> = [];
   private transferChannelLine?: Phaser.GameObjects.Graphics;
   /** Estado previo de la capa `fluido` antes de forzarla visible al entrar al modo — se restaura al salir. */
   private transferModePriorFluidoActive?: boolean;
+  /**
+   * Clon top-level de la capa `fluido` durante el modo de trasvase (ronda 8,
+   * fix del bug de depth #5): `conduitLayers.fluido` vive dentro del container
+   * `base` (depth `background`, aplanado — ver `FloorplanRender`), así que
+   * jamás iba a verse por encima de `transferDimOverlay`. Se dibuja un
+   * `Graphics` aparte, top-level, solo con los conductos `fluido`, y se oculta
+   * el original mientras dure el modo.
+   */
+  private transferFluidoHighlightLayer?: Phaser.GameObjects.Graphics;
   private objectivesButton?: Phaser.GameObjects.GameObject;
   /**
    * Banco de trabajo del plano (Subfase 13e): ya no es un botón del header —
@@ -894,6 +911,12 @@ export class FloorplanScene extends Phaser.Scene {
 
     this.input.keyboard?.on("keydown-G", () => this.scene.start("particle-gallery"));
     this.input.keyboard?.on("keydown-ESC", () => {
+      // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
+      // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
+      if (this.interaction.transferMode) {
+        this.interaction.cancelTransferMode();
+        return;
+      }
       if (metaGameStateMachine.canTransition("paused")) {
         metaGameStateMachine.transition("paused");
       }
@@ -1897,6 +1920,10 @@ export class FloorplanScene extends Phaser.Scene {
     this.transferHighlights = [];
     this.transferChannelLine?.destroy();
     this.transferChannelLine = undefined;
+    this.restoreTransferTintedSprites();
+    this.transferFluidoHighlightLayer?.destroy();
+    this.transferFluidoHighlightLayer = undefined;
+    this.floorplanRender.conduitLayers.fluido.setVisible(true);
 
     if (!this.interaction.transferMode) {
       // Restaura la capa `fluido` a como estaba antes de forzarla (si el
@@ -1928,31 +1955,66 @@ export class FloorplanScene extends Phaser.Scene {
       this.applyLayerAlpha("fluido");
     }
 
-    // Un anillo por candidato: verde (disponible) o rojo (bloqueado, cualquier
-    // motivo) — mismo contrato de color de crisis ya usado en el resto del
-    // juego, en vez de inventar un verde/rojo nuevos.
-    for (const candidate of this.interaction.transferModeCandidates) {
-      const cell = this.instanceCell(candidate.instanceId);
-      if (!cell) continue;
-      const center = this.cellCenterPx(cell);
-      const color = candidate.blocked ? CRISIS_FATAL_COLOR : CRISIS_SAFE_COLOR;
-      const ring = this.add
-        .circle(center.x, center.y, 16)
-        .setStrokeStyle(3, color, 1)
-        .setFillStyle(color, 0.18)
-        .setDepth(RENDER_DEPTH.transferTargetHighlight);
-      this.markAsWorldObject(ring);
-      this.transferHighlights.push(ring);
+    // Fix del bug de depth #5 (ronda 8): `conduitLayers.fluido` vive dentro
+    // del container `base`, que aplana el depth de sus hijos a `background` —
+    // subir su `setDepth` no alcanza, el oscurecido lo sigue tapando. Se
+    // oculta el original y se clona su dibujo en un `Graphics` top-level, por
+    // encima del oscurecido.
+    this.floorplanRender.conduitLayers.fluido.setVisible(false);
+    this.transferFluidoHighlightLayer = this.add.graphics().setDepth(RENDER_DEPTH.transferHighlightedConduit);
+    this.markAsWorldObject(this.transferFluidoHighlightLayer);
+    for (const path of this.floorplanRender.conduitPaths) {
+      if (path.conduit.kind !== "fluido") continue;
+      drawConduitLine(this.transferFluidoHighlightLayer, path);
+      drawConduitMarker(this.transferFluidoHighlightLayer, path.conduit);
     }
+
+    // Un contorno de footprint por candidato (ronda 8: reemplaza el círculo
+    // suelto — resalta la pieza misma, no un marcador flotando cerca). Verde
+    // (disponible) o rojo (bloqueado, cualquier motivo) — mismo contrato de
+    // color de crisis ya usado en el resto del juego. Si la pieza ya tiene
+    // sprite real, se tiñe directo (hoy ningún componente involucrado lo
+    // tiene todavía — ver aviso de sprite faltante en el plan).
+    for (const candidate of this.interaction.transferModeCandidates) {
+      const placement = this.instancePlacement(candidate.instanceId);
+      if (!placement) continue;
+      const { width, height } = effectiveFootprintExtent(placement);
+      const originX = placement.position.x * CELL;
+      const originY = placement.position.y * CELL;
+      const color = candidate.blocked ? CRISIS_FATAL_COLOR : CRISIS_SAFE_COLOR;
+      const outline = this.add
+        .rectangle(originX, originY, width * CELL, height * CELL)
+        .setOrigin(0, 0)
+        .setStrokeStyle(3, color, 1)
+        .setFillStyle(color, 0.12)
+        .setDepth(RENDER_DEPTH.transferTargetHighlight);
+      this.markAsWorldObject(outline);
+      this.transferHighlights.push(outline);
+
+      for (const sprite of this.componentSprites.get(candidate.instanceId) ?? []) {
+        this.transferTintedSprites.push({ sprite, originalTint: sprite.tintTopLeft });
+        sprite.setTint(color);
+      }
+    }
+  }
+
+  /** Restaura el tinte original de los sprites tomados por el resaltado del modo de trasvase — ver `updateTransferMode`. */
+  private restoreTransferTintedSprites(): void {
+    for (const { sprite, originalTint } of this.transferTintedSprites) {
+      if (sprite.active) sprite.setTint(originalTint);
+    }
+    this.transferTintedSprites = [];
   }
 
   /**
    * Canal entre el reservorio origen y el candidato bajo el cursor (13e
-   * ronda 7): una línea recta (simplificación explícita — no sigue el trazado
-   * real del conducto, el color ya comunica "hay camino"/"no hay camino")
-   * coloreada según el mismo `blocked` que decide el anillo del candidato.
-   * Un único `Graphics` reusado y limpiado cada frame, mismo criterio liviano
-   * que el resto de overlays de un solo objeto.
+   * ronda 7, ruteado real desde la ronda 8): sigue el camino de conductos
+   * `fluido` disponibles (`computeConduitRoute`, mismo mecanismo que el
+   * cableado de señal ruteado de la Fase 11f) en vez de una recta — el color
+   * sigue comunicando "hay camino"/"no hay camino" según el mismo `blocked`
+   * que decide el contorno del candidato. Un único `Graphics` reusado y
+   * limpiado cada frame, mismo criterio liviano que el resto de overlays de
+   * un solo objeto.
    */
   private updateTransferChannel(pointer: Phaser.Input.Pointer): void {
     if (!this.interaction.transferMode) return;
@@ -1970,10 +2032,19 @@ export class FloorplanScene extends Phaser.Scene {
       return cell && cell.x === hoverCell.x && cell.y === hoverCell.y;
     });
     if (!candidate) return;
-    const from = this.cellCenterPx(originCell);
-    const to = this.cellCenterPx(hoverCell);
+    const route = computeConduitRoute(this.mission.shipFloorplan, this.walkableGrid, originCell, hoverCell, "fluido");
     const color = candidate.blocked ? CRISIS_FATAL_COLOR : CRISIS_SAFE_COLOR;
-    this.transferChannelLine.lineStyle(3, color, 0.9).lineBetween(from.x, from.y, to.x, to.y);
+    this.transferChannelLine.lineStyle(3, color, 0.9);
+    if (route.length < 2) {
+      const from = this.cellCenterPx(originCell);
+      const to = this.cellCenterPx(hoverCell);
+      this.transferChannelLine.lineBetween(from.x, from.y, to.x, to.y);
+      return;
+    }
+    this.transferChannelLine.beginPath();
+    this.transferChannelLine.moveTo(route[0]!.x, route[0]!.y);
+    for (const point of route.slice(1)) this.transferChannelLine.lineTo(point.x, point.y);
+    this.transferChannelLine.strokePath();
   }
 
   private createObjectivesButton(): void {
@@ -2612,6 +2683,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.signalGraphics = overlay.signalGraphics;
     this.ledIndicators = overlay.ledIndicatorsByInstanceId;
     this.lcdDisplays = overlay.lcdDisplaysByInstanceId;
+    this.componentSprites = overlay.componentSpritesByInstanceId;
     this.markAsWorldObject(this.overlayContainer);
     // El grafo de señal (nodos + cables) es la capa `señales` (Fase 11f.3): al
     // reconstruirse el overlay reaplica el estado actual del toggle.
@@ -3482,6 +3554,11 @@ export class FloorplanScene extends Phaser.Scene {
   private instanceCell(instanceId: PlacedComponentInstanceId): GridPosition | undefined {
     return this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId)
       ?.placement.position;
+  }
+
+  /** Placement completo (posición + footprint + rotación) de una instancia colocada — ronda 8, resaltado por contorno de footprint real en vez de un círculo suelto. */
+  private instancePlacement(instanceId: PlacedComponentInstanceId): PlacedFootprint | undefined {
+    return this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId)?.placement;
   }
 
   /** Celda donde ocurre físicamente una tarea de acción, derivada de su payload. */

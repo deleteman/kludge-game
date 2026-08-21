@@ -176,8 +176,8 @@ function drawAnchors(graphics: Phaser.GameObjects.Graphics, floorplan: ShipFloor
   }
 }
 
-/** Polilínea real del conducto entre sus dos secciones (Fase 11f) — reemplaza el punto suelto que había antes (Observación #1 de PENDIENTES_OBSERVACIONES.md). */
-function drawConduitLine(graphics: Phaser.GameObjects.Graphics, path: ConduitPath): void {
+/** Polilínea real del conducto entre sus dos secciones (Fase 11f) — reemplaza el punto suelto que había antes (Observación #1 de PENDIENTES_OBSERVACIONES.md). Exportada (13e ronda 8) para el clon top-level de la capa `fluido` durante el modo de trasvase. */
+export function drawConduitLine(graphics: Phaser.GameObjects.Graphics, path: ConduitPath): void {
   if (path.waypoints.length < 2) return;
   // 4px opaco (antes 2px/0.8 alpha): a zoom "encajar toda la nave" (`minZoom`,
   // `floorplan-scene.ts`) un trazo más fino quedaba casi invisible frente al
@@ -192,8 +192,8 @@ function drawConduitLine(graphics: Phaser.GameObjects.Graphics, path: ConduitPat
   graphics.strokePath();
 }
 
-/** Marcador puntual en `conduit.position` — sigue siendo información real (`initialAperture`), se conserva junto a la nueva polilínea. */
-function drawConduitMarker(graphics: Phaser.GameObjects.Graphics, conduit: ConduitConnection): void {
+/** Marcador puntual en `conduit.position` — sigue siendo información real (`initialAperture`), se conserva junto a la nueva polilínea. Exportada (13e ronda 8) — ver `drawConduitLine`. */
+export function drawConduitMarker(graphics: Phaser.GameObjects.Graphics, conduit: ConduitConnection): void {
   const px = conduit.position.x * CELL;
   const py = conduit.position.y * CELL;
   const sealed = conduit.kind === "ventilacion" && conduit.initialAperture === 0;

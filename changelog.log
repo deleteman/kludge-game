@@ -4149,3 +4149,81 @@ input/render de Phaser sobre una escena real, sin arnés razonable de test autom
 sobre el código + en la app), `tsc --noEmit` y `eslint` limpios en ambos paquetes.
 
 Razón: ronda 7 de fixes del playtest de la Subfase 13e.
+
+2026-08-21 — Subfase 13e: fixes de playtest, ronda 8 (modo de trasvase + selector de instalación unificado).
+REPORTE DEL OPERADOR sobre la ronda 7: 1) el canal origen↔candidato del modo de trasvase iba en línea recta,
+no seguía el conducto real; 2) los candidatos se resaltaban con círculos sueltos en vez de la pieza misma;
+3) no había forma de cancelar el modo (ni ESC ni botón descubrible); 4) tras un trasvase exitoso seguía
+apareciendo un aviso de "unidades perdidas: 50"; 5) la capa "fluido" no se veía resaltada — todo el mapa se
+veía oscurecido por igual; y en el selector de instalación, el reservorio nunca aparecía en "Disponibles en
+inventario" pese a tener 1 junta hermética (la receta pide 2, y faltaban tubo-flexible/valvula-simple por
+completo).
+
+INVESTIGACIÓN DE CAUSA RAÍZ (código, no hipótesis) antes de proponer fix, por cada punto:
+- #5 era un bug de DEPTH confirmado: `conduitLayers[kind]` vive DENTRO del container `base`
+  (`floorplan-renderer.ts`), que aplana el depth de sus hijos al del propio container (`background` = 0) — el
+  oscurecido (`RENDER_DEPTH.mapDimOverlay` = 5.8) lo tapaba pasara lo que pasara con su alpha.
+- #1: `computeSignalWireRoute` (`conduit-path.ts`) ya arma la polilínea real siguiendo conductos encadenados,
+  pero estaba hardcodeada a `kind: "senal"` — la función interna que arma la polilínea ya era genérica.
+- #2: no existía un `Map<instanceId, sprite>` reusable en `mission-overlay-renderer.ts`, y ninguno de los dos
+  componentes involucrados (reservorio, estación química) tiene sprite real todavía (carpeta vacía).
+- #4: no se pudo confirmar el mecanismo exacto con certeza — se documentó como candidato más plausible (lista
+  de candidatos cacheada al abrir el modo, nunca refrescada) y se pidió reconfirmar en el próximo playtest.
+- Selector de instalación: wiring confirmado correcto — el problema real era falta de stock inicial, no un bug.
+
+A) CANAL DEL MODO DE TRASVASE SIGUE EL CONDUCTO REAL: `computeSignalWireRoute` generalizada a
+   `computeConduitRoute(floorplan, walkableGrid, from, to, kind)` (`conduit-path.ts`), reusando
+   `buildRoutedPath`/`findConduitRoute` ya genéricos; `computeSignalWireRoute` queda como wrapper de una línea
+   para el cableado. `FloorplanScene.updateTransferChannel` dibuja ahora la polilínea real en vez de
+   `lineBetween`.
+
+B) FIX DEL BUG DE DEPTH (#5): nuevo `RENDER_DEPTH.transferHighlightedConduit` (5.9, entre `mapDimOverlay` y
+   `problemMarker`). Como el `Container` aplana el depth de sus hijos, subir el `setDepth` del propio
+   `conduitLayers.fluido` no alcanzaba — `updateTransferMode` ahora OCULTA el original y dibuja un clon
+   top-level (`drawConduitLine`/`drawConduitMarker`, exportadas de `floorplan-renderer.ts`) solo con los
+   conductos `fluido`, a ese nuevo depth, por encima del oscurecido. Se destruye y se restaura la visibilidad
+   del original al salir del modo.
+
+C) RESALTADO POR CONTORNO/SPRITE (#2): el `Arc` suelto se reemplaza por un rectángulo-contorno del footprint
+   real de la instancia (`effectiveFootprintExtent`), verde/rojo según el mismo `blocked` de siempre. Nuevo
+   `componentSpritesByInstanceId` en `MissionOverlayRender` (`mission-overlay-renderer.ts`), poblado tanto en
+   el branch de sprite real como en `drawCreationLayout` (ahora devuelve los sprites que dibuja) — cuando la
+   pieza SÍ tenga sprite real, se tiñe directo (`sprite.setTint`), restaurando su tinte original al salir.
+   Aviso explícito (CLAUDE.md): ni `reservorio-agua-reciclada` ni `starter-estacion-quimica` tienen sprite
+   todavía, así que hoy el resaltado se ve por el contorno — el tinte de sprite entrará en juego recién cuando
+   se agregue el arte real en `game/assets/sprites/components/`.
+
+D) CANCELAR EL MODO (#3): el listener `keydown-ESC` ya existente (pausa el juego) ahora cancela primero el
+   modo de trasvase si está activo, y solo cae a pausar si no lo está. El texto de estado
+   (`transfer-mode-hint`) se amplía para mencionar ESC/"Cancelar" explícitamente (el botón de cabecera ya
+   existía desde la ronda 7).
+
+E) INVESTIGACIÓN ABIERTA DEL AVISO DE PÉRDIDA (#4): `MissionInteractionController.handleTransferModeClick`
+   ya no busca el candidato en la lista cacheada al abrir el modo — recalcula
+   `transferCandidatesFor(fromInstanceId)` EN EL MOMENTO DEL CLICK. No hay garantía de que este fuera el
+   mecanismo exacto (documentado explícitamente); se pide reconfirmar en el playtest si el aviso reaparece.
+
+F) SELECTOR DE INSTALACIÓN UNIFICADO EN UNA SOLA LISTA (decisión del operador tras el diagnóstico: un
+   compuesto sin stock de receta debe aparecer igual, deshabilitado, explicando qué falta — nunca un botón
+   gris mudo — lo que vuelve redundante la distinción de pestañas): `buildInventoryOptions`/`buildCatalogOptions`
+   se fusionan en `buildInstallOptions()` (`mission-interaction-controller.ts`) — atómico con stock (una fila
+   por bucket de desgaste, habilitada), atómico sin stock (una fila deshabilitada, motivo `"no-stock"`),
+   creación personalizada (siempre habilitada), compuesto de catálogo (habilitado + `consumesRecipe` si
+   `hasRecipeStockFor`, si no deshabilitado con motivo `"missing-ingredients"` y los nombres que faltan, nuevo
+   `MissionRuntime.missingRecipeIngredients`) — habilitados primero, bloqueados después. `InstallPickerOption`
+   gana `blocked?`/`missingIngredientNames?`; `install-picker-modal.ts` pierde `InstallPickerTab`/`activeTab`/
+   `renderTabStrip`/el hint de "Catálogo" — pasa a un `options` único; una fila bloqueada explica el motivo
+   directo en su propio texto (no depende de poder clickearla) y la ficha de detalle suma una línea ámbar con
+   el motivo cuando el ítem seleccionado está bloqueado.
+
+G) STOCK INICIAL DEL CAPÍTULO 1 (contenido/balance, no fix de código): `CHAPTER_01_INITIAL_ATOMIC_STOCK` suma
+   `tubo-flexible: 1`, `valvula-simple: 1`, y sube `junta-hermetica` de 1 a 2 — completa exactamente la receta
+   del segundo reservorio (1+1+2, `exploracion.ts`).
+
+SUITE: `/engine` 873 tests (sin cambio de conteo — los fixes de esta ronda son de render/UI de Phaser y de
+contenido, sin lógica nueva de motor que testear en aislamiento), `/game` 40 tests (sin cambio — mismo
+criterio que la ronda 7: modo espacial de Phaser sin arnés razonable de test automático, verificado
+razonando sobre el código + pendiente de confirmar en la app), `tsc --noEmit` y `eslint` limpios en ambos
+paquetes.
+
+Razón: ronda 8 de fixes del playtest de la Subfase 13e.

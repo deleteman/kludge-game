@@ -942,3 +942,53 @@
 ## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 7)
 - `InstallPickerOption.consumesRecipe?: boolean` — marca las filas de compuesto de catálogo que gastan su
   receta al instalarse.
+
+## `game/src/render/conduit-path.ts` (modificado, 13e ronda 8)
+- `computeSignalWireRoute` generalizada a `computeConduitRoute(floorplan, walkableGrid, from, to, kind)`;
+  `computeSignalWireRoute` queda como wrapper de una línea (`kind: "senal"`) para no tocar el cableado.
+
+## `game/src/render/floorplan-renderer.ts` (modificado, 13e ronda 8)
+- `drawConduitLine`/`drawConduitMarker` pasan a exportadas — reusadas por `FloorplanScene.updateTransferMode`
+  para clonar la capa `fluido` fuera del container `base` (fix del bug de depth #5).
+
+## `game/src/render/render-depths.ts` (modificado, 13e ronda 8)
+- `transferHighlightedConduit: 5.9` — depth del clon top-level de la capa `fluido` durante el modo de
+  trasvase, entre `mapDimOverlay` (5.8) y `problemMarker` (6).
+
+## `game/src/render/mission-overlay-renderer.ts` (modificado, 13e ronda 8)
+- Nuevo `componentSpritesByInstanceId` en `MissionOverlayRender` — sprites reales por instancia, poblado en el
+  branch de sprite real y en `drawCreationLayout` (ahora devuelve los `Image` que dibuja). Usado por el
+  resaltado del modo de trasvase para tintar la pieza misma cuando tiene arte real.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 8)
+- `updateTransferMode()`: oculta `conduitLayers.fluido` y dibuja su clon top-level
+  (`transferFluidoHighlightLayer`, fix del bug de depth); `transferHighlights` pasa de `Arc[]` (círculos) a
+  `Rectangle[]` (contorno de footprint real vía `instancePlacement`); tinta los sprites reales de los
+  candidatos (`transferTintedSprites`, restaurados por `restoreTransferTintedSprites`).
+- `updateTransferChannel(pointer)`: usa `computeConduitRoute(..., "fluido")` para dibujar la ruta real en vez
+  de una línea recta.
+- Listener `keydown-ESC`: cancela el modo de trasvase si está activo, antes de caer al comportamiento previo
+  de pausa.
+- Nuevo helper `instancePlacement(instanceId)` (placement completo, no solo la celda de `instanceCell`).
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 8)
+- `handleTransferModeClick` recalcula `transferCandidatesFor` en el momento del click en vez de leer la lista
+  cacheada al abrir el modo (candidato más plausible del aviso de pérdida reportado, sin garantía).
+- `buildInventoryOptions`/`buildCatalogOptions` se fusionan en `buildInstallOptions()` — lista única,
+  habilitados primero, bloqueados después con motivo. Nuevo helper `missingIngredientNames(definition)`.
+- `installPickerState` pierde `activeTab`/`inventoryOptions`/`catalogOptions` → un solo campo `options`.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 8)
+- Nuevo `missingRecipeIngredients(definition)` — ingredientes de receta que faltan (bucket `nuevo`, mismo
+  criterio que `hasRecipeStockFor`), para explicar el motivo de bloqueo en el selector de instalación.
+
+## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 8)
+- Elimina `InstallPickerTab`/`activeTab`/`renderTabStrip`/el hint de "Catálogo" — `renderInstallPickerModal`
+  pasa a recibir un único `options: ReadonlyArray<InstallPickerOption>`.
+- `InstallPickerOption` gana `blocked?: "no-stock" | "missing-ingredients"` y `missingIngredientNames?`. La
+  fila deshabilitada explica el motivo directo en su texto (`optionRowLabel`); la ficha de detalle
+  (`renderSelectedComponentSheet`) suma una línea ámbar con el motivo cuando el ítem está bloqueado.
+
+## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, 13e ronda 8)
+- `CHAPTER_01_INITIAL_ATOMIC_STOCK` suma `tubo-flexible: 1`, `valvula-simple: 1`, sube `junta-hermetica` de 1 a
+  2 — completa la receta del segundo reservorio (1+1+2, `exploracion.ts`).

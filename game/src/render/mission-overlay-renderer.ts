@@ -46,6 +46,14 @@ export interface MissionOverlayRender {
    * frame — ver doc fuente §2.
    */
   readonly lcdDisplaysByInstanceId: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Text>;
+  /**
+   * Sprites reales por instancia (13e ronda 8, fix #2 de playtest: resaltar la
+   * pieza misma en el modo de trasvase, no un círculo suelto). Un array porque
+   * una creación con `layout` puede pintar varias partes, cada una con su
+   * propio sprite — vacío si la instancia cayó al rectángulo placeholder (sin
+   * arte real todavía), en cuyo caso el resaltado usa el contorno de footprint.
+   */
+  readonly componentSpritesByInstanceId: ReadonlyMap<PlacedComponentInstanceId, ReadonlyArray<Phaser.GameObjects.Image>>;
 }
 
 const CELL = GRID_CELL_SIZE_PX;
@@ -87,6 +95,7 @@ export function renderMissionOverlay(
     Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle
   >();
   const lcdDisplaysByInstanceId = new Map<PlacedComponentInstanceId, Phaser.GameObjects.Text>();
+  const componentSpritesByInstanceId = new Map<PlacedComponentInstanceId, ReadonlyArray<Phaser.GameObjects.Image>>();
 
   blueprint.placedComponents.forEach((instance, index) => {
     // `condition` gana sobre `wear` (Fase 13c): una pieza destruida se ve
@@ -160,8 +169,10 @@ export function renderMissionOverlay(
         .setDepth(RENDER_DEPTH.objects);
       if (tint !== undefined) sprite.setTint(tint);
       container.add(sprite);
+      componentSpritesByInstanceId.set(instance.instanceId, [sprite]);
     } else if (layout && layout.length > 0) {
-      drawCreationLayout(scene, container, graphics, originX, originY, layout, tint, index);
+      const parts = drawCreationLayout(scene, container, graphics, originX, originY, layout, tint, index);
+      if (parts.length > 0) componentSpritesByInstanceId.set(instance.instanceId, parts);
     } else {
       const color = tint ?? SECTION_FILL_COLORS[index % SECTION_FILL_COLORS.length]!;
       graphics.fillStyle(color, 0.85);
@@ -202,7 +213,7 @@ export function renderMissionOverlay(
     signalGraphics.fillCircle(center(node.position.x), center(node.position.y), 7);
   }
 
-  return { container, signalGraphics, ledIndicatorsByInstanceId, lcdDisplaysByInstanceId };
+  return { container, signalGraphics, ledIndicatorsByInstanceId, lcdDisplaysByInstanceId, componentSpritesByInstanceId };
 }
 
 /**
@@ -221,7 +232,8 @@ function drawCreationLayout(
   layout: ReadonlyArray<CreationPart>,
   tint: number | undefined,
   index: number,
-): void {
+): ReadonlyArray<Phaser.GameObjects.Image> {
+  const sprites: Phaser.GameObjects.Image[] = [];
   layout.forEach((part, partIndex) => {
     const ext = effectiveFootprintExtent({ position: { x: 0, y: 0 }, footprint: part.footprint, rotation: part.rotation });
     const partX = originX + part.offset.x * CELL;
@@ -237,12 +249,14 @@ function drawCreationLayout(
         .setDepth(RENDER_DEPTH.objects);
       if (tint !== undefined) sprite.setTint(tint);
       container.add(sprite);
+      sprites.push(sprite);
     } else {
       const color = tint ?? SECTION_FILL_COLORS[(index + partIndex) % SECTION_FILL_COLORS.length]!;
       graphics.fillStyle(color, 0.85);
       graphics.fillRect(partX, partY, ext.width * CELL, ext.height * CELL);
     }
   });
+  return sprites;
 }
 
 /** Dibuja un cable de señal ruteado por conductos (Fase 11f) — recta si no hay plano/grilla o si es intra-sección. */

@@ -54,6 +54,15 @@ export const RENDER_DEPTH = {
    * reservorio, que tienen que "brillar" sobre el oscurecido.
    */
   mapDimOverlay: 5.8,
+  /**
+   * Bump de depth de la capa de conductos `fluido` mientras dura el modo de
+   * trasvase (13e ronda 8, fix del bug #5 de playtest): forzar el alpha a 1 no
+   * alcanza porque `conduitLayers[kind]` vive normalmente en `background` (0),
+   * por DEBAJO de `mapDimOverlay` (5.8) — el oscurecido la tapaba igual. Se
+   * sube este único valor por encima del oscurecido y se restaura a
+   * `background` al salir del modo.
+   */
+  transferHighlightedConduit: 5.9,
   /** Marcador pulsante del problema de la crisis activa (Fase 10d) — objeto de MUNDO (panea con el mapa), por encima de las paredes para que siempre se vea. */
   problemMarker: 6,
   /** Resaltado de reservorios candidatos durante el modo de trasvase (13e ronda 7) — por encima del oscurecido, para que "brillen" sobre el resto del plano atenuado. */

@@ -509,6 +509,37 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     en la pestaña "Catálogo", informativa. Instalarlos consume la receta completa; las creaciones
     personalizadas del jugador siguen gratis. `/engine` 871 → 873 tests.
 
+  **Ronda 8 de fixes de playtest (2026-08-21)** — seis reportes sobre lo entregado en la ronda 7, cinco con
+  causa raíz confirmada y uno documentado como hipótesis (a reconfirmar):
+  - **Canal del trasvase por el conducto real**, no recta: `computeSignalWireRoute` generalizada a
+    `computeConduitRoute(kind)` (`conduit-path.ts`) — la polilínea ya existía para el cableado, solo faltaba
+    parametrizar el tipo de conducto.
+  - **Bug de depth confirmado** detrás de "no se ve la capa de flujo resaltada": `conduitLayers[kind]` vive
+    dentro del `Container` `base`, que aplana el depth de sus hijos al del propio container — subir el alpha
+    de la capa nunca iba a bastar, el oscurecido (depth mayor) la tapaba igual. Fix: nuevo
+    `RENDER_DEPTH.transferHighlightedConduit`, con un clon top-level de la capa `fluido` mientras dura el modo
+    (el original se oculta), en vez de intentar reordenar dentro del container.
+  - **Resaltado por contorno de pieza**, no un círculo suelto: rectángulo del footprint real
+    (`effectiveFootprintExtent`) + tinte directo del sprite si existe (nuevo `componentSpritesByInstanceId` en
+    `mission-overlay-renderer.ts`) — hoy ni el reservorio ni la estación química tienen sprite real todavía,
+    así que el resaltado visible sigue siendo el contorno.
+  - **ESC cancela el modo de trasvase** (antes solo pausaba el juego) — se prueba primero contra el modo
+    activo, cae a pausar si no hay ninguno.
+  - **Investigación abierta** sobre "unidades perdidas: 50" tras un trasvase exitoso: no se pudo confirmar el
+    mecanismo con certeza leyendo código (el guard de la ronda 6 debería impedir una pérdida total). Hipótesis
+    más plausible corregida: `handleTransferModeClick` ya no usa la lista de candidatos cacheada al abrir el
+    modo, la recalcula en el momento del click — pendiente de reconfirmar en el próximo playtest si el aviso
+    reaparece.
+  - **Selector de instalación unificado**: el operador, al ver que el reservorio no aparecía en "Disponibles
+    en inventario" por falta de stock, pidió que un compuesto sin receta completa aparezca IGUAL en la lista
+    (deshabilitado, explicando qué falta) y — siguiendo esa misma lógica — unificar las dos pestañas
+    ("Inventario"/"Catálogo") en una sola. `buildInstallOptions()` reemplaza a `buildInventoryOptions`/
+    `buildCatalogOptions`: habilitados primero (atómico con stock, creación, compuesto con receta completa),
+    bloqueados después con motivo (`"no-stock"`/`"missing-ingredients"` + nombres de lo que falta, nuevo
+    `MissionRuntime.missingRecipeIngredients`). Se suma stock inicial del capítulo 1 (`tubo-flexible`,
+    `valvula-simple`, `junta-hermetica` a 2) para que el segundo reservorio sea instalable de entrada.
+    `/engine` 873 tests (sin cambio), `/game` 40 tests (sin cambio — fixes de render/UI de Phaser y contenido).
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

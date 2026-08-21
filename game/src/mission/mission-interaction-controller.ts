@@ -37,11 +37,7 @@ import {
   type CompositionIngredient,
   type SubstanceDetailLine,
 } from "../ui/widgets/mission-action-panel.js";
-import {
-  renderInstallPickerModal,
-  type InstallPickerOption,
-  type InstallPickerTab,
-} from "../ui/widgets/install-picker-modal.js";
+import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
@@ -146,9 +142,8 @@ export class MissionInteractionController {
   private selectedCellValue?: GridPosition;
   private installPickerState?: {
     readonly position: GridPosition;
-    readonly inventoryOptions: ReadonlyArray<InstallPickerOption>;
-    readonly catalogOptions: ReadonlyArray<InstallPickerOption>;
-    readonly activeTab: InstallPickerTab;
+    /** Lista unificada (ronda 8): habilitados primero, bloqueados después con su motivo — ver `buildInstallOptions`. */
+    readonly options: ReadonlyArray<InstallPickerOption>;
     readonly selectedIndex: number;
   };
   private installPickerContainer?: Phaser.GameObjects.Container;
@@ -188,8 +183,7 @@ export class MissionInteractionController {
   get installPickerHighlightCells(): ReadonlyArray<GridPosition> | undefined {
     if (!this.installPickerState) return undefined;
     const state = this.installPickerState;
-    const options = state.activeTab === "inventory" ? state.inventoryOptions : state.catalogOptions;
-    const option = options[state.selectedIndex];
+    const option = state.options[state.selectedIndex];
     if (!option) return undefined;
     const section = sectionContainingCell(this.mission.shipFloorplan, state.position);
     if (!section) return undefined;
@@ -315,9 +309,14 @@ export class MissionInteractionController {
     if (!this.transferModeState) return;
     const instance = this.findInstanceAtCell(position);
     if (!instance) return;
-    const candidate = this.transferModeState.candidates.find(
-      (entry) => entry.instanceId === instance.instanceId,
-    );
+    // Recalculado EN EL MOMENTO DEL CLICK (ronda 8), no leído de la lista
+    // cacheada al abrir el modo: el estado del destino pudo cambiar mientras
+    // el modo seguía abierto (otra tarea completándose), y un candidato
+    // "verde" desactualizado es el mecanismo más plausible detrás del aviso
+    // de pérdida reportado en playtest — ver plan de la ronda 8.
+    const fromInstanceIdForRecalc = this.transferModeState.fromInstanceId;
+    const freshCandidates = this.mission.transferCandidatesFor(fromInstanceIdForRecalc);
+    const candidate = freshCandidates.find((entry) => entry.instanceId === instance.instanceId);
     if (!candidate) return;
     if (candidate.blocked) {
       this.callbacks.setStatus(t(`ui.floorplan.mission.transfer-mode-blocked.${candidate.blocked}`));
@@ -826,9 +825,7 @@ export class MissionInteractionController {
           this.installPickerScrollT = 0;
           this.installPickerState = {
             position,
-            inventoryOptions: this.buildInventoryOptions(),
-            catalogOptions: this.buildCatalogOptions(),
-            activeTab: "inventory",
+            options: this.buildInstallOptions(),
             selectedIndex: 0,
           };
           this.redrawInstallPickerModal();
@@ -896,22 +893,26 @@ export class MissionInteractionController {
   }
 
   /**
-   * Pestaña "Inventario" (rework "sin stock → desarmar → reutilizar"): piezas
-   * atómicas con stock REAL > 0 (`MissionRuntime.stockOf`, ya no todo el
-   * catálogo sin límite), creaciones custom del jugador (11c.1, disponibilidad
-   * no gobernada por stock — mecanismo propio sin cambios) y, desde la ronda 7
-   * de fixes de playtest, compuestos de CATÁLOGO (ej. un segundo reservorio)
-   * gateados por stock de receta (`hasRecipeStockFor`) — a diferencia de las
-   * creaciones, consumen sus ingredientes al instalarse (`consumesRecipe`).
-   * Una creación/compuesto sin footprint no es instalable (no se sabe cuánto
-   * ocupa).
+   * Lista única del selector de instalación (ronda 8 de fixes de playtest —
+   * reemplaza las pestañas "Inventario"/"Catálogo" separadas): un compuesto
+   * sin stock de receta debe seguir apareciendo, deshabilitado, explicando qué
+   * falta — nunca un botón gris mudo (CLAUDE.md) ni una fila ausente sin
+   * motivo. Habilitados primero, bloqueados después con su motivo.
+   *
+   * - Atómico con stock > 0: una fila por BUCKET de desgaste (Fase 13c) — si
+   *   hay 2 sensores nuevos y 1 usado, el jugador ve las dos opciones y elige
+   *   cuál gasta, en vez de colapsarlas en "Sensor ×3" y esconder que un
+   *   tercio del stock está degradado.
+   * - Atómico sin stock: UNA fila deshabilitada, motivo `"no-stock"`.
+   * - Creación personalizada (11c.1): siempre habilitada — no se gatea por
+   *   stock (ya se consumió al fabricarla).
+   * - Compuesto de CATÁLOGO (ej. un segundo reservorio): habilitado +
+   *   `consumesRecipe` si `hasRecipeStockFor`; si no, deshabilitado con motivo
+   *   `"missing-ingredients"` y los nombres que faltan (`missingRecipeIngredients`).
+   * - Una creación/compuesto sin footprint no es instalable (no se sabe cuánto ocupa).
    */
-  private buildInventoryOptions(): ReadonlyArray<InstallPickerOption> {
-    // Fase 13c: una fila por BUCKET de desgaste, no una por pieza. Si hay 2
-    // sensores nuevos y 1 usado, el jugador ve las dos opciones y elige cuál
-    // gasta — colapsarlas en "Sensor ×3" escondería que un tercio del stock
-    // está degradado.
-    const atomicOptions: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.flatMap((spec) =>
+  private buildInstallOptions(): ReadonlyArray<InstallPickerOption> {
+    const atomicAvailable: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.flatMap((spec) =>
       this.mission.wearBucketsOf(spec.id).map((bucket) => ({
         id: spec.id,
         name: spec.name,
@@ -922,6 +923,16 @@ export class MissionInteractionController {
         quantity: bucket.quantity,
       })),
     );
+    const atomicMissing: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
+      (spec) => this.mission.stockOf(spec.id) <= 0,
+    ).map((spec) => ({
+      id: spec.id,
+      name: spec.name,
+      footprint: spec.data.footprint,
+      functional: spec.data.functional,
+      material: spec.data.material,
+      blocked: "no-stock" as const,
+    }));
     const creationOptions: InstallPickerOption[] = [];
     for (const def of this.mission.installableCreations) {
       const footprint = def.data.footprint;
@@ -934,53 +945,49 @@ export class MissionInteractionController {
         material: def.data.material,
       });
     }
-    const compositeOptions: InstallPickerOption[] = [];
+    const compositeAvailable: InstallPickerOption[] = [];
+    const compositeBlocked: InstallPickerOption[] = [];
     for (const def of this.mission.installableCatalogComposites) {
       const footprint = def.data.footprint;
-      if (!footprint || !this.mission.hasRecipeStockFor(def)) continue;
-      compositeOptions.push({
-        id: def.id,
-        name: def.name,
-        footprint,
-        functional: def.data.functional,
-        material: def.data.material,
-        composition: this.buildComposition(def),
-        consumesRecipe: true,
-      });
+      if (!footprint) continue;
+      if (this.mission.hasRecipeStockFor(def)) {
+        compositeAvailable.push({
+          id: def.id,
+          name: def.name,
+          footprint,
+          functional: def.data.functional,
+          material: def.data.material,
+          composition: this.buildComposition(def),
+          consumesRecipe: true,
+        });
+      } else {
+        compositeBlocked.push({
+          id: def.id,
+          name: def.name,
+          footprint,
+          functional: def.data.functional,
+          material: def.data.material,
+          composition: this.buildComposition(def),
+          blocked: "missing-ingredients",
+          missingIngredientNames: this.missingIngredientNames(def),
+        });
+      }
     }
-    return [...atomicOptions, ...creationOptions, ...compositeOptions];
+    return [
+      ...atomicAvailable,
+      ...creationOptions,
+      ...compositeAvailable,
+      ...atomicMissing,
+      ...compositeBlocked,
+    ];
   }
 
-  /**
-   * Pestaña "Catálogo" (informativa, no instalable en esta iteración — decisión
-   * confirmada con el operador): todo lo demás — atómicos sin stock y todo
-   * compuesto de catálogo conocido por el registry, con su desglose de
-   * composición para que el jugador entienda qué requeriría fabricar.
-   */
-  private buildCatalogOptions(): ReadonlyArray<InstallPickerOption> {
-    const atomicOptions: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
-      (spec) => this.mission.stockOf(spec.id) <= 0,
-    ).map((spec) => ({
-      id: spec.id,
-      name: spec.name,
-      footprint: spec.data.footprint,
-      functional: spec.data.functional,
-      material: spec.data.material,
-    }));
-    const compositeOptions: InstallPickerOption[] = [];
-    for (const def of this.mission.knownCompositeDefinitions) {
-      const footprint = def.data.footprint;
-      if (!footprint) continue;
-      compositeOptions.push({
-        id: def.id,
-        name: def.name,
-        footprint,
-        functional: def.data.functional,
-        material: def.data.material,
-        composition: this.buildComposition(def),
-      });
-    }
-    return [...atomicOptions, ...compositeOptions];
+  /** Nombres legibles de lo que falta para completar una receta — ver `MissionRuntime.missingRecipeIngredients`. */
+  private missingIngredientNames(definition: PhysicalComponentDefinition): ReadonlyArray<string> {
+    return this.mission.missingRecipeIngredients(definition).map(({ ref }) => {
+      const ingredientDefinition = this.mission.definitionOf(ref);
+      return ingredientDefinition?.name ?? this.nameByComponentId.get(ref) ?? ref;
+    });
   }
 
   /**
@@ -995,9 +1002,7 @@ export class MissionInteractionController {
     const state = this.installPickerState;
     this.installPickerContainer = renderInstallPickerModal(
       this.scene,
-      state.inventoryOptions,
-      state.catalogOptions,
-      state.activeTab,
+      state.options,
       state.selectedIndex,
       {
         title: t("ui.floorplan.mission.inspector.install-picker-title"),
@@ -1009,19 +1014,11 @@ export class MissionInteractionController {
         structuralResistance: (level) => t(`component.material.re.${STRUCTURAL_RESISTANCE_LEVEL_KEY[level]}`),
         wearTag: (wear) => t(`component.wear.${wear}`),
         compositionTitle: t("ui.floorplan.mission.composition-title"),
-        inventoryTab: t("ui.floorplan.mission.install-modal.inventory-tab"),
-        catalogTab: t("ui.floorplan.mission.install-modal.catalog-tab"),
-        catalogHint: t("ui.floorplan.mission.install-modal.catalog-hint"),
+        blockedNoStock: t("ui.floorplan.mission.install-modal.blocked-no-stock"),
+        blockedMissingIngredients: (names) =>
+          t("ui.floorplan.mission.install-modal.blocked-missing-ingredients").replace("{names}", names.join(", ")),
       },
       {
-        onTabChange: (tab) => {
-          if (!this.installPickerState) return;
-          // Otra pestaña = otra lista → el scroll arranca de cero.
-          this.installPickerScrollT = 0;
-          this.installPickerState = { ...this.installPickerState, activeTab: tab, selectedIndex: 0 };
-          this.redrawInstallPickerModal();
-          this.callbacks.onSelectionChanged();
-        },
         onSelect: (index) => {
           if (!this.installPickerState) return;
           // Misma lista, solo cambia la selección → preservar el scroll actual

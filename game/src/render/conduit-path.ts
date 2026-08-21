@@ -1,5 +1,5 @@
 import { GRID_CELL_SIZE_PX } from "engine";
-import type { ConduitConnection, FloorplanSection, GridPosition, SectionId, ShipFloorplan } from "engine";
+import type { ConduitConnection, ConduitKind, FloorplanSection, GridPosition, SectionId, ShipFloorplan } from "engine";
 import { findConduitRoute, sectionContainingCell } from "engine";
 
 import { findPath } from "../crew/floorplan-pathfinding.js";
@@ -53,29 +53,40 @@ export function computeConduitPaths(
 }
 
 /**
- * Ruta (píxeles) que un CABLE DE SEÑAL debe seguir entre dos celdas (Fase 11f,
- * mecánica de cableado restringido): si cruza de una sección a otra, pasa por
- * los pasamuros de los conductos `senal` que las conectan (`findConduitRoute`,
- * el MISMO grafo que la restricción de `assertSignalWiringReachable`). Intra-
- * sección (o sección indeterminable) va directo. Sin ruta de conductos (no
- * debería ocurrir: el cableado ya está gateado) cae a recta.
+ * Ruta (píxeles) que un flujo de conducto de tipo `kind` debe seguir entre dos
+ * celdas (Fase 11f, generalizada en la ronda 8 de playtest de 13e para el modo
+ * de trasvase): si cruza de una sección a otra, pasa por los pasamuros de los
+ * conductos `kind` que las conectan (`findConduitRoute`, el MISMO grafo que la
+ * restricción de `assertSignalWiringReachable` para `"senal"`). Intra-sección
+ * (o sección indeterminable) va directo. Sin ruta de conductos cae a recta.
  */
-export function computeSignalWireRoute(
+export function computeConduitRoute(
   floorplan: ShipFloorplan,
   walkableGrid: WalkableGrid | undefined,
   from: GridPosition,
   to: GridPosition,
+  kind: ConduitKind,
 ): readonly PixelPoint[] {
   const sectionA = sectionContainingCell(floorplan, from);
   const sectionB = sectionContainingCell(floorplan, to);
   if (!sectionA || !sectionB || sectionA.id === sectionB.id) {
     return buildRoutedPath(floorplan, walkableGrid, roundCell(from), roundCell(to), [], undefined);
   }
-  const conduits = findConduitRoute(floorplan, "senal", sectionA.id, sectionB.id);
+  const conduits = findConduitRoute(floorplan, kind, sectionA.id, sectionB.id);
   if (!conduits || conduits.length === 0) {
     return buildRoutedPath(floorplan, walkableGrid, roundCell(from), roundCell(to), [], undefined);
   }
   return buildRoutedPath(floorplan, walkableGrid, roundCell(from), roundCell(to), conduits, sectionA.id);
+}
+
+/** Wrapper de compatibilidad para cableado de señal — ver `computeConduitRoute`. */
+export function computeSignalWireRoute(
+  floorplan: ShipFloorplan,
+  walkableGrid: WalkableGrid | undefined,
+  from: GridPosition,
+  to: GridPosition,
+): readonly PixelPoint[] {
+  return computeConduitRoute(floorplan, walkableGrid, from, to, "senal");
 }
 
 /**

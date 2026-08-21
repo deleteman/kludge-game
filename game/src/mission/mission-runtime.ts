@@ -1270,6 +1270,27 @@ export class MissionRuntime {
   }
 
   /**
+   * Ingredientes de la receta que faltan (bucket `nuevo`, mismo criterio
+   * estricto que `hasRecipeStockFor`) — ronda 8 de fixes de playtest: un
+   * compuesto sin stock completo debe seguir apareciendo en el selector de
+   * instalación, deshabilitado, explicando QUÉ falta (nunca un botón gris
+   * mudo, CLAUDE.md). `[]` si la receta ya está completa o la definición no
+   * es un compuesto.
+   */
+  missingRecipeIngredients(
+    definition: PhysicalComponentDefinition,
+  ): ReadonlyArray<{ readonly ref: ComponentId; readonly missing: number }> {
+    if (!isCompositeEntity(definition)) return [];
+    const stock = this.atomicStock.get();
+    return definition.recipe.ingredients
+      .map((ingredient) => ({
+        ref: ingredient.ref,
+        missing: ingredient.quantity - stockOfWear(stock, ingredient.ref, DEFAULT_WEAR),
+      }))
+      .filter((entry) => entry.missing > 0);
+  }
+
+  /**
    * Encola una fabricación en la mesa (11c.2): la creación ya diseñada por el
    * jugador se registra en el `componentRegistry` (para poder resolverla luego)
    * y se encola una tarea `combine` que consume tiempo del tripulante — modulada
