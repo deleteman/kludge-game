@@ -198,7 +198,8 @@ export interface ActionPanelCallbacks {
   readonly onDischargeSource: (instanceId: PlacedComponentInstanceId) => void;
   readonly onOpenInstallPicker: (position: GridPosition) => void;
   /** Subfase 13e — acciones sobre un reservorio y apertura de la mesa desde el aparato. */
-  readonly onTransferSubstance: (instanceId: PlacedComponentInstanceId) => void;
+  /** Abre el modo de selección espacial de destino de trasvase (ronda 7) sobre esta pieza. */
+  readonly onStartTransferMode: (instanceId: PlacedComponentInstanceId) => void;
   readonly onApplySubstance: (instanceId: PlacedComponentInstanceId) => void;
   readonly onExtractElements: (instanceId: PlacedComponentInstanceId) => void;
   readonly onOpenFabricator: (instanceId: PlacedComponentInstanceId) => void;
@@ -519,7 +520,7 @@ export function renderMissionActionPanel(
       stackButtonEnabled(
         transferBlocked ? labels.transferBlocked(transferBlocked) : labels.transferSubstance,
         hasSelectedActor && !transferBlocked,
-        () => callbacks.onTransferSubstance(content.instanceId),
+        () => callbacks.onStartTransferMode(content.instanceId),
       );
       // ANTES de "Extraer", porque es su paso previo: analizar es lo que
       // desbloquea la extracción, y leerlo en ese orden lo enseña solo.

@@ -893,3 +893,52 @@
 - Caso `"transfer-substance"`: chequea `freeCapacity` del destino ANTES de `drawFrom` — con 0, la tarea es un
   no-op (defensa en profundidad, cubre la carrera de que el destino se llene entre armar el panel y ejecutar
   la tarea). El desborde PARCIAL (destino con algo de lugar, pero no todo) sigue igual que antes.
+
+## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 7)
+- Caso `"transfer-substance"`: devuelve `pouredSubstanceId`/`pouredAmount` cuando `poured.poured > 0`, además
+  de `overflowAmount` — antes un trasvase 100% exitoso no reportaba nada.
+- Caso `"install"`: nueva rama `isCompositeEntity(definition) && payload.consumeRecipe` — consume la receta
+  completa (bucket `nuevo`, mismo `consumeStock` estricto que el camino atómico) antes de instalar. Las
+  creaciones personalizadas nunca ponen ese flag, así que siguen gratis.
+
+## `engine/src/tasks/task.types.ts` (modificado, 13e ronda 7)
+- `InstallTaskPayload.consumeRecipe?: boolean` — distingue un compuesto de catálogo instalado desde
+  "Inventario" (gasta receta) de una creación personalizada (gratis).
+
+## `engine/src/index.ts` (modificado, 13e ronda 7)
+- Exporta `ALL_COMPOSITE_SPECS` (`build-component-catalog.ts`) — lista estática del catálogo de compuestos,
+  sin las creaciones personalizadas que se registran en caliente en el mismo `componentRegistry`.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 7)
+- `transferTargetsFor` → `transferCandidatesFor`: devuelve TODOS los reservorios de la nave (cualquier
+  dominio) con motivo de bloqueo (`"full"` | `"unreachable"` | `"different-substance"`) en vez de solo los ya
+  válidos — el modo de selección espacial necesita ver los bloqueados para iluminarlos en rojo.
+- `installableCatalogComposites` (getter) / `hasRecipeStockFor(definition)` — compuestos de catálogo (no
+  creaciones) con stock suficiente de su receta, para la pestaña "Inventario".
+- `queueInstall` gana el parámetro `consumeRecipe?: boolean`, propagado al payload de la tarea.
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 7)
+- Nuevo modo de interacción `transferModeState` (hermano de `wireModeValue`): `startTransferMode`,
+  `cancelTransferMode`, `handleTransferModeClick`, getters `transferMode`/`transferModeOrigin`/
+  `transferModeCandidates`. `handleMapClick` lo intercepta igual que `wireModeValue`.
+- `buildInventoryOptions` suma una tercera fuente (compuestos de catálogo con `consumesRecipe: true`) además
+  de piezas atómicas y creaciones personalizadas.
+- Nuevo callback `MissionInteractionCallbacks.onTransferModeChanged`.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 7)
+- `updateTransferMode()` — punto de entrada único del modo de trasvase: botón "Cancelar trasvase" (mismo
+  casillero que `wireModeButton`, mutuamente excluyentes), oscurecido de todo el plano (`transferDimOverlay`),
+  un anillo verde/rojo por reservorio candidato (`transferHighlights`, `CRISIS_SAFE_COLOR`/`CRISIS_FATAL_COLOR`)
+  y forzado/restaurado de la capa `fluido`.
+- `updateTransferChannel(pointer)` — línea recta origen↔candidato-bajo-cursor, coloreada según si hay camino.
+- `instanceCell(instanceId)` — helper extraído del lookup que ya hacía `taskTargetCell` para `dismantle`.
+- `notifySubstanceTaskResult`: rama propia para `event.type === "transfer-substance"` (notificación +
+  `fireCollectionBurst` hacia el destino elegido) en vez de reusar el charco de verter/purgar.
+
+## `game/src/render/render-depths.ts` (modificado, 13e ronda 7)
+- `mapDimOverlay: 5.8` (oscurecido del modo de trasvase) y `transferTargetHighlight: 6.1` (resaltados de
+  reservorio, por encima del oscurecido).
+
+## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 7)
+- `InstallPickerOption.consumesRecipe?: boolean` — marca las filas de compuesto de catálogo que gastan su
+  receta al instalarse.

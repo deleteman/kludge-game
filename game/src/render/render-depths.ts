@@ -46,8 +46,18 @@ export const RENDER_DEPTH = {
   projectileEntity: 5.5,
   /** Trayectoria fantasma en pausa táctica (Fase 11a.3, ASA 3) — justo debajo del token real, por encima de las paredes, siempre visible. */
   trajectoryGhost: 5.6,
+  /**
+   * Oscurecido del plano durante el modo de selección espacial de trasvase
+   * (13e ronda 7, estilo SimCity): un rectángulo semitransparente cubriendo
+   * todo el plano, POR ENCIMA de paredes/tripulación/objetos (los oscurece a
+   * todos, tal como pidió el operador) pero POR DEBAJO de los resaltados de
+   * reservorio, que tienen que "brillar" sobre el oscurecido.
+   */
+  mapDimOverlay: 5.8,
   /** Marcador pulsante del problema de la crisis activa (Fase 10d) — objeto de MUNDO (panea con el mapa), por encima de las paredes para que siempre se vea. */
   problemMarker: 6,
+  /** Resaltado de reservorios candidatos durante el modo de trasvase (13e ronda 7) — por encima del oscurecido, para que "brillen" sobre el resto del plano atenuado. */
+  transferTargetHighlight: 6.1,
   /** Bursts de partículas de acciones de tripulación (instalar/desmontar, playtest #11) — objeto de MUNDO, por encima de todo el plano para que el fenómeno siempre se lea (principio 6 CLAUDE.md). */
   effect: 7,
   /**

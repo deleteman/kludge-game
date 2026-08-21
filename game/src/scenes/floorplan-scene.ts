@@ -100,6 +100,8 @@ import {
   screenAlertFlickerAlpha,
   SCREEN_ALERT_TINT,
   chemicalSubstanceColor,
+  CRISIS_FATAL_COLOR,
+  CRISIS_SAFE_COLOR,
   SEALED_VALVE_COLOR,
   sectionScarFlickerAlpha,
   SELECTED_CELL_COLOR,
@@ -381,6 +383,18 @@ export class FloorplanScene extends Phaser.Scene {
   private statusText?: Phaser.GameObjects.Text;
   private playPauseButton?: Phaser.GameObjects.GameObject;
   private wireModeButton?: Phaser.GameObjects.GameObject;
+  /**
+   * Modo de selección espacial de destino de trasvase (13e ronda 7, estilo
+   * SimCity): botón de cancelar (mismo casillero de cabecera que
+   * `wireModeButton` — son modos mutuamente excluyentes), oscurecido del
+   * plano, resaltados por reservorio candidato y el canal origen↔hover.
+   */
+  private transferModeButton?: Phaser.GameObjects.GameObject;
+  private transferDimOverlay?: Phaser.GameObjects.Rectangle;
+  private transferHighlights: Phaser.GameObjects.Arc[] = [];
+  private transferChannelLine?: Phaser.GameObjects.Graphics;
+  /** Estado previo de la capa `fluido` antes de forzarla visible al entrar al modo — se restaura al salir. */
+  private transferModePriorFluidoActive?: boolean;
   private objectivesButton?: Phaser.GameObjects.GameObject;
   /**
    * Banco de trabajo del plano (Subfase 13e): ya no es un botón del header —
@@ -634,6 +648,7 @@ export class FloorplanScene extends Phaser.Scene {
         onOpenFabricator: (instanceId) => this.openWorkbench(instanceId),
         onSelectionChanged: () => this.updateSelectedHighlight(),
         onWireSelectionChanged: () => this.updateWireHighlights(),
+        onTransferModeChanged: () => this.updateTransferMode(),
       },
     );
 
@@ -780,6 +795,7 @@ export class FloorplanScene extends Phaser.Scene {
 
     this.updatePlayPauseButton();
     this.updateWireModeButton();
+    this.updateTransferModeButton();
     this.createObjectivesButton();
     this.createLayersButton();
     this.redrawEnergyControls();
@@ -829,6 +845,7 @@ export class FloorplanScene extends Phaser.Scene {
       this.updateHoverHighlight(pointer);
       this.updateTooltip(pointer);
       this.updateCursor(pointer);
+      this.updateTransferChannel(pointer);
     });
     this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
       // Selección de tripulante (tira) y cancelar tarea (cola) por hit-test a
@@ -1821,6 +1838,10 @@ export class FloorplanScene extends Phaser.Scene {
 
   private updateWireModeButton(): void {
     (this.wireModeButton as Phaser.GameObjects.GameObject | undefined)?.destroy();
+    this.wireModeButton = undefined;
+    // Mismo casillero de cabecera que el botón de cancelar trasvase (ronda 7)
+    // — son modos mutuamente excluyentes, así que solo uno se dibuja a la vez.
+    if (this.interaction.transferMode) return;
     this.wireModeButton = createKenneyButton(
       this.rex,
       WIRE_MODE_BUTTON_X,
@@ -1834,6 +1855,125 @@ export class FloorplanScene extends Phaser.Scene {
       },
     ).setDepth(RENDER_DEPTH.hudContent);
     this.markAsHudObject(this.wireModeButton);
+  }
+
+  /**
+   * Botón "Cancelar trasvase" (13e ronda 7) — visible solo mientras el modo de
+   * selección espacial está activo, mismo casillero que `wireModeButton`.
+   */
+  private updateTransferModeButton(): void {
+    (this.transferModeButton as Phaser.GameObjects.GameObject | undefined)?.destroy();
+    this.transferModeButton = undefined;
+    if (!this.interaction.transferMode) return;
+    this.transferModeButton = createKenneyButton(
+      this.rex,
+      WIRE_MODE_BUTTON_X,
+      HEADER_HEIGHT / 2,
+      t("ui.floorplan.mission.transfer-mode-cancel"),
+      {
+        width: 180,
+        height: 30,
+        fontSize: "11px",
+        onClick: () => this.interaction.cancelTransferMode(),
+      },
+    ).setDepth(RENDER_DEPTH.hudContent);
+    this.markAsHudObject(this.transferModeButton);
+  }
+
+  /**
+   * Punto de entrada único del modo de trasvase (13e ronda 7): se llama al
+   * entrar/salir del modo y cada vez que cambian sus candidatos. Reconstruye
+   * botón, oscurecido, resaltados y fuerza/restaura la capa `fluido` —
+   * mismo criterio de "destruir y reconstruir por completo" que el resto de
+   * overlays de un solo estado (`updateWireHighlights`).
+   */
+  private updateTransferMode(): void {
+    this.updateWireModeButton();
+    this.updateTransferModeButton();
+
+    this.transferDimOverlay?.destroy();
+    this.transferDimOverlay = undefined;
+    for (const ring of this.transferHighlights) ring.destroy();
+    this.transferHighlights = [];
+    this.transferChannelLine?.destroy();
+    this.transferChannelLine = undefined;
+
+    if (!this.interaction.transferMode) {
+      // Restaura la capa `fluido` a como estaba antes de forzarla (si el
+      // jugador la tenía apagada por el panel de capas, vuelve a apagarse).
+      if (this.transferModePriorFluidoActive === false) {
+        this.activeFloorplanLayers.delete("fluido");
+        this.applyLayerAlpha("fluido");
+      }
+      this.transferModePriorFluidoActive = undefined;
+      return;
+    }
+
+    // Oscurecido de TODO el plano (paredes/objetos/tripulación incluidos, tal
+    // como pidió el operador) — un único rectángulo de mundo, por encima de
+    // todo lo que hay que atenuar y por debajo de los resaltados.
+    const worldWidth = this.mission.shipFloorplan.gridSize.width * CELL;
+    const worldHeight = this.mission.shipFloorplan.gridSize.height * CELL;
+    this.transferDimOverlay = this.add
+      .rectangle(0, 0, worldWidth, worldHeight, 0x05060a, 0.72)
+      .setOrigin(0, 0)
+      .setDepth(RENDER_DEPTH.mapDimOverlay);
+    this.markAsWorldObject(this.transferDimOverlay);
+
+    // Fuerza la capa `fluido` visible mientras dura el modo (SimCity-style):
+    // si el jugador la tenía apagada, se restaura al salir (arriba).
+    this.transferModePriorFluidoActive = this.activeFloorplanLayers.has("fluido");
+    if (!this.transferModePriorFluidoActive) {
+      this.activeFloorplanLayers.add("fluido");
+      this.applyLayerAlpha("fluido");
+    }
+
+    // Un anillo por candidato: verde (disponible) o rojo (bloqueado, cualquier
+    // motivo) — mismo contrato de color de crisis ya usado en el resto del
+    // juego, en vez de inventar un verde/rojo nuevos.
+    for (const candidate of this.interaction.transferModeCandidates) {
+      const cell = this.instanceCell(candidate.instanceId);
+      if (!cell) continue;
+      const center = this.cellCenterPx(cell);
+      const color = candidate.blocked ? CRISIS_FATAL_COLOR : CRISIS_SAFE_COLOR;
+      const ring = this.add
+        .circle(center.x, center.y, 16)
+        .setStrokeStyle(3, color, 1)
+        .setFillStyle(color, 0.18)
+        .setDepth(RENDER_DEPTH.transferTargetHighlight);
+      this.markAsWorldObject(ring);
+      this.transferHighlights.push(ring);
+    }
+  }
+
+  /**
+   * Canal entre el reservorio origen y el candidato bajo el cursor (13e
+   * ronda 7): una línea recta (simplificación explícita — no sigue el trazado
+   * real del conducto, el color ya comunica "hay camino"/"no hay camino")
+   * coloreada según el mismo `blocked` que decide el anillo del candidato.
+   * Un único `Graphics` reusado y limpiado cada frame, mismo criterio liviano
+   * que el resto de overlays de un solo objeto.
+   */
+  private updateTransferChannel(pointer: Phaser.Input.Pointer): void {
+    if (!this.interaction.transferMode) return;
+    if (!this.transferChannelLine) {
+      this.transferChannelLine = this.add.graphics().setDepth(RENDER_DEPTH.transferTargetHighlight);
+      this.markAsWorldObject(this.transferChannelLine);
+    }
+    this.transferChannelLine.clear();
+    const originCell = this.interaction.transferModeOrigin && this.instanceCell(this.interaction.transferModeOrigin);
+    if (!originCell) return;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const hoverCell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    const candidate = this.interaction.transferModeCandidates.find((entry) => {
+      const cell = this.instanceCell(entry.instanceId);
+      return cell && cell.x === hoverCell.x && cell.y === hoverCell.y;
+    });
+    if (!candidate) return;
+    const from = this.cellCenterPx(originCell);
+    const to = this.cellCenterPx(hoverCell);
+    const color = candidate.blocked ? CRISIS_FATAL_COLOR : CRISIS_SAFE_COLOR;
+    this.transferChannelLine.lineStyle(3, color, 0.9).lineBetween(from.x, from.y, to.x, to.y);
   }
 
   private createObjectivesButton(): void {
@@ -3338,14 +3478,19 @@ export class FloorplanScene extends Phaser.Scene {
     return undefined;
   }
 
+  /** Celda de una instancia colocada por id, o `undefined` si no existe (ronda 7: extraído del lookup que ya hacía `taskTargetCell` para `dismantle`, reusado también por el modo de trasvase). */
+  private instanceCell(instanceId: PlacedComponentInstanceId): GridPosition | undefined {
+    return this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId)
+      ?.placement.position;
+  }
+
   /** Celda donde ocurre físicamente una tarea de acción, derivada de su payload. */
   private taskTargetCell(task: CrewTask): GridPosition | undefined {
     const payload = task.payload;
     if (!payload) return undefined;
     if (payload.kind === "install") return payload.placement.position;
     if (payload.kind === "dismantle") {
-      return this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === payload.instanceId)
-        ?.placement.position;
+      return this.instanceCell(payload.instanceId);
     }
     if (payload.kind === "connect") {
       return this.mission.blueprint.signalGraph.nodes.find((node) => node.id === payload.toNodeId)?.position;
@@ -3574,7 +3719,27 @@ export class FloorplanScene extends Phaser.Scene {
         this.fireCollectionBurst(cell, this.mission.benchCell("quimica"), counts.size);
       }
     }
-    if (event.pouredSubstanceId && event.pouredAmount) {
+    if (event.type === "transfer-substance" && event.pouredSubstanceId && event.pouredAmount) {
+      // Ronda 7: un trasvase exitoso NO derrama nada (a diferencia de verter/
+      // purgar) — antes ni siquiera se reportaba `pouredSubstanceId` en este
+      // caso, así que un trasvase 100% exitoso no disparaba ninguna
+      // notificación ni efecto visual y la sustancia "desaparecía" a los ojos
+      // del jugador. Rama propia con su propio título y una moneda (no un
+      // charco) hacia el reservorio destino elegido.
+      const name = this.mission.substanceNameOf(event.pouredSubstanceId) ?? event.pouredSubstanceId;
+      this.notifications?.push({
+        title: t("ui.floorplan.notification.substance-transferred"),
+        lines: [`${name} — ${event.pouredAmount}`],
+        type: "success",
+      });
+      const task = this.mission.scheduler.getTask(event.taskId);
+      const originCell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(event.actorId);
+      const targetCell =
+        task?.payload?.kind === "transfer-substance" ? this.instanceCell(task.payload.toInstanceId) : undefined;
+      if (originCell && targetCell) {
+        this.fireCollectionBurst(originCell, targetCell, 1);
+      }
+    } else if (event.pouredSubstanceId && event.pouredAmount) {
       const name = this.mission.substanceNameOf(event.pouredSubstanceId) ?? event.pouredSubstanceId;
       // Purgar es una PÉRDIDA y verter es un uso deliberado: mismo fenómeno
       // físico, distinta intención, distinto tono de aviso.

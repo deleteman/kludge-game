@@ -1,4 +1,5 @@
 import {
+  ALL_COMPOSITE_SPECS,
   CANONICAL_SHIP_FLOORPLANS,
   CHAPTER_REGISTRY,
   CoreLoopModeMachine,
@@ -21,6 +22,7 @@ import {
   MutableShipState,
   previewMissionTrajectory,
   stockOf,
+  stockOfWear,
   wearBucketsOf,
   ProjectileSimulation,
   ReactionResolver,
@@ -47,6 +49,7 @@ import {
   consumeElements,
   contentOf,
   createShipTaskEffect,
+  DEFAULT_WEAR,
   elementsPerUnit,
   extractionBlockedReason,
   findFabricators,
@@ -1015,29 +1018,44 @@ export class MissionRuntime {
   }
 
   /**
-   * Reservorios (distintos del propio) a los que se puede trasvasar desde
-   * `fromInstanceId`. Ronda 6 de fixes de playtest: un reservorio ya lleno
-   * (`freeCapacity === 0`) NO cuenta como destino — antes contaba con solo
-   * tener capacidad de catálogo y ser alcanzable, así que "Trasvasar" se
-   * ofrecía como acción válida hacia un destino sin ningún lugar, y el motor
-   * drenaba el 100% del origen para perderlo entero como "desborde". El MVP
-   * no deja elegir destino ni cantidad (el primer alcanzable se usa entero),
-   * así que perder todo por un destino sin espacio no es una decisión mal
-   * medida del jugador — es un destino que nunca debió ofrecerse.
+   * TODOS los reservorios de la nave (distintos del propio) a los que
+   * `fromInstanceId` podría trasvasar, con el motivo de bloqueo si no sirve
+   * ahora mismo — ronda 7 de fixes de playtest: antes (`transferTargetsFor`)
+   * devolvía solo los ya válidos y la UI tomaba el primero a ciegas, así que
+   * un trasvase exitoso hacia un aparato de fabricación (mini-reservorio,
+   * decisión del operador: SIGUE contando) se sentía como una pérdida —
+   * ningún panel muestra su contenido. El modo de selección espacial de
+   * `/game` necesita ver TODOS los candidatos (bloqueados incluidos) para
+   * iluminarlos con su estado real, en vez de que "no hay destino" sea la
+   * única señal posible.
    */
-  transferTargetsFor(
+  transferCandidatesFor(
     fromInstanceId: PlacedComponentInstanceId,
-  ): ReadonlyArray<PlacedComponentInstanceId> {
+  ): ReadonlyArray<{
+    readonly instanceId: PlacedComponentInstanceId;
+    readonly blocked?: "full" | "unreachable" | "different-substance";
+  }> {
     const ship = this.shipState.get();
-    return ship.placedComponents
-      .filter((instance) => {
-        if (instance.instanceId === fromInstanceId) return false;
-        const capacity = instanceReservoirCapacity(instance, this.componentRegistry);
-        if (capacity === undefined) return false;
-        if (freeCapacity(ship.reservoirContents, instance.instanceId, capacity) <= 0) return false;
-        return isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId);
-      })
-      .map((instance) => instance.instanceId);
+    const fromContent = this.reservoirContentOf(fromInstanceId);
+    const candidates: Array<{
+      readonly instanceId: PlacedComponentInstanceId;
+      readonly blocked?: "full" | "unreachable" | "different-substance";
+    }> = [];
+    for (const instance of ship.placedComponents) {
+      if (instance.instanceId === fromInstanceId) continue;
+      const capacity = instanceReservoirCapacity(instance, this.componentRegistry);
+      if (capacity === undefined) continue;
+      const toContent = this.reservoirContentOf(instance.instanceId);
+      const blocked = !isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId)
+        ? ("unreachable" as const)
+        : freeCapacity(ship.reservoirContents, instance.instanceId, capacity) <= 0
+          ? ("full" as const)
+          : toContent && fromContent && toContent.substanceId !== fromContent.substanceId
+            ? ("different-substance" as const)
+            : undefined;
+      candidates.push({ instanceId: instance.instanceId, blocked });
+    }
+    return candidates;
   }
 
   /**
@@ -1220,6 +1238,35 @@ export class MissionRuntime {
   /** Todo compuesto conocido por el registry de esta misión (catálogo + creaciones ya registradas) — pestaña "Catálogo" del picker. */
   get knownCompositeDefinitions(): ReadonlyArray<PhysicalComponentDefinition> {
     return this.componentRegistry.all().filter(isCompositeEntity);
+  }
+
+  /**
+   * Compuestos de CATÁLOGO (no creaciones personalizadas) instalables desde
+   * "Inventario" — ronda 7 de fixes de playtest, pedido del operador para
+   * poder instalar un segundo reservorio y probar el trasvase de verdad.
+   * `ALL_COMPOSITE_SPECS` es la lista estática del catálogo (antes de que
+   * `queueFabrication` registre creaciones en caliente en el mismo
+   * `componentRegistry`) — filtrar por esos ids es lo que evita listar una
+   * creación personalizada dos veces (ya aparece, gratis, en
+   * `installableCreations`).
+   */
+  get installableCatalogComposites(): ReadonlyArray<PhysicalComponentDefinition> {
+    const catalogIds = new Set(ALL_COMPOSITE_SPECS.map((spec) => spec.id));
+    return this.knownCompositeDefinitions.filter((def) => catalogIds.has(def.id));
+  }
+
+  /**
+   * ¿Hay stock (bucket `nuevo`, sin fallback — mismo criterio estricto que
+   * `consumeStock`) de TODOS los ingredientes de la receta de este compuesto?
+   * Gatea qué compuestos de catálogo aparecen en "Inventario": mostrarlo sin
+   * poder pagarlo sería mentirle al jugador sobre lo que puede instalar.
+   */
+  hasRecipeStockFor(definition: PhysicalComponentDefinition): boolean {
+    if (!isCompositeEntity(definition)) return false;
+    const stock = this.atomicStock.get();
+    return definition.recipe.ingredients.every(
+      (ingredient) => stockOfWear(stock, ingredient.ref, DEFAULT_WEAR) >= ingredient.quantity,
+    );
   }
 
   /**
@@ -1490,6 +1537,8 @@ export class MissionRuntime {
     position: GridPosition,
     /** Bucket de desgaste elegido en el selector (Fase 13c); ausente = `nuevo`. */
     wear?: ComponentWear,
+    /** Compuesto de catálogo instalado directo desde "Inventario" (ronda 7): consume su receta. */
+    consumeRecipe?: boolean,
   ): void {
     const targetSectionId = this.sectionIdAt(position);
     this.ensureAt(actorId, targetSectionId);
@@ -1506,6 +1555,7 @@ export class MissionRuntime {
           componentDefinitionId,
           placement: { position, footprint, rotation: 0 },
           ...(wear ? { wear } : {}),
+          ...(consumeRecipe ? { consumeRecipe } : {}),
         },
         estimatedDurationSeconds: this.modulatedDuration("install", actorId),
       }),

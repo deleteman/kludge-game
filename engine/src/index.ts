@@ -110,7 +110,7 @@ export {
 // ---------------------------------------------------------------------------
 
 // (`ComponentId` y `ChemicalSubstanceId` ya se exportan en la sección Fase 1.)
-export { buildComponentCatalog } from "./components/catalog/build-component-catalog.js";
+export { buildComponentCatalog, ALL_COMPOSITE_SPECS } from "./components/catalog/build-component-catalog.js";
 export { buildChemicalCatalog } from "./chemistry/catalog/build-chemical-catalog.js";
 export { ATOMIC_COMPONENT_CATALOG } from "./components/catalog/atomic-component-catalog.js";
 export { ELEMENT_CATALOG } from "./chemistry/catalog/element-catalog.js";

@@ -4084,3 +4084,68 @@ SUITE: `/engine` 870 → 871 tests, `/game` 40 tests (sin cambio — el filtro d
 funciones ya cubiertas a nivel motor), `tsc --noEmit` y `eslint` limpios en ambos paquetes.
 
 Razón: ronda 6 de fixes del playtest de la Subfase 13e.
+
+---
+
+[2026-08-21] Subfase 13e — fixes de playtest, ronda 7 (modo de selección espacial de trasvase, moneda/
+notificación de éxito, compuestos instalables desde Inventario).
+
+REPORTE DEL OPERADOR: tras la ronda 6, "Trasvasar" con un único tanque visible seguía "perdiendo" el
+contenido según él. Investigado a fondo: el motor NO perdía nada — las 50 unidades se movían con éxito al
+reservorio interno de `starter-estacion-quimica` (una pieza `FAB` sembrada en todos los arquetipos, con su
+propia `RES` líquida de capacidad 50, conectada por conducto `fluido`). El auto-pick del MVP
+(`transferTargetsFor(...)[0]`) elegía ese destino sin que el jugador lo supiera, y `ship-task-effect.ts` en
+`"transfer-substance"` NUNCA devolvía `pouredSubstanceId`/`pouredAmount` en el caso de éxito (solo
+`overflowAmount` en desborde) — un trasvase 100% exitoso no disparaba ninguna notificación ni efecto visual,
+así que la sustancia "desaparecía" a los ojos del jugador aunque se hubiera movido bien.
+
+ITERACIÓN DE DISEÑO (dos correcciones del operador sobre bocetos previos de este mismo fix): 1) la estación
+química sigue contando como destino válido ("mini-reservorio") — no se excluye. 2) un simple listado con
+motivo de bloqueo "puede causar confusión con varios reservorios en una misma zona" — pedido explícito: un
+modo de selección ESPACIAL estilo SimCity, con la capa de conductos iluminada, el resto del mapa oscurecido, y
+un canal verde/rojo entre origen y el candidato bajo el cursor.
+
+A) MODO DE SELECCIÓN ESPACIAL DE TRASVASE, hermano estructural de `wireMode` (cableado, Fase 11f): mismo
+   patrón de estado en el controller + resaltados que se destruyen/reconstruyen por completo en cada cambio +
+   click de mapa interceptado mientras el modo está activo.
+   - `MissionRuntime.transferTargetsFor` → `transferCandidatesFor`: ahora devuelve TODOS los reservorios de la
+     nave (cualquier dominio, self excluido) con su motivo de bloqueo (`"full"`, `"unreachable"`, o el nuevo
+     `"different-substance"` — necesario porque `pourInto` lanza `ReservoirOccupiedError` si el destino ya
+     tiene otra sustancia, y `effect(task)` en `task-scheduler.ts` no está en un try/catch: el modo nunca debe
+     dejar elegir una opción que garantice una excepción sin capturar).
+   - `MissionInteractionController.startTransferMode/cancelTransferMode/handleTransferModeClick`: abre el modo
+     desde el botón "Trasvasar" (cierra el panel de acciones, el foco pasa al mapa), calcula candidatos vivos,
+     y en cada click resuelve si es un candidato disponible (encola y sale), bloqueado (explica el motivo sin
+     salir) o ninguno (no hace nada).
+   - `FloorplanScene`: oscurecido de TODO el plano (paredes/objetos/tripulación incluidos) con un rectángulo
+     semitransparente (`RENDER_DEPTH.mapDimOverlay`, nuevo); un anillo por candidato en su celda, verde
+     (`CRISIS_SAFE_COLOR`) o rojo (`CRISIS_FATAL_COLOR`) — mismo contrato de color de crisis ya existente, sin
+     inventar un verde/rojo nuevos; la capa de conductos `fluido` se fuerza visible mientras dura el modo
+     (restaurada al salir); un canal (línea recta, simplificación explícita — no sigue el trazado real del
+     conducto) entre origen y el candidato bajo el cursor, mismo color verde/rojo. Botón "Cancelar trasvase" en
+     el mismo casillero de cabecera que el modo cableado (mutuamente excluyentes).
+
+B) NOTIFICACIÓN + MONEDA EN TRASVASE EXITOSO: `ship-task-effect.ts` ahora devuelve `pouredSubstanceId`/
+   `pouredAmount` cuando `poured.poured > 0`, además de `overflowAmount` si corresponde. `FloorplanScene` gana
+   una rama propia para `event.type === "transfer-substance"` (no reutiliza el charco de verter/purgar, que
+   sí derraman de verdad): notificación "Sustancia trasvasada" + una moneda (`fireCollectionBurst`, ya
+   existente desde la ronda 5) desde el origen hasta la celda del reservorio destino elegido.
+
+C) COMPUESTOS DE CATÁLOGO INSTALABLES DESDE "INVENTARIO", gateados por stock de receta (pedido del operador
+   para poder instalar un segundo reservorio y probar el trasvase de verdad): nuevo `ALL_COMPOSITE_SPECS`
+   exportado del engine (lista estática del catálogo, sin mezclar creaciones personalizadas registradas en
+   caliente); `MissionRuntime.installableCatalogComposites`/`hasRecipeStockFor`; `buildInventoryOptions` suma
+   una tercera fuente con `consumesRecipe: true`. `InstallTaskPayload` gana `consumeRecipe?: boolean`; el caso
+   `"install"` de `ship-task-effect.ts` consume la receta completa (bucket `nuevo`, mismo criterio estricto sin
+   fallback que el camino atómico) cuando ese flag está presente — las creaciones personalizadas NUNCA lo
+   ponen, así que siguen instalándose gratis como siempre.
+
+Nuevos tests (`ship-task-effect.test.ts`): trasvase exitoso ahora afirma `pouredSubstanceId`/`pouredAmount`
+(antes solo el desborde parcial); instalar un compuesto de catálogo con `consumeRecipe: true` consume la
+receta completa; instalarlo sin stock suficiente lanza `InsufficientStockError` y no toca la nave.
+
+SUITE: `/engine` 871 → 873 tests, `/game` 40 tests (sin cambio de conteo — el modo de selección espacial es
+input/render de Phaser sobre una escena real, sin arnés razonable de test automático, verificado razonando
+sobre el código + en la app), `tsc --noEmit` y `eslint` limpios en ambos paquetes.
+
+Razón: ronda 7 de fixes del playtest de la Subfase 13e.

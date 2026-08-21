@@ -236,6 +236,23 @@ export function createShipTaskEffect(
             );
           }
           atomicStock.set(consumed);
+        } else if (definition && isCompositeEntity(definition) && payload.consumeRecipe) {
+          // Ronda 7: instalar un compuesto de catálogo directo desde
+          // "Inventario" (ej. un segundo reservorio) consume su receta, a
+          // diferencia de una creación personalizada (siempre gratis acá —
+          // ver el docblock de `consumeRecipe`). Mismo criterio estricto que
+          // el camino atómico: bucket `nuevo` sin fallback silencioso.
+          let stock = atomicStock.get();
+          for (const ingredient of definition.recipe.ingredients) {
+            const consumed = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+            if (!consumed) {
+              throw new InsufficientStockError(
+                `No hay stock de "${ingredient.ref}" (nuevo) para instalar "${payload.componentDefinitionId}" (task ${task.id})`,
+              );
+            }
+            stock = consumed;
+          }
+          atomicStock.set(stock);
         }
         shipState.set(installInstance(shipState.get(), payload, componentRegistry));
         return;
@@ -346,7 +363,16 @@ export function createShipTaskEffect(
           capacity,
         );
         shipState.set({ ...ship, reservoirContents: poured.contents });
-        return poured.overflow > 0 ? { overflowAmount: poured.overflow } : undefined;
+        // Ronda 7: el éxito también se reporta (antes solo se exponía el
+        // desborde) — sin esto, un trasvase 100% exitoso no disparaba
+        // ninguna notificación ni efecto visual en `/game`, y la sustancia
+        // "desaparecía" a los ojos del jugador aunque se hubiera movido bien.
+        return {
+          ...(poured.poured > 0
+            ? { pouredSubstanceId: drawn.substanceId, pouredAmount: poured.poured }
+            : {}),
+          ...(poured.overflow > 0 ? { overflowAmount: poured.overflow } : {}),
+        };
       }
       case "apply-substance": {
         // Verter sobre la ATMÓSFERA de una sección (13e). Primer escritor real

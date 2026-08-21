@@ -397,6 +397,70 @@ describe("createShipTaskEffect", () => {
         }),
       ),
     ).toThrow(InsufficientStockError);
+  });
+
+  it("installing a catalog composite with consumeRecipe consumes its ingredients (ronda 7)", () => {
+    const registry = buildComponentCatalog().registry;
+    const shipState = new MutableShipState(fixtureShip());
+    const atomicStock = new MutableAtomicStock({
+      ["tubo-flexible" as ComponentId]: { nuevo: 1 },
+      ["valvula-simple" as ComponentId]: { nuevo: 1 },
+      ["junta-hermetica" as ComponentId]: { nuevo: 2 },
+    });
+    const effect = createShipTaskEffect(shipState, registry, atomicStock);
+
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "install",
+        payload: {
+          kind: "install",
+          instanceId: "reservorio-2" as PlacedComponentInstanceId,
+          componentDefinitionId: "reservorio-agua-reciclada" as ComponentId,
+          placement: { position: { x: 6, y: 4 }, footprint: { width: 2, height: 2 }, rotation: 0 },
+          consumeRecipe: true,
+        },
+      }),
+    );
+
+    expect(atomicStock.get()).toEqual({
+      ["tubo-flexible" as ComponentId]: {},
+      ["valvula-simple" as ComponentId]: {},
+      ["junta-hermetica" as ComponentId]: {},
+    });
+    expect(
+      shipState.get().placedComponents.find((entry) => entry.instanceId === "reservorio-2"),
+    ).toBeDefined();
+  });
+
+  it("refuses to install a catalog composite missing recipe stock and leaves the ship untouched (ronda 7)", () => {
+    const registry = buildComponentCatalog().registry;
+    const shipState = new MutableShipState(fixtureShip());
+    const atomicStock = new MutableAtomicStock({
+      ["tubo-flexible" as ComponentId]: { nuevo: 1 },
+      // Falta valvula-simple y junta-hermetica.
+    });
+    const effect = createShipTaskEffect(shipState, registry, atomicStock);
+
+    expect(() =>
+      effect(
+        createCrewTask({
+          id: "t1" as CrewTaskId,
+          actorId: ACTOR,
+          type: "install",
+          payload: {
+            kind: "install",
+            instanceId: "reservorio-2" as PlacedComponentInstanceId,
+            componentDefinitionId: "reservorio-agua-reciclada" as ComponentId,
+            placement: { position: { x: 6, y: 4 }, footprint: { width: 2, height: 2 }, rotation: 0 },
+            consumeRecipe: true,
+          },
+        }),
+      ),
+    ).toThrow(InsufficientStockError);
+    expect(shipState.get().placedComponents).toEqual([]);
+    expect(atomicStock.get()).toEqual({ ["tubo-flexible" as ComponentId]: { nuevo: 1 } });
     expect(shipState.get().placedComponents).toEqual([]);
   });
 
@@ -621,7 +685,7 @@ describe("createShipTaskEffect — sustancias (13e)", () => {
         shipWithTanks([{ componentInstanceId: TANQUE_A, substanceId: AGUA, amount: 50 }]),
       );
       const effect = createShipTaskEffect(shipState, componentRegistry, new MutableAtomicStock({}));
-      effect(
+      const result = effect(
         task("t1", "transfer-substance", {
           kind: "transfer-substance",
           fromInstanceId: TANQUE_A,
@@ -636,6 +700,12 @@ describe("createShipTaskEffect — sustancias (13e)", () => {
         substanceId: AGUA,
         amount: 20,
       });
+      // Ronda 7: el éxito se reporta (antes solo se exponía el desborde) —
+      // sin esto, un trasvase 100% exitoso no disparaba ninguna notificación
+      // ni efecto visual en `/game`.
+      expect(result?.pouredSubstanceId).toBe(AGUA);
+      expect(result?.pouredAmount).toBe(20);
+      expect(result?.overflowAmount).toBeUndefined();
     });
 
     it("reporta el desborde cuando el destino no da abasto", () => {

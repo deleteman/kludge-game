@@ -90,6 +90,14 @@ export interface MissionInteractionCallbacks {
    * pieza, así que la escena solo necesita el `instanceId`.
    */
   readonly onOpenFabricator: (instanceId: PlacedComponentInstanceId) => void;
+  /**
+   * Se llama al entrar/salir del modo de selección espacial de trasvase, y
+   * cuando cambia el estado de sus candidatos (ronda 7) — el llamador
+   * construye/destruye el overlay de oscurecido, los resaltados de reservorio
+   * y fuerza la capa de conductos `fluido` visible mientras el modo esté
+   * activo (mismo criterio que `onWireModeChanged`/`onWireSelectionChanged`).
+   */
+  readonly onTransferModeChanged: () => void;
 }
 
 /**
@@ -108,6 +116,21 @@ export class MissionInteractionController {
   private selectedActorIdValue?: CrewActorId;
   private wireModeValue = false;
   private wireFirstNodeId?: SignalNodeId;
+  /**
+   * Modo de selección espacial de destino de trasvase (ronda 7 de fixes de
+   * playtest), hermano estructural de `wireModeValue`/`wireFirstNodeId`: el
+   * jugador elige "Trasvasar" en el panel de una instancia, el panel se
+   * cierra y el mapa entra en este modo hasta que se elige un destino válido
+   * o se cancela. `FloorplanScene` lee `transferMode`/`transferModeCandidates`
+   * cada frame para oscurecer el plano e iluminar los candidatos.
+   */
+  private transferModeState?: {
+    readonly fromInstanceId: PlacedComponentInstanceId;
+    readonly candidates: ReadonlyArray<{
+      readonly instanceId: PlacedComponentInstanceId;
+      readonly blocked?: "full" | "unreachable" | "different-substance";
+    }>;
+  };
   private actionPanelContent: ActionPanelContent = { kind: "idle" };
   private actionPanelContainer?: Phaser.GameObjects.Container;
   /**
@@ -239,6 +262,80 @@ export class MissionInteractionController {
     this.callbacks.onWireModeChanged();
   }
 
+  /** `true` mientras el jugador está eligiendo destino de trasvase en el mapa (ronda 7). */
+  get transferMode(): boolean {
+    return this.transferModeState !== undefined;
+  }
+
+  /** Instancia origen del trasvase en curso, o `undefined` fuera del modo. */
+  get transferModeOrigin(): PlacedComponentInstanceId | undefined {
+    return this.transferModeState?.fromInstanceId;
+  }
+
+  /** Candidatos vivos del trasvase en curso (con su motivo de bloqueo), o `[]` fuera del modo. */
+  get transferModeCandidates(): ReadonlyArray<{
+    readonly instanceId: PlacedComponentInstanceId;
+    readonly blocked?: "full" | "unreachable" | "different-substance";
+  }> {
+    return this.transferModeState?.candidates ?? [];
+  }
+
+  /**
+   * Abre el modo de selección espacial de destino (ronda 7, reemplaza el
+   * auto-pick ciego del MVP y el picker en lista descartado en el mismo
+   * playtest): cierra el panel de acciones (el foco pasa al mapa, mismo
+   * criterio que el modo cableado) y calcula los candidatos vivos.
+   */
+  startTransferMode(fromInstanceId: PlacedComponentInstanceId): void {
+    this.transferModeState = {
+      fromInstanceId,
+      candidates: this.mission.transferCandidatesFor(fromInstanceId),
+    };
+    this.setActionPanelContent({ kind: "idle" });
+    this.callbacks.setStatus(t("ui.floorplan.mission.transfer-mode-hint"));
+    this.callbacks.onTransferModeChanged();
+  }
+
+  cancelTransferMode(): void {
+    if (!this.transferModeState) return;
+    this.transferModeState = undefined;
+    this.callbacks.setStatus("");
+    this.callbacks.onTransferModeChanged();
+  }
+
+  /**
+   * Click en el mapa mientras el modo de trasvase está activo (llamado desde
+   * `handleMapClick`, mismo lugar donde ya se intercepta `wireModeValue`). Una
+   * celda que no es ningún candidato no hace nada; un candidato bloqueado
+   * explica el motivo sin salir del modo (mismo criterio de "nunca un botón
+   * gris mudo" ya aplicado a los otros bloqueos de reservorio); uno disponible
+   * encola el trasvase y cierra el modo.
+   */
+  handleTransferModeClick(position: GridPosition): void {
+    if (!this.transferModeState) return;
+    const instance = this.findInstanceAtCell(position);
+    if (!instance) return;
+    const candidate = this.transferModeState.candidates.find(
+      (entry) => entry.instanceId === instance.instanceId,
+    );
+    if (!candidate) return;
+    if (candidate.blocked) {
+      this.callbacks.setStatus(t(`ui.floorplan.mission.transfer-mode-blocked.${candidate.blocked}`));
+      return;
+    }
+    const fromInstanceId = this.transferModeState.fromInstanceId;
+    const content = this.mission.reservoirContentOf(fromInstanceId);
+    if (!this.selectedActorIdValue || !content) return;
+    this.mission.queueTransferSubstance(
+      this.selectedActorIdValue,
+      fromInstanceId,
+      instance.instanceId,
+      content.amount,
+    );
+    this.cancelTransferMode();
+    this.callbacks.onTaskQueued();
+  }
+
   /** Cambia el nodo origen y notifica a la escena para reposicionar su highlight. */
   private setWireFirstNode(nodeId: SignalNodeId | undefined): void {
     this.wireFirstNodeId = nodeId;
@@ -317,6 +414,10 @@ export class MissionInteractionController {
     if (this.installPickerOpen) return;
     if (this.wireModeValue) {
       this.handleWireModeClick(position);
+      return;
+    }
+    if (this.transferModeState) {
+      this.handleTransferModeClick(position);
       return;
     }
 
@@ -525,7 +626,7 @@ export class MissionInteractionController {
       amount: content?.amount ?? 0,
       capacity,
       extractionBlocked: this.mission.extractionBlockedFor(instanceId),
-      canTransfer: this.mission.transferTargetsFor(instanceId).length > 0,
+      canTransfer: this.mission.transferCandidatesFor(instanceId).length > 0,
       // 13e ronda 4: para poder ofrecer "Analizar" acá mismo y no obligar a
       // pasar por la lista de sustancias del HUD.
       substanceId: content?.substanceId,
@@ -761,21 +862,11 @@ export class MissionInteractionController {
           );
           this.callbacks.onTaskQueued();
         },
-        onTransferSubstance: (instanceId) => {
-          const content = this.mission.reservoirContentOf(instanceId);
-          // MVP de destino (13e): el primer reservorio alcanzable. Un selector
-          // de destino es UI nueva y no hace falta todavía — con conductos
-          // `fluido` sin autorar, el conjunto alcanzable es como mucho de uno.
-          const target = this.mission.transferTargetsFor(instanceId)[0];
-          if (!this.selectedActorIdValue || !content || !target) return;
-          this.mission.queueTransferSubstance(
-            this.selectedActorIdValue,
-            instanceId,
-            target,
-            content.amount,
-          );
-          this.callbacks.onTaskQueued();
-        },
+        // Ronda 7: ya no encola directo contra el primer alcanzable — abre el
+        // modo de selección espacial (`startTransferMode`), que deja elegir
+        // destino viendo todos los reservorios de la nave iluminados según
+        // su estado real.
+        onStartTransferMode: (instanceId) => this.startTransferMode(instanceId),
         onExtractElements: (instanceId) => {
           const content = this.mission.reservoirContentOf(instanceId);
           if (!this.selectedActorIdValue || !content) return;
@@ -805,11 +896,15 @@ export class MissionInteractionController {
   }
 
   /**
-   * Pestaña "Inventario" (rework "sin stock → desarmar → reutilizar"): solo
-   * piezas atómicas con stock REAL > 0 (`MissionRuntime.stockOf`, ya no todo
-   * el catálogo sin límite) más las creaciones custom del jugador (11c.1,
-   * disponibilidad no gobernada por stock — mecanismo propio sin cambios).
-   * Una creación sin footprint no es instalable (no se sabe cuánto ocupa).
+   * Pestaña "Inventario" (rework "sin stock → desarmar → reutilizar"): piezas
+   * atómicas con stock REAL > 0 (`MissionRuntime.stockOf`, ya no todo el
+   * catálogo sin límite), creaciones custom del jugador (11c.1, disponibilidad
+   * no gobernada por stock — mecanismo propio sin cambios) y, desde la ronda 7
+   * de fixes de playtest, compuestos de CATÁLOGO (ej. un segundo reservorio)
+   * gateados por stock de receta (`hasRecipeStockFor`) — a diferencia de las
+   * creaciones, consumen sus ingredientes al instalarse (`consumesRecipe`).
+   * Una creación/compuesto sin footprint no es instalable (no se sabe cuánto
+   * ocupa).
    */
   private buildInventoryOptions(): ReadonlyArray<InstallPickerOption> {
     // Fase 13c: una fila por BUCKET de desgaste, no una por pieza. Si hay 2
@@ -839,7 +934,21 @@ export class MissionInteractionController {
         material: def.data.material,
       });
     }
-    return [...atomicOptions, ...creationOptions];
+    const compositeOptions: InstallPickerOption[] = [];
+    for (const def of this.mission.installableCatalogComposites) {
+      const footprint = def.data.footprint;
+      if (!footprint || !this.mission.hasRecipeStockFor(def)) continue;
+      compositeOptions.push({
+        id: def.id,
+        name: def.name,
+        footprint,
+        functional: def.data.functional,
+        material: def.data.material,
+        composition: this.buildComposition(def),
+        consumesRecipe: true,
+      });
+    }
+    return [...atomicOptions, ...creationOptions, ...compositeOptions];
   }
 
   /**
@@ -969,6 +1078,7 @@ export class MissionInteractionController {
       option.footprint,
       fitPosition,
       option.wear,
+      option.consumesRecipe,
     );
     this.closeInstallPicker();
     this.setActionPanelContent({ kind: "idle" });

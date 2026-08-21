@@ -87,6 +87,17 @@ export interface InstallTaskPayload {
    * Opcional y retrocompatible: ausente = `nuevo`, el bucket por defecto.
    */
   readonly wear?: ComponentWear;
+  /**
+   * Instalar un COMPUESTO de catálogo consumiendo su receta (ronda 7 de
+   * fixes de playtest 13e): las creaciones personalizadas del jugador
+   * (`customCreations`) se instalan gratis (ya "pagaron" al ensamblarse en la
+   * mesa de creación) — este flag distingue ese caso del de un compuesto de
+   * catálogo (ej. un segundo reservorio) instalado directo desde
+   * "Inventario", que sí debe gastar los ingredientes de `recipe.ingredients`.
+   * Ausente/`false` = comportamiento de siempre (compuesto gratis, atómico
+   * consume su propio stock).
+   */
+  readonly consumeRecipe?: boolean;
 }
 
 export interface ConnectTaskPayload {

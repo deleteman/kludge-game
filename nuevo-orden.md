@@ -487,6 +487,28 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     cubriendo también la carrera de que el destino se llenara entre armar el panel y ejecutar la tarea.
     `/engine` 870 → 871 tests.
 
+  **Ronda 7 de fixes de playtest (2026-08-21)** — investigación a fondo del reporte "sigue perdiendo el
+  contenido": el motor ya NO perdía nada tras la ronda 6 — el trasvase se movía con éxito al reservorio
+  interno de `starter-estacion-quimica` (mini-reservorio `FAB`, conectado por conducto), pero el auto-pick
+  ciego del MVP elegía ese destino sin que el jugador lo supiera, y `ship-task-effect.ts` nunca reportaba
+  `pouredSubstanceId`/`pouredAmount` en el caso de ÉXITO (solo el desborde) — un trasvase 100% exitoso no
+  disparaba ninguna notificación ni efecto visual, así que la sustancia parecía desaparecer:
+  - **Modo de selección espacial de destino**, estilo SimCity (pedido explícito del operador, tras descartar
+    un simple listado por confuso con varios reservorios en una misma zona y descartar excluir la estación
+    química, que sigue contando como destino válido): hermano estructural de `wireMode` (Fase 11f) — el mapa
+    se oscurece por completo, la capa de conductos `fluido` se fuerza visible, cada reservorio candidato se
+    ilumina en verde/rojo según pueda o no recibir (mismo contrato de color de crisis ya existente, sin
+    inventar uno nuevo), y un canal recto entre origen y el candidato bajo el cursor confirma si hay camino.
+    Nuevo motivo de bloqueo `"different-substance"` (el destino ya tiene otra sustancia — `pourInto` lanzaría
+    `ReservoirOccupiedError`, y el scheduler no envuelve el efecto en try/catch).
+  - **Notificación + moneda en trasvase exitoso**: rama propia para `transfer-substance` (no reutiliza el
+    charco de verter/purgar, que sí derraman de verdad) con su propia notificación y una moneda hacia el
+    reservorio destino elegido.
+  - **Compuestos de catálogo instalables desde "Inventario"**, gateados por stock de receta (pedido del
+    operador para poder instalar un segundo reservorio y probar el trasvase de verdad) — antes solo aparecían
+    en la pestaña "Catálogo", informativa. Instalarlos consume la receta completa; las creaciones
+    personalizadas del jugador siguen gratis. `/engine` 871 → 873 tests.
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

@@ -51,6 +51,12 @@ export interface InstallPickerOption {
   readonly wear?: ComponentWear;
   /** Unidades disponibles en ese bucket, para el sufijo "×N". */
   readonly quantity?: number;
+  /**
+   * Compuesto de catálogo instalado directo desde "Inventario", gastando su
+   * receta al completarse (ronda 7 de fixes de playtest) — a diferencia de
+   * las creaciones personalizadas del jugador, que se instalan gratis.
+   */
+  readonly consumesRecipe?: boolean;
 }
 
 export interface InstallPickerLabels {
