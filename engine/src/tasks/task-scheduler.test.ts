@@ -304,3 +304,111 @@ describe("task-scheduler: linkDependency (GDD §4.3 'vincular')", () => {
     expect(scheduler.getTask(id("a"))?.dependsOn).toEqual([]);
   });
 });
+
+/**
+ * Ronda 10 de fixes de playtest 13e: "si la máquina es capaz de realizar una
+ * acción, esa acción queda deshabilitada si no tiene energía para hacerlo" —
+ * salvo desmontaje y las tareas de asegurado de 13d, que existen precisamente
+ * para operar sobre una sección sin energía.
+ */
+describe("task-scheduler: power gating (ronda 10 de fixes de playtest 13e)", () => {
+  const SECTION = "bodega" as SectionId;
+
+  it("blocks a gateable task with reason 'no-power' when its section has no power granted", () => {
+    const scheduler = new TaskScheduler({ isSectionUnpowered: (sectionId) => sectionId === SECTION });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "extract-elements",
+        targetSectionId: SECTION,
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("blocked");
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("waiting");
+  });
+
+  it("emits task-blocked with reason 'no-power'", () => {
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((e) => events.push(e));
+    const scheduler = new TaskScheduler({
+      emitter,
+      isSectionUnpowered: (sectionId) => sectionId === SECTION,
+    });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "transfer-substance",
+        targetSectionId: SECTION,
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(events.find((e) => e.kind === "task-blocked")).toMatchObject({ reason: "no-power" });
+  });
+
+  it("starts the task as soon as its section regains power, without re-enqueuing", () => {
+    let unpowered = true;
+    const scheduler = new TaskScheduler({ isSectionUnpowered: (sectionId) => sectionId === SECTION && unpowered });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "apply-substance",
+        targetSectionId: SECTION,
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    expect(scheduler.getTask(id("t"))?.state).toBe("blocked");
+
+    unpowered = false;
+    scheduler.tick(tickOf(2));
+    expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+  });
+
+  it.each(["dismantle", "cut-power", "purge-reservoir", "discharge-source"] as const)(
+    "does not gate the exempt task type '%s' even without power",
+    (exemptType) => {
+      const scheduler = new TaskScheduler({ isSectionUnpowered: () => true });
+      scheduler.enqueue(
+        createCrewTask({
+          id: id("t"),
+          actorId: ENGINEER,
+          type: exemptType,
+          targetSectionId: SECTION,
+          estimatedDurationSeconds: 1,
+        }),
+      );
+
+      scheduler.tick(tickOf(1));
+
+      expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+    },
+  );
+
+  it("does not gate a task without a targetSectionId", () => {
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => true });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "combine",
+        estimatedDurationSeconds: 1,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+  });
+});

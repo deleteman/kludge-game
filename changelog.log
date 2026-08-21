@@ -4294,3 +4294,79 @@ SUITE: `/engine` 873 tests (sin cambio — fixes de render/UI/contenido, sin ló
 ambos paquetes.
 
 Razón: ronda 9 de fixes del playtest de la Subfase 13e.
+
+2026-08-21 — Subfase 13e: fixes de playtest, ronda 10 (selector de instalación sin ruido) + nueva regla
+transversal de energía.
+
+REPORTE: 1) las filas del selector de instalación mostraban el motivo de bloqueo COMPLETO en el nombre
+("sin stock", "faltan: X, Y") — con la fila ya atenuada (ronda 9) era ruido redundante, y para compuestos
+duplicaba lo que la ficha ya muestra pieza por pieza; 2) el warning "faltan piezas para fabricarlo: [listado]"
+de la ficha de detalle se solapaba con la sección de Composición cuando envolvía a varias líneas, y además no
+debía repetir el listado; 3) clickear un destino bloqueado en modo transferir no daba ninguna señal sonora
+(a diferencia de asignar energía de más); 4) pregunta del operador sobre transferir líquido a una zona con
+energía, redirigida — tras dos preguntas de seguimiento — hacia una regla de diseño mucho más amplia: toda
+acción que una máquina sea capaz de realizar queda deshabilitada si su sección no tiene energía asignada,
+salvo desmontaje y las tareas de asegurado de la Subfase 13d (cortar energía, purgar reservorio, descargar
+fuente), que existen precisamente para operar sobre una sección sin energía.
+
+INVESTIGACIÓN DE CAUSA RAÍZ (tres agentes Explore, código no hipótesis) + dos preguntas de alcance al
+operador (¿aplica a todas las acciones? ¿incluye las tareas de asegurado de 13d?):
+- #1/#2: `optionRowLabel` (`install-picker-modal.ts`) calculaba un sufijo `reason` desde
+  `labels.blockedNoStock`/`labels.blockedMissingIngredients(names)`; en `renderSelectedComponentSheet` el
+  mismo texto se dibujaba con `wordWrap` pero el cursor vertical avanzaba con un `lineY += 26` fijo —
+  cualquier texto de 2+ líneas pisaba la sección de Composición que arranca justo debajo (mismo patrón de bug
+  que el título/huella de ronda 9).
+- #3: `handleTransferModeClick` ya detectaba `candidate.blocked` y llamaba `setStatus(...)`, pero nunca
+  reproducía sonido — el controller ya tenía `this.scene.sound`/`AUDIO_KEYS`/`pickSoundKey` disponibles (los
+  mismos usados en otras líneas del propio archivo).
+- #4: no existía ningún choke point único de "¿puede ejecutarse esta tarea ahora?" — cada `queue*` de
+  `MissionRuntime` resuelve su `targetSectionId` y encola sin más, y las únicas señales de energía existentes
+  (`sectionHasNoPowerGranted`, viva/por tick; `blueprint.unpoweredSectionIds`, cicatriz permanente) tenían
+  consumidores documentados como exclusivamente cosméticos o de gating de señales/HUD respectivamente. El
+  único punto de la arquitectura donde una tarea pasa de `pending`/`blocked` a `in-progress` es
+  `TaskScheduler.scheduleTask` → `resolveBlockingReason`, ya usado para el bloqueo por dependencias — mismo
+  choke point, sin duplicar la comprobación en cada tipo de tarea.
+
+FIXES:
+1) `optionRowLabel` (`install-picker-modal.ts`): ya no agrega ningún sufijo de bloqueo — la fila queda
+   `${nombre}${cantidad}${desgaste}`, sin texto de motivo. `InstallPickerOption.missingIngredientNames` y el
+   helper privado `missingIngredientNames()` (`mission-interaction-controller.ts`) quedan sin consumidores y
+   se eliminan.
+2) `InstallPickerLabels.blockedMissingIngredients` deja de ser función `(names) => string` y pasa a ser un
+   string estático, igual que `blockedNoStock` — el listado de qué falta ya lo muestra
+   `renderCompositionLines` ingrediente por ingrediente (`hasStock`, ronda 9). `es.ts`/`en.ts`: "Faltan piezas
+   para fabricarlo: {names}." → "Faltan piezas para fabricarlo." `renderSelectedComponentSheet` mide
+   `warningText.height` para avanzar `lineY` en vez de un offset fijo — mismo criterio que `titleText.height`
+   de ronda 9, ahora general para cualquier largo de warning.
+3) `handleTransferModeClick`: en la rama de `candidate.blocked`, reproduce
+   `scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 })` antes de `setStatus(...)` — mismo
+   sonido que la asignación de energía de más.
+4) **Nueva regla de motor — gating por energía de tareas** (`engine/src/tasks/task-scheduler.ts`):
+   `TaskSchedulerOptions` gana `isSectionUnpowered?: (sectionId) => boolean`; `POWER_EXEMPT_TASK_TYPES`
+   (`dismantle`, `cut-power`, `purge-reservoir`, `discharge-source`) queda fuera de la regla.
+   `resolveBlockingReason` — DESPUÉS de resolver dependencias, que tienen prioridad — devuelve el nuevo motivo
+   `"no-power"` si `task.targetSectionId` está definido, el tipo no es exento, y la sección no tiene energía
+   otorgada. `TaskBlockedEvent["reason"]` (`task-events.types.ts`) gana el literal `"no-power"`. Wiring: `new
+   TaskScheduler(...)` en `mission-runtime.ts` pasa
+   `isSectionUnpowered: (sectionId) => this.powerRuntime.sectionHasNoPowerGranted(sectionId)` — se reutiliza
+   la señal viva ya existente (nacida cosmética en 13b ronda 2), documentando en ambos sitios
+   (`mission-power-runtime.ts`, `mission-runtime.ts`) que ahora tiene un segundo consumidor real de gating,
+   distinto del gating de señales/HUD que sigue usando `unpoweredSectionIds` (cicatriz permanente). Al ser el
+   mismo choke point que el bloqueo por dependencias, una tarea bloqueada por energía se retoma sola en
+   cuanto la sección recibe energía, sin ninguna acción del jugador sobre la tarea misma.
+5) Representación visual (principio 6): `floorplan-scene.ts` distingue el motivo en la notificación de
+   `task-blocked` — nueva clave `ui.floorplan.notification.task-blocked-no-power` ("Bloqueado: la sección no
+   tiene energía") en vez del texto genérico, cuando `event.reason === "no-power"`. El motivo en sí (sección
+   sin energía) ya tenía representación ambiental existente; lo que faltaba era distinguir el AVISO.
+
+TESTS NUEVOS: `engine/src/tasks/task-scheduler.test.ts`, describe "power gating (ronda 10 de fixes de
+playtest 13e)" — una tarea gateable queda `blocked` con `reason: "no-power"` sin energía; emite el evento
+correspondiente; se retoma sola (`in-progress`) en cuanto la sección recibe energía sin volver a encolarse;
+las 4 tareas exentas (parametrizado) se ejecutan igual sin energía; una tarea sin `targetSectionId` nunca se
+gatea.
+
+SUITE: `/engine` 881 tests (873 + 8 nuevos de gating por energía), `/game` 40 tests (sin cambio), `tsc
+--noEmit` y `eslint` limpios en ambos paquetes.
+
+Razón: ronda 10 de fixes del playtest de la Subfase 13e + mecánica de energía transversal pedida por el
+operador al analizar la interacción entre transferencia de líquidos y zonas sin energía.

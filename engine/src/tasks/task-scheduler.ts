@@ -2,7 +2,7 @@ import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { CrewActor, CrewActorId, CrewActorStatus } from "../crew/crew-actor.types.js";
-import type { CrewTask, CrewTaskId, TaskEffect } from "./task.types.js";
+import type { CrewTask, CrewTaskId, TaskEffect, TaskType } from "./task.types.js";
 import { TERMINAL_TASK_STATES } from "./task.types.js";
 import type { CoreLoopDomainEvent, TaskBlockedEvent } from "./task-events.types.js";
 import type { Tickable } from "./core-loop-mode.js";
@@ -41,7 +41,28 @@ export interface TaskSchedulerOptions {
   readonly emitter?: EventEmitter<CoreLoopDomainEvent>;
   /** Hook de efecto invocado al completar cada tarea (Fases 7/9/10). Por defecto no-op. */
   readonly effect?: TaskEffect;
+  /**
+   * Consulta si una sección NO tiene energía asignada ahora mismo (ronda 10
+   * de fixes de playtest 13e). Sin esto, ninguna tarea queda gateada por
+   * energía — comportamiento previo a la regla, usado por defecto en tests
+   * que no ejercitan el sistema de energía.
+   */
+  readonly isSectionUnpowered?: (sectionId: SectionId) => boolean;
 }
+
+/**
+ * Tipos de tarea exentos de la regla "sin energía, la máquina no actúa"
+ * (ronda 10): el desmontaje y las tareas de asegurado de la Subfase 13d
+ * existen precisamente para preparar o ejecutar una acción SOBRE una
+ * sección que puede estar sin energía — gatearlas rompería el propio flujo
+ * de seguridad que representan (confirmado con el operador).
+ */
+const POWER_EXEMPT_TASK_TYPES: ReadonlySet<TaskType> = new Set<TaskType>([
+  "dismantle",
+  "cut-power",
+  "purge-reservoir",
+  "discharge-source",
+]);
 
 interface ActorRecord {
   status: CrewActorStatus;
@@ -82,10 +103,12 @@ export class TaskScheduler implements Tickable {
 
   private readonly emitter?: EventEmitter<CoreLoopDomainEvent>;
   private readonly effect: TaskEffect;
+  private readonly isSectionUnpowered?: (sectionId: SectionId) => boolean;
 
   constructor(options: TaskSchedulerOptions = {}) {
     this.emitter = options.emitter;
     this.effect = options.effect ?? (() => {});
+    this.isSectionUnpowered = options.isSectionUnpowered;
   }
 
   /** Registra (o actualiza) un actor, sembrando su ubicación lógica inicial. */
@@ -306,9 +329,12 @@ export class TaskScheduler implements Tickable {
   }
 
   /**
-   * Evalúa el estado de las dependencias de una tarea. Una dependencia
+   * Evalúa el estado de las dependencias de una tarea (prioridad) y, si están
+   * resueltas, si su sección tiene energía (ronda 10). Una dependencia
    * cancelada/fallada es un bloqueo permanente y tiene prioridad sobre la
-   * espera normal a una dependencia aún en curso.
+   * espera normal a una dependencia aún en curso; el bloqueo por energía se
+   * evalúa último porque es reversible sin acción del jugador sobre la tarea
+   * misma (alcanza con reasignar energía a la sección).
    */
   private resolveBlockingReason(
     task: CrewTask,
@@ -329,6 +355,13 @@ export class TaskScheduler implements Tickable {
     }
     if (awaiting !== undefined) {
       return { reason: "awaiting-dependency", blockingTaskId: awaiting };
+    }
+    if (
+      task.targetSectionId !== undefined &&
+      !POWER_EXEMPT_TASK_TYPES.has(task.type) &&
+      this.isSectionUnpowered?.(task.targetSectionId)
+    ) {
+      return { reason: "no-power" };
     }
     return undefined;
   }

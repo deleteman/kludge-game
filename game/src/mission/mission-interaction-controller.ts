@@ -316,6 +316,10 @@ export class MissionInteractionController {
     const candidate = freshCandidates.find((entry) => entry.instanceId === instance.instanceId);
     if (!candidate) return;
     if (candidate.blocked) {
+      // Ronda 10: mismo aviso sonoro que asignar energía de más
+      // (`power-allocation-slider.ts`) — el texto de estado ya explicaba el
+      // motivo, pero no daba ninguna señal inmediata de "esto no se puede".
+      this.scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
       this.callbacks.setStatus(t(`ui.floorplan.mission.transfer-mode-blocked.${candidate.blocked}`));
       return;
     }
@@ -988,7 +992,6 @@ export class MissionInteractionController {
           material: def.data.material,
           composition: this.buildComposition(def, { highlightRequiredTag: false, missingRefs }),
           blocked: "missing-ingredients",
-          missingIngredientNames: this.missingIngredientNames(def),
         });
       }
     }
@@ -999,14 +1002,6 @@ export class MissionInteractionController {
       ...atomicMissing,
       ...compositeBlocked,
     ];
-  }
-
-  /** Nombres legibles de lo que falta para completar una receta — ver `MissionRuntime.missingRecipeIngredients`. */
-  private missingIngredientNames(definition: PhysicalComponentDefinition): ReadonlyArray<string> {
-    return this.mission.missingRecipeIngredients(definition).map(({ ref }) => {
-      const ingredientDefinition = this.mission.definitionOf(ref);
-      return ingredientDefinition?.name ?? this.nameByComponentId.get(ref) ?? ref;
-    });
   }
 
   /**
@@ -1034,8 +1029,7 @@ export class MissionInteractionController {
         wearTag: (wear) => t(`component.wear.${wear}`),
         compositionTitle: t("ui.floorplan.mission.composition-title"),
         blockedNoStock: t("ui.floorplan.mission.install-modal.blocked-no-stock"),
-        blockedMissingIngredients: (names) =>
-          t("ui.floorplan.mission.install-modal.blocked-missing-ingredients").replace("{names}", names.join(", ")),
+        blockedMissingIngredients: t("ui.floorplan.mission.install-modal.blocked-missing-ingredients"),
       },
       {
         onSelect: (index) => {

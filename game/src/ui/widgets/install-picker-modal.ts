@@ -23,21 +23,17 @@ import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
  * puede aparecer varias veces, así que la fila tiene que decir CUÁL es —
  * mostrar solo el nombre haría que dos filas idénticas fueran indistinguibles.
  * `nuevo` no se etiqueta: es el caso por defecto y ensuciaría toda la lista.
+ *
+ * Ronda 10: ya NO agrega el motivo de bloqueo al texto — el atenuado
+ * (`muted`, ronda 9) ya distingue la fila, y el motivo completo vive en la
+ * ficha de detalle (siempre seleccionable desde ronda 9). Repetirlo acá
+ * volvía la lista casi ilegible, sobre todo en compuestos con varias piezas
+ * faltantes.
  */
 function optionRowLabel(option: InstallPickerOption, labels: InstallPickerLabels): string {
   const count = option.quantity !== undefined && option.quantity > 1 ? ` ×${option.quantity}` : "";
   const wear = option.wear && option.wear !== "nuevo" ? ` · ${labels.wearTag(option.wear)}` : "";
-  // La fila explica el bloqueo directo en el texto (ronda 8): una fila
-  // deshabilitada no dispara `onSelect`, así que el motivo no puede depender
-  // de que el jugador la clickee para verlo en la ficha — CLAUDE.md, "nunca
-  // un botón gris mudo".
-  const reason =
-    option.blocked === "no-stock"
-      ? ` — ${labels.blockedNoStock}`
-      : option.blocked === "missing-ingredients"
-        ? ` — ${labels.blockedMissingIngredients(option.missingIngredientNames ?? [])}`
-        : "";
-  return `${option.name}${count}${wear}${reason}`;
+  return `${option.name}${count}${wear}`;
 }
 
 export interface InstallPickerOption {
@@ -71,8 +67,6 @@ export interface InstallPickerOption {
    * motivo — nunca un botón gris mudo (CLAUDE.md). `undefined` = instalable.
    */
   readonly blocked?: "no-stock" | "missing-ingredients";
-  /** Nombres de los ingredientes que faltan, solo cuando `blocked === "missing-ingredients"`. */
-  readonly missingIngredientNames?: ReadonlyArray<string>;
 }
 
 export interface InstallPickerLabels {
@@ -88,7 +82,13 @@ export interface InstallPickerLabels {
   readonly compositionTitle: string;
   /** Motivo mostrado en la ficha cuando el ítem seleccionado está bloqueado (ronda 8). */
   readonly blockedNoStock: string;
-  readonly blockedMissingIngredients: (names: ReadonlyArray<string>) => string;
+  /**
+   * Ronda 10: deja de ser función de nombres — el listado de qué falta ya lo
+   * muestra `renderCompositionLines` ingrediente por ingrediente (`hasStock`,
+   * ronda 9); repetirlo acá era ruido y además el texto podía envolver a
+   * varias líneas y pisar la sección de Composición (fix de solape).
+   */
+  readonly blockedMissingIngredients: string;
 }
 
 const MODAL_WIDTH = 720;
@@ -354,19 +354,20 @@ function renderSelectedComponentSheet(
   // Motivo de bloqueo (ronda 8): mismo ámbar de aviso que el resto de la UI
   // usa para "esto está bloqueado y por qué" — no un color nuevo.
   if (option.blocked) {
-    const reason =
-      option.blocked === "no-stock" ? labels.blockedNoStock : labels.blockedMissingIngredients(option.missingIngredientNames ?? []);
-    sheet.add(
-      scene.add
-        .text(x, lineY, `⚠ ${reason}`, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "12px",
-          color: CRISIS_WARNING_CSS,
-          wordWrap: { width: DESCRIPTION_WIDTH },
-        })
-        .setOrigin(0, 0),
-    );
-    lineY += 26;
+    const reason = option.blocked === "no-stock" ? labels.blockedNoStock : labels.blockedMissingIngredients;
+    const warningText = scene.add
+      .text(x, lineY, `⚠ ${reason}`, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "12px",
+        color: CRISIS_WARNING_CSS,
+        wordWrap: { width: DESCRIPTION_WIDTH },
+      })
+      .setOrigin(0, 0);
+    sheet.add(warningText);
+    // Ronda 10: mismo criterio que el título/huella de ronda 9 — medir el
+    // alto real del texto tras `wordWrap` en vez de un `+= 26` fijo, para que
+    // un warning largo no pise la sección de Composición que arranca debajo.
+    lineY += warningText.height + 8;
   }
 
   for (const property of option.functional ?? []) {

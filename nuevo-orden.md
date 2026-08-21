@@ -565,6 +565,33 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     "transferir"/"transferencia" (los identificadores de código, ya en inglés, no cambian).
     `/engine` 873 tests (sin cambio), `/game` 40 tests (sin cambio — mismo criterio de rondas anteriores).
 
+  **Ronda 10 de fixes de playtest (2026-08-21)** — tres fixes puntuales del selector de instalación/modo
+  transferir, más una regla de motor nueva y transversal surgida de una pregunta del operador sobre
+  transferir líquido en zonas con energía:
+  - **Lista del selector de instalación sin ruido**: `optionRowLabel` ya no agrega el motivo de bloqueo
+    ("sin stock"/"faltan: X, Y") al nombre de la fila — con la fila ya atenuada (`muted`, ronda 9) era
+    redundante, y para compuestos duplicaba lo que la ficha ya muestra pieza por pieza.
+  - **Warning de la ficha sin listado y sin solape**: `blockedMissingIngredients` deja de listar nombres
+    ("Faltan piezas para fabricarlo." a secas — el listado ya vive en Composición); el `lineY` que sigue al
+    warning se calcula con `warningText.height` en vez de un offset fijo, mismo criterio que el título/huella
+    de ronda 9, para que un warning largo no pise la sección de abajo.
+  - **Sonido al clickear un destino bloqueado en modo transferir**: mismo `AUDIO_KEYS.uiDenied` que la
+    asignación de energía de más — antes el único aviso era el texto de estado.
+  - **Nueva regla de motor — "sin energía, la máquina no actúa"**: confirmado con el operador en dos rondas de
+    preguntas de alcance. Toda tarea con `targetSectionId` queda `blocked` con el nuevo motivo `"no-power"` si
+    su sección no tiene energía otorgada — salvo `dismantle`, `cut-power`, `purge-reservoir` y
+    `discharge-source` (las tareas de asegurado de 13d, que existen para operar sobre una sección sin
+    energía, quedarían rotas si se gatearan a sí mismas). Implementado en el único choke point donde el
+    scheduler ya resolvía bloqueos por dependencia (`TaskScheduler.resolveBlockingReason`), inyectando
+    `isSectionUnpowered` desde `mission-runtime.ts` — reutiliza la señal viva `sectionHasNoPowerGranted`
+    (nacida cosmética en 13b, ahora con un segundo consumidor real de gating, documentado en su propio
+    comentario). Una tarea bloqueada por energía se retoma sola en cuanto la sección la recibe, sin acción del
+    jugador sobre la tarea — mismo mecanismo que el bloqueo por dependencias. Notificación distinta en
+    `floorplan-scene.ts` ("Bloqueado: la sección no tiene energía") en vez del texto genérico de tarea
+    bloqueada.
+    `/engine` 881 tests (873 + 8 nuevos de gating por energía en `task-scheduler.test.ts`), `/game` 40 tests
+    (sin cambio).
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

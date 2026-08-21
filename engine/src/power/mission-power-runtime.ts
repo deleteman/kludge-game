@@ -163,11 +163,14 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
   }
 
   /**
-   * Señal puramente cosmética (Fase 13b, ronda 2): la sección tiene 0
-   * unidades otorgadas EN ESTE TICK, sin ninguna excepción por presupuesto
-   * total en 0 — a diferencia de `unpoweredSectionIds`, que solo refleja la
-   * cicatriz permanente. Consumida por el efecto visual ambiental
-   * (`floorplan-scene.ts`), nunca por gating de señales/HUD.
+   * La sección tiene 0 unidades otorgadas EN ESTE TICK, sin ninguna excepción
+   * por presupuesto total en 0 — a diferencia de `unpoweredSectionIds`, que
+   * solo refleja la cicatriz permanente. Nacida puramente cosmética (Fase
+   * 13b, ronda 2: efecto visual ambiental en `floorplan-scene.ts`); desde la
+   * ronda 10 de fixes de playtest 13e es también la señal de gating real de
+   * `TaskScheduler` ("sin energía, la máquina no actúa") — sigue sin usarse
+   * para gating de señales/HUD, que exige la semántica más estricta de
+   * `unpoweredSectionIds`.
    */
   sectionHasNoPowerGranted(sectionId: SectionId): boolean {
     return this.darkSectionIds.has(sectionId);

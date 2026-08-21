@@ -1037,3 +1037,41 @@
 ## `game/src/i18n/es.ts` (modificado, 13e ronda 9)
 - Renombradas las 8 entradas que decían "trasvasar"/"trasvase" a la familia "transferir"/"transferencia"
   (claves sin cambio, ya en inglés). Nueva clave `ui.floorplan.mission.composition-no-stock`.
+
+## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 10)
+- `optionRowLabel` ya no agrega el motivo de bloqueo al texto de la fila (el atenuado `muted` ya distingue).
+  `InstallPickerOption.missingIngredientNames` eliminado (sin consumidores).
+- `InstallPickerLabels.blockedMissingIngredients` pasa de función `(names) => string` a string estático,
+  igual que `blockedNoStock`. `renderSelectedComponentSheet` avanza `lineY` con `warningText.height + 8` en
+  vez de un offset fijo — no pisa más la sección de Composición cuando el warning envuelve a 2+ líneas.
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 10)
+- `missingIngredientNames()` (helper privado) eliminado junto con su único call site.
+- `buildInstallOptions`: `blockedMissingIngredients` label pasa a texto estático sin `.replace("{names}", ...)`.
+- `handleTransferModeClick`: la rama de `candidate.blocked` reproduce
+  `scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied))` antes de `setStatus(...)`.
+
+## `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificado, 13e ronda 10)
+- Nueva regla transversal "sin energía, la máquina no actúa": `TaskSchedulerOptions.isSectionUnpowered?:
+  (sectionId) => boolean`; `POWER_EXEMPT_TASK_TYPES` (`dismantle`, `cut-power`, `purge-reservoir`,
+  `discharge-source`) queda fuera. `resolveBlockingReason` devuelve el nuevo motivo `"no-power"` cuando
+  `task.targetSectionId` está definido, el tipo no es exento, y la sección no tiene energía otorgada —
+  evaluado DESPUÉS del bloqueo por dependencias, que tiene prioridad. `TaskBlockedEvent["reason"]` gana el
+  literal `"no-power"`.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 10)
+- `new TaskScheduler(...)` pasa `isSectionUnpowered: (sectionId) => this.powerRuntime.sectionHasNoPowerGranted(sectionId)`.
+- `sectionHasNoPowerGranted` (delegado) documentado como segundo consumidor real de gating, no solo cosmético.
+
+## `engine/src/power/mission-power-runtime.ts` (modificado, 13e ronda 10)
+- `sectionHasNoPowerGranted` deja de documentarse como "puramente cosmético, nunca para gating" — ahora
+  también alimenta `TaskScheduler` (gating de tareas); el gating de señales/HUD sigue usando
+  `unpoweredSectionIds` (cicatriz permanente), sin cambios de comportamiento ahí.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 10)
+- Notificación de `task-blocked` distingue `event.reason === "no-power"` con la clave
+  `ui.floorplan.notification.task-blocked-no-power` en vez del texto genérico.
+
+## `game/src/i18n/es.ts` / `en.ts` (modificado, 13e ronda 10)
+- `blocked-missing-ingredients` deja de llevar `{names}`. Nueva clave
+  `ui.floorplan.notification.task-blocked-no-power`.

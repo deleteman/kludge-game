@@ -3740,12 +3740,19 @@ export class FloorplanScene extends Phaser.Scene {
         // acción voluntaria del jugador, no amerita aviso.
         if (event.kind === "task-failed" || event.kind === "task-blocked") {
           const failedTask = this.mission.scheduler.getTask(event.taskId);
+          // Ronda 10 de fixes de playtest 13e: un bloqueo por falta de
+          // energía es un motivo distinto (accionable por el jugador
+          // reasignando energía) y merece su propio texto en vez del genérico
+          // — mismo criterio que la distinción "warning"/"error" por tipo de
+          // evento, ahora también por motivo.
+          const titleKey =
+            event.kind === "task-failed"
+              ? "ui.floorplan.notification.task-failed"
+              : event.kind === "task-blocked" && event.reason === "no-power"
+                ? "ui.floorplan.notification.task-blocked-no-power"
+                : "ui.floorplan.notification.task-blocked";
           this.notifications?.push({
-            title: t(
-              event.kind === "task-failed"
-                ? "ui.floorplan.notification.task-failed"
-                : "ui.floorplan.notification.task-blocked",
-            ),
+            title: t(titleKey),
             lines: failedTask ? [this.taskTypeLabel(failedTask.type)] : undefined,
             type: event.kind === "task-failed" ? "error" : "warning",
           });

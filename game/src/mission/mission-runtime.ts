@@ -487,6 +487,10 @@ export class MissionRuntime {
 
     this.scheduler = new TaskScheduler({
       emitter: this.coreLoopEvents,
+      // Ronda 10 de fixes de playtest 13e: ninguna tarea gateable puede
+      // ejecutarse sin energía en su sección — ver `POWER_EXEMPT_TASK_TYPES`
+      // en `task-scheduler.ts`.
+      isSectionUnpowered: (sectionId) => this.powerRuntime.sectionHasNoPowerGranted(sectionId),
       effect: createShipTaskEffect(
         this.shipState,
         this.componentRegistry,
@@ -1662,11 +1666,12 @@ export class MissionRuntime {
   }
 
   /**
-   * Señal puramente cosmética (Fase 13b, ronda 2 de playtest): la sección
-   * tiene 0 unidades otorgadas EN VIVO, sin excepciones — a diferencia de
-   * `blueprint.unpoweredSectionIds`, que refleja solo la cicatriz permanente
-   * y alimenta gating de señales/HUD. Usada exclusivamente por el efecto
-   * visual ambiental de sección (`floorplan-scene.ts`).
+   * La sección tiene 0 unidades otorgadas EN VIVO, sin excepciones — a
+   * diferencia de `blueprint.unpoweredSectionIds`, que refleja solo la
+   * cicatriz permanente y alimenta gating de señales/HUD. Nacida cosmética
+   * (Fase 13b, ronda 2: efecto visual ambiental de sección en
+   * `floorplan-scene.ts`); desde la ronda 10 de fixes de playtest 13e
+   * también alimenta el gating de tareas del `TaskScheduler` (línea ~490).
    */
   sectionHasNoPowerGranted(sectionId: SectionId): boolean {
     return this.powerRuntime.sectionHasNoPowerGranted(sectionId);

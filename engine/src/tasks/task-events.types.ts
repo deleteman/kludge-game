@@ -54,16 +54,20 @@ export interface TaskCompletedEvent extends DomainEventBase {
 }
 
 /**
- * Una tarea quedó bloqueada esperando dependencias. `reason` distingue el
- * bloqueo por dependencia aún en curso del bloqueo porque una dependencia se
- * canceló/falló (GDD §4: "si una tarea de la que otra depende se cancela o
- * falla, la dependiente debe marcarse como bloqueada y notificar al jugador").
+ * Una tarea quedó bloqueada esperando dependencias, o porque su sección no
+ * tiene energía asignada (ronda 10 de fixes de playtest 13e: ninguna tarea
+ * que dependa de una máquina puede ejecutarse sin energía en su sección,
+ * salvo las exentas — ver `POWER_EXEMPT_TASK_TYPES` en `task-scheduler.ts`).
+ * `reason` distingue el bloqueo por dependencia aún en curso del bloqueo
+ * porque una dependencia se canceló/falló (GDD §4: "si una tarea de la que
+ * otra depende se cancela o falla, la dependiente debe marcarse como
+ * bloqueada y notificar al jugador") del bloqueo por falta de energía.
  */
 export interface TaskBlockedEvent extends DomainEventBase {
   readonly kind: "task-blocked";
   readonly taskId: CrewTaskId;
   readonly actorId: CrewActorId;
-  readonly reason: "awaiting-dependency" | "dependency-cancelled" | "dependency-failed";
+  readonly reason: "awaiting-dependency" | "dependency-cancelled" | "dependency-failed" | "no-power";
   /** Dependencia que provocó el bloqueo, cuando aplica. */
   readonly blockingTaskId?: CrewTaskId;
 }

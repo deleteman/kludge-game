@@ -154,7 +154,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-modal.footprint": "Footprint",
   "ui.floorplan.mission.install-modal.select-hint": "Select a component from the list to see its details.",
   "ui.floorplan.mission.install-modal.blocked-no-stock": "No stock available.",
-  "ui.floorplan.mission.install-modal.blocked-missing-ingredients": "Missing parts to build it: {names}.",
+  "ui.floorplan.mission.install-modal.blocked-missing-ingredients": "Missing parts to build it.",
 
   "ui.floorplan.mission.composition-title": "Composition",
   "ui.floorplan.mission.composition-no-stock": "no stock",
@@ -173,6 +173,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.substance-transferred": "Substance transferred",
   "ui.floorplan.notification.task-failed": "Task failed",
   "ui.floorplan.notification.task-blocked": "Task blocked",
+  "ui.floorplan.notification.task-blocked-no-power": "Blocked: section has no power",
   "ui.floorplan.notification.objective-done": "Objective complete",
   "ui.floorplan.notification.crisis-escalation": "Crisis escalating",
   "ui.floorplan.notification.power-shortfall": "Power shortfall",
