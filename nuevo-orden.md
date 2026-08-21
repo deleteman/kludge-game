@@ -540,6 +540,31 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     `valvula-simple`, `junta-hermetica` a 2) para que el segundo reservorio sea instalable de entrada.
     `/engine` 873 tests (sin cambio), `/game` 40 tests (sin cambio — fixes de render/UI de Phaser y contenido).
 
+  **Ronda 9 de fixes de playtest (2026-08-21)** — seis reportes sobre lo entregado en la ronda 8, todos con
+  causa raíz confirmada (dos agentes Explore en paralelo), más una decisión de diseño consultada al operador:
+  - **Ítem bloqueado seleccionable en el selector de instalación**: `kenney-list.ts` ligaba un solo booleano
+    `enabled` a "clickeable" Y "atenuado" — nuevo `muted?: boolean` independiente, así una fila bloqueada
+    sigue mostrando su ficha completa al clickearla (el botón "Instalar" es lo único que queda deshabilitado).
+  - **Título de 2 líneas ya no pisa la huella**: la huella se ancla en `título.y + título.height + 4` en vez
+    de un offset fijo que asumía una sola línea.
+  - **Sin resaltado de objetivo de misión en el selector de instalación**: `buildComposition` gana
+    `highlightRequiredTag?`/`missingRefs?` — el selector pasa `false` para el ámbar (válido solo en el
+    tooltip de desmontar) y suma "(sin stock)" en gris en el ingrediente puntual que falta, en vez del
+    mensaje genérico de toda la fila.
+  - **Solo la capa `fluido` visible durante la transferencia**: `updateTransferMode()` solo AGREGABA `fluido`
+    a las capas activas sin QUITAR las demás — sus tokens de flujo animado (señal/ventilación/eléctrico)
+    seguían moviéndose por encima del oscurecido. Ahora el set de capas activas pasa a ser exactamente
+    `{"fluido"}` mientras dura el modo (snapshot completo para restaurar al salir, no solo un booleano).
+  - **Hover reconoce la huella completa**: el canal solo se dibujaba con el cursor sobre la celda origen de
+    un candidato > 1×1 — mismo criterio de huella completa (`occupiedCells`) que ya usaba el click.
+  - **Transferencia parcial: capar al espacio disponible, nunca perder** (decisión del operador, consultada
+    directamente: capar vs. advertir antes de confirmar — eligió capar). `transferCandidatesFor` expone
+    `freeCapacity` por candidato; la cantidad encolada pasa a `Math.min(origen, freeCapacity)` — el remanente
+    queda disponible para un segundo viaje en vez de perderse por desborde. De paso, el operador confirmó que
+    no hay distinción entre "trasvasar" y "transferir" — se renombran las 8 entradas en español a la familia
+    "transferir"/"transferencia" (los identificadores de código, ya en inglés, no cambian).
+    `/engine` 873 tests (sin cambio), `/game` 40 tests (sin cambio — mismo criterio de rondas anteriores).
+
 #### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.

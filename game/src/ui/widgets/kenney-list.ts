@@ -14,6 +14,14 @@ export interface KenneyListItem {
   readonly text: string;
   readonly onClick: () => void;
   readonly enabled?: boolean;
+  /**
+   * Atenuado visual INDEPENDIENTE de `enabled` (13e ronda 9): una fila puede
+   * seguir siendo clickeable (para ver su detalle) aunque se vea "deshabilitada"
+   * porque la acción real que representa está bloqueada — ver
+   * `install-picker-modal.ts`, donde un ítem sin stock necesita poder
+   * seleccionarse para mostrar su ficha, pero debe leerse atenuado.
+   */
+  readonly muted?: boolean;
 }
 
 /**
@@ -63,8 +71,13 @@ export function createKenneyList(
 
   for (const item of items) {
     const enabled = item.enabled ?? true;
+    // Atenuado visual: `enabled` (clickeable) y `muted` (se ve bloqueado) son
+    // ejes independientes desde la ronda 9 — una fila deshabilitada siempre se
+    // ve atenuada, pero una fila habilitada Y `muted` también, sin dejar de
+    // responder al click.
+    const dimmed = !enabled || (item.muted ?? false);
     const row = scene.add
-      .rectangle(0, 0, width - 24, 32, SECTION_FILL_COLORS[0], enabled ? ROW_BG_ALPHA : 0.25)
+      .rectangle(0, 0, width - 24, 32, SECTION_FILL_COLORS[0], dimmed ? 0.25 : ROW_BG_ALPHA)
       .setOrigin(0.5);
     const rowLabel = scene.rexUI.add
       .label({
@@ -85,7 +98,7 @@ export function createKenneyList(
         text: scene.add.text(0, 0, item.text, {
           fontFamily: "sans-serif",
           fontSize: "13px",
-          color: enabled ? LABEL_COLOR : "#8890a8",
+          color: dimmed ? "#8890a8" : LABEL_COLOR,
           wordWrap: { width: width - 24 - 20 },
         }),
         space: { left: 10 },

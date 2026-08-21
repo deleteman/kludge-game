@@ -32,8 +32,20 @@ export interface CompositionIngredient {
   readonly componentId: ComponentId;
   readonly name: string;
   readonly quantity: number;
-  /** `true` si esta pieza tiene el tag funcional que la crisis activa necesita (resaltado ámbar, solo color). */
+  /**
+   * `true` si esta pieza tiene el tag funcional que la crisis activa necesita
+   * (resaltado ámbar, solo color) — SOLO tiene sentido en el tooltip de
+   * desmontar (ronda 9: `buildComposition` lo fuerza a `false` cuando se llama
+   * desde el selector de instalación, donde el objetivo de misión es
+   * irrelevante para lo que se está construyendo).
+   */
   readonly hasRequiredTag: boolean;
+  /**
+   * `false` si falta stock de ESTE ingrediente puntual para completar la
+   * receta (13e ronda 9) — `undefined`/`true` en cualquier otro contexto
+   * (dismantle tooltip, o cuando la receta ya está completa).
+   */
+  readonly hasStock?: boolean;
 }
 
 export type ActionPanelContent =

@@ -4227,3 +4227,70 @@ razonando sobre el código + pendiente de confirmar en la app), `tsc --noEmit` y
 paquetes.
 
 Razón: ronda 8 de fixes del playtest de la Subfase 13e.
+
+2026-08-21 — Subfase 13e: fixes de playtest, ronda 9 (selector de instalación + modo de transferencia).
+REPORTE DEL OPERADOR sobre la ronda 8: en el selector de instalación, 1) un ítem no construible no se podía
+clickear para ver su ficha de detalle (solo los instalables), 2) en la ficha del reservorio de agua, el
+título a 2 líneas pisaba el texto de la huella, 3) el desglose de "Composición" seguía resaltando en ámbar el
+ingrediente relacionado al objetivo de misión activo — válido en el tooltip de desmontar, no acá. En el modo
+de transferencia: 4) las capas de conducto que no son `fluido` (y sus tokens de flujo animado) seguían
+visibles/moviéndose por encima del oscurecido, 5) el canal solo se dibujaba con el cursor sobre la celda
+origen de un candidato > 1×1 (el click, en cambio, sí funcionaba en cualquier celda de su huella), y 6) al
+transferir hacia un reservorio con menos capacidad libre que el origen, se perdían las unidades que no
+entraban en vez de quedar disponibles para un segundo viaje.
+
+INVESTIGACIÓN DE CAUSA RAÍZ (dos agentes Explore, código no hipótesis) + UNA decisión de diseño consultada al
+operador (capar vs. advertir en la transferencia parcial — eligió capar, y de paso confirmó renombrar
+"trasvasar"/"trasvase" → "transferir"/"transferencia" en los textos en español, sin distinción de concepto):
+- #1: `kenney-list.ts` ligaba un solo booleano `enabled` a dos cosas (clickeable Y atenuado) —
+  `install-picker-modal.ts` pasaba `enabled: !option.blocked`, así que una fila bloqueada nunca disparaba
+  `onSelect`.
+- #2: `renderSelectedComponentSheet` dibujaba la huella en un `y` fijo (`titleY + 24`) sin medir cuántas
+  líneas ocupó el título real tras `wordWrap`.
+- #3: `buildComposition` siempre calculaba `hasRequiredTag` desde el tag de la crisis activa, sin distinguir
+  si el llamador era el tooltip de desmontar o el selector de instalación — mismo `renderCompositionLines`
+  para ambos.
+- #4: `updateTransferMode()` solo AGREGABA `fluido` a `activeFloorplanLayers` sin QUITAR las demás — los
+  tokens de flujo animado de señal/ventilación/eléctrico siguen leyendo `activeFloorplanLayers.has(kind)` en
+  cada tick y se dibujan a depth `effect` (7), por ENCIMA del oscurecido (5.8).
+- #5: `updateTransferChannel` comparaba `hoverCell` contra `instanceCell(...)` (solo la celda origen), pero el
+  click resolvía por `findInstanceAtCell` (huella completa vía `occupiedCells`) — asimetría exacta.
+- #6: `handleTransferModeClick` encolaba `content.amount` (el contenido COMPLETO del origen) sin mirar la
+  capacidad libre real del destino, que `transferCandidatesFor` ya calculaba internamente para decidir
+  `"full"` pero nunca exponía.
+
+FIXES:
+1) `kenney-list.ts`: `KenneyListItem` gana `muted?: boolean`, visual independiente de `enabled` — una fila
+   puede ser clickeable (para ver su detalle) y verse atenuada a la vez. `install-picker-modal.ts` pasa
+   `enabled: true` siempre y `muted: !!option.blocked`; el botón "Instalar" sigue gateado por
+   `selected?.blocked`.
+2) `renderSelectedComponentSheet`: la huella se ancla en `titleText.y + titleText.height + 4` en vez de un
+   offset fijo — `Text.height` ya refleja el alto real tras el wrap.
+3) `buildComposition` (`mission-interaction-controller.ts`) gana `highlightRequiredTag?`/`missingRefs?`;
+   `buildInstallOptions` pasa `highlightRequiredTag: false` en sus dos llamadas (sin ámbar de objetivo de
+   misión en este contexto) y arma `missingRefs` desde `missingRecipeIngredients` para marcar
+   `hasStock: false` en la pieza puntual que falta. `CompositionIngredient` gana `hasStock?: boolean`;
+   `composition-list.ts` agrega el sufijo "(sin stock)" en gris atenuado (mismo `#8890a8` que las filas
+   deshabilitadas de `kenney-list.ts`) cuando corresponde.
+4) `FloorplanScene`: `transferModePriorFluidoActive: boolean` → `transferModePriorActiveLayers:
+   ReadonlySet<FloorplanLayerId>` (snapshot completo). Al entrar al modo, `activeFloorplanLayers` pasa a ser
+   exactamente `{"fluido"}` (no solo se le agrega) y se llama `applyLayerAlpha` para TODAS las capas — esto
+   además apaga los tokens de flujo animado de las demás capas sin tocar `updateConduitFlowEffects`/
+   `updateSignalWireFlowEffects`, que ya leen ese mismo set cada tick. Al salir, se restaura el set completo.
+5) `updateTransferChannel`: usa `instancePlacement(...)` + `occupiedCells(...)` (huella completa) en vez de
+   `instanceCell(...)` (una sola celda) para resolver el candidato bajo el cursor — mismo criterio que ya
+   usaba el click.
+6) `MissionRuntime.transferCandidatesFor` expone `freeCapacity: number` por candidato (ya se computaba
+   internamente para decidir `"full"`). `handleTransferModeClick` encola
+   `Math.min(content.amount, candidate.freeCapacity)` en vez del contenido completo del origen — el
+   remanente, si lo hay, queda disponible para un segundo viaje. El guard de `overflow` en
+   `ship-task-effect.ts` no se toca: sigue como red de seguridad ante una carrera real (el destino se llena
+   entre el click y la ejecución), no como el camino esperado.
+7) `game/src/i18n/es.ts`: renombradas las 8 entradas que decían "trasvasar"/"trasvase" a la familia
+   "transferir"/"transferencia" (claves sin cambio, ya en inglés; `en.ts` no cambia, ya decía "transfer").
+
+SUITE: `/engine` 873 tests (sin cambio — fixes de render/UI/contenido, sin lógica nueva de motor aislable),
+`/game` 40 tests (sin cambio, mismo criterio de rondas anteriores), `tsc --noEmit` y `eslint` limpios en
+ambos paquetes.
+
+Razón: ronda 9 de fixes del playtest de la Subfase 13e.

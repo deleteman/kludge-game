@@ -992,3 +992,48 @@
 ## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, 13e ronda 8)
 - `CHAPTER_01_INITIAL_ATOMIC_STOCK` suma `tubo-flexible: 1`, `valvula-simple: 1`, sube `junta-hermetica` de 1 a
   2 — completa la receta del segundo reservorio (1+1+2, `exploracion.ts`).
+
+## `game/src/ui/widgets/kenney-list.ts` (modificado, 13e ronda 9)
+- `KenneyListItem` gana `muted?: boolean` — atenuado visual independiente de `enabled` (clickeable). El color
+  de texto/alpha de fondo depende de `(enabled ?? true) && !muted`; `setInteractive`/`onClick` siguen
+  dependiendo solo de `enabled`.
+
+## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 9)
+- Filas de la lista: `enabled: true` siempre (seleccionables aunque estén bloqueadas), `muted: !!option.blocked`
+  para el atenuado visual — el botón "Instalar" sigue gateado por `selected?.blocked`.
+- `renderSelectedComponentSheet`: la huella se ancla en `titleText.y + titleText.height + 4` en vez de un
+  offset fijo — ya no se superpone cuando el título ocupa 2 líneas.
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 9)
+- `CompositionIngredient` gana `hasStock?: boolean` — `false` marca el ingrediente puntual sin stock
+  suficiente (independiente de `hasRequiredTag`).
+
+## `game/src/ui/widgets/composition-list.ts` (modificado, 13e ronda 9)
+- `renderCompositionLines` agrega el sufijo `"(sin stock)"`/`"(no stock)"` (i18n) en gris atenuado (`#8890a8`,
+  mismo tono que las filas deshabilitadas de `kenney-list.ts`) cuando `ingredient.hasStock === false`, con
+  prioridad sobre el resaltado ámbar de `hasRequiredTag`.
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 9)
+- `buildComposition` gana `options?: { highlightRequiredTag?; missingRefs? }` — `buildInstallOptions` pasa
+  `highlightRequiredTag: false` (sin ámbar de objetivo de misión en este contexto) y `missingRefs` desde
+  `mission.missingRecipeIngredients(def)` para marcar `hasStock` por ingrediente.
+- `handleTransferModeClick`: la cantidad encolada pasa a `Math.min(content.amount, candidate.freeCapacity)` en
+  vez del contenido completo del origen.
+- `transferModeState.candidates`/`transferModeCandidates` derivan de `ReturnType<MissionRuntime["transferCandidatesFor"]>`
+  en vez de duplicar la forma a mano.
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 9)
+- `transferCandidatesFor` expone `freeCapacity: number` por candidato (ya se computaba internamente para
+  decidir el motivo `"full"`).
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 9)
+- `transferModePriorFluidoActive: boolean` → `transferModePriorActiveLayers: ReadonlySet<FloorplanLayerId>`
+  (snapshot completo). `updateTransferMode()` reemplaza `activeFloorplanLayers` por `{"fluido"}` exacto (no
+  solo agrega) y llama `applyLayerAlpha` para todas las capas — apaga los tokens de flujo animado de las
+  demás capas sin tocar `updateConduitFlowEffects`/`updateSignalWireFlowEffects`.
+- `updateTransferChannel`: usa `instancePlacement(...)` + `occupiedCells(...)` (huella completa) en vez de
+  `instanceCell(...)` (una sola celda) para resolver el candidato bajo el cursor.
+
+## `game/src/i18n/es.ts` (modificado, 13e ronda 9)
+- Renombradas las 8 entradas que decían "trasvasar"/"trasvase" a la familia "transferir"/"transferencia"
+  (claves sin cambio, ya en inglés). Nueva clave `ui.floorplan.mission.composition-no-stock`.

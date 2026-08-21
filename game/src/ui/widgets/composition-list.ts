@@ -2,9 +2,12 @@ import type Phaser from "phaser";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../../render/palette.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
+import { t } from "../../i18n/i18n.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
 
 const HIGHLIGHT_COLOR_CSS = `#${WIRE_HIGHLIGHT_COLOR.toString(16).padStart(6, "0")}`;
+/** Mismo gris que `kenney-list.ts` usa para texto de fila deshabilitada — ronda 9, sin inventar un color nuevo. */
+const NO_STOCK_COLOR_CSS = "#8890a8";
 
 /**
  * Desglose "Composición" reutilizado por `mission-tooltip.ts` (hover sobre una
@@ -47,14 +50,18 @@ export function renderCompositionLines(
   // 11px en la fuente de display, "x1" se confundía con "H1".
   let lineY = startY + 18;
   for (const ingredient of ingredients) {
-    const text = `• ×${ingredient.quantity} ${ingredient.name}`;
+    // Ronda 9: "sin stock" es un motivo de bloqueo REAL de la ficha —
+    // prioridad sobre el resaltado de objetivo de misión (que además el
+    // selector de instalación ya pide en `false` vía `hasRequiredTag`).
+    const missingStock = ingredient.hasStock === false;
+    const text = `• ×${ingredient.quantity} ${ingredient.name}${missingStock ? ` (${t("ui.floorplan.mission.composition-no-stock")})` : ""}`;
     container.add(
       scene.add
         .text(x, lineY, text, {
           fontFamily: "sans-serif",
           fontSize: "11px",
-          color: ingredient.hasRequiredTag ? HIGHLIGHT_COLOR_CSS : LABEL_COLOR,
-          fontStyle: ingredient.hasRequiredTag ? "bold" : "normal",
+          color: missingStock ? NO_STOCK_COLOR_CSS : ingredient.hasRequiredTag ? HIGHLIGHT_COLOR_CSS : LABEL_COLOR,
+          fontStyle: !missingStock && ingredient.hasRequiredTag ? "bold" : "normal",
           wordWrap: { width },
         })
         .setOrigin(0, 0),

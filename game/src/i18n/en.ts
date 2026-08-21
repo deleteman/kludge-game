@@ -157,6 +157,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-modal.blocked-missing-ingredients": "Missing parts to build it: {names}.",
 
   "ui.floorplan.mission.composition-title": "Composition",
+  "ui.floorplan.mission.composition-no-stock": "no stock",
   "ui.floorplan.mission.obtained-toast": "Obtained",
 
   "ui.floorplan.notification.dismantled": "Dismantled",

@@ -15,6 +15,7 @@ import {
 import type {
   ChemicalSubstanceId,
   ChemicalTag,
+  ComponentId,
   CrewActorId,
   FunctionalProperty,
   GridPosition,
@@ -122,10 +123,9 @@ export class MissionInteractionController {
    */
   private transferModeState?: {
     readonly fromInstanceId: PlacedComponentInstanceId;
-    readonly candidates: ReadonlyArray<{
-      readonly instanceId: PlacedComponentInstanceId;
-      readonly blocked?: "full" | "unreachable" | "different-substance";
-    }>;
+    // Deriva del propio motor (ronda 9: evita duplicar la forma exacta a mano
+    // cada vez que `transferCandidatesFor` gana un campo, como `freeCapacity`).
+    readonly candidates: ReturnType<MissionRuntime["transferCandidatesFor"]>;
   };
   private actionPanelContent: ActionPanelContent = { kind: "idle" };
   private actionPanelContainer?: Phaser.GameObjects.Container;
@@ -267,10 +267,7 @@ export class MissionInteractionController {
   }
 
   /** Candidatos vivos del trasvase en curso (con su motivo de bloqueo), o `[]` fuera del modo. */
-  get transferModeCandidates(): ReadonlyArray<{
-    readonly instanceId: PlacedComponentInstanceId;
-    readonly blocked?: "full" | "unreachable" | "different-substance";
-  }> {
+  get transferModeCandidates(): ReturnType<MissionRuntime["transferCandidatesFor"]> {
     return this.transferModeState?.candidates ?? [];
   }
 
@@ -325,11 +322,17 @@ export class MissionInteractionController {
     const fromInstanceId = this.transferModeState.fromInstanceId;
     const content = this.mission.reservoirContentOf(fromInstanceId);
     if (!this.selectedActorIdValue || !content) return;
+    // Ronda 9: capar al espacio libre real del destino en vez de encolar
+    // SIEMPRE el contenido completo del origen — si el destino tiene menos
+    // capacidad, el remanente queda en el origen para un segundo viaje en vez
+    // de perderse por desborde (`ship-task-effect.ts` sigue aceptando overflow
+    // como red de seguridad ante una carrera real, no como el camino esperado).
+    const amount = Math.min(content.amount, candidate.freeCapacity);
     this.mission.queueTransferSubstance(
       this.selectedActorIdValue,
       fromInstanceId,
       instance.instanceId,
-      content.amount,
+      amount,
     );
     this.cancelTransferMode();
     this.callbacks.onTaskQueued();
@@ -588,12 +591,23 @@ export class MissionInteractionController {
    * resuelto a nombre + si esa pieza tiene el tag funcional requerido) — el
    * motor ya expone la receta, esto es pura lectura sin mutar nada. `undefined`
    * para una definición atómica (nada que desglosar).
+   *
+   * `highlightRequiredTag` (ronda 9, default `true`): el resaltado ámbar de
+   * "esta pieza resuelve el objetivo de misión" tiene sentido en el tooltip de
+   * desmontar (dónde conseguir la pieza que la crisis necesita), pero no en el
+   * selector de instalación — ahí `buildInstallOptions` lo pasa en `false`.
+   * `missingRefs` (ronda 9): ids de ingrediente sin stock suficiente
+   * (`MissionRuntime.missingRecipeIngredients`) — marca `hasStock: false` en
+   * la fila exacta que falta, en vez de solo el motivo genérico de la opción.
    */
   private buildComposition(
     definition: PhysicalComponentDefinition,
+    options?: { readonly highlightRequiredTag?: boolean; readonly missingRefs?: ReadonlySet<ComponentId> },
   ): ReadonlyArray<CompositionIngredient> | undefined {
     if (!isCompositeEntity(definition)) return undefined;
-    const requiredTag = this.requiredFunctionalTag;
+    const highlightRequiredTag = options?.highlightRequiredTag ?? true;
+    const requiredTag = highlightRequiredTag ? this.requiredFunctionalTag : undefined;
+    const missingRefs = options?.missingRefs;
     return definition.recipe.ingredients.map((ingredient) => {
       const ingredientDefinition = this.mission.definitionOf(ingredient.ref);
       return {
@@ -603,6 +617,7 @@ export class MissionInteractionController {
         hasRequiredTag:
           requiredTag !== undefined &&
           (ingredientDefinition?.data.functional ?? []).some((prop) => prop.tag === requiredTag),
+        hasStock: missingRefs ? !missingRefs.has(ingredient.ref) : undefined,
       };
     });
   }
@@ -950,6 +965,10 @@ export class MissionInteractionController {
     for (const def of this.mission.installableCatalogComposites) {
       const footprint = def.data.footprint;
       if (!footprint) continue;
+      // Ronda 9: sin resaltado de objetivo de misión en este contexto (válido
+      // solo en el tooltip de desmontar) + marca por ingrediente puntual sin
+      // stock (`missingRefs`, vacío en la rama disponible — sin efecto visual).
+      const missingRefs = new Set(this.mission.missingRecipeIngredients(def).map(({ ref }) => ref));
       if (this.mission.hasRecipeStockFor(def)) {
         compositeAvailable.push({
           id: def.id,
@@ -957,7 +976,7 @@ export class MissionInteractionController {
           footprint,
           functional: def.data.functional,
           material: def.data.material,
-          composition: this.buildComposition(def),
+          composition: this.buildComposition(def, { highlightRequiredTag: false, missingRefs }),
           consumesRecipe: true,
         });
       } else {
@@ -967,7 +986,7 @@ export class MissionInteractionController {
           footprint,
           functional: def.data.functional,
           material: def.data.material,
-          composition: this.buildComposition(def),
+          composition: this.buildComposition(def, { highlightRequiredTag: false, missingRefs }),
           blocked: "missing-ingredients",
           missingIngredientNames: this.missingIngredientNames(def),
         });

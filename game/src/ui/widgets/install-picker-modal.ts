@@ -203,10 +203,12 @@ export function renderInstallPickerModal(
       return {
         text: index === selectedIndex ? `> ${label}` : label,
         onClick: () => callbacks.onSelect(index),
-        // Fila bloqueada: greyed + sin click (ronda 8) — el motivo ya se lee
-        // en el propio texto de la fila (`optionRowLabel`), así que no hace
-        // falta poder clickearla para enterarse de por qué.
-        enabled: !option.blocked,
+        // Ronda 9: una fila bloqueada sigue siendo SELECCIONABLE (para ver su
+        // ficha completa — el operador reportó no poder ver el detalle de lo
+        // que no se puede construir); `muted` la atenúa visualmente sin
+        // impedir el click. El botón "Instalar" es el que queda deshabilitado
+        // para un ítem bloqueado (ver `enabled` de ese botón más abajo).
+        muted: !!option.blocked,
       };
     }),
   ).setDepth(RENDER_DEPTH.hudModal);
@@ -319,23 +321,31 @@ function renderSelectedComponentSheet(
     );
   }
 
+  const titleText = scene.add
+    .text(x + PREVIEW_SIZE + 12, y, option.name, {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "16px",
+      color: HEADER_COLOR,
+      wordWrap: { width: DESCRIPTION_WIDTH - PREVIEW_SIZE - 12 },
+    })
+    .setOrigin(0, 0);
+  sheet.add(titleText);
+  // Ronda 9: la huella ya no va a un `y + 24` fijo — un nombre largo (ej.
+  // "Reservorio de agua reciclada") envuelve a 2 líneas con `wordWrap`, y esa
+  // segunda línea pisaba el texto de huella. `titleText.height` ya refleja el
+  // alto real tras aplicar el wrap, así que la huella se ancla debajo de eso.
   sheet.add(
     scene.add
-      .text(x + PREVIEW_SIZE + 12, y, option.name, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "16px",
-        color: HEADER_COLOR,
-        wordWrap: { width: DESCRIPTION_WIDTH - PREVIEW_SIZE - 12 },
-      })
-      .setOrigin(0, 0),
-  );
-  sheet.add(
-    scene.add
-      .text(x + PREVIEW_SIZE + 12, y + 24, `${labels.footprint}: ${option.footprint.width}×${option.footprint.height}`, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "12px",
-        color: LABEL_COLOR,
-      })
+      .text(
+        x + PREVIEW_SIZE + 12,
+        titleText.y + titleText.height + 4,
+        `${labels.footprint}: ${option.footprint.width}×${option.footprint.height}`,
+        {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "12px",
+          color: LABEL_COLOR,
+        },
+      )
       .setOrigin(0, 0),
   );
 

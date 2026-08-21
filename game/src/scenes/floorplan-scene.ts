@@ -145,7 +145,7 @@ import { extractOccluderGrid } from "../render/shadows/occluder-edges.js";
 import { DynamicShadowLayer, DYNAMIC_SHADOW_DARKNESS_ALPHA, DYNAMIC_SHADOW_COLOR } from "../render/shadows/dynamic-shadows.js";
 import { loadAuthoredLights } from "../render/shadows/authored-lights.js";
 import { rectEdges } from "../render/shadows/occluder-edges.js";
-import { effectiveFootprintExtent } from "engine";
+import { effectiveFootprintExtent, occupiedCells } from "engine";
 import type { Segment } from "../render/shadows/visibility-polygon.js";
 import { preloadUiAssets } from "../ui/ui-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
@@ -401,8 +401,14 @@ export class FloorplanScene extends Phaser.Scene {
   /** Sprites reales tintados por el modo de trasvase (ronda 8) — se restauran a su tinte original al salir/recalcular. */
   private transferTintedSprites: Array<{ sprite: Phaser.GameObjects.Image; originalTint: number }> = [];
   private transferChannelLine?: Phaser.GameObjects.Graphics;
-  /** Estado previo de la capa `fluido` antes de forzarla visible al entrar al modo — se restaura al salir. */
-  private transferModePriorFluidoActive?: boolean;
+  /**
+   * Snapshot COMPLETO de `activeFloorplanLayers` antes de entrar al modo de
+   * transferencia (ronda 9: antes solo se guardaba el booleano de `fluido`,
+   * así que las demás capas — señal, ventilación, eléctrico — se quedaban
+   * activas y sus tokens de flujo seguían moviéndose por encima del
+   * oscurecido). Se restaura completo al salir.
+   */
+  private transferModePriorActiveLayers?: ReadonlySet<FloorplanLayerId>;
   /**
    * Clon top-level de la capa `fluido` durante el modo de trasvase (ronda 8,
    * fix del bug de depth #5): `conduitLayers.fluido` vive dentro del container
@@ -1926,13 +1932,13 @@ export class FloorplanScene extends Phaser.Scene {
     this.floorplanRender.conduitLayers.fluido.setVisible(true);
 
     if (!this.interaction.transferMode) {
-      // Restaura la capa `fluido` a como estaba antes de forzarla (si el
-      // jugador la tenía apagada por el panel de capas, vuelve a apagarse).
-      if (this.transferModePriorFluidoActive === false) {
-        this.activeFloorplanLayers.delete("fluido");
-        this.applyLayerAlpha("fluido");
+      // Restaura el set COMPLETO de capas activas a como estaba antes de
+      // entrar (ronda 9) — no solo `fluido`.
+      if (this.transferModePriorActiveLayers) {
+        this.activeFloorplanLayers = new Set(this.transferModePriorActiveLayers);
+        for (const layer of FLOORPLAN_LAYER_IDS) this.applyLayerAlpha(layer);
       }
-      this.transferModePriorFluidoActive = undefined;
+      this.transferModePriorActiveLayers = undefined;
       return;
     }
 
@@ -1947,13 +1953,14 @@ export class FloorplanScene extends Phaser.Scene {
       .setDepth(RENDER_DEPTH.mapDimOverlay);
     this.markAsWorldObject(this.transferDimOverlay);
 
-    // Fuerza la capa `fluido` visible mientras dura el modo (SimCity-style):
-    // si el jugador la tenía apagada, se restaura al salir (arriba).
-    this.transferModePriorFluidoActive = this.activeFloorplanLayers.has("fluido");
-    if (!this.transferModePriorFluidoActive) {
-      this.activeFloorplanLayers.add("fluido");
-      this.applyLayerAlpha("fluido");
-    }
+    // SOLO la capa `fluido` visible mientras dura el modo (SimCity-style,
+    // ronda 9 — antes se AGREGABA `fluido` sin QUITAR las demás, así que
+    // señal/ventilación/eléctrico se quedaban activas y sus tokens de flujo
+    // seguían moviéndose por encima del oscurecido). Snapshot completo del set
+    // previo para restaurarlo al salir.
+    this.transferModePriorActiveLayers = new Set(this.activeFloorplanLayers);
+    this.activeFloorplanLayers = new Set(["fluido"]);
+    for (const layer of FLOORPLAN_LAYER_IDS) this.applyLayerAlpha(layer);
 
     // Fix del bug de depth #5 (ronda 8): `conduitLayers.fluido` vive dentro
     // del container `base`, que aplana el depth de sus hijos a `background` —
@@ -2027,9 +2034,15 @@ export class FloorplanScene extends Phaser.Scene {
     if (!originCell) return;
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const hoverCell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    // Ronda 9: compara contra la HUELLA completa (`occupiedCells`), no solo la
+    // celda origen — antes el canal solo aparecía con el cursor exactamente
+    // sobre la celda superior-izquierda de una pieza > 1×1, aunque el click en
+    // cualquier celda de su sprite sí resolvía la acción (`findInstanceAtCell`
+    // en el controller ya usaba la huella completa; acá faltaba igualar).
     const candidate = this.interaction.transferModeCandidates.find((entry) => {
-      const cell = this.instanceCell(entry.instanceId);
-      return cell && cell.x === hoverCell.x && cell.y === hoverCell.y;
+      const placement = this.instancePlacement(entry.instanceId);
+      if (!placement) return false;
+      return occupiedCells(placement).some((cell) => cell.x === hoverCell.x && cell.y === hoverCell.y);
     });
     if (!candidate) return;
     const route = computeConduitRoute(this.mission.shipFloorplan, this.walkableGrid, originCell, hoverCell, "fluido");

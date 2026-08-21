@@ -1034,26 +1034,36 @@ export class MissionRuntime {
   ): ReadonlyArray<{
     readonly instanceId: PlacedComponentInstanceId;
     readonly blocked?: "full" | "unreachable" | "different-substance";
+    /**
+     * Espacio libre real del destino (13e ronda 9) — expone lo que
+     * `transferCandidatesFor` ya calcula internamente para decidir `"full"`,
+     * así la UI puede CAPAR la cantidad encolada al espacio disponible en vez
+     * de encolar el contenido completo del origen y perder el remanente por
+     * desborde (`ship-task-effect.ts`, caso `"transfer-substance"`).
+     */
+    readonly freeCapacity: number;
   }> {
     const ship = this.shipState.get();
     const fromContent = this.reservoirContentOf(fromInstanceId);
     const candidates: Array<{
       readonly instanceId: PlacedComponentInstanceId;
       readonly blocked?: "full" | "unreachable" | "different-substance";
+      readonly freeCapacity: number;
     }> = [];
     for (const instance of ship.placedComponents) {
       if (instance.instanceId === fromInstanceId) continue;
       const capacity = instanceReservoirCapacity(instance, this.componentRegistry);
       if (capacity === undefined) continue;
       const toContent = this.reservoirContentOf(instance.instanceId);
+      const roomLeft = freeCapacity(ship.reservoirContents, instance.instanceId, capacity);
       const blocked = !isFluidTransferReachable(ship, this.shipFloorplan, fromInstanceId, instance.instanceId)
         ? ("unreachable" as const)
-        : freeCapacity(ship.reservoirContents, instance.instanceId, capacity) <= 0
+        : roomLeft <= 0
           ? ("full" as const)
           : toContent && fromContent && toContent.substanceId !== fromContent.substanceId
             ? ("different-substance" as const)
             : undefined;
-      candidates.push({ instanceId: instance.instanceId, blocked });
+      candidates.push({ instanceId: instance.instanceId, blocked, freeCapacity: roomLeft });
     }
     return candidates;
   }
