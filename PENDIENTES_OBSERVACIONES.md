@@ -1,7 +1,13 @@
 
+> **Triaje de 2026-08-21:** todos los puntos abiertos de este archivo tienen ahora fase asignada en
+> `nuevo-orden.md`. El grueso de UI/UX y bugs de input vive en la **Subfase 14d** ("Bucket de UI/UX y Bugs de
+> Playtest — Pre-Demo"), creada en ese triaje porque la Fase 12 está cerrada entera y no había dónde ponerlos.
+> Cada punto de abajo dice su destino en su propia línea. Ningún ítem abierto queda sin fase.
+
 ## Observaciones
 
 0. No hay una historia, debería haber una historia definida, con una intro, con algo que muestre lo que está pasando ANTES de ver el plano de la nave? Tal vez un par de escenas con texto que se escribe y cuenta lo que está pasando. Un reporte de incidente? 
+   → **Fase 15 (Demo)**, pendiente de ciclo de diseño narrativo propio (no existe ningún sistema narrativo previo en el proyecto).
 1. ✅ RESUELTO (Fase 11f). deben haber indicadores visuales para todo. actualmente la conexión de 2 comopnentes es una línea recta entre ambos, debería seguir el camino viable (pasar por puertas ,no por dentro de paredes), y debería haber una animación corriendo sobre esa líena que muestre flujo de energía.
    Resuelto: los conductos ahora trazan una polilínea real entre las dos secciones que conectan
    (`game/src/render/conduit-path.ts::computeConduitPaths`), reusando el pathfinding ya existente para
@@ -80,19 +86,56 @@
    ambas transiciones, por si el recálculo automático de `FIT` no dispara solo.
 
 8. Se pueden encolar 2 o más tripulantes para instalar la misma pieza (de la cual solo hay una copia) y cuando se le da "play", luego de que el primero termina la instalación, el juego da un error al querer instalar la pieza que ya no está en stock.
+   → **Subfase 14d, Bloque 1 (primer ítem: es el único crash de esta lista).** Verificado en el triaje: es peor
+   que "da un error" — `queueInstall` (`game/src/mission/mission-runtime.ts`) no reserva stock al encolar,
+   `ship-task-effect.ts` lanza `InsufficientStockError` al completar, y `TaskScheduler.completeTask` invoca el
+   efecto **sin try/catch**, así que la excepción rompe el tick de la misión. El filtro `"no-stock"` del selector
+   (`mission-interaction-controller.ts`) mira el stock actual sin descontar lo ya encolado. Fix en dos capas:
+   descontar lo encolado al ofrecer el ítem + degradar la tarea a `failed` con notificación en vez de propagar.
 
 9. cambiar de idioma no afecta todos los strings, hay botones de la UI que no cambian el idioma.
+   → **Subfase 14d, Bloque 1** el subconjunto que expone la demo (menú, pantallas de selección, HUD de misión);
+   **Fase 22c** la auditoría total de i18n en ambos diccionarios, incluida la dirección inversa (claves sin
+   consumidor, ver deuda #23).
 
 10. En la pantalla de selección de arquetipo y la selección de tripulantes, el click no funciona bien. Parece que hay un desfase entre donde está el mouse y donde se hace el click, incluso parece que a veces el jugador hace click en un tripulante y termina clickeando en otro.
+   → **Subfase 14d, Bloque 1.** Investigar primero la hit area de los containers de `crew-select-card.ts` /
+   `ship-archetype-card.ts`, antes que el escalado (`scale.FIT` + `#game-root`, arreglado en 12f).
 
 11. los clicks en botones de selección de capa hacen click en el mapa tambien. Eso no debería pasar en ningun elemento de la UI que está renderizado arriba del mapa.
+   → **Subfase 14d, Bloque 1.** `installTopmostOnlyInput` (13e ronda 4) NO cubre este caso: desempata entre
+   objetos interactivos y el mapa no es uno — se resuelve por el `pointerdown` global de `floorplan-scene.ts`.
+   El panel de capas no registra sus bounds en `isOverFixedUi` ni hace interactivo su nineslice, a diferencia de
+   `mission-action-panel.ts`. La regla general que pide la observación se implementa por esa vía.
 
 12. hay algun uso real para los planos de la nave? que gana el jugador con ver es
+   → **Subfase 14d, Bloque 2.** Confirmado con el operador en el triaje: se refiere a **las capas del plano de
+   misión**. Es la pregunta de fondo de la que Obs 15 y el fine-tunning de capas son la respuesta propuesta —
+   se resuelven como un solo ciclo de preguntas, no por separado.
 
 13. el modal de instalación tiene ahora la sección derecha con fondo negro para solucionar el contraste horrible entre el texto y el fondo gris del modal. Esto es un parche temporal, se debe rediseñar este modal para que se lea mejor l ainformacion.
+   → **Subfase 14d, Bloque 2** (rediseño de la jerarquía de lectura de la ficha, no repintado).
 
 14. el link de "x cerrar" de los modales de acción (al hacer click en un tile del mapa) son muy dificiles de clickear, casi siempre falla el click.
+   → **Subfase 14d, Bloque 1.** Es un `add.text` de 11px con `setInteractive()` sin padding ni `hitArea`
+   (`mission-action-panel.ts`), o sea ~14px de alto de área clickeable. Pasar a `createKenneyButton`, como ya
+   hace el close de `power-priority-list.ts`.
 
+15. la UI de capas no es muy visualmente atractiva. Creo que preferiría tener nos iconos en el mapa mismo, como google maps, algo que sea solamente un icono representando lo que muesra con un tooltip. de esa forma se reduce el uso de botones, y se dejan más a mano. podrían estos botones estar dentro de una tira de herramientas relacionadas con el mapa (por ahora solo botones de capa) y con la capacidad de minimizar/ocultar esta tira así incluso no sacan espacio visual si el jugador no las necesita.
+   → **Subfase 14d, Bloque 2**, junto con Obs 12 y el fine-tunning de capas (un solo ciclo de preguntas).
+
+16. los sprites de los componentes no se ven afectados por la luz/sombra de las secciones, parecen ser renderizados arriba de la capa de luces.
+   → **Subfase 12d** (sombras dinámicas, ciclo de preguntas ya pendiente). **Corrección del diagnóstico
+   original, verificada en el triaje:** es al revés. Las sombras están bien
+   (`RENDER_DEPTH.dynamicShadows` = 1.7 < `objects` = 2), pero **todos los `PointLight` se registran a
+   `RENDER_DEPTH.effect` = 7** (`registerLight`, `floorplan-scene.ts`) — por encima de paredes (5) y sprites (2).
+   La luz aditiva se pinta sobre todo, y eso es lo que se lee como "el sprite no recibe luz". No se parchea el
+   depth suelto porque la decisión de 12d (seguir con `PointLight` vs. migrar a `scene.lights`) cambia la respuesta.
+
+17. El puntero del mouse debería estar con la misma imagen que se pone sobre los botones en su estado default. Ahora mismo, salta abruptamente entre el puntero del sistema y el puntero de los botones.
+   → **Subfase 14d, Bloque 2.** No es obra nueva: `game/src/ui/custom-cursor.ts` existe desde 12c pero solo está
+   cableado en `floorplan-scene.ts`; title/crew-select/hub/workbench/options usan el puntero del sistema. Falta
+   cursor por defecto global + revisar el `setDefaultCursor("default")` que lo revierte en `floorplan-scene.ts`.
 
 ## Fine-tunning
 
@@ -104,7 +147,9 @@
   diferencia del logo (flotación + partículas + blur ya resueltos) — se agregó `popIn` escalonado + `fadeIn`
   de cámara al entrar. Sigue abierta la pregunta original de fondo (qué más le falta al menú para sentirse
   profesional) — es una pregunta abierta de diseño, no una tarea puntual cerrable.
+  → La pregunta de fondo se retoma en la **Subfase 14d, Bloque 2**: es lo que define la primera impresión de la demo.
 * Los primeros 10 minutos de gameplay, son adictivos? Le dan algún reward al jugador?
+  → **Subfase 14d, Bloque 2** (pregunta de diseño, no tarea puntual — mismo motivo que la anterior).
 * ✅ RESUELTO (Fase 12c.1). Falta efectos hover en los botones de la UI. Ahora mismo hay sonidos al hacerle hover, lo cual es genial, pero falta un efecto visual que corresponda con la acción.
   Resuelto: `attachHoverJuice` (`game/src/ui/ui-effects.ts`) engancha un tween sutil de escala en
   `pointerover`/`pointerout` + pulso al `pointerdown`, aplicado en el único punto `createKenneyButton`, así que
@@ -120,8 +165,18 @@
   reales, carpeta `game/assets/sprites/ships/` creada vacía, ruta esperada
   `game/assets/sprites/ships/<archetype>.png`.
 * Los componentes cableables tienen un punto arriba cuando se ve la capa de señales, que los tapa por completo. Ese punto no parece tener ningún sentido, por lo que habría que removerlo.
+  → **Subfase 14d, Bloque 1.** `mission-overlay-renderer.ts` dibuja `fillCircle(..., 7)` = 14px sobre una celda
+  de 32px (44% de la celda). Removerlo, o como mínimo reducirlo y anclarlo a una esquina.
 * Las capas deberían comenzar todas en off y al estar en off no deberían verse, sin transparentes como se ven ahora.
+  → **Subfase 14d, Bloque 2**, dentro del ciclo de preguntas de capas (con Obs 12 y Obs 15). **Ojo:** hoy
+  arrancan todas en ON (`activeFloorplanLayers` se inicializa con `FLOORPLAN_LAYER_IDS`) y "inactiva = atenuado,
+  NUNCA oculto" está documentado como contrato explícito en `floorplan-layer-toggle-panel.ts` — esto es revertir
+  una decisión de 11f, no arreglar un bug, y por eso se decide en el ciclo de preguntas en vez de arrastrarse
+  como pendiente suelto.
 * El cuadro contextual de acción que aparece cuando se clickea en una celda del mapa debe poder cerrarse con ESC y al hacerle click en el fondo del mapa (fuera de la nave).
+  → **Subfase 14d, Bloque 1.** ESC hoy solo cancela el modo transferencia o pausa el juego
+  (`floorplan-scene.ts`), y el click en celda vacía cambia el contenido del panel a `{kind:"empty"}` en vez de
+  cerrarlo (`mission-interaction-controller.ts`).
 
 ## Deuda técnica detectada (fuera de alcance de la fase en curso)
 
@@ -334,6 +389,8 @@ dónde, y qué costaría arreglarlo.
     `Map` de efectos de flujo animado. Si algún mapa de Tiled llegara a definir dos conductos del mismo
     `kind` entre el mismo par de secciones (no visto hasta ahora en los mapas reales), uno pisaría al otro.
     Bajo riesgo dado el patrón actual de autoría, documentado por si aparece.
+    → **Fase 22a**, que es justamente donde se autoran conductos nuevos: verificar al autorar y darle id propio
+    si el patrón aparece.
 
 13. **Ningún mapa autorado tiene conductos `fluido` ni `senal` — reportado por el operador tras playtest de
     11f ("no veo los fluidos moverse").** Confirmado revisando los 4 JSON de `engine/src/floorplan/maps/`:
@@ -352,7 +409,8 @@ dónde, y qué costaría arreglarlo.
     ninguno alcanzaba las secciones que 13e necesita. Se autoraron 2 más para conectar a esa red
     `bodega-carga` (donde viven el banco de trabajo y la estación química) y `soporte-vital` (donde está el
     reservorio de agua reciclada sembrado), fijados por test en `mission/fluid-operations.test.ts`. Sigue
-    pendiente: `senal` y `fluido` en investigación/guerra/médica (Fase 22a).
+    pendiente: `senal` y `fluido` en investigación/guerra/médica.
+    → **Fase 22a** (ya listado en el texto de esa subfase).
 
 14. **La capa `senal` está autorada solo en `nave-exploracion` — el resto queda sin cableado cross-section
     (Fase 11f.1).** Con la mecánica de cableado restringido (un cable de señal solo cruza a otra sección si
@@ -362,6 +420,7 @@ dónde, y qué costaría arreglarlo.
     nada activo porque solo exploración se juega de punta a punta (los otros 3 son posiciones de referencia
     sin verificación visual, `chapter-01-primer-aviso.ts`). Autorar los `senal` de esos arquetipos cuando
     entren en testeo real. Intra-sección nunca requiere conducto.
+    → **Fase 22a** (ya listado en el texto de esa subfase).
 
 15. ⚠️ PARCIALMENTE RESUELTO (Fase 12e: semántica de color; configurabilidad por instancia SIGUE diferida).
     **MVP de "componentes configurables" pedido explícitamente por el operador — fuera de alcance de la
@@ -388,6 +447,11 @@ dónde, y qué costaría arreglarlo.
     la configurabilidad por instancia (elegir color y condición de disparo `>`/`<`/`=`, con bump de
     `schemaVersion` y UI de configuración) y que el LED lea el valor numérico real por umbral — 12e mantuvo el
     LED binario ON(ámbar)/OFF(gris) a propósito, solo re-etiquetando su color dentro del contrato.
+    → Lo diferido pasa a la **Subfase 14b** (triaje 2026-08-21): esa subfase ya hace el mismo trabajo —umbrales
+    sobre una lectura del mundo (`triggerType: "quimico"`) y generalizar `SignalOutputReader`—, así que el
+    umbral configurable del LED es una extensión de su dominio, no un pedido de UI suelto. **Conserva su ciclo
+    de preguntas propio** (¿solo el LED o cualquier receptor con salida numérica?, ¿configurable en cualquier
+    momento o solo antes de instalar?).
 
 16. ⚠️ PARCIALMENTE RESUELTO (Fase 13a). **`CombustionEvent`/reacciones químicas no tienen ningún llamador de
     producción en `MissionRuntime` (detectado en Fase 12a).** Igual que `OverloadRule` antes de esta fase,
@@ -416,11 +480,16 @@ dónde, y qué costaría arreglarlo.
     efectos ya registrados en `effect-registry.ts`, desproporcionado para 13a; con el burst disparándose ahora
     en partida real (antes solo en la galería), este es el momento de revisar si el riesgo dejó de ser menor.
     Detalle completo: `changelog.log` (2026-08-04).
+    → El residual del `LightHook` pasa a la **Subfase 12d** (triaje 2026-08-21), junto con Obs 16: es el mismo
+    dominio de depth/registro de luces y debe entrar al mismo ciclo de preguntas.
     **Ampliado en Fase 12b**: el mismo hueco existe para `HazardEvent` (`toxic-threshold`/`corrosive-exposure`,
     umbral de exposición atmosférica a tripulante) — tampoco tiene llamador real en `floorplan-scene.ts`, solo
     se demuestra en `particle-gallery-scene.ts`. El sonido de corrosión (`game/src/audio/effects/
     corrosion-sound.ts`) y el de combustión quedaron listos y registrados en `phenomenon-sound-registry.ts`,
     pero ninguno de los dos suena en partida real hasta que exista el runtime que dispare estos eventos.
+    → El llamador de `HazardEvent` pasa a la **Subfase 13f** (triaje 2026-08-21): esa subfase ya construye el
+    escritor hermano —la corrosión de la atmósfera dañando la **sección**— y el hazard es la misma lectura de
+    atmósfera aplicada al **tripulante**: mismo tick, no dos sistemas.
 
 17. **No hay asset dedicado de siseo de fuga de gas, zumbido eléctrico continuo, sirena de alarma ni paso sobre
     piso metálico en el pack de audio (Fase 12b).** El pack colocado por el operador en `game/assets/audio/`
@@ -433,10 +502,16 @@ dónde, y qué costaría arreglarlo.
     **Ampliado en 13d**: el chispazo de desmontar una pieza viva (`dismantle-spark`) tampoco tiene asset
     propio — reutiliza el banco `overloadCut` (chisporroteo/arco), que es la misma familia eléctrica. El
     derrame y la fuga de 13d quedan sin sonido puntual a propósito, por la misma falta de assets.
+    → **Fase 22d** (creada en el triaje de 2026-08-21). Es procurement del operador, no código: el punto de
+    cambio es un solo archivo (`AUDIO_KEYS`) y ningún llamador se toca.
 
 18. al seleccionar un tripulante en la pantalla de selección de tripulantes debería cambiarle su imagen a color, ahora quedan en escala de grises.
+    → **Subfase 14d, Bloque 1.** Verificado: es peor que lo reportado — **ningún** retrato sale nunca de grises.
+    `crew-select-card.ts` aplica `grayscale(1)` en construcción (las tarjetas se crean siempre con
+    `selected=false` desde `crew-select-scene.ts`) y `setSelected` solo cambia el fondo, nunca toca el `preFX`.
 
 19. los efectos visuales de una zona sin energía se renderizan parcialmente arriba del cuadro de asginacion de energía en modo pausa.
+    → **Subfase 14d, Bloque 1** (depth, mismo patrón que la ronda 4 de 13e).
 20. ⚠️ PARCHE INTERINO (13c fix ronda 1) — **la integridad de casco se deriva del RE de los componentes
     instalados, no de la nave.** Reportado por el operador en el playtest de 13c: instalar un `tubo-flexible`
     (RE-B) desplomaba el indicador de casco de toda la nave, y desmontarlo lo "reparaba". La causa es de la
@@ -450,6 +525,7 @@ dónde, y qué costaría arreglarlo.
     pasan a tener vida propia, dañada por impacto cinético contra pared, explosión/combustión, corrosión y
     descompresión, con brecha + cicatriz permanente al llegar a 0. Esa subfase borra `instanceHullContribution`
     y `weightedHullFraction` enteras.
+    → **Subfase 13f**.
 
 21. **Un proyectil que no golpea nada sale del plano y sigue avanzando** (relevado al diseñar 13f).
     `ProjectileSimulation.advance` (`engine/src/kinetics/projectile-simulation.ts`) no valida contra
@@ -458,19 +534,25 @@ dónde, y qué costaría arreglarlo.
     rebota: `impact()` lo detiene en seco y pierde toda la inercia. Se aborda en la Subfase 13f, que necesita
     la colisión contra pared para dañar la sección (mismo patrón de inyección que `setMotionBlockedQuery` de
     13a, sin que `/engine` conozca Tiled).
+    → **Subfase 13f** (listado como hueco de motor #2 en el texto de esa subfase).
 
-22. **No hay selector de destino al trasvasar una sustancia** (Subfase 13e, decisión de alcance explícita).
+22. ✅ RESUELTO (13e rondas 7 y 9; confirmado en el triaje de 2026-08-21). **No hay selector de destino al trasvasar una sustancia** (Subfase 13e, decisión de alcance explícita).
     `onTransferSubstance` (`game/src/mission/mission-interaction-controller.ts`) toma el PRIMER reservorio
     alcanzable que devuelve `MissionRuntime.transferTargetsFor`, sin preguntarle al jugador. Es suficiente hoy
     porque con la red de conductos `fluido` recién autorada el conjunto alcanzable es de uno o dos, pero en
     cuanto haya más reservorios en la misma red hace falta un modal de selección (mismo molde que
     `install-picker-modal.ts`). Tampoco hay control de CUÁNTO trasvasar: se mueve todo el contenido.
+    Resuelto: la ronda 7 reemplazó el auto-pick ciego por un **modo de selección espacial** estilo SimCity
+    (hermano estructural de `wireMode`), y la ronda 9 pasó la cantidad a `Math.min(origen, freeCapacity)`, así
+    que ya no se pierde el remanente. Lo único que sigue vivo del texto original —que el jugador elija *cuánto*
+    transferir— se rastrea en el punto **#27**, no acá.
 
 23. **Las claves i18n `ui.menu.workbench.mode-chemistry`/`mode-physical`/`chemistry-hint` quedaron sin
     consumidor** (Subfase 13e). El toggle libre Física/Química de la mesa se eliminó al pasar el modo a
     depender del aparato desde el que se abre (Obs 4), pero las claves siguen en `es.ts`/`en.ts`. Se dejan
     porque son inofensivas y la auditoría total de i18n es la Fase 22c — anotado para que esa auditoría las
     encuentre en vez de dar por hecho que se usan.
+    → **Fase 22c** (ya listado en el texto de esa subfase).
 
 24. ✅ RESUELTO (el operador los colocó durante la propia sesión de 13e). **Sprites de los dos aparatos de
     fabricación.** Rutas:
@@ -492,12 +574,18 @@ dónde, y qué costaría arreglarlo.
     condition)` en `mission-interaction-controller.ts`, que recibe el id crudo cuando la instancia no está en
     `nameByComponentId`. Preexistente a 13e, visible en cualquier pieza sembrada; el tooltip de la misma pieza
     sí muestra el nombre bueno.
+    → **Subfase 14d, Bloque 1.** El tooltip se arregló en la ronda 2 de 13e consultando `definitionOf(...)`
+    antes del mapa; solo falta portar esa misma línea al panel. Ídem el inspector de prioridad de energía
+    (`floorplan-scene.ts`), que cae a `String(instanceId)` crudo — peor caso del mismo bug.
 
 27. **No hay selector de destino ni de cantidad al trasvasar** (registrado en 13e como #22, ampliado tras la
     ronda 2). "Trasvasar a otro reservorio" toma el primer destino alcanzable y mueve TODO el contenido. Con
     el aviso de desborde de la ronda 2 el jugador ya se entera de lo que pierde, pero sigue sin poder elegir.
     Cuando se implemente, el motor ya lo soporta: `TransferSubstanceTaskPayload` lleva `amount` y
     `transferTargetsFor` devuelve la lista completa de destinos, no solo el primero.
+    **Reducido en el triaje de 2026-08-21:** el selector de destino ya existe (modo espacial, ronda 7) y la
+    cantidad ya se capa al espacio libre sin perder el remanente (ronda 9). Lo único abierto es dejar al
+    jugador **elegir cuánto**. → **Subfase 14d, Bloque 2**, prioridad baja dentro del bucket.
 
 28. **La tira de tripulación no entra en un viewport de 720px de alto.** Detectado al verificar 13e ronda 2 con
     Playwright: en 1280×720 (el tamaño del canvas) el panel de acciones de una instancia con reservorio se
@@ -505,6 +593,8 @@ dónde, y qué costaría arreglarlo.
     hay forma de seleccionar un tripulante. En el juego real el operador sí la ve, así que puede ser un mínimo
     de resolución no declarado. Conviene decidir si 1280×720 es soportado y, si lo es, ajustar el layout; está
     relacionado con #25, que es el mismo problema de alto en pequeño.
+    → **Subfase 14d, Bloque 2.** Decidir primero la resolución mínima soportada (dato que la build de la demo
+    tiene que declarar de todos modos) y recién después tocar layout.
 
 29. **`sectionHasNoPowerGranted` se documenta como cosmético pero ya se usa para gating real.** Su docblock en
     `engine/src/power/mission-power-runtime.ts` dice textualmente que es "puramente cosmético… nunca por gating
@@ -512,6 +602,9 @@ dónde, y qué costaría arreglarlo.
     (`dismantle-hazard-rules.ts` vía `SalvageHazardDeps.sectionHasGrantedPower`), y la Subfase 13g lo va a usar
     más. Corregir el comentario para que describa lo que el predicado realmente es: la única consulta de
     energía con señal viva. Detectado al auditar la pregunta del operador sobre las mesas sin energía.
+    → **Subfase 13g** (ya listado en el texto de esa subfase). Nota del triaje: la ronda 10 de 13e le sumó un
+    tercer consumidor de gating real (el bloqueo de tareas por sección sin energía), así que el docblock está
+    aún más desactualizado que cuando se anotó esto.
 
 30. **Dos fuentes distintas para "sección sin energía" en la misma pantalla.** La capa HUD "energia"
     (`game/src/scenes/floorplan-scene.ts`, `drawEnergyLayer`) resuelve el estado leyendo
@@ -519,19 +612,47 @@ dónde, y qué costaría arreglarlo.
     overlay del plano (`redrawUnpoweredSectionScar`) usa `sectionHasNoPowerGranted`, que es el déficit vivo.
     Resultado: el plano pinta una sección a oscuras y la capa de energía no. Se resuelve solo en parte con 13g;
     conviene unificar la fuente explícitamente.
+    → **Subfase 13g** (ya listado en el texto de esa subfase, bajo "revisar la vía muerta de `unpoweredSections()`").
 
 31. **El inspector de prioridad energética siempre dice "alimentado".** `openEnergyPriorityPanel`
     (`floorplan-scene.ts`) muestra `powered` por componente usando `isInstancePowered`, que hoy devuelve `true`
     para todo porque ninguna pieza del catálogo declara `powerDraw`. No hay forma de que diga otra cosa hasta
     que se implemente la Subfase 13g; queda anotado para no diagnosticarlo dos veces.
+    → **Subfase 13g** (ya listado en el texto de esa subfase: al poblar `powerDraw`, este inspector responde solo).
 
 32. **`GAS_FRACTION_PER_SUBSTANCE_UNIT` pendiente de balanceo (Fase 23).** En la ronda 3 de 13e pasó a ser
     fracción por unidad **por unidad de volumen de sección** (se divide por `sectionArea`), y se recalibró de
     0.02 a 0.2 para compensar la división. El valor es plausible pero no está jugado en profundidad: con una
     sección de ~20 celdas, un reservorio de 100 unidades de gas satura al 100 %. Revisar junto al resto de
     parámetros numéricos cuando se haga el balanceo.
+    → **Fase 23** (ya listado en el texto de esa fase).
 
 33. **El suavizado de la nube de gas no tiene test automático.** `createGasLeakEffect` ganó umbral,
     persecución exponencial y opacidad proporcional (13e ronda 3), todo verificable solo a ojo. Es coherente
     con el estándar de `/game` (smoke visual, no cobertura), pero queda anotado: si el comportamiento se
     rompe, ninguna suite lo va a decir.
+    → **Fase 23** (QA), como smoke test durante el playtesting de los 8 capítulos. No se sube a estándar de
+    `/engine`: sigue siendo UI.
+
+34. **Acoplamientos cruzados de motor evaluados y diferidos a después de la demo** (análisis de
+    sesión 2026-08-11, matriz de dominios Energía/Presión/Química/Señales/Estructura). Cuatro pares
+    quedaron diseñados pero sin fase asignada, candidatos a partir de la Fase 16 (ya hay callbacks
+    de cicatriz persistente con los que un desgaste cruzado encaja mejor que en la demo):
+    - Energía→Presión: regulador de presión activo, gateado por energía (contrarresta
+      `SectionPressureSinkSource`, mismo `PRESSURE_RECOVERY_CEILING_KPA` hoy sin escritor).
+    - Presión→Energía: presión crítica degrada la capacidad efectiva de un conductor de esa
+      sección — misma regla genérica que el par Energía↔Presión de Barotrauma (líquido conductor),
+      un `ConductorEnvironmentalStressRule` con dos disparadores en vez de dos reglas separadas.
+    - Energía→Estructura: sobrecargas repetidas en una sección degradan `condition` (extiende el
+      escritor de 13c con un tercer disparador). Depende de que `OverloadEvent` lleve `sectionId`
+      resuelto (ya listado como hueco de motor de 13f).
+    - Estructura→Energía: vida estructural baja reduce la capacidad de los conductores de esa
+      sección (`sectionHullIntegrity` como input de `power-allocation.ts`). Depende de que 13f
+      exista (vida por sección).
+    **Descartado, no diferido:** Señales↔Estructura en ambos sentidos — decisión explícita del
+    operador, un sensor/receptor no debería perder conexión por el estado estructural de su
+    sección. Si en el futuro un caso de validación lo necesita, revisar con su propio ciclo de
+    preguntas.
+    → **Fase 16** (triaje 2026-08-21): primera fase post-demo y primera que introduce cicatriz persistente,
+    que es el contexto donde un desgaste cruzado tiene sentido. Los dos pares que tocan Estructura dependen
+    además de que **13f** exista (vida por sección).

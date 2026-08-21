@@ -4426,3 +4426,56 @@ y `eslint` limpios en ambos paquetes.
 
 Razón: ronda 11 de fixes del playtest de la Subfase 13e — corrección de dos problemas de alcance en la regla
 de energía introducida en la ronda 10, más un bug visual puntual del selector de instalación.
+
+---
+
+[2026-08-21] Triaje de `PENDIENTES_OBSERVACIONES.md` contra las secciones abiertas de `nuevo-orden.md`.
+
+Cambio exclusivamente documental (sin código): asignar fase a TODOS los puntos abiertos del archivo de
+pendientes, que acumulaba ítems sin hogar desde la Fase 11. Antes de triar se verificó el estado real en
+código de 10 observaciones con un agente Explore, lo que corrigió tres diagnósticos del reporte original.
+
+BUCKET NUEVO — Subfase 14d "Bucket de UI/UX y Bugs de Playtest (pre-demo)", al final de la Fase 14, justo
+antes de la Fase 15 (Demo). Se creó porque la Fase 12 (pulido de UI, su hogar temático) está cerrada entera
+y reabrirla rompería la convención de fases cerradas del documento. Decisiones del operador en el ciclo de
+preguntas del triaje: un solo bucket (no dos), todo antes de la demo, y Obs 12 se refiere a las capas del
+plano de misión (no a los blueprints exportables). Dos bloques internos:
+ - Bloque 1, bugs con causa raíz confirmada: Obs 8 (crash), Obs 10, Obs 11, Obs 14, Obs 18, Obs 19,
+   deuda #26, ESC/click-al-fondo, punto de nodo de señal, e i18n del subconjunto de la demo (Obs 9).
+ - Bloque 2, rediseños con un único ciclo de preguntas: capas del plano (Obs 12 + Obs 15 + fine-tunning),
+   modal de instalación (Obs 13), cursor global (Obs 17), resolución mínima (#28), cantidad al transferir
+   (#27), y las dos preguntas de primera impresión del fine-tunning.
+
+MAPEO A SUBFASES YA ABIERTAS:
+ - 12d (sombras dinámicas): Obs 16 + el residual del `LightHook` de `combustion-effect.ts` (deuda #16).
+ - 13f: `HazardEvent` sin llamador de producción (deuda #16, ampliación de 12b) — escritor hermano del daño
+   por corrosión a la sección que esa subfase ya construye.
+ - 14b: MVP de componentes configurables por instancia / LED con umbral (deuda #15), conservando su ciclo
+   de preguntas propio.
+ - 16: los 4 acoplamientos cruzados Energía↔Presión↔Estructura (deuda #34), post-demo como ya indicaba.
+ - 22a: clave de conducto no única (deuda #12), donde se autoran conductos nuevos.
+ - 22c: auditoría total de i18n (Obs 9) + claves huérfanas (deuda #23).
+ - 22d (subfase nueva): assets de audio industriales faltantes (deuda #17) — procurement del operador.
+ - 23: `GAS_FRACTION_PER_SUBSTANCE_UNIT` y consumos de `powerDraw` (#32), smoke test de la nube (#33).
+
+CORRECCIONES DE DIAGNÓSTICO (verificadas en código, anotadas en el propio punto):
+ - Obs 8 es un CRASH, no "un error": `TaskScheduler.completeTask` invoca el efecto sin try/catch, así que
+   el `InsufficientStockError` de `ship-task-effect.ts` rompe el tick de la misión.
+ - Obs 16 está invertida: no son los sprites los que se pintan sobre las luces — son los `PointLight`
+   (depth 7) los que se pintan sobre paredes (5) y sprites (2).
+ - Obs 18 es peor que lo reportado: NINGÚN retrato sale de grises, porque `setSelected` nunca toca el `preFX`.
+ - Obs 11 no la cubre `installTopmostOnlyInput` (13e ronda 4): ese fix desempata objetos interactivos y el
+   mapa no es uno; hace falta la vía de `isOverFixedUi`.
+ - Obs 17 no es obra nueva: `custom-cursor.ts` existe desde 12c, solo le falta alcance fuera de la misión.
+
+CERRADO EN EL TRIAJE: deuda #22 (selector de destino al transferir) marcada ✅ RESUELTA — la ronda 7 de 13e
+entregó el modo de selección espacial y la ronda 9 el capado al espacio libre; lo único vivo del texto
+original (elegir CUÁNTO) queda rastreado en #27, no duplicado.
+
+ARCHIVOS: `nuevo-orden.md` (Subfase 14d nueva + 22d nueva + viñetas en 12d/13f/14b/16/22a/22c/23 + 6 filas
+en la tabla de validación), `PENDIENTES_OBSERVACIONES.md` (nota de cabecera + línea de destino en cada punto
+abierto). Sin cambios en `MAPA_DEL_CODIGO.md`: no se tocó ningún módulo.
+
+Razón: el archivo de pendientes mezclaba resueltos con abiertos sin fase, y varios de los abiertos (un crash
+al doble-encolar, clicks que atraviesan la UI, retratos en grises) bloquearían la demo de la Fase 15 sin que
+nada en el plan los reclamara.
