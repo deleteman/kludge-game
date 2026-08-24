@@ -30,6 +30,7 @@ function shipWith(archetype: (typeof SHIP_ARCHETYPES)[number], edges: Blueprint[
     reservoirContents: [],
     signalGraph: { nodes: [...CHAPTER_02_SEEDED_SIGNAL_NODES_BY_ARCHETYPE[archetype]], edges },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

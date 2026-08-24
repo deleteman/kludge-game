@@ -59,7 +59,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 8,
+      schemaVersion: 9,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -77,6 +77,9 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // Sin snapshot todavía: `MissionAtmosphereRuntime` siembra aire estándar por
     // sección al no encontrar una entrada (Fase 11b).
     sectionAtmospheres: [],
+    // Igual que la atmósfera: sin snapshot, `MissionSectionIntegrityRuntime`
+    // siembra la vida inicial de cada sección desde su área (Subfase 13f).
+    sectionIntegrity: [],
     // Fase 13b: `unpoweredSectionIds` pasa a ser un campo DERIVADO, recalculado
     // por `MissionPowerRuntime` en la primera pasada síncrona al arrancar la
     // misión — refleja únicamente `powerState.permanentlyDisconnectedSectionIds`

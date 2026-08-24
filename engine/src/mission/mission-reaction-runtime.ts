@@ -5,7 +5,6 @@ import { ReactionResolver } from "../chemistry/reaction/reaction-resolver.js";
 import type { ReactionDomainEvent } from "../chemistry/reaction/reaction-events.types.js";
 import { sectionCombustionAtmosphere } from "../atmosphere/combustion-atmosphere.js";
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
-import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { ScriptedReactionSubject } from "../crisis/crisis-definition.types.js";
@@ -42,14 +41,16 @@ export class MissionReactionRuntime implements Tickable {
     failureEvents?: EventEmitter<FailureDomainEvent>,
     salvageEvents?: EventEmitter<SalvageDomainEvent>,
   ) {
+    // Subfase 13f: `OverloadEvent` ya trae `sectionId` estampado por
+    // `MissionOverloadRuntime`. Antes este handler resolvía el puente
+    // `ref → sección` a mano; ahora ese lookup vive en un solo sitio y acá se
+    // lee el campo, igual que con `dismantle-spark`.
     failureEvents?.on("overload", (event) => {
       if (event.failureMode !== "fire" && event.failureMode !== "explosion") {
         return;
       }
-      const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === event.ref);
-      const section = instance && sectionContainingCell(this.shipFloorplan, instance.placement.position);
-      if (section) {
-        this.ignitedSectionIds.add(section.id);
+      if (event.sectionId) {
+        this.ignitedSectionIds.add(event.sectionId);
       }
     });
     // Segunda fuente de ignición REAL (Subfase 13d): el chispazo de desmontar

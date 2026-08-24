@@ -82,6 +82,8 @@ describe("hp-resolution: daño a tripulante (case 17 y combustión, caso 11)", (
     const { actor: updated, event } = applyKineticDamage(actor({ hp: 100, maxHp: 100 }), {
       kind: "kinetic-impact",
       targetRef: "actor-1",
+      targetKind: "crew",
+      position: { x: 0, y: 0 },
       velocity: "M",
       severity: "medium",
       elapsedSeconds: 12,
@@ -94,6 +96,8 @@ describe("hp-resolution: daño a tripulante (case 17 y combustión, caso 11)", (
     const { actor: updated, event } = applyKineticDamage(actor({ hp: 100, maxHp: 100 }), {
       kind: "kinetic-impact",
       targetRef: "actor-1",
+      targetKind: "crew",
+      position: { x: 0, y: 0 },
       velocity: "A",
       severity: "high",
       elapsedSeconds: 12,

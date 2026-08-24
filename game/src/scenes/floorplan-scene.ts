@@ -925,6 +925,7 @@ export class FloorplanScene extends Phaser.Scene {
 
     this.input.keyboard?.on("keydown-G", () => this.scene.start("particle-gallery"));
     this.input.keyboard?.on("keydown-F", () => this.fireDevEventSample());
+    this.input.keyboard?.on("keydown-H", () => this.fireDevSectionDamage());
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
@@ -1045,6 +1046,51 @@ export class FloorplanScene extends Phaser.Scene {
         // El desmontaje inseguro cambia el mundo (pieza fuera, fuga abierta):
         // redibujar para que el plano no quede una pasada atrás.
         this.redrawOverlay();
+      }),
+      // Subfase 13f: daño y colapso de una sección. El daño se pinta en el
+      // centroide (es "la sección", no una celda); la brecha SÍ trae su celda
+      // exacta, porque es donde el jugador tiene que instalar el parche.
+      this.mission.integrityEvents.onAny((event) => {
+        const section = this.mission.shipFloorplan.sections.find(
+          (entry) => entry.id === event.sectionId,
+        );
+        const cell = event.kind === "section-breached" ? event.breachCell : section && sectionCentroidCell(section);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        fireEventSound(this, event);
+        if (event.kind === "section-breached") {
+          // Una brecha es tan grave como una combustión violenta: mismo
+          // overlay de alerta de pantalla completa y misma alarma.
+          this.violentAlertUntilSeconds = this.time.now / 1000 + VIOLENT_ALERT_HOLD_SECONDS;
+          this.sound.play(pickSoundKey(AUDIO_KEYS.alarm), { volume: 0.5 });
+          this.notifications?.push({
+            title: t("ui.floorplan.notification.section-breached"),
+            lines: [t("ui.floorplan.notification.section-breached-detail")],
+            type: "error",
+          });
+          // El colapso desgasta y destruye piezas de la sección: el plano
+          // tiene que reflejarlo ya, no una pasada después.
+          this.redrawOverlay();
+        } else {
+          this.notifications?.push({
+            title: t("ui.floorplan.notification.section-damaged"),
+            type: "warning",
+          });
+        }
+      }),
+      // Subfase 13f (deuda #16): peligro atmosférico sobre la tripulación. Es
+      // el bus que faltaba — hasta ahora `toxic-threshold`/`corrosive-exposure`
+      // solo existían en la galería de partículas.
+      this.mission.atmosphereEvents.onAny((event) => {
+        const section = this.mission.shipFloorplan.sections.find(
+          (entry) => entry.id === event.sectionId,
+        );
+        const cell = section && sectionCentroidCell(section);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        fireEventSound(this, event);
+        this.notifications?.push({
+          title: t(`ui.floorplan.notification.${event.kind}`),
+          type: event.severity === "lethal" ? "error" : "warning",
+        });
       }),
       // Fase 13b (ronda 4): el jugador tiene más energía repartida de la que la
       // nave puede entregar — típicamente porque desmanteló una fuente. El
@@ -3013,6 +3059,40 @@ export class FloorplanScene extends Phaser.Scene {
     this.notifications?.push({
       title: `${t("ui.floorplan.dev.fired")}: ${sample.label}`,
       type: "info",
+    });
+  }
+
+  /**
+   * Tecla de dev (H): provoca una explosión REAL en la sección de la celda
+   * seleccionada (Subfase 13f).
+   *
+   * A diferencia de la tecla F —que dispara solo el efecto visual de una
+   * muestra— esto emite un `CombustionEvent` por el emisor de reacciones del
+   * motor, o sea que recorre el camino de producción entero: daña la vida de
+   * la sección, puede colapsarla, abre la brecha, drena la presión, desgasta
+   * la maquinaria y dispara las explosiones del colapso.
+   *
+   * Existe porque **ningún capítulo autorado tiene hoy un camino real para
+   * dañar el casco**: `scriptedReactions` está vacío en todos, el único
+   * escritor con camino jugable es el impacto cinético (que exige montar el
+   * cañón de riel) y la corrosión no tiene sustancia `CORR` viva en ningún
+   * lado. Sin esta tecla, los pasos de prueba manual de esta subfase serían
+   * instrucciones imposibles de ejecutar.
+   */
+  private fireDevSectionDamage(): void {
+    const cell = this.interaction.selectedCell;
+    const section = cell && this.mission.sectionAt(cell);
+    if (!section) {
+      this.notifications?.push({ title: t("ui.floorplan.dev.no-cell"), type: "warning" });
+      return;
+    }
+    this.mission.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "medium",
+      sectionId: section.id,
+      elapsedSeconds: this.mission.elapsedSeconds,
     });
   }
 

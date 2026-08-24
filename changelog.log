@@ -4702,3 +4702,77 @@ test de `/engine` — `dynamic-light.ts` no tiene tests hoy por el mismo motivo)
 
 Razón: una luz que se corta de golpe rompe la legibilidad del fenómeno (principio 6) y, desde 12d.5, hace
 saltar también la sombra.
+
+================================================================================
+2026-08-24 — Subfase 13f: Integridad de Casco por Sección (cerrada)
+================================================================================
+
+QUÉ: las secciones de la nave pasan a tener VIDA PROPIA, dañada por cuatro fenómenos físicos, y la integridad
+de casco se deriva de eso. Se borró entera la agregación de la Fase 11g, que la derivaba del RE de las piezas
+INSTALADAS.
+
+RAZÓN: error de modelado de 11g que el playtest de 13c destapó (obs 3 del operador): instalar un `tubo-flexible`
+(RE-B) desplomaba el indicador de casco de TODA la nave y desmontarlo lo "reparaba". Una manguera no es casco.
+13c dejó un parche interino explícitamente marcado como provisional; esta subfase lo reemplaza por el modelo que
+propuso el operador.
+
+DECISIONES DEL CICLO DE PREGUNTAS (2026-08-24):
+ - Sellar la brecha: con una PIEZA instalada sobre su celda. Las puertas salen a subfase propia (13h).
+ - Cicatriz: sección colapsada = sección sin atmósfera. Sellar detiene la fuga, NO devuelve la vida.
+ - Colapso: TODO en 13f — daño a la maquinaria de adentro + explosiones aleatorias reales.
+ - Piso de presión: una sección brechada llega a 0 kPa (vacío real).
+ - Hazard atmosférico: letal solo por severidad `lethal`, con aviso previo en `incapacitation`.
+ - Daño cinético a actores: se cierra acá.
+
+IMPLEMENTACIÓN:
+ - Dominio nuevo `engine/src/integrity/`: tipos + snapshot, parámetros data-driven, reglas de daño como Strategy
+   (dos familias: ambientales por tick, puntuales por evento) y `applySectionDamage`.
+ - `MissionSectionIntegrityRuntime` (molde de `MissionStructuralRuntime`, registrado tras la atmósfera) y
+   `MissionHazardRuntime` (su hermano: misma lectura de atmósfera aplicada al tripulante).
+ - Brecha: `sectionBreachPressureSink` + piso de presión POR SECCIÓN en `MissionAtmosphereRuntime`. El parche se
+   identifica por PROPIEDADES (`EST` + RE suficiente, principio 1), no por lista de ids, así que el jugador puede
+   improvisarlo con lo que tenga.
+ - Los tres huecos de motor relevados: `position`/`targetKind` en `KineticImpactEvent`; colisión contra pared y
+   contra el borde del plano reusando el `CellBlockedQuery` YA inyectado desde el tilemap; `sectionId` en
+   `OverloadEvent` estampado por su runtime, borrando el lookup manual de `MissionReactionRuntime`. El hueco #5
+   (componer sumideros) ya lo había pagado 13d — patrón 18, se verificó antes de rehacerlo.
+ - `Blueprint.sectionIntegrity`, `schemaVersion` 8→9.
+ - `/game`: efecto y sonido de brecha, suscripción a los dos buses nuevos, i18n es/en, tecla de dev H.
+
+DEUDAS CERRADAS: #20 (parche interino de casco), #21 (proyectil sin bordes), #16 en su tramo de `HazardEvent`
+—incluido el hallazgo de que NO EXISTÍA ningún bus donde emitirlo, que es la razón de fondo por la que el sonido
+de corrosión de 12b nunca sonó— y el llamador ausente de `applyKineticDamage`.
+
+CORRECCIONES QUE SALIERON DE LA AUTO-REVISIÓN, NO DEL TEXTO DE LA SUBFASE:
+ - El umbral de descompresión estaba en 40 kPa, IGUAL que el piso global de fuga. Con los dos números iguales,
+   una fuga que baja hasta el piso se queda exactamente en el umbral y nunca hace daño: el único escenario de
+   fuga que existe hoy (la junta rota del Cap.1) habría dejado ese escritor sin ningún camino real. Subido a 60.
+   Es el patrón 7 ("un indicador que nunca se mueve está roto") aplicado a mi propio parámetro.
+ - Se verificó que la tecla de dev F solo dispara EFECTOS VISUALES, así que no servía para provocar un colapso.
+   Se añadió la tecla H, que emite por el camino de producción — patrón 20: una receta de prueba que no se puede
+   ejecutar es una receta sin verificar.
+ - `ShipStatusQuery` dejó de necesitar el `componentRegistry`: se quitó en vez de dejarlo colgando.
+
+DECLARADO Y NO DISIMULADO: la corrosión sigue sin camino jugable (ningún capítulo autora una sustancia `CORR`
+viva), documentado en el docblock del runtime y registrado como pendiente #39. Y `SectionBreachedEvent` no tiene
+asset de audio propio (pendiente #40).
+
+SUITE: `/engine` 886 → 916 tests, `/game` 61 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos workspaces,
+`vite build` limpio.
+
+--------------------------------------------------------------------------------
+2026-08-24 — Subfase 13h documentada (Puertas y Compartimentación), solo documentación
+--------------------------------------------------------------------------------
+
+RAZÓN: al preguntar en el ciclo de 13f cómo sella el jugador una brecha, el operador respondió "con una pieza, o
+cerrando la puerta de la zona" — y las puertas no existían ni estaban agendadas en ningún punto del plan. El
+"aislamiento deliberado" del GDD 5.5 es letra muerta: el `valveAperture` de los conductos `ventilacion` se fija
+al construir la misión y nada lo cambia.
+
+Diseño cerrado en su propio ciclo de preguntas: autoradas en Tiled + construibles; bloquean atmósfera Y paso (no
+señales, ya descartado en el triaje de la Fase 16); modo `auto` por defecto (se abren para dejar pasar y se
+cierran solas) con `override` cuando algo las gobierna; sin energía se CONGELAN donde están, con tarea
+`force-door` como salida. Orden de ejecución: 13f → 13h → 13g.
+
+ARCHIVOS: `nuevo-orden.md` (13h nueva entre 13f y 13g + nota en 13g de que la puerta es su consumidor eléctrico
+de referencia + marcas ✅ que faltaban en 13a/13b/13c), `PENDIENTES_OBSERVACIONES.md`, `MAPA_DEL_CODIGO.md`.

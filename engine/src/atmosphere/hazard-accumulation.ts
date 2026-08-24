@@ -115,12 +115,20 @@ export function createToxicHazardAccumulator(): HazardAccumulator {
   });
 }
 
-/** Daño corrosivo directo a tripulante (GDD 5.3): letal tras ~10s de contacto. */
+/**
+ * Daño corrosivo directo a tripulante (GDD 5.3): letal tras ~10s de contacto.
+ *
+ * Subfase 13f: gana una fase de incapacitación a la MITAD de ese tiempo, que
+ * antes era `Infinity`. No cambia el momento de la muerte (la Espec. §1 sigue
+ * mandando en eso) — añade el aviso previo que el operador pidió al cablear
+ * este acumulador a producción: un tripulante que se está corroyendo ahora
+ * grita antes de morir, en vez de caerse de golpe al segundo 10.
+ */
 export function createCorrosiveCrewHazardAccumulator(): HazardAccumulator {
   return new HazardAccumulator({
     eventKind: "corrosive-exposure",
     onsetConcentration: 0,
-    incapacitationSeconds: Number.POSITIVE_INFINITY,
+    incapacitationSeconds: REACTION_PARAMETERS.corrosion.crewLethalSeconds / 2,
     lethalSeconds: REACTION_PARAMETERS.corrosion.crewLethalSeconds,
   });
 }

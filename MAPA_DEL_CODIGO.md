@@ -1165,3 +1165,89 @@
   copiaban el patrón a mano y ambos destruían la luz sin fade.
 - Consumidores: `combustion-effect.ts` (`sustainMs` = duración de la llama, `fadeMs` = 1.5×, misma vida total
   que antes) y `environmental-damage-effect.ts` (arco eléctrico, `fadeMs` 200).
+
+## `engine/src/integrity/` (dominio nuevo, Subfase 13f)
+- `section-integrity.types.ts` — `SectionIntegrity` (hp/maxHp/breached, escalares mutables) + `SectionIntegritySnapshot`
+  y su round-trip. Molde exacto de `atmosphere/section.types.ts` + `atmosphere-snapshot.types.ts`.
+  `initialSectionIntegrity` escala la vida con `sectionArea()`.
+- `section-integrity-parameters.ts` — TODO el balance de la subfase (hp por celda, daño por escritor, umbral y piso de
+  descompresión, drenaje y piso de presión de la brecha, RE mínima del parche, rango de explosiones del colapso).
+  Ninguna regla tiene literales propios.
+- `section-damage-rules.ts` — **Strategy**, molde de `dismantle-hazard-rules.ts`. Dos familias: ambientales por tick
+  (`corrosionDamageRule`, `decompressionDamageRule`) y puntuales por evento (`kineticImpactSectionDamage`,
+  `combustionSectionDamage`, funciones puras: no hay nada que acumular). La descompresión devuelve un `floorHp` y por
+  eso **no puede colapsar una sección por sí sola** — es la amortiguación del bucle de realimentación, estructural y no
+  un número afinado a ojo.
+- `section-integrity.ts` — `applySectionDamage`: aplica, emite `section-damaged` solo al CRUZAR de nivel del corte del
+  HUD (`fractionToLevel`, así el evento coincide con lo que ve el jugador) y `section-breached` una sola vez.
+- `integrity-events.types.ts` — `SectionDamagedEvent`/`SectionBreachedEvent` (con `breachCell`) + `SectionDamageCause`.
+
+## `engine/src/mission/mission-section-integrity-runtime.ts` (nuevo, Subfase 13f)
+- `MissionSectionIntegrityRuntime` — `Tickable`, molde de `MissionStructuralRuntime`; se registra tras `atmosphereRuntime`.
+  Corrosión y descompresión por tick; impacto contra pared y combustión por suscripción. Al colapsar: brecha, desgaste de
+  toda la maquinaria de la sección (reusa `worsenWear`, no un segundo eje de daño) y 1..N combustiones REALES por el
+  emisor de reacciones. `ignoredCombustionRefs` evita que el colapso se dañe a sí mismo en bucle. Expone `fractionOf`/
+  `allFractions` (implementa `SectionIntegritySource`), `openBreaches`, `pressureFloorFor` y `toSnapshots`.
+
+## `engine/src/mission/section-breach-pressure-sink.ts` (nuevo, Subfase 13f)
+- `sectionBreachPressureSink` — hermano de `sealBreachPressureSink` con una diferencia física deliberada: la brecha no
+  recupera presión al taparse, solo deja de drenar. `isBreachPatch` decide qué sirve de parche **por propiedades**
+  (`EST` + RE efectiva suficiente, principio 1) y no por lista de ids; `isBreachSealed` mira TODAS las celdas ocupadas
+  por la pieza, no solo su origen.
+
+## `engine/src/mission/mission-hazard-runtime.ts` + `mission-hazard-parameters.ts` (nuevos, Subfase 13f)
+- `MissionHazardRuntime` — llamador de producción que le faltaba a `HazardAccumulator` (deuda #16). Hermano del runtime
+  de sección: misma lectura de atmósfera aplicada al tripulante. Tóxico, corrosivo y **vacío** (que usa la causa `"cold"`
+  ya existente en vez de inventar un `kind` nuevo de `HazardEvent`). `incapacitation` hiere con `minHp: 1`, solo
+  `lethal` mata.
+
+## `engine/src/mission/kinetic-damage-handler.ts` (nuevo, Subfase 13f)
+- `registerKineticDamage` — llamador de producción de `applyKineticDamage`, que existía desde 11a sin ninguno. Enemigos
+  y tripulantes comparten la tabla `HP_LOSS_FRACTION` para que un impacto signifique lo mismo contra ambos.
+
+## `engine/src/atmosphere/tagged-concentration.ts` (nuevo, Subfase 13f)
+- `sectionTaggedConcentration` — el recorrido "gases contaminantes con tag X" que vivía copiado en `aggregateAtmosphere`
+  y `sectionCorrosiveLevel`, extraído antes de que hiciera falta una tercera copia.
+
+## `engine/src/kinetics/` (modificado, Subfase 13f)
+- `KineticImpactEvent` gana `position` (celda golpeada) y `targetKind` (`component`/`crew`/`enemy`/`wall`) — huecos #1 y
+  #2 del relevamiento. `CellOccupant` gana `kind`. `resolveKineticImpact` recibe el ocupante y la celda.
+- `MissionProjectileWorld` acepta un objeto de opciones con `blocked` (el `CellBlockedQuery` que `MissionRuntime` YA
+  tenía inyectado desde el tilemap — se reusa, no se duplica) y `gridSize`: un proyectil frena contra pared y contra el
+  borde del plano (deuda #21).
+
+## `engine/src/failure/` + `mission-overload-runtime.ts` (modificado, Subfase 13f)
+- `OverloadEvent` gana `sectionId?`, estampado por `MissionOverloadRuntime` (que sí conoce el plano) al emitir; la regla
+  sigue pura. El lookup manual `ref → sección` de `MissionReactionRuntime` se borró: una sola fuente de verdad.
+
+## `engine/src/ship-status/` (modificado, Subfase 13f)
+- **Borrados** `instanceHullContribution` y `weightedHullFraction` (parche interino de 13c) y
+  `aggregateSectionHullIntegrity`. `aggregateHullIntegrity(sectionFractions)` ya no recibe componentes: "peor sección
+  gana", mismo criterio que atmósfera y soporte vital.
+- `SectionIntegritySource` — interfaz angosta NO opcional (a diferencia de `PowerSupplySource`): sin ella el indicador
+  quedaría muerto. `ShipStatusQuery` dejó de necesitar el `componentRegistry`.
+
+## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, Subfase 13f)
+- `SectionPressureFloorSource` opcional: el piso de presión pasa a ser POR SECCIÓN. Una brechada llega a 0 kPa (vacío
+  real); el resto conserva el `PRESSURE_SINK_FLOOR_KPA` de 11h, que sigue siendo correcto para una gotera.
+
+## `engine/src/blueprint/` + `save/` (modificado, Subfase 13f)
+- `Blueprint.sectionIntegrity` (`schemaVersion` 8→9), con el guard "ausente = `[]`" del serializer. Es el callback de
+  cicatriz estructural que `Primeras_8_crisis.md` pide para los Cap. 3, 6, 7 y 8.
+
+## `game/src/particles/effects/section-breach-effect.ts` + `audio/effects/section-breach-sound.ts` (nuevos, Subfase 13f)
+- `sectionDamagedEffect` (polvo cayendo) y `sectionBreachedEffect` (chorro de descompresión largo + mancha permanente
+  que marca dónde instalar el parche). El sonido reutiliza el banco de explosión grave: no hay asset de descompresión
+  (deuda #40).
+
+## `game/src/mission/mission-runtime.ts` (modificado, Subfase 13f)
+- `sectionIntegrityRuntime`/`hazardRuntime` registrados tras `atmosphereRuntime` (leen corrosión y presión ya difundidas).
+  Buses nuevos `integrityEvents` y **`atmosphereEvents`** — este último no existía, que es la razón de fondo por la que
+  el sonido de corrosión de 12b nunca sonó. `sectionAt`/`elapsedSeconds` públicos.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Subfase 13f)
+- Suscripción a `integrityEvents` (la brecha se pinta en SU celda, el daño en el centroide) y a `atmosphereEvents`. Una
+  brecha dispara el mismo overlay de alerta y alarma que una combustión violenta.
+- `fireDevSectionDamage()` + tecla **H** — emite una combustión REAL por el emisor del motor, o sea que recorre el
+  camino de producción entero (daño, colapso, brecha, drenaje, desgaste). Existe porque ningún capítulo autorado tiene
+  hoy forma jugable de dañar el casco, y sin esto los pasos de prueba manual serían imposibles de ejecutar.

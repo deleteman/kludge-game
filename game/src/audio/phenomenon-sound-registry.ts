@@ -6,6 +6,7 @@ import { combustionSound } from "./effects/combustion-sound.js";
 import { corrosionSound } from "./effects/corrosion-sound.js";
 import { overloadSound } from "./effects/overload-sound.js";
 import { dismantleSparkSound } from "./effects/dismantle-spark-sound.js";
+import { sectionBreachedSound } from "./effects/section-breach-sound.js";
 
 /**
  * Sonido gemelo de `particles/effect-registry.ts` (mismo patrón Factory,
@@ -25,6 +26,9 @@ const SOUNDS_BY_KIND: {
   // sobrecarga (misma familia eléctrica) — no hay asset dedicado en el pack
   // (deuda #17), y el derrame/fuga quedan sin sonido puntual a propósito.
   "dismantle-spark": dismantleSparkSound,
+  // Subfase 13f: el casco abriéndose al vacío. Sin asset propio (deuda #17),
+  // reutiliza el banco de explosión grave.
+  "section-breached": sectionBreachedSound,
 };
 
 export function fireEventSound(scene: Phaser.Scene, event: DomainEvent): void {

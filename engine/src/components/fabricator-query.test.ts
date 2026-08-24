@@ -42,6 +42,7 @@ function blueprintWith(...placedComponents: PlacedComponentInstance[]): Blueprin
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { allocationsBySection: {}, componentPriorityByInstance: {}, permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

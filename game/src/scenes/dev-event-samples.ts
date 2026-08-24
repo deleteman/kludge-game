@@ -17,6 +17,12 @@ import type { CrewActorId, DomainEvent, SectionId } from "engine";
  */
 
 const GALLERY_SECTION_ID = "gallery-section" as SectionId;
+/**
+ * Celda de referencia de las muestras que ahora la piden (Subfase 13f). El
+ * efecto se pinta en la celda que le pasa el llamador, no en esta — existe
+ * solo para que el evento de muestra esté completo.
+ */
+const GALLERY_CELL = { x: 0, y: 0 };
 
 export interface DevEventSample {
   readonly key: string;
@@ -144,6 +150,9 @@ export const DEV_EVENT_SAMPLES: readonly DevEventSample[] = [
       kind: "kinetic-impact",
       elapsedSeconds: 0,
       targetRef: "gallery-target",
+      // Subfase 13f: el impacto ahora dice contra QUÉ chocó y en qué celda.
+      targetKind: "component",
+      position: GALLERY_CELL,
       velocity: "A",
       severity: "high",
     }),

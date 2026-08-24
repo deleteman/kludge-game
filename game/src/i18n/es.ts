@@ -164,6 +164,12 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.dismantle-spark": "¡Chispazo al desmontar!",
   "ui.floorplan.notification.dismantle-spill": "¡Derrame al desmontar!",
   "ui.floorplan.notification.dismantle-leak": "¡Fuga abierta al desmontar!",
+  // Subfase 13f — vida por sección, brecha de casco y peligro atmosférico.
+  "ui.floorplan.notification.section-damaged": "Estructura dañada",
+  "ui.floorplan.notification.section-breached": "¡Brecha en el casco!",
+  "ui.floorplan.notification.section-breached-detail": "La sección se está vaciando al vacío. Instalá una pieza estructural sobre la brecha.",
+  "ui.floorplan.notification.toxic-threshold": "Exposición tóxica en la tripulación",
+  "ui.floorplan.notification.corrosive-exposure": "¡Corrosión sobre un tripulante!",
   "ui.floorplan.notification.synthesized": "Sustancia sintetizada",
   "ui.floorplan.notification.fabricated": "Pieza fabricada",
   "ui.floorplan.notification.elements-extracted": "Elementos extraídos",

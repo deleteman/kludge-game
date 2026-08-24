@@ -87,6 +87,7 @@ function buildBlueprint(sealInstance: Blueprint["placedComponents"][number] | nu
       ],
     },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

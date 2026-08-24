@@ -297,17 +297,19 @@ describe("kinetics: resolveKineticImpact (ASA 1, velocidad × masa virtual)", ()
     footprint,
     re,
   });
+  const PANEL_TARGET = { ref: "panel", kind: "component" } as const;
+  const PANEL_CELL = { x: 4, y: 2 };
   const light = bodyOf({ width: 1, height: 1 }); // masa B
   const mid = bodyOf({ width: 2, height: 2 }); // masa M
   const heavy = bodyOf({ width: 2, height: 2 }, "M"); // masa A
 
   const severityOf = (velocity: VelocityLevel, body: ProjectileBody) =>
-    resolveKineticImpact(velocity, body, "panel", tickOf(0)).severity;
+    resolveKineticImpact(velocity, body, PANEL_TARGET, PANEL_CELL, tickOf(0)).severity;
 
   it("velocidad alta + masa baja -> daño medio (deroga el literal del documento §3)", () => {
     // El doc §3 decía "alto si la velocidad es alta" sin mirar el tamaño.
     // Decisión del operador (11a.1): la masa degrada, no solo agrava.
-    const event = resolveKineticImpact("A", light, "panel", tickOf(0));
+    const event = resolveKineticImpact("A", light, PANEL_TARGET, PANEL_CELL, tickOf(0));
     expect(event).toMatchObject({ kind: "kinetic-impact", severity: "medium" });
   });
 

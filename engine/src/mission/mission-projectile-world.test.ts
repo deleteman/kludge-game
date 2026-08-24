@@ -107,6 +107,7 @@ function blueprintOf(
     reservoirContents: [],
     signalGraph,
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
@@ -139,12 +140,52 @@ describe("mission: MissionProjectileWorld", () => {
   describe("occupantAt", () => {
     it("reporta la instancia que ocupa la celda", () => {
       const { world } = poweredCoil();
-      expect(world.occupantAt({ x: 3, y: 0 })).toEqual({ ref: "bobina" });
+      expect(world.occupantAt({ x: 3, y: 0 })).toEqual({ ref: "bobina", kind: "component" });
     });
 
     it("devuelve null en una celda vacía", () => {
       const { world } = poweredCoil();
       expect(world.occupantAt({ x: 9, y: 9 })).toBeNull();
+    });
+
+    describe("paredes y bordes (Subfase 13f, deuda #21)", () => {
+      /** Mundo con una pared en (7,7) y un plano de 10×10. */
+      function walledWorld() {
+        const ship = new MutableShipState(blueprintOf([], { nodes: [], edges: [] }));
+        const signals = new MissionSignalRuntime(ship, allEmittersActive(ship));
+        return new MissionProjectileWorld(ship, signals, registryOf(BATTERY), {
+          blocked: { isBlocked: (cell) => cell.x === 7 && cell.y === 7 },
+          gridSize: { width: 10, height: 10 },
+        });
+      }
+
+      it("una celda de pared frena el proyectil y se reporta como 'wall'", () => {
+        expect(walledWorld().occupantAt({ x: 7, y: 7 })).toEqual({
+          ref: "wall:7,7",
+          kind: "wall",
+        });
+      });
+
+      it("el suelo transitable sigue sin frenar nada", () => {
+        expect(walledWorld().occupantAt({ x: 6, y: 7 })).toBeNull();
+      });
+
+      it("salirse del plano cuenta como pared: el proyectil ya no vuela al infinito", () => {
+        // Antes de 13f `advance` no validaba contra `gridSize` y un proyectil
+        // que no golpeaba nada seguía sumando celdas fuera del mapa para
+        // siempre — solo lo frenaba el drag de ASA 2.
+        const world = walledWorld();
+        expect(world.occupantAt({ x: 10, y: 3 })?.kind).toBe("wall");
+        expect(world.occupantAt({ x: -1, y: 3 })?.kind).toBe("wall");
+        expect(world.occupantAt({ x: 3, y: 10 })?.kind).toBe("wall");
+      });
+
+      it("sin query de paredes se comporta como antes de 13f (nada bloquea)", () => {
+        const ship = new MutableShipState(blueprintOf([], { nodes: [], edges: [] }));
+        const signals = new MissionSignalRuntime(ship, allEmittersActive(ship));
+        const world = new MissionProjectileWorld(ship, signals, registryOf(BATTERY));
+        expect(world.occupantAt({ x: 999, y: 999 })).toBeNull();
+      });
     });
 
     it("cubre TODAS las celdas de una pieza grande, no solo su origen", () => {
@@ -157,7 +198,7 @@ describe("mission: MissionProjectileWorld", () => {
       const signals = new MissionSignalRuntime(ship, allEmittersActive(ship));
       const world = new MissionProjectileWorld(ship, signals, registryOf(BIG_BATTERY));
 
-      expect(world.occupantAt({ x: 5, y: 5 })).toEqual({ ref: "grande" });
+      expect(world.occupantAt({ x: 5, y: 5 })).toEqual({ ref: "grande", kind: "component" });
     });
   });
 

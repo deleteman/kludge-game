@@ -37,6 +37,12 @@ import {
   CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE,
   sealBreachPressureSink,
   composePressureSinks,
+  // Subfase 13f — vida propia por sección, brechas de casco y peligro
+  // atmosférico sobre la tripulación.
+  MissionSectionIntegrityRuntime,
+  MissionHazardRuntime,
+  registerKineticDamage,
+  sectionBreachPressureSink,
   TransientLeakPressureSink,
   dismantleHazardKinds,
   isElectricSource,
@@ -113,6 +119,8 @@ import type {
   ReactionDomainEvent,
   PowerDomainEvent,
   SalvageDomainEvent,
+  IntegrityDomainEvent,
+  AtmosphereDomainEvent,
   DismantleHazardKind,
   ScriptedRoute,
   SectionPowerAllocation,
@@ -120,6 +128,7 @@ import type {
   PlacedComponentInstanceId,
   SectionId,
   ShipFloorplan,
+  FloorplanSection,
   SignalEdgeId,
   FabricatorDomain,
   FluidFlow,
@@ -243,6 +252,10 @@ export class MissionRuntime {
   readonly powerRuntime: MissionPowerRuntime;
   /** Química viva scripteada por contenido (Fase 13a, deuda #16) — primer llamador de `ReactionResolver` en misión. */
   readonly reactionRuntime: MissionReactionRuntime;
+  /** Vida propia por sección (Subfase 13f) — reemplaza la integridad derivada del RE de las piezas (11g). */
+  readonly sectionIntegrityRuntime: MissionSectionIntegrityRuntime;
+  /** Peligro atmosférico sobre la tripulación (Subfase 13f, deuda #16) — primer llamador de `HazardAccumulator`. */
+  readonly hazardRuntime: MissionHazardRuntime;
   /** Estado agregado a nivel de nave (Subfase 11g) — consultado por el HUD permanente de `/game`. */
   private readonly shipStatusQuery: ShipStatusQuery;
   /** Eventos de fallo estructural (degradado/fallo, Fase 11b) — `/game` los pinta. */
@@ -253,6 +266,14 @@ export class MissionRuntime {
   readonly powerEvents = new EventEmitter<PowerDomainEvent>();
   /** Riesgo al canibalizar (Subfase 13d: chispa/derrame/fuga al desmontar una pieza viva) — `/game` los pinta. */
   readonly salvageEvents = new EventEmitter<SalvageDomainEvent>();
+  /** Daño y colapso de secciones (Subfase 13f) — `/game` los pinta. */
+  readonly integrityEvents = new EventEmitter<IntegrityDomainEvent>();
+  /**
+   * Peligro atmosférico sobre tripulantes (Subfase 13f). Este bus NO EXISTÍA:
+   * por eso `toxic-threshold`/`corrosive-exposure` solo se veían en la galería
+   * de partículas y el sonido de corrosión de 12b nunca sonó en partida real.
+   */
+  readonly atmosphereEvents = new EventEmitter<AtmosphereDomainEvent>();
   /** Fugas acotadas abiertas por desmontar en una sección comprometida (13d). */
   private readonly leakSink = new TransientLeakPressureSink();
   /**
@@ -413,13 +434,16 @@ export class MissionRuntime {
     this.chemicalFactory = chemicalCatalog.factory;
     this.reactionResolver = new ReactionResolver({ namedRecipeIndex: chemicalCatalog.namedRecipeIndex });
     this.projectiles = new ProjectileSimulation(
-      new MissionProjectileWorld(
-        this.shipState,
-        this.signalRuntime,
-        this.componentRegistry,
-        this.crewState,
-        this.enemyState,
-      ),
+      new MissionProjectileWorld(this.shipState, this.signalRuntime, this.componentRegistry, {
+        crew: this.crewState,
+        enemies: this.enemyState,
+        // Subfase 13f: el proyectil frena contra las paredes del tilemap y
+        // contra el borde del plano. Se REUSA el mismo `motionBlockedQuery`
+        // que la línea de visión de 13a — por indirección, para que el
+        // `setMotionBlockedQuery` posterior de la escena también lo alcance.
+        blocked: { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
+        gridSize: this.shipFloorplan.gridSize,
+      }),
       this.kineticEvents,
     );
     this.enemyThreatRuntime = new EnemyThreatRuntime({
@@ -459,11 +483,21 @@ export class MissionRuntime {
           recoveryRateKpaPerSecond: CHAPTER_01_SEAL_RECOVERY_RATE_KPA_PER_SECOND,
         }),
         this.leakSink.asSinkSource(),
+        // Subfase 13f: brechas de casco. Se resuelven por closure porque el
+        // runtime de integridad se construye después (necesita la atmósfera).
+        sectionBreachPressureSink(
+          this.shipState,
+          () => this.sectionIntegrityRuntime.openBreaches(),
+          this.componentRegistry,
+        ),
       ),
       // Subfase 13e: sustancias VERTIDAS sobre la sección ("Aplicar aquí").
       // Es el primer escritor real de un `ChemicalSubstanceId` en
       // `atmosphere.gases`; hasta ahora solo existían lectores.
       this.gasInjection.asInjectionSource(),
+      // Subfase 13f: una sección brechada llega al VACÍO; el resto conserva el
+      // piso de 40 kPa de 11h.
+      (sectionId) => this.sectionIntegrityRuntime.pressureFloorFor(sectionId),
     );
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
@@ -474,12 +508,49 @@ export class MissionRuntime {
       this.chemicalRegistry,
       this.failureEvents,
     );
+    // Subfase 13f: vida propia por sección. Va DESPUÉS de `atmosphereRuntime`
+    // (lo necesita para leer corrosión y presión) y antes de `ShipStatusQuery`,
+    // que ahora deriva de acá la integridad de casco.
+    this.sectionIntegrityRuntime = new MissionSectionIntegrityRuntime({
+      shipState: this.shipState,
+      shipFloorplan: this.shipFloorplan,
+      atmosphereRuntime: this.atmosphereRuntime,
+      chemicalRegistry: this.chemicalRegistry,
+      componentRegistry: this.componentRegistry,
+      initialSnapshots: save.shipState.sectionIntegrity,
+      emitter: this.integrityEvents,
+      kineticEvents: this.kineticEvents,
+      reactionEvents: this.reactionEvents,
+      random: systemRandom,
+    });
+    // Subfase 13f (deuda #16): peligro atmosférico sobre la tripulación. Es lo
+    // que hace sonar por primera vez en partida real el efecto de corrosión
+    // que quedó registrado en 12b sin llamador.
+    this.hazardRuntime = new MissionHazardRuntime({
+      shipFloorplan: this.shipFloorplan,
+      atmosphereRuntime: this.atmosphereRuntime,
+      chemicalRegistry: this.chemicalRegistry,
+      crewState: this.crewState,
+      emitter: this.atmosphereEvents,
+      crewEmitter: this.crewEvents,
+    });
+    // Subfase 13f: un proyectil que golpea a un actor por fin le hace daño.
+    registerKineticDamage({
+      kineticEvents: this.kineticEvents,
+      crewState: this.crewState,
+      enemyState: this.enemyState,
+      crewEmitter: this.crewEvents,
+      enemyEmitter: this.enemyEvents,
+    });
     this.shipStatusQuery = new ShipStatusQuery(
       this.shipState,
       this.shipFloorplan,
       this.atmosphereRuntime,
-      this.componentRegistry,
       this.chemicalRegistry,
+      // Subfase 13f: la integridad de casco sale de la vida por sección, no del
+      // RE de las piezas instaladas. `ShipStatusQuery` dejó de necesitar el
+      // registro de componentes: ya no mira ninguna pieza para el casco.
+      this.sectionIntegrityRuntime,
       // Fase 13b ronda 5: sin esta fuente el indicador de energía del HUD queda
       // clavado en nominal (solo miraría la cicatriz permanente, hoy vacía).
       this.powerRuntime,
@@ -691,6 +762,11 @@ export class MissionRuntime {
     // `MissionStructuralRuntime` lea el nivel corrosivo YA difundido este tick.
     this.coreLoop.registerTickable(this.atmosphereRuntime);
     this.coreLoop.registerTickable(this.structuralRuntime);
+    // Subfase 13f: vida por sección y peligro a la tripulación, los dos justo
+    // detrás de la atmósfera y por la misma razón que `structuralRuntime` —
+    // leen corrosión y presión YA difundidas en este tick.
+    this.coreLoop.registerTickable(this.sectionIntegrityRuntime);
+    this.coreLoop.registerTickable(this.hazardRuntime);
     // Fase 12a: sin dependencia de dato vivo de otro runtime (el guion ya trae
     // load/capacity fijos), el orden respecto a atmósfera/estructura no
     // importa — se registra al final de este bloque por prolijidad.
@@ -1655,6 +1731,16 @@ export class MissionRuntime {
     return sectionContainingCell(this.shipFloorplan, position)?.id;
   }
 
+  /** Sección que contiene una celda (Subfase 13f) — versión pública de `sectionIdAt`. */
+  sectionAt(position: GridPosition): FloorplanSection | undefined {
+    return sectionContainingCell(this.shipFloorplan, position);
+  }
+
+  /** Último `elapsedSeconds` visto por el core loop, para datar eventos emitidos desde `/game`. */
+  get elapsedSeconds(): number {
+    return this.lastElapsedSeconds;
+  }
+
   get blueprint(): Blueprint {
     return this.shipState.get();
   }
@@ -1910,7 +1996,13 @@ export class MissionRuntime {
     });
     return {
       ...base,
-      shipState: { ...this.blueprint, sectionAtmospheres: this.atmosphereRuntime.toSnapshots() },
+      shipState: {
+        ...this.blueprint,
+        sectionAtmospheres: this.atmosphereRuntime.toSnapshots(),
+        // Subfase 13f: la cicatriz estructural viaja con el guardado, igual
+        // que la atmósfera. Sin esto, cargar la partida "reparaba" la nave.
+        sectionIntegrity: this.sectionIntegrityRuntime.toSnapshots(),
+      },
       crew: updatedCrew,
       atomicStock: this.atomicStock.get(),
       // Subfase 13e: el inventario de elementos, la procedencia de las mezclas

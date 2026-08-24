@@ -1,7 +1,7 @@
 import type { Footprint, GridPosition } from "../geometry/grid-position.types.js";
 import type { CurrentLevel } from "./current-level.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
-import type { VelocityLevel } from "./kinetic-events.types.js";
+import type { KineticTargetKind, VelocityLevel } from "./kinetic-events.types.js";
 
 /**
  * Dirección de avance sobre el grid, en celdas por paso. Solo ejes (sin
@@ -31,6 +31,13 @@ export interface ActiveCoil {
 export interface CellOccupant {
   /** Ref del objetivo golpeado, tal como aparecerá en `KineticImpactEvent.targetRef`. */
   readonly ref: string;
+  /**
+   * Qué clase de objetivo es (Subfase 13f). El simulador no lo usa para
+   * decidir el frenado —todo ocupante frena— pero lo propaga al evento, que es
+   * donde la distinción importa: una pared daña la vida de la sección, un
+   * tripulante recibe daño propio.
+   */
+  readonly kind: KineticTargetKind;
 }
 
 /**

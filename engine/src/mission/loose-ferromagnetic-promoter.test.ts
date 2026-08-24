@@ -70,6 +70,7 @@ function blueprintOf(placedComponents: PlacedComponentInstance[]): Blueprint {
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

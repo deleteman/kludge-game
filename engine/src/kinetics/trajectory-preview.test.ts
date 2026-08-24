@@ -18,7 +18,7 @@ class FakeWorld implements ProjectileWorld {
   }
 
   put(x: number, y: number, ref: string): void {
-    this.occupants.set(`${x},${y}`, { ref });
+    this.occupants.set(`${x},${y}`, { ref, kind: "component" });
   }
 }
 

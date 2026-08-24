@@ -6,6 +6,7 @@ import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
+import type { SectionIntegritySnapshot } from "../integrity/section-integrity.types.js";
 import type { PowerState } from "../power/power.types.js";
 import type { ComponentWear } from "../wear/wear.types.js";
 
@@ -96,6 +97,13 @@ import type { ComponentWear } from "../wear/wear.types.js";
  * batería no tiene ninguna representación de la que derivarla. Una fuente
  * descargada deja de aportar al presupuesto de energía y deja de ser peligrosa
  * de desmontar; no se recarga (principio 5).
+ *
+ * Subfase 13f: `schemaVersion` 8→9 — se añade `Blueprint.sectionIntegrity`, la
+ * vida de casco por sección. Reemplaza el modelo de 11g, donde la integridad
+ * se DERIVABA del `RE` de las piezas instaladas (una manguera contaba como
+ * casco); ahora las secciones tienen vida propia, dañada por impacto,
+ * explosión, corrosión y descompresión. Una sección colapsada queda brechada
+ * para siempre: sellarla detiene la fuga, no le devuelve la vida.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -159,6 +167,14 @@ export interface Blueprint {
   readonly signalGraph: SignalGraph<PlacedComponentInstanceId>;
   /** Atmósfera viva por sección al momento de guardar (Fase 11b). */
   readonly sectionAtmospheres: ReadonlyArray<SectionAtmosphereSnapshot>;
+  /**
+   * Vida de casco por sección (Subfase 13f), incluida la cicatriz de una
+   * sección colapsada. Mismo molde que `sectionAtmospheres`. Es el callback de
+   * cicatriz estructural que `docs/Primeras_8_crisis.md` pide para los Cap. 3,
+   * 6, 7 y 8 ("la sección afectada queda con RE reducida, cicatriz que
+   * reaparece en el capítulo 7").
+   */
+  readonly sectionIntegrity: ReadonlyArray<SectionIntegritySnapshot>;
   /**
    * Secciones sin suministro eléctrico, ver `MissionSignalRuntime`. Desde la
    * Fase 13b es un campo DERIVADO: `MissionPowerRuntime` lo recalcula cada

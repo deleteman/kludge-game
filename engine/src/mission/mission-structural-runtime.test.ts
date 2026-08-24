@@ -65,6 +65,7 @@ function blueprintWithHullPanel(): Blueprint {
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

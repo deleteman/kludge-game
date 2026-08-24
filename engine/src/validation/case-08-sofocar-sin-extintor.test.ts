@@ -144,6 +144,7 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
       reservoirContents: [],
       signalGraph: { nodes: [], edges: [] },
       sectionAtmospheres: [],
+      sectionIntegrity: [],
       unpoweredSectionIds: [],
       overloadedRefs: [],
       powerState: {

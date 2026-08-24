@@ -98,7 +98,7 @@ class RailWorld implements ProjectileWorld {
   }
 
   put(cell: GridPosition, ref: string): void {
-    this.occupants.set(`${cell.x},${cell.y}`, { ref });
+    this.occupants.set(`${cell.x},${cell.y}`, { ref, kind: "component" });
   }
 }
 

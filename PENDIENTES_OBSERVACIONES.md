@@ -502,9 +502,13 @@ dónde, y qué costaría arreglarlo.
     se demuestra en `particle-gallery-scene.ts`. El sonido de corrosión (`game/src/audio/effects/
     corrosion-sound.ts`) y el de combustión quedaron listos y registrados en `phenomenon-sound-registry.ts`,
     pero ninguno de los dos suena en partida real hasta que exista el runtime que dispare estos eventos.
-    → El llamador de `HazardEvent` pasa a la **Subfase 13f** (triaje 2026-08-21): esa subfase ya construye el
-    escritor hermano —la corrosión de la atmósfera dañando la **sección**— y el hazard es la misma lectura de
-    atmósfera aplicada al **tripulante**: mismo tick, no dos sistemas.
+    → ✅ **RESUELTO en la Subfase 13f (2026-08-24).** `MissionHazardRuntime` es el llamador de producción que
+    faltaba para `HazardAccumulator`, y `MissionRuntime` expone un `atmosphereEvents` nuevo — **ese bus no existía**,
+    que es la razón de fondo por la que el sonido de corrosión de 12b nunca sonó. Letalidad según la decisión del
+    operador: `incapacitation` hiere con `minHp: 1` (aviso previo) y solo `lethal` mata; se le añadió una fase de
+    incapacitación al acumulador corrosivo, que la tenía en `Infinity`. Se cerró de paso el otro llamador ausente
+    de la misma familia: `applyKineticDamage` (`registerKineticDamage`), así que un proyectil que golpea a un
+    tripulante o a un enemigo por fin le hace daño.
 
 17. **No hay asset dedicado de siseo de fuga de gas, zumbido eléctrico continuo, sirena de alarma ni paso sobre
     piso metálico en el pack de audio (Fase 12b).** El pack colocado por el operador en `game/assets/audio/`
@@ -527,7 +531,7 @@ dónde, y qué costaría arreglarlo.
 
 19. los efectos visuales de una zona sin energía se renderizan parcialmente arriba del cuadro de asginacion de energía en modo pausa.
     → **Subfase 14d, Bloque 1** (depth, mismo patrón que la ronda 4 de 13e).
-20. ⚠️ PARCHE INTERINO (13c fix ronda 1) — **la integridad de casco se deriva del RE de los componentes
+20. ✅ RESUELTO en la Subfase 13f (2026-08-24). **La integridad de casco se derivaba del RE de los componentes
     instalados, no de la nave.** Reportado por el operador en el playtest de 13c: instalar un `tubo-flexible`
     (RE-B) desplomaba el indicador de casco de toda la nave, y desmontarlo lo "reparaba". La causa es de la
     Subfase 11g: `aggregateHullIntegrity` (`engine/src/ship-status/ship-status-aggregation.ts`) tomaba el peor
@@ -542,14 +546,19 @@ dónde, y qué costaría arreglarlo.
     y `weightedHullFraction` enteras.
     → **Subfase 13f**.
 
-21. **Un proyectil que no golpea nada sale del plano y sigue avanzando** (relevado al diseñar 13f).
+21. ✅ RESUELTO en la Subfase 13f (2026-08-24). **Un proyectil que no golpea nada salía del plano y seguía avanzando.**
     `ProjectileSimulation.advance` (`engine/src/kinetics/projectile-simulation.ts`) no valida contra
     `floorplan.gridSize`, y `MissionProjectileWorld.occupantAt` solo resuelve componentes, tripulación y
     enemigos — no hay concepto de pared en el motor. Lo único que lo frena es el drag de ASA 2. Tampoco
     rebota: `impact()` lo detiene en seco y pierde toda la inercia. Se aborda en la Subfase 13f, que necesita
     la colisión contra pared para dañar la sección (mismo patrón de inyección que `setMotionBlockedQuery` de
     13a, sin que `/engine` conozca Tiled).
-    → **Subfase 13f** (listado como hueco de motor #2 en el texto de esa subfase).
+    Hecho: `CellOccupant` gana `kind` (`component`/`crew`/`enemy`/`wall`) y `MissionProjectileWorld` recibe el
+    `CellBlockedQuery` que `MissionRuntime` YA tenía inyectado desde el tilemap (un solo punto de inyección, no
+    dos verdades sobre qué celdas están bloqueadas) más el `gridSize`, de modo que salirse del plano cuenta como
+    chocar contra el casco exterior. El impacto lleva además la celda (`position`), lo que de paso arregla que un
+    impacto contra un tripulante no pintara NADA.
+    → ✅ **Subfase 13f**.
 
 22. ✅ RESUELTO (13e rondas 7 y 9; confirmado en el triaje de 2026-08-21). **No hay selector de destino al trasvasar una sustancia** (Subfase 13e, decisión de alcance explícita).
     `onTransferSubstance` (`game/src/mission/mission-interaction-controller.ts`) toma el PRIMER reservorio
@@ -710,3 +719,18 @@ dónde, y qué costaría arreglarlo.
     ítem #16 (cuyo residual de código sí quedó cerrado). Mitigado, no cerrado, por la tecla de dev **F** del
     plano de misión (12d.6): dispara cualquier fenómeno del catálogo en la celda seleccionada, lo que permite
     verificarlos, pero no los hace alcanzables jugando. Cerrarlo de verdad es diseño de capítulo.
+
+39. **La corrosión de la atmósfera nunca daña nada en partida, porque ningún capítulo autora una sustancia
+    `CORR` viva** (relevado al cerrar 13f, 2026-08-24). Es el mismo hueco que 13c ya había documentado para su
+    escritor de desgaste por corrosión, ahora con un segundo consumidor: el escritor de daño estructural POR
+    SECCIÓN de 13f (`corrosionDamageRule`). Los dos están cableados y testeados y los dos son inertes jugando
+    — el Cap.1 es una fuga de presión, no de ácido. Hermano de la deuda #38: es diseño de capítulo, no código.
+    El resto de escritores de 13f sí tienen camino real (impacto cinético contra pared, explosión vía la tecla
+    de dev **H**, y descompresión desde la fuga del Cap.1).
+
+40. **`SectionBreachedEvent` no tiene sprite ni sonido propios** (relevado al cerrar 13f, 2026-08-24). El
+    efecto de partículas es código (chorro de descompresión + mancha permanente que marca dónde instalar el
+    parche), que es lo que corresponde; lo que falta es un asset de audio de descompresión — se reutiliza el
+    banco de explosión grave (`AUDIO_KEYS.overloadExplosion`), misma familia de carencia que la deuda #17 y
+    mismo punto de cambio único (`AUDIO_KEYS`). Si en algún momento se quiere un tile de brecha dibujado sobre
+    el casco, iría en `game/assets/sprites/tiles/`.

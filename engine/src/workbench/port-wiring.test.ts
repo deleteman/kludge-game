@@ -50,6 +50,7 @@ function blueprintWith(signalGraph: SignalGraph<PlacedComponentInstanceId>): Blu
     reservoirContents: [],
     signalGraph,
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

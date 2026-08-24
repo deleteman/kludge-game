@@ -12,6 +12,8 @@ import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ScriptedOverloadSubject } from "../crisis/crisis-definition.types.js";
 import { wornCapacity } from "../wear/overload-capacity.js";
+import { sectionContainingCell } from "../floorplan/floorplan.types.js";
+import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
 /**
@@ -38,6 +40,12 @@ export class MissionOverloadRuntime implements Tickable {
     private readonly componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
     private readonly scriptedSubjects: ReadonlyArray<ScriptedOverloadSubject>,
     private readonly emitter?: EventEmitter<FailureDomainEvent>,
+    /**
+     * Plano, para estampar `sectionId` en el evento (Subfase 13f, hueco #3).
+     * Opcional: sin él el evento sale como antes, sin sección — los tests que
+     * solo ejercitan la regla no necesitan un plano.
+     */
+    private readonly shipFloorplan?: ShipFloorplan,
   ) {}
 
   tick(ctx: TickContext): void {
@@ -76,10 +84,19 @@ export class MissionOverloadRuntime implements Tickable {
       // ahora la revienta. `OverloadRule` sigue siendo determinista.
       const subject = { ...baseSubject, capacity: wornCapacity(declaredCapacity, instance.wear) };
 
-      const event = this.rule.evaluate(subject, ctx, this.emitter);
-      if (!event) {
+      // Subfase 13f: la regla se evalúa SIN emisor y el evento se emite acá ya
+      // con `sectionId`. `OverloadRule` sigue siendo pura y sin noción de
+      // mundo; este runtime es el único que conoce el plano. Mismo reparto de
+      // responsabilidades que `MissionReactionRuntime` con `CombustionEvent`.
+      const raw = this.rule.evaluate(subject, ctx);
+      if (!raw) {
         continue;
       }
+      const sectionId = this.shipFloorplan
+        ? sectionContainingCell(this.shipFloorplan, instance.placement.position)?.id
+        : undefined;
+      const event = sectionId ? { ...raw, sectionId } : raw;
+      this.emitter?.emit(event);
       this.firedInstanceIds.add(scripted.instanceId);
       // Chispas persistentes de conductor sobrecargado (Fase 12a, GDD 5.6):
       // solo el modo "cut" (corte/cortocircuito, típico de recurso eléctrico)

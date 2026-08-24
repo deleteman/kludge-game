@@ -118,6 +118,7 @@ function ship(): Blueprint {
     reservoirContents: [{ componentInstanceId: DEPOSITO, substanceId: AGUA, amount: 10 }],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: {

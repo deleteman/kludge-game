@@ -52,6 +52,7 @@ function baseBlueprint(): Blueprint {
       edges: [{ id: "edge-1" as SignalEdgeId, from: SENSOR_NODE, to: LCD_NODE }],
     },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

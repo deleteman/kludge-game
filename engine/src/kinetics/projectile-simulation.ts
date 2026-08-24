@@ -12,6 +12,7 @@ import type { MagneticFieldIntensity } from "./magnetic-field.js";
 import {
   DIRECTION_AT_REST,
   type ActiveCoil,
+  type CellOccupant,
   type GridDirection,
   type ProjectileBody,
   type ProjectileState,
@@ -167,7 +168,7 @@ export class ProjectileSimulation implements Tickable {
       };
       const occupant = this.world.occupantAt(next);
       if (occupant) {
-        this.impact(projectile, occupant.ref, ctx);
+        this.impact(projectile, occupant, next, ctx);
         return;
       }
       projectile.position = next;
@@ -181,10 +182,15 @@ export class ProjectileSimulation implements Tickable {
    * — el acumulador se reemplaza, de modo que la pieza puede volver a
    * acelerarse desde cero si el jugador la vuelve a pulsar.
    */
-  private impact(projectile: ProjectileState, targetRef: string, ctx: TickContext): void {
+  private impact(
+    projectile: ProjectileState,
+    target: CellOccupant,
+    cell: GridPosition,
+    ctx: TickContext,
+  ): void {
     const body = this.bodies.get(projectile.ref);
     if (body) {
-      this.emitter?.emit(resolveKineticImpact(projectile.velocity, body, targetRef, ctx));
+      this.emitter?.emit(resolveKineticImpact(projectile.velocity, body, target, cell, ctx));
     }
     projectile.velocity = "N";
     projectile.direction = DIRECTION_AT_REST;

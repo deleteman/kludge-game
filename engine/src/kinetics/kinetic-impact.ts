@@ -1,10 +1,11 @@
 import type { TickContext } from "../simulation/simulation-clock.types.js";
+import type { GridPosition } from "../geometry/grid-position.types.js";
 import type {
   KineticDamageSeverity,
   KineticImpactEvent,
   VelocityLevel,
 } from "./kinetic-events.types.js";
-import type { ProjectileBody } from "./projectile.types.js";
+import type { CellOccupant, ProjectileBody } from "./projectile.types.js";
 import { virtualMass, type VirtualMassLevel } from "./virtual-mass.js";
 
 /**
@@ -30,12 +31,15 @@ import { virtualMass, type VirtualMassLevel } from "./virtual-mass.js";
 export function resolveKineticImpact(
   velocity: VelocityLevel,
   body: ProjectileBody,
-  targetRef: string,
+  target: CellOccupant,
+  position: GridPosition,
   tick: TickContext,
 ): KineticImpactEvent {
   return {
     kind: "kinetic-impact",
-    targetRef,
+    targetRef: target.ref,
+    targetKind: target.kind,
+    position,
     velocity,
     severity: kineticDamageSeverity(velocity, virtualMass(body.footprint, body.re)),
     elapsedSeconds: tick.elapsedSeconds,

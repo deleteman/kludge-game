@@ -78,6 +78,7 @@ function shipWithConductor(wear: "nuevo" | "usado" | "degradado" | "critico" = "
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

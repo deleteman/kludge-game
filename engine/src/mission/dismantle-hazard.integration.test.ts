@@ -116,6 +116,7 @@ function fixtureShip(): Blueprint {
     reservoirContents: [{ componentInstanceId: TANK, substanceId: AGUA, amount: 40 }],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: {

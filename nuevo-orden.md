@@ -233,7 +233,7 @@ Pulido de UI de meta-menú (pantallas de Fase 9.5), coherente con 12c (personali
 
 Estos cuatro sistemas de motor se detectaron *después* de cerrar la Fase 11, al evaluar Kludge contra los referentes del género (Barotrauma, Duskers, FTL, Shipbreaker — ver `docs/comparativas-juegos/`). No son pulido sensorial (eso es la Fase 12), sino infraestructura que los capítulos posteriores asumen — por eso se ubican **antes del Cap.2** y no como apéndice de la Fase 11 ya cerrada. El orden interno respeta las dependencias: 13a desbloquea la lógica de señales del Cap.2; 13d depende de 13b.
 
-#### Subfase 13a: Simulación de Emisores y Cascada de Fallas Emergente
+#### Subfase 13a: Simulación de Emisores y Cascada de Fallas Emergente ✅ CERRADA (2026-08-04)
 
 Resuelve dos deudas técnicas registradas en `PENDIENTES_OBSERVACIONES.md` (#3 emisores siempre disparados, #16 reacciones químicas sin llamador de producción en misión) que, juntas, impiden que las fallas se encadenen de forma **emergente** — el mayor logro de Barotrauma (agua conductora → cortocircuito → sobrecarga → incendio). Sin esto, las cascadas de crisis son secuencias scripteadas en la `CrisisDefinition`, no propagación real entre sistemas, y la lógica de señales del Cap.2 (Fase 14) no puede depender de que un sensor se dispare de verdad. Es infraestructura de motor de máxima prioridad: desbloquea contenido posterior.
 
@@ -243,7 +243,7 @@ Resuelve dos deudas técnicas registradas en `PENDIENTES_OBSERVACIONES.md` (#3 e
 
 * **Cascada Emergente:** Con emisores simulados + química en vivo + `OverloadRule` ya existente, permitir que una falla propague a otra por el estado compartido del mundo, sin scriptear la secuencia. Añadir su test de integración (una falla dispara la siguiente sin definición explícita del encadenamiento).
 
-#### Subfase 13b: Presupuesto de Energía de la Nave (Gap ③, estilo FTL)
+#### Subfase 13b: Presupuesto de Energía de la Nave (Gap ③, estilo FTL) ✅ CERRADA (2026-08-05)
 
 Realiza el sistema de energía que 11g dejó como stub ("no existe ningún sistema de energía `PowerGrid`/`EnergyGrid`… sentar las bases mínimas"). Convierte el triaje de recurso escaso de FTL en un sistema propio, reconciliado con el modelo físico de canibalización de Kludge. Es el substrato del sacrificio de energía del Cap.5 (Fase 18). Diseño cerrado en ciclo de preguntas 2026-07-29.
 
@@ -261,7 +261,7 @@ Realiza el sistema de energía que 11g dejó como stub ("no existe ningún siste
 
 * Test unitario del reparto (déficit global + triaje interno por prioridad) antes de integrar.
 
-#### Subfase 13c: Degradación Funcional de Componentes (Gap ①)
+#### Subfase 13c: Degradación Funcional de Componentes (Gap ①) ✅ CERRADA (2026-08-05)
 
 Cierra el hueco de "hardware frágil" de Duskers y refuerza el Pilar 2 (consecuencias permanentes): una pieza canibalizada no entra como de fábrica. Depende del guardado/schema de 11b (la condición es estado dinámico). Diseño cerrado 2026-07-29.
 
@@ -638,7 +638,7 @@ Agrupa Obs 4 + deudas #9 y #10 de `PENDIENTES_OBSERVACIONES.md`: hoy una sustanc
     de 13d no declaran ninguna.
     `/engine` 886 tests (881 + 5 nuevos/reescritos de gating), `/game` 40 tests (sin cambio).
 
-#### Subfase 13f: Integridad de Casco por Sección (diseño cerrado 2026-08-05)
+#### Subfase 13f: Integridad de Casco por Sección ✅ CERRADA (2026-08-24)
 
 Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible` (RE baja) desplomaba la integridad del casco de toda la nave, y que desmontarlo la "reparaba". La causa es un error de modelado de la Subfase 11g — `aggregateHullIntegrity` deriva la integridad del **peor RE de los componentes instalados**, así que cualquier pieza que declare RE (una manguera, un chip) cuenta como si fuera casco. Propuesta del operador, adoptada: **las secciones tienen vida propia**, dañada por fenómenos físicos, y la integridad de casco se deriva de eso — no de las piezas que hay dentro.
 
@@ -667,6 +667,69 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
 
 * Test unitario por escritor de daño + integración "una explosión abre una brecha que drena presión"; la cicatriz permanente debe sobrevivir un round-trip de guardado.
 
+* **Cerrada el 2026-08-24.** Dominio nuevo `engine/src/integrity/` (vida por sección + reglas de daño como Strategy),
+  `MissionSectionIntegrityRuntime` y `MissionHazardRuntime`, brecha con sumidero propio y piso de presión POR SECCIÓN
+  (una brechada llega a 0 kPa, el resto conserva el piso de 40 de 11h), sellado por PROPIEDADES (`EST` + RE
+  suficiente, principio 1) y no por lista de ids. `schemaVersion` 8→9. Borrados `instanceHullContribution` y
+  `weightedHullFraction`. Los tres huecos de motor cerrados (#5 ya lo había pagado 13d con `composePressureSinks`).
+  Correcciones que salieron de la auto-revisión, no del texto original: el umbral de descompresión se subió a 60 kPa
+  porque a 40 coincidía con el piso global y el escritor no tenía ningún camino real; y la corrosión sigue sin
+  camino jugable (ningún capítulo autora una sustancia `CORR` viva), documentado en el docblock del runtime en vez
+  de darlo por bueno. Tecla de dev **H** para provocar el colapso por el camino de producción.
+
+#### Subfase 13h: Puertas y Compartimentación
+
+> **Orden de ejecución: 13f → 13h → 13g.** Se documenta acá, entre 13f y 13g, pero conserva la letra `h` para no
+> renumerar 13g, que ya está registrada, commiteada y referenciada desde `PENDIENTES_OBSERVACIONES.md` y
+> `changelog.log`.
+
+Surgida del ciclo de preguntas de 13f (2026-08-24): al preguntar cómo sella el jugador una brecha, el operador
+respondió "con una pieza, o cerrando la puerta de la zona" — y las puertas **no existen ni estaban agendadas en
+ningún punto del plan**. El GDD 5.5 define el "aislamiento deliberado" (cerrar una válvula o sellar una puerta para
+contener una fuga o privar de oxígeno a una sección) y hoy es letra muerta: los conductos `ventilacion` llevan un
+`valveAperture` (0 = sellado) que se fija al construir la misión y que nada modifica en runtime.
+
+Hay tres cosas ya construidas esperando exactamente esto: `compuerta-blindada` existe en el catálogo (`ACT` + `EST`,
+RE-A) y no la usa nadie; el Cap.1 siembra un "panel de compuerta" como nodo receptor que no controla ninguna
+compuerta; y el caso de validación 9 ("El Electroimán de Emergencia") solo verifica que se puede ensamblar el `MAG`,
+porque **no hay ninguna puerta que trabar**.
+
+* **Origen (decisión del operador): autoradas en Tiled + construibles.** Capa de objetos `puertas` nueva (Points con
+  props `a`/`b`, molde de la capa `conductos`) y, además, cualquier componente con `ACT` + `EST` instalado sobre un
+  umbral cuenta como puerta — identidad por propiedades, no por id de catálogo (principio 1).
+
+* **Qué bloquea: atmósfera Y paso.** Cerrada corta la difusión entre secciones y bloquea a tripulación y enemigos.
+  Señales **no** — ya se descartó explícitamente en el triaje de la Fase 16.
+
+* **Modo `auto` por defecto + `override`.** En `auto` la puerta se abre para dejar pasar a un actor y se cierra sola
+  el resto del tiempo; pasa a `override` cuando algo la gobierna (señal cableada, tarea del jugador, trabada por
+  daño o por electroimán, o sin energía). Consecuencia buscada: **la nave está compartimentada por defecto**, así
+  que una brecha de 13f deja de desangrar al resto sola, y en cuanto el jugador manda a alguien a la sección rota la
+  puerta se abre y la presión se escapa. Emergente del default, no scripteado.
+
+* **Dominio `engine/src/doors/`** con state machine explícita (`DoorMode`/`DoorState`) y las reglas de gobierno como
+  **Strategy** con prioridad: trabada > sin energía > señal > tarea > auto. `overrideSource` lleva el MOTIVO, para
+  que la UI pueda decir por qué la puerta no responde en vez de solo no responder.
+
+* **Atmósfera:** la difusión pasa a leer la apertura por tick desde una fuente inyectada
+  (`SectionApertureSource`), misma forma de interfaz angosta y opcional que `SectionPressureSinkSource`.
+
+* **Paso:** el `WalkableGrid` se decora con el estado vivo de puertas (una función, no una copia). El
+  `CellBlockedQuery` que 13f usa para los proyectiles debe leer la MISMA fuente — si no, un proyectil atravesaría
+  una puerta cerrada que un tripulante no puede cruzar.
+
+* **Sin energía la puerta se congela donde está** (decisión del operador): sin motor no se mueve, `auto` deja de
+  funcionar y queda en override con motivo "sin energía". Tarea `force-door` para abrirla a mano, lenta y con tirada
+  por tier. Le da a la tarea `cut-power` de 13d una consecuencia que hoy no tiene. `powerDraw` se declara en el
+  `ACT` de la puerta (que ya lo admite) y migra con el resto cuando 13g lo suba a dato de componente.
+
+* **Persistencia:** `Blueprint.doorStates`, `schemaVersion` 9→10.
+
+* Tests: unitario por regla; integración "con la puerta cerrada la sección vecina no pierde presión"; integración
+  con 13f (una brecha en `auto` no desangra la nave, mandar un tripulante la abre); **caso de validación 9
+  completo** (el electroimán traba una puerta real y el intruso no pasa); y regresión de los casos 3, 6 y 10, que
+  dependen de la difusión entre secciones.
+
 #### Subfase 13g: Consumo Eléctrico Real — que el reparto de energía gatee algo (2026-08-07)
 
 Surgida del playtest de 13e ronda 2: el operador preguntó si las mesas de creación dejan de funcionar cuando su sección no tiene energía, y si pasa lo mismo con un chip lógico en soporte vital. **La respuesta es que no, y el hueco no son las mesas: 13b construyó toda la maquinaria de reparto — presupuesto, asignación por sección, triaje de prioridad por componente, déficit — pero nada declara DEMANDA, así que los dos predicados de gating que el motor expone están degenerados.**
@@ -684,6 +747,12 @@ Estado auditado antes de planificar:
 Alcance de la subfase:
 
 * **`powerDraw` sube de `ActuatorProperty` a dato de componente.** Hoy vive dentro del tag `ACT`, así que una pieza que no es actuador — un chip lógico, un sensor, una mesa — no tiene dónde declarar consumo. Pasa a `PhysicalComponentDefinition.data`, junto a `footprint`, que ya sienta el precedente de "dato de componente que no es un tag del GDD". Migrar el único lector (`power-allocation.ts:131`) para que haya **una sola fuente de verdad**, no dos. Decisión del ciclo de preguntas: consumo **declarado por pieza**, no derivado de propiedades — porque es lo que permite que una pieza se quede sin energía aunque su sección tenga algo, que es justamente para lo que existe el triaje de prioridad de 13b.
+
+* **Las puertas ya son consumidor real desde 13h.** Al ejecutarse antes que esta subfase, 13h declara `powerDraw`
+  en el `ACT` de la puerta y la congela cuando su sección no tiene energía — es el ejemplo de referencia de "una
+  pieza que declara demanda y se apaga de verdad", y su `powerDraw` es uno de los que migran al subir el campo a
+  dato de componente. Ojo también con el predicado: 13h usa la UNIÓN de `unpoweredSections()` (cicatriz) y
+  `sectionHasNoPowerGranted()` (déficit vivo), que es la semántica correcta y la que esta subfase debe generalizar.
 
 * **Poblar `powerDraw` en el catálogo**, data-driven: tabla de consumos por clase en `engine/src/power/power-parameters.ts` (molde de `salvage-parameters.ts`), no literales dispersos por los catálogos. Criterio de partida — sensores/chips/indicadores 1, actuadores 2, mesas y equipamiento pesado 3. Los números concretos son de balanceo (Fase 23); lo que cierra esta subfase es que **existan y se respeten**.
 

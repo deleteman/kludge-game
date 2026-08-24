@@ -1,42 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
-import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import { GAS, STANDARD_OXYGEN_FRACTION } from "../atmosphere/atmosphere-composition.types.js";
 import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
-import type { ComponentId } from "../components/physical-component.types.js";
-import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
-import type { SectionId } from "../atmosphere/section.types.js";
-import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import {
   aggregateAtmosphere,
   aggregateEnergy,
   aggregateHullIntegrity,
-  aggregateSectionHullIntegrity,
   aggregateLifeSupport,
   fractionToLevel,
 } from "./ship-status-aggregation.js";
 
 const { registry: chemicalRegistry } = buildChemicalCatalog();
-const { registry: componentRegistry } = buildComponentCatalog();
 const cloro = "cloro" as ChemicalSubstanceId;
-const planchaMetalica = "plancha-metalica" as ComponentId; // material.RE = "M"
 
 function atmosphereWith(gases: Record<string, number>): SectionAtmosphere {
   return { gases: new Map(Object.entries(gases)), temperatureCelsius: 21, pressureKpa: 101 };
-}
-
-function placedInstance(
-  overrides: Partial<PlacedComponentInstance> & { readonly componentDefinitionId: ComponentId },
-): PlacedComponentInstance {
-  return {
-    instanceId: "instance-1" as PlacedComponentInstanceId,
-    placement: { position: { x: 0, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
-    condition: "ok",
-    wear: "nuevo",
-    ...overrides,
-  };
 }
 
 describe("fractionToLevel (Subfase 11g)", () => {
@@ -104,137 +84,38 @@ describe("aggregateLifeSupport (respirabilidad, peor sección gana)", () => {
   });
 });
 
-describe("aggregateHullIntegrity (peor RE gana, destroyed fuerza crítico)", () => {
-  it("returns nominal (fraction 1) with no structural components", () => {
-    expect(aggregateHullIntegrity([], componentRegistry)).toEqual({ level: "nominal", fraction: 1 });
+describe("aggregateHullIntegrity (Subfase 13f: peor SECCIÓN gana sobre la vida por sección)", () => {
+  it("nominal sin secciones", () => {
+    expect(aggregateHullIntegrity([])).toEqual({ level: "nominal", fraction: 1 });
   });
 
-  it("orders A > M > B: an M-level instance is worse than default nominal", () => {
-    const result = aggregateHullIntegrity(
-      [placedInstance({ componentDefinitionId: planchaMetalica })],
-      componentRegistry,
-    );
-    expect(result.level).toBe("warning");
+  it("con la nave intacta, nominal", () => {
+    expect(aggregateHullIntegrity([1, 1, 1])).toEqual({ level: "nominal", fraction: 1 });
   });
 
-  it("a destroyed instance forces critical regardless of its RE level", () => {
-    const result = aggregateHullIntegrity(
-      [placedInstance({ componentDefinitionId: planchaMetalica, condition: "destroyed" })],
-      componentRegistry,
-    );
-    expect(result).toEqual({ level: "critical", fraction: 0 });
+  it("peor sección gana: una sección a media vida degrada el indicador de toda la nave", () => {
+    expect(aggregateHullIntegrity([1, 0.4, 1])).toEqual({ level: "warning", fraction: 0.4 });
   });
 
-  // Fix de playtest 13c ronda 1 (obs 3 del operador): "al instalar un tubo
-  // flexible con RE baja, la integridad del casco bajó de golpe, ¿por qué?".
-  // Provisional hasta la Subfase 13f, que reemplaza toda esta agregación por
-  // vida propia de la sección.
-  describe("solo cuentan las piezas estructurales (EST), ponderadas por damageResistance", () => {
-    // `tubo-flexible` declara RE-B pero NO tiene tag EST: una manguera no es casco.
-    const tuboFlexible = "tubo-flexible" as ComponentId;
-    // `tornilleria-fijacion`: EST con RE-B y damageResistance 20 (vs plancha 50).
-    const tornilleria = "tornilleria-fijacion" as ComponentId;
-
-    it("una pieza NO estructural con RE baja no afecta el casco", () => {
-      const result = aggregateHullIntegrity(
-        [placedInstance({ componentDefinitionId: tuboFlexible })],
-        componentRegistry,
-      );
-      expect(result).toEqual({ level: "nominal", fraction: 1 });
-    });
-
-    it("instalar esa pieza junto a la estructura no mueve el indicador", () => {
-      const soloEstructura = aggregateHullIntegrity(
-        [placedInstance({ componentDefinitionId: planchaMetalica })],
-        componentRegistry,
-      );
-      const conManguera = aggregateHullIntegrity(
-        [
-          placedInstance({ componentDefinitionId: planchaMetalica }),
-          placedInstance({ componentDefinitionId: tuboFlexible, instanceId: "i2" as PlacedComponentInstanceId }),
-        ],
-        componentRegistry,
-      );
-      expect(conManguera).toEqual(soloEstructura);
-    });
-
-    it("pondera por damageResistance: un tornillo frágil no arrastra a una plancha sana", () => {
-      // plancha RE-M (0.5, peso 50) + tornillería RE-B (0.2, peso 20)
-      // → (0.5×50 + 0.2×20) / 70 = 0.414 — con worst-case habría dado 0.2 (crítico).
-      const result = aggregateHullIntegrity(
-        [
-          placedInstance({ componentDefinitionId: planchaMetalica }),
-          placedInstance({ componentDefinitionId: tornilleria, instanceId: "i2" as PlacedComponentInstanceId }),
-        ],
-        componentRegistry,
-      );
-      expect(result.fraction).toBeCloseTo(0.414, 2);
-      expect(result.level).toBe("warning");
-    });
-
-    it("el desgaste de una pieza estructural sí baja el casco (13c sigue vigente)", () => {
-      const sana = aggregateHullIntegrity(
-        [placedInstance({ componentDefinitionId: planchaMetalica })],
-        componentRegistry,
-      );
-      const desgastada = aggregateHullIntegrity(
-        [placedInstance({ componentDefinitionId: planchaMetalica, wear: "usado" })],
-        componentRegistry,
-      );
-      expect(desgastada.fraction).toBeLessThan(sana.fraction);
-    });
-  });
-});
-
-describe("aggregateSectionHullIntegrity (Fase 12a, mismo criterio worst-case pero acotado a una sección)", () => {
-  const CASCO_A = "casco-a" as SectionId;
-  const CASCO_B = "casco-b" as SectionId;
-  const twoSectionFloorplan: ShipFloorplan = {
-    id: "nave-test",
-    archetype: "investigacion",
-    nameKey: "ship.test.name",
-    gridSize: { width: 4, height: 1 },
-    sections: [
-      { id: CASCO_A, nameKey: "section.a", cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
-      { id: CASCO_B, nameKey: "section.b", cells: [{ x: 2, y: 0 }, { x: 3, y: 0 }] },
-    ],
-    conduits: [],
-    anchors: [],
-    componentSeeds: [],
-  };
-
-  it("returns nominal for a section with no structural components", () => {
-    const result = aggregateSectionHullIntegrity([], componentRegistry, twoSectionFloorplan, CASCO_A);
-    expect(result).toEqual({ level: "nominal", fraction: 1 });
+  it("una sección colapsada pone el casco en crítico", () => {
+    expect(aggregateHullIntegrity([1, 1, 0])).toEqual({ level: "critical", fraction: 0 });
   });
 
-  it("only considers components anchored in the requested section", () => {
-    const damagedInA = placedInstance({
-      componentDefinitionId: planchaMetalica,
-      condition: "destroyed",
-      placement: { position: { x: 0, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
-    });
-    const okInB = placedInstance({
-      instanceId: "instance-2" as PlacedComponentInstanceId,
-      componentDefinitionId: planchaMetalica,
-      placement: { position: { x: 2, y: 0 }, rotation: 0 } as PlacedComponentInstance["placement"],
-    });
-
-    const sectionA = aggregateSectionHullIntegrity(
-      [damagedInA, okInB],
-      componentRegistry,
-      twoSectionFloorplan,
-      CASCO_A,
-    );
-    expect(sectionA).toEqual({ level: "critical", fraction: 0 });
-
-    const sectionB = aggregateSectionHullIntegrity(
-      [damagedInA, okInB],
-      componentRegistry,
-      twoSectionFloorplan,
-      CASCO_B,
-    );
-    expect(sectionB.level).toBe("warning");
+  /**
+   * REGRESIÓN del bug que motivó 13f (playtest de 13c, obs 3 del operador:
+   * "al instalar un tubo flexible con RE baja la integridad del casco bajó de
+   * golpe, y al desmontarlo se soluciona, ¿tiene sentido?").
+   *
+   * Ahora es imposible por construcción: la firma de esta función NO recibe
+   * componentes. Ninguna pieza instalada, estructural o no, desgastada o no,
+   * puede mover el indicador de casco — solo la vida de las secciones. Se deja
+   * el test para que un futuro cambio que vuelva a acoplar ambas cosas tenga
+   * que borrarlo a mano y explicar por qué.
+   */
+  it("ninguna pieza instalada puede mover el indicador de casco", () => {
+    const intacta = aggregateHullIntegrity([1, 1]);
+    expect(aggregateHullIntegrity([1, 1])).toEqual(intacta);
+    expect(aggregateHullIntegrity.length).toBe(1);
   });
 });
 

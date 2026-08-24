@@ -49,6 +49,7 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     reservoirContents,
     signalGraph,
     sectionAtmospheres,
+    sectionIntegrity,
     unpoweredSectionIds,
     overloadedRefs,
     powerState,
@@ -148,6 +149,28 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
         typeof entry.pressureKpa !== "number"
       ) {
         throw new BlueprintParseError("Invalid entry in Blueprint.sectionAtmospheres");
+      }
+    }
+  }
+
+  // schemaVersion < 9 no tenía vida de casco por sección (Subfase 13f) —
+  // ausente = ninguna sección dañada todavía. El runtime siembra la vida
+  // inicial desde el área de cada sección, así que un save viejo carga con la
+  // nave entera intacta, que es exactamente lo que era.
+  if (sectionIntegrity === undefined) {
+    (value as { sectionIntegrity: unknown }).sectionIntegrity = [];
+  } else if (!Array.isArray(sectionIntegrity)) {
+    throw new BlueprintParseError("Blueprint.sectionIntegrity must be an array");
+  } else {
+    for (const entry of sectionIntegrity) {
+      if (
+        !isPlainObject(entry) ||
+        typeof entry.sectionId !== "string" ||
+        typeof entry.hp !== "number" ||
+        typeof entry.maxHp !== "number" ||
+        typeof entry.breached !== "boolean"
+      ) {
+        throw new BlueprintParseError("Invalid entry in Blueprint.sectionIntegrity");
       }
     }
   }

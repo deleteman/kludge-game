@@ -47,6 +47,7 @@ function emptyBlueprint(): Blueprint {
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
@@ -151,6 +152,10 @@ describe("MissionReactionRuntime (Fase 13a, deuda #16 — química viva de misi�
       failureMode: "fire",
       capacity: 20,
       load: 25,
+      // Subfase 13f: lo estampa `MissionOverloadRuntime` al emitir, no la
+      // regla. El puente de ignición lee este campo en vez de resolver la
+      // sección por su cuenta.
+      sectionId: SECTION,
       elapsedSeconds: 0,
     });
     runtime.tick(tickOf(1));

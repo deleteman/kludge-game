@@ -51,6 +51,19 @@ export const PRESSURE_SINK_FLOOR_KPA = 40;
  */
 export const PRESSURE_RECOVERY_CEILING_KPA = standardSectionAtmosphere().pressureKpa;
 
+/**
+ * Piso de presión POR SECCIÓN (Subfase 13f). Interfaz angosta y opcional,
+ * mismo criterio que `SectionPressureSinkSource` y `PowerSupplySource`: sin
+ * fuente, todas las secciones usan `PRESSURE_SINK_FLOOR_KPA` y el
+ * comportamiento es idéntico al anterior a 13f.
+ *
+ * Existe porque el piso de 40 kPa es una decisión DELIBERADA de 11h ("fuga
+ * menor, no baja a vacío total") que sigue siendo correcta para una junta
+ * rota, pero no para un agujero en el casco: una sección colapsada tiene que
+ * poder llegar al vacío, que es justamente lo que la hace distinta.
+ */
+export type SectionPressureFloorSource = (sectionId: SectionId) => number;
+
 export class MissionAtmosphereRuntime implements Tickable {
   private readonly sectionsById: Map<SectionId, SectionRuntime>;
   private readonly connections: ReadonlyArray<VentilationConnection>;
@@ -66,6 +79,8 @@ export class MissionAtmosphereRuntime implements Tickable {
      * anterior a 13e.
      */
     private readonly gasInjectionSource?: SectionGasInjectionSource,
+    /** Piso de presión por sección (Subfase 13f). Sin fuente: `PRESSURE_SINK_FLOOR_KPA` para todas. */
+    private readonly pressureFloorSource?: SectionPressureFloorSource,
   ) {
     const model = deriveAtmosphereModel(shipFloorplan);
     const snapshotBySection = new Map(initialSnapshots.map((snapshot) => [snapshot.sectionId, snapshot]));
@@ -106,9 +121,12 @@ export class MissionAtmosphereRuntime implements Tickable {
       if (!runtime || rateKpaPerSecond === 0) {
         continue;
       }
+      // Subfase 13f: el piso es por sección. Una brechada llega a vacío; el
+      // resto conserva el piso de 11h.
+      const floorKpa = this.pressureFloorSource?.(sectionId) ?? PRESSURE_SINK_FLOOR_KPA;
       runtime.atmosphere.pressureKpa = Math.min(
         PRESSURE_RECOVERY_CEILING_KPA,
-        Math.max(PRESSURE_SINK_FLOOR_KPA, runtime.atmosphere.pressureKpa - rateKpaPerSecond * ctx.dtSeconds),
+        Math.max(floorKpa, runtime.atmosphere.pressureKpa - rateKpaPerSecond * ctx.dtSeconds),
       );
     }
   }

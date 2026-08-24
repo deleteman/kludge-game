@@ -85,6 +85,7 @@ function blueprintWithHullPanel(): Blueprint {
         pressureKpa: 101,
       },
     ],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

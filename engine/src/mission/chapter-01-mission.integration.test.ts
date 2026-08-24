@@ -59,6 +59,7 @@ function chapter01InitialShip(): Blueprint {
     // Nodos emisor/receptor sin cable — la tarea `connect` los une.
     signalGraph: { nodes: [...CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE.exploracion], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

@@ -55,6 +55,7 @@ function blueprint(): Blueprint {
     reservoirContents: [],
     signalGraph: { nodes: [], edges: [] },
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
@@ -97,6 +98,10 @@ describe("Fase 13a: cascada emergente overload -> combustión (sin encadenamient
       componentRegistry(),
       scriptedOverloads,
       failureEvents,
+      // Subfase 13f: el plano es lo que permite estampar `sectionId` en el
+      // `OverloadEvent`. El puente de ignición lee ese campo, ya no resuelve
+      // la sección por su cuenta.
+      floorplan,
     );
 
     // Ningún dato conecta explícitamente este subject con el overload de

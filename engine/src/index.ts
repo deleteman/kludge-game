@@ -735,7 +735,10 @@ export {
   PRESSURE_RECOVERY_CEILING_KPA,
   PRESSURE_SINK_FLOOR_KPA,
 } from "./mission/mission-atmosphere-runtime.js";
-export type { SectionPressureSinkSource } from "./mission/mission-atmosphere-runtime.js";
+export type {
+  SectionPressureSinkSource,
+  SectionPressureFloorSource,
+} from "./mission/mission-atmosphere-runtime.js";
 // Subfase 11h — escenario de fuga por pieza sellada rota (Capítulo 1).
 export { sealBreachPressureSink } from "./mission/seal-breach-pressure-sink.js";
 export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";
@@ -788,12 +791,50 @@ export {
   aggregateAtmosphere,
   aggregateLifeSupport,
   aggregateHullIntegrity,
-  aggregateSectionHullIntegrity,
   aggregateEnergy,
 } from "./ship-status/ship-status-aggregation.js";
 export type { EnergyAggregationInput } from "./ship-status/ship-status-aggregation.js";
 export { ShipStatusQuery } from "./ship-status/ship-status-runtime.js";
-export type { PowerSupplySource } from "./ship-status/ship-status-runtime.js";
+export type { PowerSupplySource, SectionIntegritySource } from "./ship-status/ship-status-runtime.js";
+// Subfase 13f — vida propia por sección (dominio nuevo `integrity/`).
+export type {
+  SectionIntegrity,
+  SectionIntegritySnapshot,
+} from "./integrity/section-integrity.types.js";
+export {
+  initialSectionIntegrity,
+  integrityFraction,
+  toSectionIntegritySnapshot,
+  fromSectionIntegritySnapshot,
+} from "./integrity/section-integrity.types.js";
+export { SECTION_INTEGRITY_PARAMETERS } from "./integrity/section-integrity-parameters.js";
+export { applySectionDamage } from "./integrity/section-integrity.js";
+export type {
+  IntegrityDomainEvent,
+  SectionDamagedEvent,
+  SectionBreachedEvent,
+  SectionDamageCause,
+} from "./integrity/integrity-events.types.js";
+export {
+  SECTION_ENVIRONMENTAL_DAMAGE_RULES,
+  corrosionDamageRule,
+  decompressionDamageRule,
+  kineticImpactSectionDamage,
+  combustionSectionDamage,
+} from "./integrity/section-damage-rules.js";
+export { MissionSectionIntegrityRuntime } from "./mission/mission-section-integrity-runtime.js";
+export type { MissionSectionIntegrityRuntimeDeps } from "./mission/mission-section-integrity-runtime.js";
+export { MissionHazardRuntime } from "./mission/mission-hazard-runtime.js";
+export type { MissionHazardRuntimeDeps } from "./mission/mission-hazard-runtime.js";
+export { HAZARD_PARAMETERS } from "./mission/mission-hazard-parameters.js";
+export { registerKineticDamage } from "./mission/kinetic-damage-handler.js";
+export {
+  sectionBreachPressureSink,
+  isBreachPatch,
+  isBreachSealed,
+} from "./mission/section-breach-pressure-sink.js";
+export type { SectionBreach } from "./mission/section-breach-pressure-sink.js";
+export { sectionTaggedConcentration } from "./atmosphere/tagged-concentration.js";
 export {
   MissionProjectileWorld,
   ELECTRIC_CURRENT_PARAMETERS,
@@ -840,6 +881,7 @@ import type { CrisisDomainEvent } from "./crisis/crisis-events.types.js";
 import type { EnemyDomainEvent } from "./enemies/enemy-events.types.js";
 import type { PowerDomainEvent } from "./power/power-events.types.js";
 import type { SalvageDomainEvent } from "./salvage/salvage-hazard.types.js";
+import type { IntegrityDomainEvent } from "./integrity/integrity-events.types.js";
 
 /**
  * Unión agregada de todos los eventos de dominio del motor (Observer). `/game`
@@ -857,4 +899,5 @@ export type DomainEvent =
   | CrisisDomainEvent
   | EnemyDomainEvent
   | PowerDomainEvent
-  | SalvageDomainEvent;
+  | SalvageDomainEvent
+  | IntegrityDomainEvent;

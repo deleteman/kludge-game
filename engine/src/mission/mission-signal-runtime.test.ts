@@ -35,6 +35,7 @@ function blueprintWith(graph: SignalGraph<PlacedComponentInstanceId>): Blueprint
     reservoirContents: [],
     signalGraph: graph,
     sectionAtmospheres: [],
+    sectionIntegrity: [],
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },

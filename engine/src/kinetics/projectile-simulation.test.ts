@@ -27,7 +27,7 @@ class FakeWorld implements ProjectileWorld {
   }
 
   put(x: number, y: number, ref: string): void {
-    this.occupants.set(`${x},${y}`, { ref });
+    this.occupants.set(`${x},${y}`, { ref, kind: "component" });
   }
 }
 
@@ -150,6 +150,11 @@ describe("kinetics: ProjectileSimulation", () => {
     expect(impacts).toHaveLength(1);
     expect(impacts[0]?.targetRef).toBe("mamparo-proa");
     expect(impacts[0]?.velocity).toBe("B");
+    // Subfase 13f: el evento lleva la celda golpeada y qué clase de objetivo
+    // era. La celda es la del OCUPANTE, no la del proyectil (que se queda en
+    // la anterior) — es dónde ocurre el fenómeno, que es lo que /game pinta.
+    expect(impacts[0]?.position).toEqual({ x: 3, y: 0 });
+    expect(impacts[0]?.targetKind).toBe("component");
 
     const state = sim.stateOf(IRON_SLUG.ref);
     // Se detiene EN LA CELDA ANTERIOR: no entra en la celda ocupada.

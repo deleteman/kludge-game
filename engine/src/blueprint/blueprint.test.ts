@@ -80,6 +80,12 @@ function buildFixtureBlueprint(): Blueprint {
         pressureKpa: 101,
       },
     ],
+    // Subfase 13f: una sección colapsada y otra a media vida — la cicatriz
+    // estructural tiene que sobrevivir el round-trip como cualquier otra.
+    sectionIntegrity: [
+      { sectionId: "bahia-carga" as SectionId, hp: 120, maxHp: 300, breached: false },
+      { sectionId: "invernadero" as SectionId, hp: 0, maxHp: 200, breached: true },
+    ],
     unpoweredSectionIds: ["invernadero" as SectionId],
     overloadedRefs: ["panel-bahia-carga" as PlacedComponentInstanceId],
     powerState: {

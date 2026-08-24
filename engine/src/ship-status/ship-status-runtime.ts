@@ -1,6 +1,5 @@
 import type { EntityRegistry } from "../composition/entity-registry.js";
 import type { ChemicalSubstanceDefinition, ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
-import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
@@ -11,7 +10,7 @@ import {
   aggregateEnergy,
   aggregateHullIntegrity,
   aggregateLifeSupport,
-  aggregateSectionHullIntegrity,
+  fractionToLevel,
 } from "./ship-status-aggregation.js";
 import type { ShipStatusIndicator, ShipStatusSnapshot } from "./ship-status.types.js";
 
@@ -34,13 +33,27 @@ export interface PowerSupplySource {
   requestedTotalUnits(): number;
 }
 
+/**
+ * Vida de casco por sección (Subfase 13f). Interfaz angosta, mismo criterio
+ * que `PowerSupplySource`: `ShipStatusQuery` resume, no conoce el dominio
+ * `integrity/` completo. La implementa `MissionSectionIntegrityRuntime`.
+ *
+ * NO es opcional, a diferencia de `powerSupply`: sin ella el indicador de
+ * casco quedaría clavado en nominal pase lo que pase, que es exactamente el
+ * indicador muerto que la ronda 5 de playtest de 13b encontró con la energía.
+ */
+export interface SectionIntegritySource {
+  fractionOf(sectionId: SectionId): number;
+  allFractions(): ReadonlyArray<number>;
+}
+
 export class ShipStatusQuery {
   constructor(
     private readonly shipState: MutableShipState,
     private readonly shipFloorplan: ShipFloorplan,
     private readonly atmosphereRuntime: MissionAtmosphereRuntime,
-    private readonly componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
     private readonly chemicalRegistry: EntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>,
+    private readonly sectionIntegrity: SectionIntegritySource,
     private readonly powerSupply?: PowerSupplySource,
   ) {}
 
@@ -53,7 +66,10 @@ export class ShipStatusQuery {
     return {
       atmosphere: aggregateAtmosphere(sections, this.chemicalRegistry),
       lifeSupport: aggregateLifeSupport(sections),
-      hullIntegrity: aggregateHullIntegrity(blueprint.placedComponents, this.componentRegistry),
+      // Subfase 13f: la integridad sale de la vida propia de cada sección, no
+      // del RE de las piezas instaladas. Instalar o desmontar una manguera ya
+      // no mueve este indicador.
+      hullIntegrity: aggregateHullIntegrity(this.sectionIntegrity.allFractions()),
       // Fase 13b (ronda 5): además de la cicatriz permanente, el indicador mira
       // si la nave puede entregar lo que el jugador repartió — sin eso quedaba
       // clavado en nominal, porque `unpoweredSectionIds` solo lleva la cicatriz
@@ -67,13 +83,14 @@ export class ShipStatusQuery {
     };
   }
 
-  /** Integridad de casco de UNA sección (Fase 12a, capa "estructural" del HUD del plano) — ver `aggregateSectionHullIntegrity`. */
+  /**
+   * Integridad de casco de UNA sección (capa "estructural" del HUD del plano).
+   * Desde 13f es directamente la vida de esa sección: la capa del plano y el
+   * indicador de nave leen el MISMO dato que el motor usa para decidir el
+   * colapso, así que la UI no puede contradecir al motor.
+   */
   sectionHullIntegrity(sectionId: SectionId): ShipStatusIndicator {
-    return aggregateSectionHullIntegrity(
-      this.shipState.get().placedComponents,
-      this.componentRegistry,
-      this.shipFloorplan,
-      sectionId,
-    );
+    const fraction = this.sectionIntegrity.fractionOf(sectionId);
+    return { level: fractionToLevel(fraction), fraction };
   }
 }

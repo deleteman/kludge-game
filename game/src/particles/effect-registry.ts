@@ -17,6 +17,10 @@ import {
   dismantleSparkEffect,
   dismantleSpillEffect,
 } from "./effects/salvage-hazard-effect.js";
+import {
+  sectionBreachedEffect,
+  sectionDamagedEffect,
+} from "./effects/section-breach-effect.js";
 import { spontaneousIgnitionEffect } from "./effects/spontaneous-ignition-effect.js";
 import {
   structuralDegradedEffect,
@@ -52,6 +56,9 @@ const EFFECTS_BY_KIND: {
   "dismantle-spark": dismantleSparkEffect,
   "dismantle-spill": dismantleSpillEffect,
   "dismantle-leak": dismantleLeakEffect,
+  // Subfase 13f — daño y colapso de una sección.
+  "section-damaged": sectionDamagedEffect,
+  "section-breached": sectionBreachedEffect,
 };
 
 /** Dispara el efecto registrado para `event.kind`, si existe uno todavía. */
