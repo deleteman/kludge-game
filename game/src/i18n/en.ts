@@ -174,6 +174,11 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.task-failed": "Task failed",
   "ui.floorplan.notification.task-blocked": "Task blocked",
   "ui.floorplan.notification.task-blocked-no-power": "Blocked: section has no power",
+
+  // Dev hotkey (F) on the mission floorplan — development only, never shown to a
+  // player in a normal run (12d.6).
+  "ui.floorplan.dev.no-cell": "Dev: select a cell first",
+  "ui.floorplan.dev.fired": "Dev",
   "ui.floorplan.notification.objective-done": "Objective complete",
   "ui.floorplan.notification.crisis-escalation": "Crisis escalating",
   "ui.floorplan.notification.power-shortfall": "Power shortfall",

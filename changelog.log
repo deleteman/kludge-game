@@ -4574,3 +4574,83 @@ ambos workspaces, `eslint` sin errores, `vite build` OK. Smoke visual del operad
 
 Razón: cerrar la última subsección abierta de la Fase 12 antes de la demo, y hacerlo por la causa real y no
 por el síntoma reportado — la observación decía "los sprites se pintan sobre las luces" y era al revés.
+
+================================================================================
+2026-08-24 — Fase 12d.6: fixes de playtest de 12d.5 (ronda 1)
+================================================================================
+
+El operador jugó 12d.5 y reportó 4 puntos. TRES tenían una sola causa raíz, y era un error de diagnóstico
+mío, no una calibración floja.
+
+--- CAUSA RAÍZ: mezclé dos escalas distintas ---
+
+`PointLight.intensity` de Phaser es el brillo del GLOW ADITIVO. En todo este proyecto vive entre 0.01 y 0.35
+(LED 0.35, cicatriz de sección 0.02-0.22, focos autorados 0.01-0.05) porque —corrección textual del
+operador— "una luz de 0.3 pinta de blanco directo varios tiles antes de comenzar a bajar la intensidad".
+`LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 es otra cosa: cuánta OSCURIDAD borra la capa de sombras, en escala 0..1.
+
+Al escribir `light-grid.ts` copié la línea de `stampErase` (`max(0.3, min(1, intensity))`) y la usé como
+"cuánta luz recibe este sprite". Consecuencia: TODAS las luces aportaban exactamente 0.3, y un sprite
+iluminado quedaba en 0.5 + 0.5×0.3 = 0.65 contra 0.50 sin luz. Un 15% de diferencia es invisible — de ahí los
+puntos 1 (componentes) y 2 (tripulantes): "no parecen verse iluminados", "no cambia sin importar dónde".
+
+RESUELTO: la contribución de una luz pasa a ser `falloff(distancia/radio)` a secas — una luz encendida
+ilumina PLENO dentro de su radio, independiente de `intensity`, que queda solo para el glow. El rango pasa de
+0.50↔0.65 a 0.50↔1.00 (el doble de brillo). Efecto lateral bueno: como la grilla ya no lee `intensity`, el
+parpadeo de las luces de cicatriz nunca invalida su cache — cayó `quantizeIntensity`, que existía solo para
+amortiguar eso. Test de regresión: dos focos de intensidad muy distinta (0.01 y 0.35) dan el MISMO nivel.
+
+--- Punto 5: modo trasvase con todo negro. Regresión que introduje en 12d.5 ---
+
+El oscurecido del modo es un rectángulo al 72% a depth 5.8. ANTES las luces se pintaban encima (depth 7) y
+recuperaban las zonas iluminadas; al bajarlas a `dynamicLight` (1.8) quedaron debajo, así que el sprite
+quedaba al ~14% de brillo (0.5 de sombreado × 0.28 del oscurecido) y el recuadro de candidato parecía opaco.
+
+RESUELTO en dos partes:
+ - No se sombrea mientras el modo está activo: el oscurecido YA es el atenuado que ese modo busca, y
+   multiplicarlo por el nivel de luz lo duplicaba. `clearLightShading` devuelve todo a brillo pleno.
+ - El sprite del candidato se REPITE por encima del oscurecido en vez de teñirse de color plano. No se puede
+   subir el original: vive dentro del container del overlay y un container APLANA el depth de sus hijos (ya
+   estaba documentado en `render-depths.ts`). Es la misma solución que ya usaban el contorno y la capa
+   `fluido` resaltada — dibujar un objeto propio arriba, no reordenar el de abajo. El recuadro pierde el
+   relleno de 0.12 y queda como contorno, que era lo que se leía como "el cuadro tapa el sprite".
+ - Desaparece `transferTintedSprites`: el trasvase deja de ser uno de los escritores del tinte base.
+
+--- Punto 6: "no tengo forma de provocar combustión". Tenía razón ---
+
+Verificado: `CrisisDefinition.scriptedReactions` NO tiene datos en ningún capítulo. Existen el tipo y un test
+de integración; 13a cableó el runtime que los evalúa y nunca se autoró contenido. O sea que la receta de
+prueba que entregué al cerrar 12d.5 era imposible de ejecutar — la escribí sin ejecutarla.
+
+MITIGADO (no cerrado) con una tecla de dev F en el plano de misión: dispara el siguiente fenómeno del
+catálogo en la celda seleccionada, por el MISMO camino que la simulación real (`fireEventEffect` con
+`worldEffectOptions` + `fireEventSound`); un atajo no verificaría nada. Los eventos de muestra se extrajeron
+de `particle-gallery-scene.ts` a `scenes/dev-event-samples.ts`, compartido por los dos consumidores. La
+galería (tecla G) NO sirve para esto: tiene una sola cámara, así que el bug de doble-cámara que arregló el
+Bloque 4 de 12d.5 no se reproduce ahí ni aunque esté presente. El hueco de contenido queda como pendiente #38.
+
+--- Medido con el mapa y las luces REALES, en vez de estimado ---
+
+Sobre las 679 celdas transitables de `nave-exploracion` con los 21 focos autorados: 80% quedan a oscuridad
+plena (nivel 0.5), 3% en penumbra, 16% a brillo pleno. El contraste ya es correcto, pero la COBERTURA de luz
+es baja: una pieza en ese 80% se sigue viendo oscura, ahora correctamente. Es decisión de autoría (más
+objetos en la capa `luces`, o más `radius`), no de código. Registrado como pendiente #37.
+
+--- Corrección de un diagnóstico mío anterior ---
+
+El pendiente #36, escrito al cerrar 12d.5 ("las 21 luces tienen intensity por debajo del piso, es un dial que
+no mueve nada"), estaba MAL por la misma confusión de escalas. Reescrito. Los datos autorados por el operador
+son los correctos y no se tocaron; lo que estaba mal era mi código.
+
+`MIN_ACTOR_LIGHT_LEVEL` (0.45) queda documentado como piso que HOY nunca se activa: el nivel más bajo
+posible es el ambiente (0.5). Se conserva como red de seguridad si sube `DYNAMIC_SHADOW_DARKNESS_ALPHA`, pero
+declarado como tal en vez de aparentando estar activo (patrón 7).
+
+ARCHIVOS: nuevo `game/src/scenes/dev-event-samples.ts`; modificados `light-grid.ts` (+test), `light-shading.ts`,
+`dynamic-shadows.ts`, `floorplan-scene.ts`, `particle-gallery-scene.ts`, `i18n/es.ts`, `i18n/en.ts`.
+
+VERIFICACIÓN: `/engine` 886 tests, `/game` 60 → 61, todos verdes. `tsc --noEmit`, `eslint` y `vite build`
+limpios. Smoke visual del operador pendiente.
+
+Razón: los tres primeros puntos del playtest eran el mismo bug de escala; el cuarto era una receta de prueba
+que entregué sin haberla podido ejecutar nunca.

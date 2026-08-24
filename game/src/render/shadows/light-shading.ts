@@ -19,6 +19,12 @@ export const NEUTRAL_TINT = 0xffffff;
  * (patrón 3 del checklist de playtest — legibilidad real sobre el plano).
  * Los componentes NO llevan piso: son parte del decorado y pueden fundirse con
  * la penumbra.
+ *
+ * HONESTIDAD SOBRE SU ESTADO (patrón 7): con los valores de HOY este piso
+ * **nunca se activa**. El nivel más bajo posible es el ambiente,
+ * `1 - DYNAMIC_SHADOW_DARKNESS_ALPHA` = 0.5, que ya está por encima de 0.45. Se
+ * conserva como red de seguridad para el día en que se suba esa constante (la
+ * única palanca de contraste del sistema), no porque esté haciendo algo ahora.
  */
 export const MIN_ACTOR_LIGHT_LEVEL = 0.45;
 

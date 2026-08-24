@@ -1134,3 +1134,26 @@
 - `particle-utils.ts` — `spawnBurst`/`spawnDecal` aceptan el hook como último parámetro opcional.
 - `effects/*.ts` — los 15 efectos del registro propagan el hook (antes solo `salvage-hazard-effect.ts`).
   `combustion-effect.ts` registra además su `PointLight` (deuda #16 residual).
+
+## `game/src/render/shadows/light-grid.ts` (modificado, Fase 12d.6)
+- La contribución de una luz deja de leer `intensity` (`falloff(dist/radio)` a secas): esa propiedad es el
+  brillo del glow aditivo, no opacidad de oscurecido, y mezclar ambas escalas dejaba todo iluminado a 0.65
+  contra 0.50 sin luz. `LIGHT_CLEAR_ALPHA_FLOOR` sigue exportada solo para la RT de sombras, con la nota de
+  por qué el sombreado de sprites NO debe leerla.
+
+## `game/src/scenes/dev-event-samples.ts` (nuevo, Fase 12d.6)
+- `DEV_EVENT_SAMPLES` — catálogo de `DomainEvent` de muestra, uno por fenómeno del registro. Extraído de
+  `particle-gallery-scene.ts` para compartirlo con la tecla de dev del plano de misión.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.6)
+- `fireDevEventSample()` + tecla **F** — dispara el siguiente fenómeno del catálogo en la celda seleccionada
+  por el camino de producción (`fireEventEffect` + `worldEffectOptions` + `fireEventSound`). Única forma de
+  verificar el bug de doble-cámara: la galería (tecla G) tiene una sola cámara.
+- `forEachShadedTarget` — lista única de objetivos del sombreado, para que `applyLightShading` y
+  `clearLightShading` (nueva, devuelve todo a brillo pleno) no puedan divergir.
+- `spriteCopyAboveDim` — copia top-level del sprite de un candidato de trasvase por encima del oscurecido;
+  el original no se puede subir porque vive dentro del container del overlay. Reemplaza el tinte plano y el
+  relleno del recuadro, y elimina `transferTintedSprites`.
+
+## `game/src/i18n/es.ts` / `en.ts` (modificado, Fase 12d.6)
+- `ui.floorplan.dev.no-cell` / `ui.floorplan.dev.fired` — avisos de la tecla de dev.

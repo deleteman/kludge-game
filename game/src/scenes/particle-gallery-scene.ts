@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { CANONICAL_SHIP_FLOORPLANS, GRID_CELL_SIZE_PX, SHIP_ARCHETYPES } from "engine";
-import type { CrewActorId, DomainEvent, SectionId } from "engine";
 
+import { DEV_EVENT_SAMPLES } from "./dev-event-samples.js";
 import { t } from "../i18n/i18n.js";
 import { renderFloorplan } from "../render/floorplan-renderer.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
@@ -20,8 +20,6 @@ import { type HopCadence, hopMove } from "../crew/hop-movement.js";
  * se calculan en coordenadas de celda, coincidan con el offset del plano. */
 const MAP_OFFSET_CELLS = 1;
 
-const GALLERY_SECTION_ID = "gallery-section" as SectionId;
-
 /**
  * Escena solo-dev de Fase 8: dispara manualmente cada `DomainEvent` sobre un
  * plano ya renderizado, sin depender del driver de simulación real (diferido
@@ -31,190 +29,6 @@ const GALLERY_SECTION_ID = "gallery-section" as SectionId;
  * No es parte del flujo de juego; se accede con la tecla G desde
  * `FloorplanScene` y se vuelve con ESC.
  */
-interface GalleryEntry {
-  readonly key: string;
-  readonly label: string;
-  readonly buildEvent: () => DomainEvent;
-}
-
-const GALLERY_ENTRIES: readonly GalleryEntry[] = [
-  {
-    key: "ONE",
-    label: "1: combustión",
-    buildEvent: () => ({
-      kind: "combustion",
-      elapsedSeconds: 0,
-      intensity: "standard",
-      radius: "half-section",
-      crewDamage: "medium",
-    }),
-  },
-  {
-    key: "TWO",
-    label: "2: ignición espontánea",
-    buildEvent: () => ({ kind: "spontaneous-ignition", elapsedSeconds: 0 }),
-  },
-  {
-    key: "THREE",
-    label: "3: neutralización",
-    buildEvent: () => ({
-      kind: "neutralization",
-      elapsedSeconds: 0,
-      heatReleasedCelsius: 15,
-      heatDurationSeconds: 1.2,
-    }),
-  },
-  {
-    key: "FOUR",
-    label: "4: sobrecarga·corte",
-    buildEvent: () => ({
-      kind: "overload",
-      elapsedSeconds: 0,
-      ref: "gallery-conductor",
-      resourceType: "E",
-      failureMode: "cut",
-      capacity: 10,
-      load: 14,
-    }),
-  },
-  {
-    key: "FIVE",
-    label: "5: sobrecarga·incendio",
-    buildEvent: () => ({
-      kind: "overload",
-      elapsedSeconds: 0,
-      ref: "gallery-conductor",
-      resourceType: "T",
-      failureMode: "fire",
-      capacity: 10,
-      load: 13,
-    }),
-  },
-  {
-    key: "SIX",
-    label: "6: sobrecarga·explosión",
-    buildEvent: () => ({
-      kind: "overload",
-      elapsedSeconds: 0,
-      ref: "gallery-reservoir",
-      resourceType: "G",
-      failureMode: "explosion",
-      capacity: 10,
-      load: 22,
-    }),
-  },
-  {
-    key: "SEVEN",
-    label: "7: corrosión activa",
-    buildEvent: () => ({
-      kind: "structural-degraded",
-      elapsedSeconds: 0,
-      ref: "gallery-structure",
-      newLevel: "M",
-    }),
-  },
-  {
-    key: "EIGHT",
-    label: "8: fallo estructural",
-    buildEvent: () => ({ kind: "structural-failure", elapsedSeconds: 0, ref: "gallery-structure" }),
-  },
-  {
-    key: "NINE",
-    label: "9: umbral tóxico",
-    buildEvent: () => ({
-      kind: "toxic-threshold",
-      elapsedSeconds: 0,
-      sectionId: GALLERY_SECTION_ID,
-      severity: "lethal",
-      concentration: 0.8,
-    }),
-  },
-  {
-    key: "ZERO",
-    label: "0: exposición corrosiva",
-    buildEvent: () => ({
-      kind: "corrosive-exposure",
-      elapsedSeconds: 0,
-      sectionId: GALLERY_SECTION_ID,
-      severity: "incapacitation",
-      concentration: 0.5,
-    }),
-  },
-  {
-    key: "Q",
-    label: "Q: estela magnética",
-    buildEvent: () => ({
-      kind: "magnetic-acceleration",
-      elapsedSeconds: 0,
-      ref: "gallery-projectile",
-      velocity: "A",
-    }),
-  },
-  {
-    key: "W",
-    label: "W: impacto cinético",
-    buildEvent: () => ({
-      kind: "kinetic-impact",
-      elapsedSeconds: 0,
-      targetRef: "gallery-target",
-      velocity: "A",
-      severity: "high",
-    }),
-  },
-  {
-    key: "A",
-    label: "A: muerte·fuego/explosión (gore)",
-    buildEvent: () => ({
-      kind: "crew-death",
-      elapsedSeconds: 0,
-      actorId: "gallery-crew" as CrewActorId,
-      cause: "explosion",
-    }),
-  },
-  {
-    key: "S",
-    label: "S: muerte·frío (fragmentación)",
-    buildEvent: () => ({
-      kind: "crew-death",
-      elapsedSeconds: 0,
-      actorId: "gallery-crew" as CrewActorId,
-      cause: "cold",
-    }),
-  },
-  {
-    key: "D",
-    label: "D: muerte·corrosión (disolución)",
-    buildEvent: () => ({
-      kind: "crew-death",
-      elapsedSeconds: 0,
-      actorId: "gallery-crew" as CrewActorId,
-      cause: "corrosion",
-    }),
-  },
-  {
-    key: "F",
-    label: "F: muerte·electrocución (colapso)",
-    buildEvent: () => ({
-      kind: "crew-death",
-      elapsedSeconds: 0,
-      actorId: "gallery-crew" as CrewActorId,
-      cause: "electrocution",
-    }),
-  },
-  {
-    key: "Z",
-    label: "Z: herida no letal (sin variante de cuerpo)",
-    buildEvent: () => ({
-      kind: "crew-damaged",
-      elapsedSeconds: 0,
-      actorId: "gallery-crew" as CrewActorId,
-      cause: "kinetic-impact",
-      hpLost: 20,
-      remainingHp: 60,
-    }),
-  },
-];
-
 /** Fenómenos state-driven (sin `DomainEvent` propio): se activan/desactivan con la misma tecla (toggle). */
 const STATE_DRIVEN_LABELS = [
   "E: flujo en conducto (toggle)",
@@ -253,7 +67,7 @@ export class ParticleGalleryScene extends Phaser.Scene {
       .text(
         8,
         20,
-        [...GALLERY_ENTRIES.map((entry) => entry.label), ...STATE_DRIVEN_LABELS].join("   "),
+        [...DEV_EVENT_SAMPLES.map((entry) => entry.label), ...STATE_DRIVEN_LABELS].join("   "),
         { fontFamily: "monospace", fontSize: "10px", color: LABEL_COLOR, wordWrap: { width: 1264 } },
       )
       .setDepth(2);
@@ -262,7 +76,7 @@ export class ParticleGalleryScene extends Phaser.Scene {
     const targetCell = ship.sections[0]!.cells[0]!;
     const position = { x: targetCell.x, y: targetCell.y + MAP_OFFSET_CELLS };
 
-    for (const entry of GALLERY_ENTRIES) {
+    for (const entry of DEV_EVENT_SAMPLES) {
       this.input.keyboard?.on(`keydown-${entry.key}`, () => {
         const event = entry.buildEvent();
         fireEventEffect(this, position, event);

@@ -174,6 +174,11 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.task-failed": "Tarea fallida",
   "ui.floorplan.notification.task-blocked": "Tarea bloqueada",
   "ui.floorplan.notification.task-blocked-no-power": "Bloqueado: la sección no tiene energía",
+
+  // Tecla de dev (F) del plano de misión — solo desarrollo, no se muestra al jugador
+  // en una partida normal (12d.6).
+  "ui.floorplan.dev.no-cell": "Dev: seleccioná una celda primero",
+  "ui.floorplan.dev.fired": "Dev",
   "ui.floorplan.notification.objective-done": "Objetivo completado",
   "ui.floorplan.notification.crisis-escalation": "La crisis escala",
   "ui.floorplan.notification.power-shortfall": "Déficit de energía",

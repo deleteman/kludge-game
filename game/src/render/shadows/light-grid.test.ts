@@ -65,16 +65,31 @@ describe("computeLightLevelGrid", () => {
   });
 
   it("dos luces solapadas se combinan con max, no se suman a blanco", () => {
-    const dim = 0.4;
-    const grid = gridOf([lightAtCell(5, 5, 30, dim), lightAtCell(5, 5, 30, dim)]);
-    const single = gridOf([lightAtCell(5, 5, 30, dim)]);
+    const grid = gridOf([lightAtCell(5, 5, 30), lightAtCell(5, 5, 30)]);
+    const single = gridOf([lightAtCell(5, 5, 30)]);
     expect(grid.levelAt(5, 5)).toBeCloseTo(single.levelAt(5, 5), 5);
-    expect(grid.levelAt(5, 5)).toBeLessThan(1);
+    expect(grid.levelAt(5, 5)).toBeLessThanOrEqual(1);
   });
 
-  it("una luz muy tenue igual despeja algo de oscuridad (piso de aclarado)", () => {
+  // --- Regresión de la ronda 1 de playtest de 12d.5 -------------------------
+  // El nivel de luz leía `max(LIGHT_CLEAR_ALPHA_FLOOR, intensity)`, que es la
+  // escala de OPACIDAD DE OSCURECIDO de la capa de sombras, no la del glow
+  // aditivo de una `PointLight` (0.01-0.35 en todo el proyecto). Resultado: toda
+  // luz aportaba exactamente el piso 0.3 y un sprite iluminado quedaba a 0.65
+  // contra 0.50 — imperceptible, "no parecen verse iluminados".
+
+  it("dos focos de intensidad muy distinta iluminan IGUAL: el nivel no lee intensity", () => {
+    const tenue = gridOf([lightAtCell(5, 5, 30, 0.01)]);
+    const fuerte = gridOf([lightAtCell(5, 5, 30, 0.35)]);
+    expect(tenue.levelAt(5, 5)).toBeCloseTo(fuerte.levelAt(5, 5), 5);
+  });
+
+  it("un foco lleva la celda a brillo PLENO, no al piso de aclarado de la sombra", () => {
     const grid = gridOf([lightAtCell(5, 5, 30, 0.01)]);
-    expect(grid.levelAt(5, 5)).toBeCloseTo(AMBIENT + (1 - AMBIENT) * LIGHT_CLEAR_ALPHA_FLOOR, 5);
+    expect(grid.levelAt(5, 5)).toBeCloseTo(1, 5);
+    // El contraste contra una celda sin luz tiene que ser grande, no un 15%.
+    expect(grid.levelAt(5, 5) - AMBIENT).toBeGreaterThan(1 - AMBIENT - 0.01);
+    expect(grid.levelAt(5, 5)).toBeGreaterThan(AMBIENT + (1 - AMBIENT) * LIGHT_CLEAR_ALPHA_FLOOR);
   });
 
   it("una luz de intensidad 0 o radio 0 no aporta nada", () => {

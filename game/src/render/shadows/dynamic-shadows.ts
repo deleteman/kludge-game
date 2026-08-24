@@ -200,7 +200,7 @@ export class DynamicShadowLayer {
         x: light.x,
         y: light.y,
         radius: light.radius,
-        intensity: quantizeIntensity(light.intensity),
+        intensity: light.intensity,
       })),
       edges: this.staticEdges,
       gridWidth,
@@ -223,11 +223,11 @@ export class DynamicShadowLayer {
       `${this.staticOccludersVersion}|${gridWidth}x${gridHeight}@${cellSize}|${ambient.toFixed(3)}`,
     ];
     for (const light of this.lights) {
-      // La intensidad va CUANTIZADA (y así se usa también al calcular): las
-      // luces de cicatriz parpadean cada frame, y sin esto el parpadeo
-      // invalidaría el cache 60 veces por segundo para un cambio de tinte
-      // imperceptible.
-      parts.push(`${light.x};${light.y};${light.radius};${quantizeIntensity(light.intensity)}`);
+      // La intensidad entra SOLO como encendida/apagada: el nivel de luz no la
+      // lee (ver `computeLightLevelGrid`), así que el parpadeo de las luces de
+      // cicatriz no invalida nada — antes habría recalculado 60 veces por
+      // segundo para un cambio de tinte imperceptible.
+      parts.push(`${light.x};${light.y};${light.radius};${light.intensity > 0 ? 1 : 0}`);
     }
     return parts.join("/");
   }
@@ -304,15 +304,6 @@ export class DynamicShadowLayer {
     this.visibilityCache.clear();
     this.lightGridCache = undefined;
   }
-}
-
-/**
- * Redondeo de la intensidad de una luz a pasos de 0.1, para el nivel de luz de
- * los SPRITES (no para la RT de sombras, que sí parpadea suave). Ver la nota de
- * cache en `lightGridSignature`.
- */
-function quantizeIntensity(intensity: number): number {
-  return Math.round(intensity * 10) / 10;
 }
 
 /** ¿Dos listas de segmentos son idénticas (mismo orden y coords)? */

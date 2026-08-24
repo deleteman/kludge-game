@@ -68,6 +68,7 @@ import {
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
 import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
+import { DEV_EVENT_SAMPLES } from "./dev-event-samples.js";
 import { firePouredSubstance } from "../particles/effects/salvage-hazard-effect.js";
 import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
 import { AUDIO_KEYS, preloadAudioAssets } from "../audio/audio-asset-registry.js";
@@ -401,10 +402,12 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private transferModeButton?: Phaser.GameObjects.GameObject;
   private transferDimOverlay?: Phaser.GameObjects.Rectangle;
-  /** Contorno de footprint por candidato (ronda 8: reemplaza el círculo suelto — resalta la pieza misma). */
-  private transferHighlights: Phaser.GameObjects.Rectangle[] = [];
-  /** Sprites reales tintados por el modo de trasvase (ronda 8) — se restauran a su tinte original al salir/recalcular. */
-  private transferTintedSprites: Array<{ sprite: Phaser.GameObjects.Image; originalTint: number }> = [];
+  /**
+   * Objetos del resaltado de trasvase: el contorno de cada candidato y la COPIA
+   * top-level de su sprite (12d.6). Se destruyen todos juntos al reconstruir el
+   * modo, así que van en un solo array de `GameObject`.
+   */
+  private transferHighlights: Phaser.GameObjects.GameObject[] = [];
   private transferChannelLine?: Phaser.GameObjects.Graphics;
   /**
    * Snapshot COMPLETO de `activeFloorplanLayers` antes de entrar al modo de
@@ -921,6 +924,7 @@ export class FloorplanScene extends Phaser.Scene {
     );
 
     this.input.keyboard?.on("keydown-G", () => this.scene.start("particle-gallery"));
+    this.input.keyboard?.on("keydown-F", () => this.fireDevEventSample());
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
@@ -1935,7 +1939,6 @@ export class FloorplanScene extends Phaser.Scene {
     this.transferHighlights = [];
     this.transferChannelLine?.destroy();
     this.transferChannelLine = undefined;
-    this.restoreTransferTintedSprites();
     this.transferFluidoHighlightLayer?.destroy();
     this.transferFluidoHighlightLayer = undefined;
     this.floorplanRender.conduitLayers.fluido.setVisible(true);
@@ -1988,9 +1991,13 @@ export class FloorplanScene extends Phaser.Scene {
     // Un contorno de footprint por candidato (ronda 8: reemplaza el círculo
     // suelto — resalta la pieza misma, no un marcador flotando cerca). Verde
     // (disponible) o rojo (bloqueado, cualquier motivo) — mismo contrato de
-    // color de crisis ya usado en el resto del juego. Si la pieza ya tiene
-    // sprite real, se tiñe directo (hoy ningún componente involucrado lo
-    // tiene todavía — ver aviso de sprite faltante en el plan).
+    // color de crisis ya usado en el resto del juego.
+    //
+    // 12d.6 (playtest de 12d.5): el contorno va SIN relleno y el sprite del
+    // candidato se REPITE por encima del oscurecido en vez de teñirse de color
+    // plano. Antes el candidato quedaba doblemente tapado — por el oscurecido
+    // del 72% (que desde 12d.5 ya no recuperan las luces, porque bajaron a
+    // `dynamicLight`) y por su propio tinte plano encima.
     for (const candidate of this.interaction.transferModeCandidates) {
       const placement = this.instancePlacement(candidate.instanceId);
       if (!placement) continue;
@@ -2002,28 +2009,39 @@ export class FloorplanScene extends Phaser.Scene {
         .rectangle(originX, originY, width * CELL, height * CELL)
         .setOrigin(0, 0)
         .setStrokeStyle(3, color, 1)
-        .setFillStyle(color, 0.12)
         .setDepth(RENDER_DEPTH.transferTargetHighlight);
       this.markAsWorldObject(outline);
       this.transferHighlights.push(outline);
 
       for (const sprite of this.componentSprites.get(candidate.instanceId) ?? []) {
-        // Se guarda y se escribe el tinte BASE (no el visible, que ya viene
-        // multiplicado por la luz de la celda): si acá se leyera `tintTopLeft`
-        // el resaltado se iría oscureciendo solo, y `setTint` directo lo
-        // borraría el frame siguiente. Ver `baseTints`.
-        this.transferTintedSprites.push({ sprite, originalTint: this.baseTintOf(sprite) });
-        this.setBaseTint(sprite, color);
+        this.transferHighlights.push(this.spriteCopyAboveDim(sprite));
       }
     }
   }
 
-  /** Restaura el tinte original de los sprites tomados por el resaltado del modo de trasvase — ver `updateTransferMode`. */
-  private restoreTransferTintedSprites(): void {
-    for (const { sprite, originalTint } of this.transferTintedSprites) {
-      if (sprite.active) this.setBaseTint(sprite, originalTint);
-    }
-    this.transferTintedSprites = [];
+  /**
+   * Copia top-level del sprite de un candidato, por encima del oscurecido del
+   * modo de trasvase (12d.6).
+   *
+   * NO se puede subir el sprite original: vive dentro del container del overlay
+   * (`mission-overlay-renderer.ts`, depth `objects`) y un container APLANA la
+   * profundidad de sus hijos — está documentado en `render-depths.ts`. Es la
+   * misma solución que ya usan el contorno y la capa `fluido` resaltada: dibujar
+   * un objeto propio arriba, no reordenar el de abajo.
+   *
+   * La copia se pinta con el tinte BASE (sin el sombreado por luz), que es lo
+   * que la hace legible sobre el oscurecido.
+   */
+  private spriteCopyAboveDim(sprite: Phaser.GameObjects.Image): Phaser.GameObjects.Image {
+    const copy = this.add
+      .image(sprite.x, sprite.y, sprite.texture.key)
+      .setOrigin(sprite.originX, sprite.originY)
+      .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+      .setDepth(RENDER_DEPTH.transferTargetHighlight);
+    const base = this.baseTintOf(sprite);
+    if (base !== NEUTRAL_TINT) copy.setTint(base);
+    this.markAsWorldObject(copy);
+    return copy;
   }
 
   /**
@@ -2940,32 +2958,92 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private applyLightShading(): void {
     if (!this.shadowLayer) return;
+    // Modo de trasvase (12d.6): el oscurecido del 72% ya ES el atenuado que
+    // pide ese modo; multiplicarlo además por el nivel de luz dejaba las piezas
+    // al ~14% de brillo ("todos los componentes se ven super oscuros"). Se
+    // devuelve todo a brillo pleno y se deja que el rectángulo haga su trabajo.
+    if (this.interaction.transferMode) {
+      this.clearLightShading();
+      return;
+    }
     const { width, height } = this.mission.shipFloorplan.gridSize;
     const grid = this.shadowLayer.lightGrid(width, height, CELL);
+    this.forEachShadedTarget((target, isActor) => {
+      const center = target.getCenter();
+      const level = grid.levelAtPixel(center.x, center.y);
+      // Tripulación y enemigos con PISO de brillo: un actor en una sala sin luz
+      // se oscurece, pero nunca hasta volverse invisible o inclickeable.
+      this.applyShadedTint(target, isActor ? actorLightLevel(level) : level);
+    });
+  }
 
+  /**
+   * Tecla de dev (F): dispara un `DomainEvent` de muestra en la celda
+   * SELECCIONADA, ciclando el catálogo de `dev-event-samples.ts` en cada
+   * pulsación (12d.6).
+   *
+   * Existe porque varios fenómenos del registro **no tienen todavía un llamador
+   * real en partida** — combustión y neutralización dependen de
+   * `CrisisDefinition.scriptedReactions`, que ningún capítulo autora (13a cableó
+   * el runtime, nunca se autoró el contenido). Sin esto no hay forma de
+   * provocarlos jugando, que es exactamente lo que reportó el operador.
+   *
+   * Pasa por el MISMO camino que la simulación real (`fireEventEffect` con
+   * `worldEffectOptions` + `fireEventSound`); un atajo no verificaría nada. Y va
+   * en esta escena y no en la galería porque el bug de doble-cámara solo se
+   * manifiesta acá, donde conviven la cámara de mundo y la `hudCamera`.
+   */
+  /** Puntero del ciclo de la tecla F sobre `DEV_EVENT_SAMPLES`. */
+  private devEventSampleIndex = 0;
+
+  private fireDevEventSample(): void {
+    const cell = this.interaction.selectedCell;
+    if (!cell) {
+      this.notifications?.push({ title: t("ui.floorplan.dev.no-cell"), type: "warning" });
+      return;
+    }
+    const sample = DEV_EVENT_SAMPLES[this.devEventSampleIndex % DEV_EVENT_SAMPLES.length]!;
+    this.devEventSampleIndex += 1;
+
+    const event = sample.buildEvent();
+    fireEventEffect(this, cell, event, this.worldEffectOptions);
+    fireEventSound(this, event);
+    // La etiqueta del fenómeno NO se traduce: es una herramienta de desarrollo,
+    // y el catálogo la trae en un único idioma a propósito.
+    this.notifications?.push({
+      title: `${t("ui.floorplan.dev.fired")}: ${sample.label}`,
+      type: "info",
+    });
+  }
+
+  /** Devuelve todo a brillo pleno (nivel 1). Ver `applyLightShading`. */
+  private clearLightShading(): void {
+    this.forEachShadedTarget((target) => this.applyShadedTint(target, 1));
+  }
+
+  /**
+   * Lista única de objetos del plano que reciben el sombreado por luz, para que
+   * `applyLightShading` y `clearLightShading` no puedan divergir. `isActor`
+   * marca a los que llevan piso de brillo (tripulación y enemigos).
+   */
+  private forEachShadedTarget(
+    visit: (target: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle, isActor: boolean) => void,
+  ): void {
     for (const sprites of this.componentSprites.values()) {
       for (const sprite of sprites) {
-        if (!sprite.active) continue;
-        const center = sprite.getCenter();
-        this.applyShadedTint(sprite, grid.levelAtPixel(center.x, center.y));
+        if (sprite.active) visit(sprite, false);
       }
     }
     // Los LED tienen su propio mapa (el overlay los separa para poder
     // encenderlos/apagarlos), así que no entran por `componentSprites`.
     for (const led of this.ledIndicators.values()) {
-      if (!led.active) continue;
-      const center = led.getCenter();
-      this.applyShadedTint(led, grid.levelAtPixel(center.x, center.y));
+      if (led.active) visit(led, false);
     }
-    // Tripulación y enemigos con PISO de brillo: un actor en una sala sin luz
-    // se oscurece, pero nunca hasta volverse invisible o inclickeable.
     for (const { dot } of this.crewTokens.values()) {
-      if (!dot.active) continue;
-      this.applyShadedTint(dot, actorLightLevel(grid.levelAtPixel(dot.x, dot.y)));
+      if (dot.active) visit(dot, true);
     }
     for (const { shape } of this.enemyTokens.values()) {
-      if (!shape.active) continue;
-      this.applyShadedTint(shape, actorLightLevel(grid.levelAtPixel(shape.x, shape.y)));
+      if (shape.active) visit(shape, true);
     }
   }
 

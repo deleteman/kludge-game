@@ -2668,7 +2668,45 @@ luz ambiental global. Plan phaseado 12d.1→12d.4 en `~/.claude/plans/revisa-12d
   - **Perf medida, no supuesta:** un recompute completo con las dimensiones reales de `nave-exploracion`
     (40×22, 148 aristas, 21 luces) = **0.49 ms**, y con cache por firma no corre todos los frames.
 
-**Cierre Fase 12d:** código completo (12d.1–12d.5 + iteración post-playtest). Cierra con `nave-exploracion`,
+#### Fixes de playtest de 12d.5, ronda 1 ✅ (2026-08-24) — Fase 12d.6
+
+El operador jugó 12d.5 y reportó 4 puntos. **Tres tenían una sola causa raíz, y era un error de diagnóstico
+mío**: mezclé dos escalas distintas. `PointLight.intensity` es el brillo del **glow aditivo** (en todo el
+proyecto vive entre 0.01 y 0.35, porque a 0.3 una luz ya quema varios tiles a blanco — corrección explícita
+del operador); `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 es **opacidad de oscurecido** de la capa de sombras.
+`light-grid.ts` copió la línea de `stampErase` y leyó la primera con la escala de la segunda.
+
+* **Puntos 1 y 2 (ni componentes ni tripulantes se ven iluminados):** con esa mezcla **toda** luz aportaba
+  exactamente 0.3, así que un sprite iluminado quedaba en 0.65 contra 0.50 sin luz — 15% de diferencia,
+  imperceptible. **Resuelto:** el nivel de luz deja de leer `intensity`; una luz encendida ilumina **pleno**
+  dentro de su radio (`contribución = falloff(dist/radio)`). El rango pasa de 0.50↔0.65 a **0.50↔1.00**.
+  Efecto lateral bueno: como la grilla ya no lee `intensity`, el parpadeo de las luces de cicatriz nunca
+  invalida su cache (cayó `quantizeIntensity`, que existía solo para amortiguar eso). Test de regresión:
+  dos focos de intensidad muy distinta (0.01 y 0.35) tienen que dar el mismo nivel.
+* **Punto 5 (todo negro en modo trasvase): regresión introducida por 12d.5.** El oscurecido del modo es un
+  rectángulo al 72% a depth 5.8; antes las luces se pintaban **encima** (depth 7) y recuperaban las zonas
+  iluminadas, y al bajarlas a `dynamicLight` (1.8) quedaron debajo → sprite al ~14% de brillo. **Resuelto** en
+  dos partes: no se sombrea mientras el modo está activo (el oscurecido YA es el atenuado buscado), y el
+  sprite del candidato se **repite** por encima del oscurecido en vez de teñirse de color plano — no se puede
+  subir el original, que vive dentro del container del overlay y un container aplana el depth de sus hijos.
+  El recuadro pierde el relleno y queda como contorno. Desaparece `transferTintedSprites`: el trasvase deja de
+  ser uno de los escritores de tinte.
+* **Punto 6 (no hay forma de provocar combustión): tenía razón.** `scriptedReactions` **no tiene datos en
+  ningún capítulo** — existen el tipo y un test, 13a cableó el runtime y nunca se autoró contenido, así que la
+  receta de prueba que entregué era imposible de ejecutar. **Mitigado** con una tecla de dev (**F**) en el
+  plano de misión que dispara cualquier fenómeno del catálogo en la celda seleccionada, por el mismo camino
+  que la simulación real. Los eventos de muestra se extrajeron de la galería a `scenes/dev-event-samples.ts`,
+  compartido por ambos caminos. La galería (tecla G) no sirve para esto: tiene una sola cámara, así que el bug
+  de doble-cámara no se reproduce ahí. El hueco de contenido queda registrado como pendiente #38.
+* **Medido con el mapa y las luces reales** (pendiente #37): sobre las 679 celdas libres de
+  `nave-exploracion`, **80% quedan a oscuridad plena**, 16% a brillo pleno. El contraste ya es correcto, pero
+  la cobertura de luz es baja — decisión de autoría (más objetos en la capa `luces` o más `radius`), no de
+  código. `MIN_ACTOR_LIGHT_LEVEL` (0.45) queda documentado como piso que hoy **nunca se activa**, porque el
+  ambiente (0.5) ya está por encima.
+
+Suite: `/engine` 886, `/game` 60 → **61**. `tsc --noEmit`, `eslint` y `vite build` limpios.
+
+**Cierre Fase 12d:** código completo (12d.1–12d.6 + iteración post-playtest). Cierra con `nave-exploracion`,
 el único arquetipo con arte y con la capa `luces` autorada (21 focos) — los otros 3 mapas no tienen ni tile
 layers, así que autorar sus luces es trabajo del arte de esos arquetipos y queda registrado en
 `PENDIENTES_OBSERVACIONES.md`, no bloquea 12d. Suite: `/engine` 886 tests, `/game` 40 → **60** (20 nuevos de

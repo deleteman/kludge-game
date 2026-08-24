@@ -681,12 +681,32 @@ dónde, y qué costaría arreglarlo.
     sombra y con todos los sprites al mismo nivel de luz). Ruta esperada: capa de objetos `luces` con Points y
     props `color`/`radius`/`intensity` en `engine/src/floorplan/maps/<arquetipo>.json`.
 
-36. **Las 21 luces autoradas de `nave-exploracion` tienen `intensity` por debajo del piso de aclarado**
-    (relevado al cerrar 12d.5, 2026-08-24). Los valores autorados van de 0.01 a 0.05, y tanto la RT de sombras
-    (`stampErase`) como el nivel de luz de los sprites aplican `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 como mínimo.
-    Consecuencia: **las 21 luces aclaran exactamente lo mismo**, y mover el valor de `intensity` en Tiled entre
-    0.01 y 0.3 no cambia nada — es un dial que hoy no se mueve (patrón 7 del checklist de playtest). No se
-    tocaron los datos del operador ni la constante, porque el piso de 0.3 es el comportamiento que él ya aprobó
-    visualmente en 12d.3/12d.4. Si en el smoke el contraste entre zona iluminada y zona oscura se lee flojo, hay
-    dos palancas independientes: subir las `intensity` autoradas (por foco) o bajar el piso (global, un solo
-    valor en `light-grid.ts`).
+36. ❌ **DIAGNÓSTICO MÍO EQUIVOCADO, corregido en 12d.6 (2026-08-24).** El texto original de este punto decía
+    que las 21 luces autoradas tenían `intensity` "por debajo del piso de aclarado" y que por eso era "un dial
+    que no mueve nada". **Falso, y el error era mío**: `PointLight.intensity` es el brillo del GLOW ADITIVO
+    —en todo el proyecto vive entre 0.01 y 0.35, porque a 0.3 una luz ya quema varios tiles a blanco— mientras
+    que `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 es OPACIDAD DE OSCURECIDO de la capa de sombras. Son dos escalas
+    distintas y las mezclé al escribir `light-grid.ts`. Los valores autorados por el operador son los
+    correctos para lo que controlan y **no se tocaron**. Lo que se corrigió es el código: el nivel de luz de
+    los sprites ya no lee `intensity` (una luz encendida ilumina pleno dentro de su radio). Se deja registrado
+    porque el error de lectura de escala se llevó una ronda entera de playtest.
+
+37. **Solo el 20% del suelo transitable de `nave-exploracion` recibe algo de luz** (medido al cerrar 12d.6,
+    2026-08-24, con el mapa y las 21 luces reales). Distribución sobre las 679 celdas libres: **80% a
+    oscuridad plena** (nivel 0.5), 3% en penumbra intermedia, 16% a brillo pleno. Con el contraste ya
+    arreglado, una pieza que caiga en ese 80% se sigue viendo oscura — correctamente esta vez, porque
+    literalmente no le llega luz. Es una decisión de AUTORÍA, no un bug: 21 focos de radio 100-140px (3-4.4
+    celdas) sobre un plano de 40×22 cubren poco. Si la intención es que la nave se lea mayormente iluminada,
+    la palanca es colocar más objetos en la capa `luces` o subir su `radius`; si la intención es una nave a
+    oscuras con focos puntuales, ya está como debe. Depende del operador, no del código.
+
+38. **`CrisisDefinition.scriptedReactions` no tiene datos en NINGÚN capítulo** (verificado al atender el
+    playtest de 12d.5, 2026-08-24, reporte del operador: "no tengo forma de provocar combustión"). Existen el
+    tipo (`engine/src/crisis/crisis-definition.types.ts`) y un test de integración
+    (`mission-reaction-cascade.integration.test.ts`), y 13a cableó el runtime que los evalúa
+    (`MissionReactionRuntime`), pero **nunca se autoró contenido**. Consecuencia: combustión, ignición
+    espontánea y neutralización siguen sin camino real en partida, así que sus efectos, sus sonidos y el
+    overlay de alerta por combustión violenta no se pueden ver jugando. Es el residual de CONTENIDO del
+    ítem #16 (cuyo residual de código sí quedó cerrado). Mitigado, no cerrado, por la tecla de dev **F** del
+    plano de misión (12d.6): dispara cualquier fenómeno del catálogo en la celda seleccionada, lo que permite
+    verificarlos, pero no los hace alcanzables jugando. Cerrarlo de verdad es diseño de capítulo.

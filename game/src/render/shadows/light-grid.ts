@@ -19,9 +19,18 @@ import { raySegmentIntersection } from "./visibility-polygon.js";
  */
 
 /**
- * Piso de aclarado de una luz: una luz tenue igual despeja algo de oscuridad.
- * Espejo exacto del `Math.max(0.3, …)` de `DynamicShadowLayer.redraw` — vive
- * acá (módulo puro) y lo importa el glue de Phaser, no al revés.
+ * Piso de aclarado de una luz para la CAPA DE SOMBRAS: cuánta oscuridad borra
+ * como mínimo (escala 0..1 de opacidad). Vive acá, en el módulo puro, y lo
+ * importa el glue de Phaser (`DynamicShadowLayer.redraw`), no al revés.
+ *
+ * OJO — esta constante NO la usa el nivel de luz de los sprites, y confundir
+ * ambas cosas fue justamente el bug de la ronda 1 de playtest de 12d.5: el
+ * `intensity` de una `PointLight` es el brillo del GLOW ADITIVO (en este
+ * proyecto vive entre 0.01 y 0.35, porque a 0.3 una luz ya quema varios tiles
+ * a blanco), mientras que esto es opacidad de oscurecido. Leer el primero con
+ * la escala del segundo hacía que TODAS las luces aportaran exactamente 0.3 y
+ * que un sprite iluminado quedara a 0.65 contra 0.50 — 15% de diferencia,
+ * imperceptible. Ver `computeLightLevelGrid`.
  */
 export const LIGHT_CLEAR_ALPHA_FLOOR = 0.3;
 
@@ -33,7 +42,14 @@ export const LIGHT_CLEAR_ALPHA_FLOOR = 0.3;
  */
 const FALLOFF_START = 0.6;
 
-/** Luz activa, en píxeles de mundo. Forma mínima de una `Phaser.GameObjects.PointLight`. */
+/**
+ * Luz activa, en píxeles de mundo. Forma mínima de una
+ * `Phaser.GameObjects.PointLight`.
+ *
+ * `intensity` es el brillo del glow aditivo y **no participa** del nivel de
+ * luz — ver la nota de `LIGHT_CLEAR_ALPHA_FLOOR`. Se conserva en el tipo
+ * porque decide si la luz está encendida (0 = apagada, no ilumina).
+ */
 export interface LightSample {
   readonly x: number;
   readonly y: number;
@@ -66,10 +82,18 @@ export interface LightLevelGrid {
 }
 
 /**
- * Calcula el nivel de luz de cada celda. Coste acotado por dos recortes: cada
- * luz solo visita las celdas de su bounding box de radio, y solo prueba las
- * aristas que cruzan esa misma caja (sin ese filtro, una nave con cientos de
- * aristas haría un raycast completo por celda y por luz).
+ * Calcula el nivel de luz de cada celda.
+ *
+ * Una luz encendida ILUMINA PLENO dentro de su radio (con desvanecido hacia el
+ * borde), independiente de su `intensity`: el rango va de `ambient` (donde no
+ * llega ninguna luz, y que debe coincidir con lo oscuro que la RT pinta el
+ * suelo) hasta 1 (a pleno foco). Esa independencia es deliberada y es el fix de
+ * la ronda 1 de playtest de 12d.5 — ver `LIGHT_CLEAR_ALPHA_FLOOR`.
+ *
+ * Coste acotado por dos recortes: cada luz solo visita las celdas de su bounding
+ * box de radio, y solo prueba las aristas que cruzan esa misma caja (sin ese
+ * filtro, una nave con cientos de aristas haría un raycast completo por celda y
+ * por luz).
  */
 export function computeLightLevelGrid(input: LightLevelGridInput): LightLevelGrid {
   const { lights, edges, gridWidth, gridHeight, cellSize } = input;
@@ -83,7 +107,6 @@ export function computeLightLevelGrid(input: LightLevelGridInput): LightLevelGri
   for (const light of lights) {
     if (light.radius <= 0 || light.intensity <= 0) continue;
     const nearbyEdges = edgesNear(edges, light);
-    const clearAlpha = Math.min(1, Math.max(LIGHT_CLEAR_ALPHA_FLOOR, light.intensity));
 
     const minCellX = Math.max(0, Math.floor((light.x - light.radius) / cellSize));
     const maxCellX = Math.min(gridWidth - 1, Math.floor((light.x + light.radius) / cellSize));
@@ -97,7 +120,7 @@ export function computeLightLevelGrid(input: LightLevelGridInput): LightLevelGri
         if (distance > light.radius) continue;
         if (isOccluded(light, target, distance, nearbyEdges)) continue;
 
-        const contribution = clearAlpha * falloff(distance / light.radius);
+        const contribution = falloff(distance / light.radius);
         const index = cy * gridWidth + cx;
         if (contribution > best[index]!) best[index] = contribution;
       }
