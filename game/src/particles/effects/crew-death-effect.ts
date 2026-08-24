@@ -1,6 +1,6 @@
 import type { CrewDamageCause, CrewDamagedEvent, CrewDeathEvent } from "engine";
 
-import type { EventDrivenEffect, GridPosition } from "../particle-effect.types.js";
+import type { EventDrivenEffect, GridPosition, ObjectCreatedHook } from "../particle-effect.types.js";
 import {
   type EffectScene,
   spawnBurst,
@@ -38,7 +38,7 @@ import { RENDER_DEPTH } from "../../render/render-depths.js";
  * central + gotas menores integradas) y varias gotas pequeñas dispersas
  * alrededor que se desvanecen antes que el charco.
  */
-function bloodDecals(scene: EffectScene, px: number, py: number): void {
+function bloodDecals(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnDecal(
     scene,
     px,
@@ -46,6 +46,7 @@ function bloodDecals(scene: EffectScene, px: number, py: number): void {
     BLOOD_POOL_TEXTURE,
     { radiusPx: 16, tint: 0x7a0f0f, alpha: 0.65, growMs: 250, holdMs: 9000, fadeMs: 6000 },
     RENDER_DEPTH.bloodDecal,
+    onCreated,
   );
   const dropletCount = 5;
   for (let i = 0; i < dropletCount; i += 1) {
@@ -66,12 +67,13 @@ function bloodDecals(scene: EffectScene, px: number, py: number): void {
         fadeMs: 2500,
       },
       RENDER_DEPTH.bloodDecal,
+      onCreated,
     );
   }
 }
 
 /** Salpicado de sangre en el aire (fuego/explosión/impacto cinético letal) — capa añadida sobre el burst base. */
-function goreSplatter(scene: EffectScene, px: number, py: number): void {
+function goreSplatter(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -87,12 +89,13 @@ function goreSplatter(scene: EffectScene, px: number, py: number): void {
     },
     500,
     BLOOD_TEXTURES,
+    onCreated,
   );
-  bloodDecals(scene, px, py);
+  bloodDecals(scene, px, py, onCreated);
 }
 
 /** Fragmentación en astillas de hielo (congelación letal) — sigue a la cristalización azulada. */
-function frozenShatter(scene: EffectScene, px: number, py: number): void {
+function frozenShatter(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -108,6 +111,7 @@ function frozenShatter(scene: EffectScene, px: number, py: number): void {
     },
     900,
     CIRCLE_TEXTURES,
+    onCreated,
   );
   spawnBurst(
     scene,
@@ -124,11 +128,12 @@ function frozenShatter(scene: EffectScene, px: number, py: number): void {
     },
     500,
     CIRCLE_TEXTURES,
+    onCreated,
   );
 }
 
 /** Disolución progresiva del sprite completo (corrosión letal), distinta de las picaduras de `structural-degraded-effect.ts`. */
-function fullBodyDissolve(scene: EffectScene, px: number, py: number): void {
+function fullBodyDissolve(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -147,11 +152,12 @@ function fullBodyDissolve(scene: EffectScene, px: number, py: number): void {
     },
     1100,
     SMOKE_TEXTURES,
+    onCreated,
   );
 }
 
 /** Colapso rígido (electrocución letal), tras el arco eléctrico — caída sin control, sin animación de salto. */
-function rigidCollapse(scene: EffectScene, px: number, py: number): void {
+function rigidCollapse(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -167,6 +173,7 @@ function rigidCollapse(scene: EffectScene, px: number, py: number): void {
     },
     250,
     SPARK_TEXTURES,
+    onCreated,
   );
   spawnBurst(
     scene,
@@ -183,6 +190,7 @@ function rigidCollapse(scene: EffectScene, px: number, py: number): void {
     },
     400,
     SMOKE_TEXTURES,
+    onCreated,
   );
 }
 
@@ -195,7 +203,7 @@ function rigidCollapse(scene: EffectScene, px: number, py: number): void {
  * arquetipo/arma (cuerpo a cuerpo vs. a distancia) queda para Fase 11d.3
  * cuando exista el enemigo visible en pantalla.
  */
-function weaponStrike(scene: EffectScene, px: number, py: number): void {
+function weaponStrike(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -211,11 +219,12 @@ function weaponStrike(scene: EffectScene, px: number, py: number): void {
     },
     300,
     SPARK_TEXTURES,
+    onCreated,
   );
-  bloodDecals(scene, px, py);
+  bloodDecals(scene, px, py, onCreated);
 }
 
-const DEATH_VARIANT_BY_CAUSE: Readonly<Record<CrewDamageCause, (scene: EffectScene, px: number, py: number) => void>> = {
+const DEATH_VARIANT_BY_CAUSE: Readonly<Record<CrewDamageCause, (scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook) => void>> = {
   fire: goreSplatter,
   explosion: goreSplatter,
   "kinetic-impact": goreSplatter,
@@ -227,18 +236,18 @@ const DEATH_VARIANT_BY_CAUSE: Readonly<Record<CrewDamageCause, (scene: EffectSce
 
 export const crewDeathEffect: EventDrivenEffect<"crew-death"> = {
   kind: "crew-death",
-  trigger(scene, position: GridPosition, event: CrewDeathEvent): void {
+  trigger(scene, position: GridPosition, event: CrewDeathEvent, options): void {
     const { px, py } = toPixel(position);
     // Capa base: mismo burst rojo corto que ya usan combustión/impacto/etc. para "daño a tripulante".
-    crewDamageFlash(scene, px, py, 16);
-    DEATH_VARIANT_BY_CAUSE[event.cause](scene, px, py);
+    crewDamageFlash(scene, px, py, 16, options?.onObjectCreated);
+    DEATH_VARIANT_BY_CAUSE[event.cause](scene, px, py, options?.onObjectCreated);
   },
 };
 
 export const crewDamagedEffect: EventDrivenEffect<"crew-damaged"> = {
   kind: "crew-damaged",
-  trigger(scene, position: GridPosition, event: CrewDamagedEvent): void {
+  trigger(scene, position: GridPosition, event: CrewDamagedEvent, options): void {
     const { px, py } = toPixel(position);
-    crewDamageFlash(scene, px, py, event.hpLost > 0 ? 12 : 8);
+    crewDamageFlash(scene, px, py, event.hpLost > 0 ? 12 : 8, options?.onObjectCreated);
   },
 };

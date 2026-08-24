@@ -124,13 +124,19 @@
 15. la UI de capas no es muy visualmente atractiva. Creo que preferiría tener nos iconos en el mapa mismo, como google maps, algo que sea solamente un icono representando lo que muesra con un tooltip. de esa forma se reduce el uso de botones, y se dejan más a mano. podrían estos botones estar dentro de una tira de herramientas relacionadas con el mapa (por ahora solo botones de capa) y con la capacidad de minimizar/ocultar esta tira así incluso no sacan espacio visual si el jugador no las necesita.
    → **Subfase 14d, Bloque 2**, junto con Obs 12 y el fine-tunning de capas (un solo ciclo de preguntas).
 
-16. los sprites de los componentes no se ven afectados por la luz/sombra de las secciones, parecen ser renderizados arriba de la capa de luces.
+16. ✅ RESUELTO (Fase 12d.5, 2026-08-24). los sprites de los componentes no se ven afectados por la luz/sombra de las secciones, parecen ser renderizados arriba de la capa de luces.
    → **Subfase 12d** (sombras dinámicas, ciclo de preguntas ya pendiente). **Corrección del diagnóstico
    original, verificada en el triaje:** es al revés. Las sombras están bien
    (`RENDER_DEPTH.dynamicShadows` = 1.7 < `objects` = 2), pero **todos los `PointLight` se registran a
    `RENDER_DEPTH.effect` = 7** (`registerLight`, `floorplan-scene.ts`) — por encima de paredes (5) y sprites (2).
    La luz aditiva se pinta sobre todo, y eso es lo que se lee como "el sprite no recibe luz". No se parchea el
    depth suelto porque la decisión de 12d (seguir con `PointLight` vs. migrar a `scene.lights`) cambia la respuesta.
+   **Resuelto sin migrar a `scene.lights`** (decisión del operador: Light2D reemplazaría todo lo entregado en
+   12a/12d y convive mal con el post-pipeline CRT de 12c.8). Dos mitades: las luces de ambientación bajan al
+   depth nuevo `RENDER_DEPTH.dynamicLight` (1.8) y dejan de lavar sprites y paredes; y el brillo del sprite pasa
+   a resolverse por TINTE, con el nivel de luz por celda que calcula `game/src/render/shadows/light-grid.ts`
+   (misma geometría de oclusión que la RT de sombras). Tripulación y enemigos llevan piso de brillo
+   (`MIN_ACTOR_LIGHT_LEVEL`) para no volverse inclickeables en una sala oscura.
 
 17. El puntero del mouse debería estar con la misma imagen que se pone sobre los botones en su estado default. Ahora mismo, salta abruptamente entre el puntero del sistema y el puntero de los botones.
    → **Subfase 14d, Bloque 2.** No es obra nueva: `game/src/ui/custom-cursor.ts` existe desde 12c pero solo está
@@ -482,6 +488,15 @@ dónde, y qué costaría arreglarlo.
     Detalle completo: `changelog.log` (2026-08-04).
     → El residual del `LightHook` pasa a la **Subfase 12d** (triaje 2026-08-21), junto con Obs 16: es el mismo
     dominio de depth/registro de luces y debe entrar al mismo ciclo de preguntas.
+    → ✅ **RESUELTO en la Fase 12d.5 (2026-08-24).** La razón por la que se había descartado en 13a ("exigiría
+    extender la firma de `EventDrivenEffect.trigger` para los ~10 efectos ya registrados") **había dejado de
+    ser cierta**: 13e ronda 4 agregó `EventEffectOptions.onObjectCreated` justo para esto. Al auditarlo se vio
+    que el problema era más ancho que la combustión: de los 15 efectos del registro **solo `salvage-hazard`
+    propagaba el hook**, o sea que los otros 14 tenían el mismo bug de doble-cámara latente. Ahora
+    `spawnBurst`/`spawnDecal` aceptan un `ObjectCreatedHook`, todos los efectos lo propagan, y
+    `floorplan-scene.ts` lo pasa en todos los `fireEventEffect` con un único `worldEffectOptions`. De paso, la
+    luz de un burst entra al sistema de sombras (`registerBurstLight`): antes el fogonazo de un incendio no
+    iluminaba nada.
     **Ampliado en Fase 12b**: el mismo hueco existe para `HazardEvent` (`toxic-threshold`/`corrosive-exposure`,
     umbral de exposición atmosférica a tripulante) — tampoco tiene llamador real en `floorplan-scene.ts`, solo
     se demuestra en `particle-gallery-scene.ts`. El sonido de corrosión (`game/src/audio/effects/
@@ -656,3 +671,22 @@ dónde, y qué costaría arreglarlo.
     → **Fase 16** (triaje 2026-08-21): primera fase post-demo y primera que introduce cicatriz persistente,
     que es el contexto donde un desgaste cruzado tiene sentido. Los dos pares que tocan Estructura dependen
     además de que **13f** exista (vida por sección).
+
+35. **La capa de objetos `luces` está autorada solo en `nave-exploracion`** (relevado al cerrar 12d.5,
+    2026-08-24). Mismo patrón que la deuda #14 con la capa `senal`: de los 4 arquetipos, solo
+    `nave-exploracion` tiene la capa (21 focos). Los otros 3 (`nave-guerra`, `nave-investigacion`,
+    `nave-medica`) no tienen siquiera tile layers `background`/`objects`/`walls` — o sea que no tienen arte
+    todavía, y autorar sus luces es parte del trabajo de arte de esos arquetipos, no de 12d. `loadAuthoredLights`
+    devuelve `[]` sin romper: esas naves se verían a oscuridad ambiente uniforme (sin focos, sin contraste de
+    sombra y con todos los sprites al mismo nivel de luz). Ruta esperada: capa de objetos `luces` con Points y
+    props `color`/`radius`/`intensity` en `engine/src/floorplan/maps/<arquetipo>.json`.
+
+36. **Las 21 luces autoradas de `nave-exploracion` tienen `intensity` por debajo del piso de aclarado**
+    (relevado al cerrar 12d.5, 2026-08-24). Los valores autorados van de 0.01 a 0.05, y tanto la RT de sombras
+    (`stampErase`) como el nivel de luz de los sprites aplican `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 como mínimo.
+    Consecuencia: **las 21 luces aclaran exactamente lo mismo**, y mover el valor de `intensity` en Tiled entre
+    0.01 y 0.3 no cambia nada — es un dial que hoy no se mueve (patrón 7 del checklist de playtest). No se
+    tocaron los datos del operador ni la constante, porque el piso de 0.3 es el comportamiento que él ya aprobó
+    visualmente en 12d.3/12d.4. Si en el smoke el contraste entre zona iluminada y zona oscura se lee flojo, hay
+    dos palancas independientes: subir las `intensity` autoradas (por foco) o bajar el piso (global, un solo
+    valor en `light-grid.ts`).

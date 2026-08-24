@@ -32,16 +32,22 @@ export type DomainEventOfKind<K extends DomainEvent["kind"]> = Extract<DomainEve
  * prohíbe. Opcional: quien no lo pasa se queda con el color por defecto del
  * efecto.
  */
+/**
+ * Registro de los objetos que un efecto crea, para que la escena les asigne
+ * cámara de mundo (13e ronda 4). Sin esto la `hudCamera` repinta el objeto SIN
+ * scroll y el jugador ve un duplicado fijo en pantalla en vez del fenómeno
+ * donde ocurrió (el "bug de doble-cámara" documentado en `floorplan-scene.ts`).
+ *
+ * Tipo con nombre propio (Fase 12d, cierre) para que `spawnBurst`/`spawnDecal`
+ * lo acepten y cada efecto lo propague pasándolo, en vez de repetir un
+ * `onObjectCreated?.(x)` por cada objeto que crea.
+ */
+export type ObjectCreatedHook = (obj: Phaser.GameObjects.GameObject) => void;
+
 export interface EventEffectOptions {
   readonly tint?: number;
-  /**
-   * Registro de los objetos que el efecto crea, para que la escena les asigne
-   * cámara de mundo (13e ronda 4). `fireEventEffect` es el camino genérico que
-   * NO asignaba cámara — el "bug de doble-cámara" documentado en
-   * `floorplan-scene.ts`: sin esto la `hudCamera` repinta el efecto sin scroll y
-   * el jugador no lo ve donde ocurrió.
-   */
-  readonly onObjectCreated?: (obj: Phaser.GameObjects.GameObject) => void;
+  /** Ver `ObjectCreatedHook`. `fireEventEffect` es el camino genérico que no asignaba cámara. */
+  readonly onObjectCreated?: ObjectCreatedHook;
 }
 
 export interface EventDrivenEffect<K extends DomainEvent["kind"] = DomainEvent["kind"]> {

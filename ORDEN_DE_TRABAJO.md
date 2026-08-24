@@ -2605,7 +2605,7 @@ Riesgo anotado a vigilar en playtest: posible costura de barrel en la frontera d
 Razón: feedback del operador para hacer legible la lectura de componentes sin perder la estética retro, y proteger a
 jugadores fotosensibles.
 
-### Fase 12d — Sombras Dinámicas 🚧 (en curso, 2026-07-30)
+### Fase 12d — Sombras Dinámicas ✅ (2026-08-24)
 
 Ciclo de preguntas de 12d resuelto con el operador: técnica **raycast/oclusión real**; casters = componentes
 colocados + objetos de la capa Tiled `objects` + tripulación/enemigos; fuentes = luces dinámicas de 12a +
@@ -2639,8 +2639,41 @@ luz ambiental global. Plan phaseado 12d.1→12d.4 en `~/.claude/plans/revisa-12d
   bumpea cuando los oclusores de verdad cambian → en reposo el redraw es solo re-erase), culling por viewport, y
   short-circuit con el slider en 0. Falta smoke del operador.
 
-**Cierre Fase 12d:** código completo (12d.1–12d.4 + iteración post-playtest). Pendiente de cierre total: que el
-operador autore la capa `luces` en los 4 arquetipos y corra el smoke visual final.
+- **12d.5 — La luz llega a los sprites ✅ (2026-08-24), cierre de la subfase:** recoge los dos residuales que el
+  triaje del 2026-08-21 asignó a 12d.
+  - **Obs 16 — "los sprites no se ven afectados por la luz/sombra".** El diagnóstico original ("se renderizan
+    encima de la capa de luces") era al revés: la RT de sombras está bien (1.7, debajo de todo), pero **todas
+    las `PointLight` se registraban a `RENDER_DEPTH.effect` = 7**, encima de paredes (5) y sprites (2). Neto:
+    los sprites nunca se oscurecían (la sombra pasa por debajo) ni se iluminaban (el aditivo los lavaba) —
+    brillo plano constante. **Resuelto en dos mitades:** depth nuevo `dynamicLight` = 1.8 (luz de ambientación
+    sobre el SUELO, mismo criterio que la sombra; el fogonazo de un burst se queda en `effect` vía
+    `registerBurstLight`), y el brillo del sprite pasa a resolverse por TINTE —
+    `render/shadows/light-grid.ts` (nivel de luz 0..1 por celda, puro) + `light-shading.ts` (`shade`,
+    `MIN_ACTOR_LIGHT_LEVEL`) + `applyLightShading` en la escena. Tripulación y enemigos con piso de brillo
+    legible (decisión del operador): se oscurecen, nunca desaparecen.
+  - **Un solo punto de escritura de tinte** (`baseTints`, `WeakMap`): `setTint` ya lo disputaban el tinte por
+    `condition`, el estado del LED, el resaltado del modo de trasvase y el color de personaje. Todos escriben
+    ahora el tinte BASE y solo `applyLightShading` pinta el color final = base × luz. Sin esto el trasvase
+    quedaba invisible (se lo comía el frame siguiente) y cada camino guardaba como "original" un valor ya
+    sombreado.
+  - **La grilla usa solo oclusores ESTÁTICOS**, y no por costo: los casters móviles SON las cosas que se tintan
+    (cada componente y cada token aporta su caja), así que incluirlos hacía que todo se ocluyera a sí mismo y
+    se leyera "en sombra" siempre. Encontrado auto-revisando el propio cambio, antes del playtest.
+  - **Deuda #16 residual — `combustion-effect.ts` sin `LightHook`.** Se había descartado en 13a por "exigiría
+    extender la firma de `EventDrivenEffect.trigger`"; ya no era cierto: 13e ronda 4 agregó
+    `EventEffectOptions.onObjectCreated`. Auditados los 15 efectos del registro: **solo `salvage-hazard` lo
+    propagaba**, el resto tenía el mismo bug de doble-cámara latente. Ahora lo propagan todos
+    (`spawnBurst`/`spawnDecal` aceptan el hook) y la escena lo pasa en todos los `fireEventEffect` vía
+    `worldEffectOptions`. De paso, el fogonazo de un burst entra al sistema de sombras (antes iluminaba nada).
+  - **Perf medida, no supuesta:** un recompute completo con las dimensiones reales de `nave-exploracion`
+    (40×22, 148 aristas, 21 luces) = **0.49 ms**, y con cache por firma no corre todos los frames.
+
+**Cierre Fase 12d:** código completo (12d.1–12d.5 + iteración post-playtest). Cierra con `nave-exploracion`,
+el único arquetipo con arte y con la capa `luces` autorada (21 focos) — los otros 3 mapas no tienen ni tile
+layers, así que autorar sus luces es trabajo del arte de esos arquetipos y queda registrado en
+`PENDIENTES_OBSERVACIONES.md`, no bloquea 12d. Suite: `/engine` 886 tests, `/game` 40 → **60** (20 nuevos de
+`light-grid` y `light-shading`); `tsc --noEmit` y `eslint` limpios, `vite build` OK. Pendiente: smoke visual
+del operador.
 
 ### Fase 12f — Fixes de Playtest de 12d ✅ (2026-08-03)
 

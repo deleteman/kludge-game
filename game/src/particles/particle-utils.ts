@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { GRID_CELL_SIZE_PX } from "engine";
 
-import type { GridPosition } from "./particle-effect.types.js";
+import type { GridPosition, ObjectCreatedHook } from "./particle-effect.types.js";
 import { PARTICLE_TEXTURE_SIZE_PX } from "./particle-texture-registry.js";
 
 /**
@@ -44,12 +44,14 @@ export function spawnBurst(
   config: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig,
   lifespanMs: number,
   texture: string | readonly string[] = "__WHITE",
+  onCreated?: ObjectCreatedHook,
 ): Phaser.GameObjects.Particles.ParticleEmitter {
   const emitter = scene.add.particles(px, py, pickTexture(texture), config);
   scene.time.delayedCall(lifespanMs, () => {
     emitter.stop();
     scene.time.delayedCall(lifespanMs, () => emitter.destroy());
   });
+  onCreated?.(emitter);
   return emitter;
 }
 
@@ -98,6 +100,7 @@ export function spawnDecal(
   texture: string,
   config: DecalConfig,
   depth: number,
+  onCreated?: ObjectCreatedHook,
 ): Phaser.GameObjects.Image {
   const targetScale = (config.radiusPx * 2) / PARTICLE_TEXTURE_SIZE_PX;
   const decal = scene.add
@@ -125,5 +128,6 @@ export function spawnDecal(
       });
     },
   });
+  onCreated?.(decal);
   return decal;
 }

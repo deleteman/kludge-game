@@ -7,7 +7,7 @@ import { CIRCLE_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js
 /** Neutralización química (GDD 5.3/11.1): efervescencia (burbujas) + vapor, duración ligada al pico de calor liberado. */
 export const neutralizationEffect: EventDrivenEffect<"neutralization"> = {
   kind: "neutralization",
-  trigger(scene, position: GridPosition, event: NeutralizationEvent): void {
+  trigger(scene, position: GridPosition, event: NeutralizationEvent, options): void {
     const { px, py } = toPixel(position);
     const durationMs = event.heatDurationSeconds * 1000;
 
@@ -27,6 +27,7 @@ export const neutralizationEffect: EventDrivenEffect<"neutralization"> = {
       },
       Math.min(durationMs, 900),
       CIRCLE_TEXTURES,
+      options?.onObjectCreated,
     );
 
     spawnBurst(
@@ -47,6 +48,7 @@ export const neutralizationEffect: EventDrivenEffect<"neutralization"> = {
       },
       durationMs,
       SMOKE_TEXTURES,
+      options?.onObjectCreated,
     );
   },
 };

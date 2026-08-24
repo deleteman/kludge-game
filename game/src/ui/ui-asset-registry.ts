@@ -1,4 +1,4 @@
-import buttonLargeUrl from "../../assets/sprites/ui/ui-components/Grey/Default/button_square_header_large_rectangle.png?url";
+import buttonLargeUrl from "../../assets/sprites/ui/ui-components/Grey/Default/button_square_header_small_rectangle.png?url";
 import buttonLargeSquareUrl from "../../assets/sprites/ui/ui-components/Grey/Default/button_square_header_large_square.png?url";
 import panelRectangleUrl from "../../assets/sprites/ui/ui-components/Extra/Default/panel_rectangle.png?url";
 import barRoundSmallUrl from "../../assets/sprites/ui/ui-components/Blue/Default/bar_round_small.png?url";

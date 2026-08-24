@@ -1,6 +1,6 @@
 import type { FailureMode, OverloadEvent, ResourceType } from "engine";
 
-import type { EventDrivenEffect, GridPosition } from "../particle-effect.types.js";
+import type { EventDrivenEffect, GridPosition, ObjectCreatedHook } from "../particle-effect.types.js";
 import {
   type EffectScene,
   spawnBurst,
@@ -26,7 +26,13 @@ const SPARK_COLOR_BY_RESOURCE: Readonly<Record<ResourceType, number>> = {
   T: 0xd97a2e,
 };
 
-function sparkBurst(scene: EffectScene, px: number, py: number, event: OverloadEvent): void {
+function sparkBurst(
+  scene: EffectScene,
+  px: number,
+  py: number,
+  event: OverloadEvent,
+  onCreated?: ObjectCreatedHook,
+): void {
   const intensity = Math.min(event.load / event.capacity, 3);
   spawnBurst(
     scene,
@@ -44,10 +50,11 @@ function sparkBurst(scene: EffectScene, px: number, py: number, event: OverloadE
     },
     300,
     SPARK_TEXTURES,
+    onCreated,
   );
 }
 
-function fireFlash(scene: EffectScene, px: number, py: number): void {
+function fireFlash(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -65,11 +72,12 @@ function fireFlash(scene: EffectScene, px: number, py: number): void {
     },
     500,
     FLAME_TEXTURES,
+    onCreated,
   );
-  scorchDecal(scene, px, py, 10);
+  scorchDecal(scene, px, py, 10, onCreated);
 }
 
-function explosionBurst(scene: EffectScene, px: number, py: number): void {
+function explosionBurst(scene: EffectScene, px: number, py: number, onCreated?: ObjectCreatedHook): void {
   spawnBurst(
     scene,
     px,
@@ -85,6 +93,7 @@ function explosionBurst(scene: EffectScene, px: number, py: number): void {
     },
     600,
     FIRE_TEXTURES,
+    onCreated,
   );
   spawnBurst(
     scene,
@@ -101,12 +110,19 @@ function explosionBurst(scene: EffectScene, px: number, py: number): void {
     },
     900,
     FIRE_TEXTURES,
+    onCreated,
   );
-  scorchDecal(scene, px, py, 16);
+  scorchDecal(scene, px, py, 16, onCreated);
 }
 
 /** Marca de quemadura persistente (GDD 6.8: reutilizada también por `crew-death-effect.ts`). */
-function scorchDecal(scene: EffectScene, px: number, py: number, radiusPx: number): void {
+function scorchDecal(
+  scene: EffectScene,
+  px: number,
+  py: number,
+  radiusPx: number,
+  onCreated?: ObjectCreatedHook,
+): void {
   spawnDecal(
     scene,
     px,
@@ -114,21 +130,25 @@ function scorchDecal(scene: EffectScene, px: number, py: number, radiusPx: numbe
     SCORCH_TEXTURE,
     { radiusPx, tint: 0x2a2016, alpha: 0.6, growMs: 200, holdMs: 6000, fadeMs: 4000 },
     RENDER_DEPTH.bloodDecal,
+    onCreated,
   );
 }
 
 const HANDLER_BY_MODE: Readonly<
-  Record<FailureMode, (scene: EffectScene, px: number, py: number, event: OverloadEvent) => void>
+  Record<
+    FailureMode,
+    (scene: EffectScene, px: number, py: number, event: OverloadEvent, onCreated?: ObjectCreatedHook) => void
+  >
 > = {
-  cut: (scene, px, py, event) => sparkBurst(scene, px, py, event),
-  fire: (scene, px, py) => fireFlash(scene, px, py),
-  explosion: (scene, px, py) => explosionBurst(scene, px, py),
+  cut: (scene, px, py, event, onCreated) => sparkBurst(scene, px, py, event, onCreated),
+  fire: (scene, px, py, _event, onCreated) => fireFlash(scene, px, py, onCreated),
+  explosion: (scene, px, py, _event, onCreated) => explosionBurst(scene, px, py, onCreated),
 };
 
 export const overloadEffect: EventDrivenEffect<"overload"> = {
   kind: "overload",
-  trigger(scene, position: GridPosition, event: OverloadEvent): void {
+  trigger(scene, position: GridPosition, event: OverloadEvent, options): void {
     const { px, py } = toPixel(position);
-    HANDLER_BY_MODE[event.failureMode](scene, px, py, event);
+    HANDLER_BY_MODE[event.failureMode](scene, px, py, event, options?.onObjectCreated);
   },
 };

@@ -25,7 +25,7 @@ const WAKE_INTENSITY_BY_VELOCITY: Readonly<Record<VelocityLevel, number>> = {
 
 export const magneticAccelerationEffect: EventDrivenEffect<"magnetic-acceleration"> = {
   kind: "magnetic-acceleration",
-  trigger(scene, position: GridPosition, event: MagneticAccelerationEvent): void {
+  trigger(scene, position: GridPosition, event: MagneticAccelerationEvent, options): void {
     const quantity = WAKE_INTENSITY_BY_VELOCITY[event.velocity];
     if (quantity === 0) return; // Sin estela si la velocidad es baja/reposo (documento §4).
     const { px, py } = toPixel(position);
@@ -46,6 +46,7 @@ export const magneticAccelerationEffect: EventDrivenEffect<"magnetic-acceleratio
       },
       300,
       TRACE_TEXTURE,
+      options?.onObjectCreated,
     );
   },
 };
@@ -58,7 +59,7 @@ const IMPACT_QUANTITY_BY_SEVERITY: Readonly<Record<KineticDamageSeverity, number
 
 export const kineticImpactEffect: EventDrivenEffect<"kinetic-impact"> = {
   kind: "kinetic-impact",
-  trigger(scene, position: GridPosition, event: KineticImpactEvent): void {
+  trigger(scene, position: GridPosition, event: KineticImpactEvent, options): void {
     const { px, py } = toPixel(position);
     // Burst direccional (en la trayectoria del proyectil), no radial —
     // distingue el impacto cinético de una explosión (documento §4).
@@ -78,10 +79,11 @@ export const kineticImpactEffect: EventDrivenEffect<"kinetic-impact"> = {
       },
       400,
       FIRE_TEXTURES,
+      options?.onObjectCreated,
     );
     if (event.severity === "high") {
       scene.cameras.main.shake(180, 0.006);
-      crewDamageFlash(scene, px, py, 10);
+      crewDamageFlash(scene, px, py, 10, options?.onObjectCreated);
     }
   },
 };

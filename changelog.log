@@ -4479,3 +4479,98 @@ abierto). Sin cambios en `MAPA_DEL_CODIGO.md`: no se tocó ningún módulo.
 Razón: el archivo de pendientes mezclaba resueltos con abiertos sin fase, y varios de los abiertos (un crash
 al doble-encolar, clicks que atraviesan la UI, retratos en grises) bloquearían la demo de la Fase 15 sin que
 nada en el plan los reclamara.
+
+================================================================================
+2026-08-24 — Fase 12d.5: la luz llega a los sprites (CIERRE de la Subfase 12d)
+================================================================================
+
+QUÉ: los dos residuales que el triaje del 2026-08-21 asignó a 12d, la única subsección de la Fase 12 que
+seguía abierta. Código de 12d.1-12d.4 ya estaba completo.
+
+--- Obs 16: "los sprites de los componentes no se ven afectados por la luz/sombra de las secciones" ---
+
+DIAGNÓSTICO. El síntoma del operador era correcto; la causa que infería ("se renderizan arriba de la capa de
+luces"), invertida. La RT de sombras está bien (`dynamicShadows` = 1.7, por debajo de objects/crew/walls: solo
+oscurece el SUELO, criterio de sombra top-down). El problema es que TODAS las `PointLight` se registraban a
+`RENDER_DEPTH.effect` = 7, encima de paredes (5) y sprites (2). Neto: un sprite nunca se oscurecía (la sombra
+le pasa por debajo) ni se iluminaba (el aditivo lo lavaba) — brillo plano constante, "pegado encima" del mapa.
+
+DECISIÓN DEL OPERADOR (ciclo de preguntas previo al plan): NO migrar a `scene.lights`/Light2D — reemplazaría
+todo lo entregado en 12a/12d, exige `setPipeline` en tile layers y sprites, y convive mal con el post-pipeline
+CRT de 12c.8. En su lugar, dos mitades:
+
+1. Depth nuevo `RENDER_DEPTH.dynamicLight` = 1.8 (entre sombras y objetos). La luz de AMBIENTACIÓN (focos
+   autorados, LED, chispas de conductor sobrecargado) actúa sobre el plano del suelo, igual que la sombra.
+   El fogonazo de un BURST se queda en `effect` (`registerBurstLight`): bajarlo dejaría el destello detrás de
+   su propia llama.
+2. El brillo del sprite pasa a resolverse por TINTE:
+   - `render/shadows/light-grid.ts` (nuevo, puro): nivel de luz 0..1 por celda. Reusa
+     `raySegmentIntersection` de `visibility-polygon.ts` — la MISMA geometría que dibuja la RT, para que un
+     sprite no pueda quedar brillante dentro de una sombra dibujada (patrón 1: la UI no miente).
+   - `render/shadows/light-shading.ts` (nuevo, puro): `shade(color, level)`, `actorLightLevel` con
+     `MIN_ACTOR_LIGHT_LEVEL` = 0.45.
+   - `applyLightShading()` en `floorplan-scene.ts`, por frame junto al `redraw()` de sombras.
+   Tripulación y enemigos se oscurecen CON piso de brillo (decisión del operador): nunca hasta desaparecer o
+   volverse inclickeables. Componentes sin piso. Las affordances de UI sobre el mapa (hover, anillos de
+   selección, marcador de problema) NO se sombrean: son chrome, no objetos del mundo.
+
+UN SOLO PUNTO DE ESCRITURA DE TINTE (`baseTints`, WeakMap). `setTint` ya era un recurso disputado: el tinte por
+`condition` del overlay, el estado ON/OFF del LED, el resaltado del modo de trasvase y el color de personaje
+de cada tripulante. Con el sombreado escribiendo por frame, cada uno de esos caminos habría leído como "color
+original" un valor ya sombreado. Concreto: el resaltado de trasvase guardaba `sprite.tintTopLeft` y habría ido
+oscureciéndose solo, y su `setTint` lo habría borrado el frame siguiente — el resaltado quedaba INVISIBLE.
+Ahora todos escriben la base (`setBaseTint`) y solo `applyLightShading` pinta el color final.
+
+DOS PROBLEMAS ENCONTRADOS AUTO-REVISANDO EL PROPIO CAMBIO, antes de cualquier ronda de playtest:
+ - La grilla no puede usar los oclusores DINÁMICOS. Cada componente y cada token aporta su propia caja a
+   `dynamicEdges`, así que el rayo luz→centro cruzaría su propio borde antes de llegar: TODO se habría leído
+   "en sombra", siempre — un indicador que nunca se mueve (patrón 7). Usa solo los estáticos (paredes ∪
+   objetos Tiled), que es además la pregunta correcta: "cuánta luz hay en esta celda de la sala".
+ - El parpadeo de las luces de cicatriz cambia `intensity` cada frame e invalidaría el cache 60 veces por
+   segundo. La intensidad va cuantizada a pasos de 0.1 para la grilla (no para la RT, que sigue parpadeando
+   suave), y la grilla se invalida con `staticOccludersVersion`, no con `occludersVersion` — así caminar un
+   tripulante no la invalida.
+
+PERF MEDIDA, NO SUPUESTA: benchmark descartable con las dimensiones reales de `nave-exploracion` (40×22
+celdas, 148 aristas, 21 luces) → **0.49 ms** un recompute COMPLETO, y con el cache no corre todos los frames.
+Presupuesto de frame: 16 ms.
+
+--- Deuda #16 residual: `combustion-effect.ts` no registraba su `PointLight` ---
+
+Se había descartado a propósito en 13a porque "exigiría extender la firma de `EventDrivenEffect.trigger` para
+los ~10 efectos ya registrados". Esa razón **había dejado de ser cierta**: 13e ronda 4 agregó
+`EventEffectOptions.onObjectCreated` justo para esto.
+
+Al auditarlo, el problema era más ancho que la combustión: de los 15 efectos del registro **solo
+`salvage-hazard-effect.ts` propagaba el hook**. Los otros 14 tenían el mismo bug de doble-cámara latente — el
+docblock de `handleCrewEvent` ya lo describía desde antes ("el `fireEventEffect` genérico, que no asignaba
+cámara y se veía como explosiones sueltas"). Resuelto de raíz:
+ - `ObjectCreatedHook` con nombre propio en `particle-effect.types.ts` (no repetido inline, patrón 12).
+ - `spawnBurst`/`spawnDecal` lo aceptan como último parámetro opcional, así cada efecto lo propaga pasándolo.
+ - Los 15 efectos lo propagan; `combustion-effect.ts` registra además su `PointLight`.
+ - `floorplan-scene.ts` lo pasa en TODOS los `fireEventEffect` con un único `worldEffectOptions`. El registro
+   fija depth `effect` a emisores, deja los decals en su propia capa (`bloodDecal`/`substanceSpill`: subirlos
+   los pondría encima de piezas y tripulación) y manda las luces a `registerBurstLight` — así el fogonazo de
+   un incendio ahora ILUMINA la sala y proyecta sombras, cosa que antes no hacía.
+ - `handleCrewEvent` deja de duplicar el depth + cámara a mano y usa el mismo registro.
+
+--- Alcance del cierre ---
+
+12d cierra con `nave-exploracion`, el único arquetipo con arte y con la capa `luces` autorada (21 focos).
+Los otros 3 mapas no tienen ni tile layers `background`/`objects`/`walls`: autorar sus luces es trabajo del
+arte de esos arquetipos. Registrado como pendiente #35, no como bloqueo de 12d.
+
+Relevado y registrado como #36: las 21 luces autoradas tienen `intensity` entre 0.01 y 0.05, todas por debajo
+del piso `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3, así que hoy aclaran exactamente lo mismo y ese dial no mueve nada.
+No se tocaron ni los datos del operador ni la constante: el piso de 0.3 es el comportamiento que él ya aprobó
+visualmente en 12d.3/12d.4.
+
+ARCHIVOS: nuevos `game/src/render/shadows/light-grid.ts` + `light-shading.ts` (+ sus tests); modificados
+`dynamic-shadows.ts`, `render-depths.ts`, `floorplan-scene.ts`, `particle-effect.types.ts`,
+`particle-utils.ts` y los 9 `particles/effects/*.ts` del registro.
+
+VERIFICACIÓN: `/engine` 886 tests y `/game` 40 → **60** (20 nuevos), todos verdes. `tsc --noEmit` limpio en
+ambos workspaces, `eslint` sin errores, `vite build` OK. Smoke visual del operador pendiente.
+
+Razón: cerrar la última subsección abierta de la Fase 12 antes de la demo, y hacerlo por la causa real y no
+por el síntoma reportado — la observación decía "los sprites se pintan sobre las luces" y era al revés.

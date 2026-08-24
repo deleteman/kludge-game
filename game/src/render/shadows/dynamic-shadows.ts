@@ -1,5 +1,10 @@
 import type Phaser from "phaser";
 
+import {
+  computeLightLevelGrid,
+  LIGHT_CLEAR_ALPHA_FLOOR,
+  type LightLevelGrid,
+} from "./light-grid.js";
 import { buildStaticOccluderEdges, type OccluderGrid } from "./occluder-edges.js";
 import { computeVisibilityPolygon, type Segment } from "./visibility-polygon.js";
 
@@ -70,7 +75,15 @@ export class DynamicShadowLayer {
    * optimización clave de 12d.4: en reposo el `redraw` es solo re-erase (barato).
    */
   private occludersVersion = 0;
+  /**
+   * Versión de los oclusores ESTÁTICOS solamente. La grilla de nivel de luz
+   * (`lightGrid`) se invalida con esta y no con `occludersVersion`, porque no
+   * usa los casters móviles — ver el docblock de `lightGrid`.
+   */
+  private staticOccludersVersion = 0;
   private readonly visibilityCache = new Map<Phaser.GameObjects.PointLight, CachedVisibility>();
+  /** Grilla de nivel de luz cacheada por firma — ver `lightGrid`. */
+  private lightGridCache?: { signature: string; grid: LightLevelGrid };
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -105,6 +118,7 @@ export class DynamicShadowLayer {
   setStaticOccluders(grid: OccluderGrid | undefined, cellSize: number): void {
     this.staticEdges = grid ? buildStaticOccluderEdges(grid, cellSize) : [];
     this.occludersVersion += 1;
+    this.staticOccludersVersion += 1;
   }
 
   /**
@@ -137,7 +151,7 @@ export class DynamicShadowLayer {
     this.rt.fill(this.options.darknessColor, darknessAlpha);
     if (this.lights.size === 0) return;
 
-    const edges = this.dynamicEdges.length > 0 ? [...this.staticEdges, ...this.dynamicEdges] : this.staticEdges;
+    const edges = this.currentEdges();
     // Culling por viewport: una luz cuyo círculo no toca lo visible no puede
     // aclarar ningún píxel en pantalla — se saltea su raycast + erase.
     const view = this.scene.cameras.main.worldView;
@@ -147,9 +161,80 @@ export class DynamicShadowLayer {
       const polygon = this.visibilityFor(light, edges);
       // El clear escala con la intensidad de la luz (parpadeo) para que la
       // sombra lata con ella, con un piso para que una luz tenue despeje algo.
-      const clearAlpha = Math.max(0.3, Math.min(1, light.intensity));
+      const clearAlpha = Math.max(LIGHT_CLEAR_ALPHA_FLOOR, Math.min(1, light.intensity));
       this.stampErase(polygon, clearAlpha);
     }
+  }
+
+  /**
+   * Nivel de luz por celda (0..1) con la misma geometría de oclusión que la RT
+   * — la fuente del tinte con que `floorplan-scene.ts` oscurece los sprites
+   * (Fase 12d, cierre / Obs 16). Vive acá y no en la escena porque
+   * las luces y los oclusores ya están enumerados en esta capa, y así el
+   * `occludersVersion` invalida las dos cosas a la vez.
+   *
+   * El ambiente sale del MISMO `darknessAlpha × intensity` que pinta la RT: con
+   * el slider de Opciones en 0 el ambiente es 1 y los sprites vuelven a brillo
+   * pleno en el acto, sin caso especial.
+   *
+   * SOLO usa los oclusores ESTÁTICOS (paredes ∪ objetos Tiled), nunca los
+   * móviles, y la razón no es de costo: los oclusores móviles SON justamente
+   * las cosas que se van a tintar. Cada componente y cada token aportan su
+   * propia caja a `dynamicEdges`, así que el rayo luz→centro cruzaría su propio
+   * borde antes de llegar y TODO se leería como "en sombra", siempre — un
+   * indicador que nunca se mueve. La pregunta que responde esta grilla es
+   * "cuánta luz hay en esta celda de la sala", y eso lo definen las paredes.
+   *
+   * Cacheado por firma (versión de oclusores ESTÁTICOS + estado de cada luz +
+   * ambiente). Como los casters móviles no entran, caminar un tripulante no
+   * invalida nada: en una sala con luces fijas el cache acierta siempre.
+   */
+  lightGrid(gridWidth: number, gridHeight: number, cellSize: number): LightLevelGrid {
+    this.pruneDeadLights();
+    const ambient = Math.min(1, Math.max(0, 1 - this.options.darknessAlpha * this.intensity));
+    const signature = this.lightGridSignature(gridWidth, gridHeight, cellSize, ambient);
+    if (this.lightGridCache?.signature === signature) return this.lightGridCache.grid;
+
+    const grid = computeLightLevelGrid({
+      lights: [...this.lights].map((light) => ({
+        x: light.x,
+        y: light.y,
+        radius: light.radius,
+        intensity: quantizeIntensity(light.intensity),
+      })),
+      edges: this.staticEdges,
+      gridWidth,
+      gridHeight,
+      cellSize,
+      ambient,
+    });
+    this.lightGridCache = { signature, grid };
+    return grid;
+  }
+
+  /** Firma del estado que puede cambiar la grilla de luz. Cambia ⇒ hay que recalcular. */
+  private lightGridSignature(
+    gridWidth: number,
+    gridHeight: number,
+    cellSize: number,
+    ambient: number,
+  ): string {
+    const parts = [
+      `${this.staticOccludersVersion}|${gridWidth}x${gridHeight}@${cellSize}|${ambient.toFixed(3)}`,
+    ];
+    for (const light of this.lights) {
+      // La intensidad va CUANTIZADA (y así se usa también al calcular): las
+      // luces de cicatriz parpadean cada frame, y sin esto el parpadeo
+      // invalidaría el cache 60 veces por segundo para un cambio de tinte
+      // imperceptible.
+      parts.push(`${light.x};${light.y};${light.radius};${quantizeIntensity(light.intensity)}`);
+    }
+    return parts.join("/");
+  }
+
+  /** Oclusores vigentes (estáticos ∪ móviles). */
+  private currentEdges(): readonly Segment[] {
+    return this.dynamicEdges.length > 0 ? [...this.staticEdges, ...this.dynamicEdges] : this.staticEdges;
   }
 
   /** Polígono de visibilidad de la luz, reusado del cache si nada se movió. */
@@ -217,7 +302,17 @@ export class DynamicShadowLayer {
     this.scratch.destroy();
     this.lights.clear();
     this.visibilityCache.clear();
+    this.lightGridCache = undefined;
   }
+}
+
+/**
+ * Redondeo de la intensidad de una luz a pasos de 0.1, para el nivel de luz de
+ * los SPRITES (no para la RT de sombras, que sí parpadea suave). Ver la nota de
+ * cache en `lightGridSignature`.
+ */
+function quantizeIntensity(intensity: number): number {
+  return Math.round(intensity * 10) / 10;
 }
 
 /** ¿Dos listas de segmentos son idénticas (mismo orden y coords)? */

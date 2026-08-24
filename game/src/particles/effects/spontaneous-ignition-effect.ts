@@ -10,7 +10,7 @@ import { FLARE_TEXTURE } from "../particle-texture-registry.js";
  */
 export const spontaneousIgnitionEffect: EventDrivenEffect<"spontaneous-ignition"> = {
   kind: "spontaneous-ignition",
-  trigger(scene, position: GridPosition): void {
+  trigger(scene, position: GridPosition, _event, options): void {
     const { px, py } = toPixel(position);
     spawnBurst(
       scene,
@@ -27,6 +27,7 @@ export const spontaneousIgnitionEffect: EventDrivenEffect<"spontaneous-ignition"
       },
       250,
       FLARE_TEXTURE,
+      options?.onObjectCreated,
     );
   },
 };

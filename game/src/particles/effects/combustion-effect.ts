@@ -1,6 +1,6 @@
 import type { CombustionEvent, CombustionIntensity, CombustionRadius } from "engine";
 
-import type { EventDrivenEffect, GridPosition } from "../particle-effect.types.js";
+import type { EventDrivenEffect, GridPosition, ObjectCreatedHook } from "../particle-effect.types.js";
 import {
   CELL,
   type EffectScene,
@@ -48,6 +48,7 @@ export function crewDamageFlash(
   px: number,
   py: number,
   radiusPx: number,
+  onCreated?: ObjectCreatedHook,
 ): void {
   spawnBurst(
     scene,
@@ -64,12 +65,13 @@ export function crewDamageFlash(
     },
     350,
     BLOOD_TEXTURES,
+    onCreated,
   );
 }
 
 export const combustionEffect: EventDrivenEffect<"combustion"> = {
   kind: "combustion",
-  trigger(scene, position: GridPosition, event: CombustionEvent): void {
+  trigger(scene, position: GridPosition, event: CombustionEvent, options): void {
     const { px, py } = toPixel(position);
     const emitRadius = EMIT_RADIUS_PX[event.radius];
     const duration = FLAME_DURATION_MS[event.intensity];
@@ -91,6 +93,7 @@ export const combustionEffect: EventDrivenEffect<"combustion"> = {
       },
       duration,
       FLAME_TEXTURES,
+      options?.onObjectCreated,
     );
 
     spawnBurst(
@@ -111,8 +114,13 @@ export const combustionEffect: EventDrivenEffect<"combustion"> = {
       },
       duration * 1.5,
       SMOKE_TEXTURES,
+      options?.onObjectCreated,
     );
 
+    // Deuda #16, cerrada en el cierre de 12d: el fogonazo se creaba sin pasar
+    // por el hook, así que la `hudCamera` lo repintaba fijo en pantalla. Desde
+    // 13a la combustión se dispara en partida real (antes solo en la galería),
+    // así que el duplicado era visible de verdad.
     const light = scene.add.pointlight(
       px,
       py,
@@ -120,6 +128,7 @@ export const combustionEffect: EventDrivenEffect<"combustion"> = {
       emitRadius * 2,
       0.6,
     );
+    options?.onObjectCreated?.(light);
     scene.tweens.add({
       targets: light,
       intensity: { from: 0.4, to: 0.8 },
@@ -130,7 +139,7 @@ export const combustionEffect: EventDrivenEffect<"combustion"> = {
     scene.time.delayedCall(duration * 2.5, () => light.destroy());
 
     if (event.crewDamage !== "none") {
-      crewDamageFlash(scene, px, py, emitRadius);
+      crewDamageFlash(scene, px, py, emitRadius, options?.onObjectCreated);
     }
   },
 };

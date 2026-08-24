@@ -1098,3 +1098,39 @@
 ## `game/src/i18n/es.ts` / `en.ts` (modificado, 13e ronda 10)
 - `blocked-missing-ingredients` deja de llevar `{names}`. Nueva clave
   `ui.floorplan.notification.task-blocked-no-power`.
+
+## `game/src/render/shadows/light-grid.ts` (nuevo, Fase 12d.5)
+- `computeLightLevelGrid` — nivel de luz 0..1 por celda, PURO (sin Phaser). Reusa `raySegmentIntersection` de
+  `visibility-polygon.ts`, así que la oclusión es la misma geometría que dibuja la RT de sombras. Recorta por
+  bbox de radio antes del raycast; combina luces con `max` (no suma) y usa `ambient` como piso.
+- `LIGHT_CLEAR_ALPHA_FLOOR` — piso de aclarado de una luz; única fuente del valor, lo importa `dynamic-shadows.ts`.
+
+## `game/src/render/shadows/light-shading.ts` (nuevo, Fase 12d.5)
+- `shade(baseColor, level)` — color × nivel de luz, canal por canal. `NEUTRAL_TINT`, y `actorLightLevel` con
+  `MIN_ACTOR_LIGHT_LEVEL` (piso de brillo para tripulación/enemigos: se oscurecen, nunca desaparecen).
+
+## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.5)
+- `lightGrid(w, h, cell)` — expone la grilla de nivel de luz, cacheada por firma (`staticOccludersVersion` +
+  estado de cada luz + ambiente). Usa SOLO oclusores estáticos: los móviles son las cosas que se tintan y se
+  ocluirían a sí mismas. `ambient` se deriva del mismo `darknessAlpha × intensity` que pinta la RT.
+- `quantizeIntensity` + `staticOccludersVersion` — evitan que el parpadeo de las luces de cicatriz invalide el
+  cache 60 veces por segundo. `currentEdges()` extrae la composición estáticos ∪ dinámicos que ya usaba `redraw`.
+
+## `game/src/render/render-depths.ts` (modificado, Fase 12d.5)
+- `dynamicLight` (1.8) — luz aditiva persistente entre las sombras (1.7) y los objetos (2): la luz actúa sobre
+  el plano del suelo, no sobre los sprites. Antes toda luz vivía en `effect` (7), encima de todo.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.5)
+- `applyLightShading()` — pinta componentes, LEDs y tokens con `base × nivel de luz de su celda`. Corre por
+  frame junto al `redraw()` de sombras. No toca affordances de UI (hover, anillos, marcador).
+- `baseTints` (`WeakMap`) + `baseTintOf`/`setBaseTint`/`applyShadedTint` — único punto de escritura de tinte.
+  El LED y el resaltado de trasvase escriben la BASE; solo `applyLightShading` llama a `setTint`/`setFillStyle`.
+- `registerLight` pasa a `dynamicLight`; `registerBurstLight` (nuevo) deja el fogonazo de un burst en `effect`.
+- `registerEffectObject` + `worldEffectOptions` — registro único de todo objeto creado por un efecto de evento
+  (cámara de mundo + depth para emisores, `registerBurstLight` para luces, decals con su propia capa).
+
+## `game/src/particles/` (modificado, Fase 12d.5)
+- `particle-effect.types.ts` — `ObjectCreatedHook` con nombre propio; `EventEffectOptions.onObjectCreated` lo reusa.
+- `particle-utils.ts` — `spawnBurst`/`spawnDecal` aceptan el hook como último parámetro opcional.
+- `effects/*.ts` — los 15 efectos del registro propagan el hook (antes solo `salvage-hazard-effect.ts`).
+  `combustion-effect.ts` registra además su `PointLight` (deuda #16 residual).

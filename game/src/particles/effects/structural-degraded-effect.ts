@@ -11,7 +11,7 @@ import { DIRT_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
  */
 export const structuralDegradedEffect: EventDrivenEffect<"structural-degraded"> = {
   kind: "structural-degraded",
-  trigger(scene, position: GridPosition): void {
+  trigger(scene, position: GridPosition, _event, options): void {
     const { px, py } = toPixel(position);
     spawnBurst(
       scene,
@@ -31,6 +31,7 @@ export const structuralDegradedEffect: EventDrivenEffect<"structural-degraded"> 
       },
       800,
       SMOKE_TEXTURES,
+      options?.onObjectCreated,
     );
   },
 };
@@ -38,7 +39,7 @@ export const structuralDegradedEffect: EventDrivenEffect<"structural-degraded"> 
 /** Fallo estructural completo: colapso — escombros pesados, sin el vapor ácido de la corrosión progresiva. */
 export const structuralFailureEffect: EventDrivenEffect<"structural-failure"> = {
   kind: "structural-failure",
-  trigger(scene, position: GridPosition): void {
+  trigger(scene, position: GridPosition, _event, options): void {
     const { px, py } = toPixel(position);
     spawnBurst(
       scene,
@@ -55,6 +56,7 @@ export const structuralFailureEffect: EventDrivenEffect<"structural-failure"> = 
       },
       700,
       DIRT_TEXTURES,
+      options?.onObjectCreated,
     );
   },
 };

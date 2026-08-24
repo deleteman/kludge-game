@@ -85,7 +85,11 @@ import { CLOUD_TINT } from "../particles/effects/hazard-effect.js";
 import { createOverloadedConductorEffect } from "../particles/effects/overloaded-conductor-effect.js";
 import type { OverloadedConductorState } from "../particles/effects/overloaded-conductor-effect.js";
 import { createDynamicLight } from "../particles/effects/dynamic-light.js";
-import type { LightHook, StateDrivenEffect } from "../particles/particle-effect.types.js";
+import type {
+  EventEffectOptions,
+  LightHook,
+  StateDrivenEffect,
+} from "../particles/particle-effect.types.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
 import {
   CHEMICAL_TAG_COLORS,
@@ -144,6 +148,7 @@ import { extractWalkableGrid, type WalkableGrid } from "../render/walkable-grid.
 import { extractOccluderGrid } from "../render/shadows/occluder-edges.js";
 import { DynamicShadowLayer, DYNAMIC_SHADOW_DARKNESS_ALPHA, DYNAMIC_SHADOW_COLOR } from "../render/shadows/dynamic-shadows.js";
 import { loadAuthoredLights } from "../render/shadows/authored-lights.js";
+import { actorLightLevel, NEUTRAL_TINT, shade } from "../render/shadows/light-shading.js";
 import { rectEdges } from "../render/shadows/occluder-edges.js";
 import { effectiveFootprintExtent, occupiedCells } from "engine";
 import type { Segment } from "../render/shadows/visibility-polygon.js";
@@ -946,12 +951,12 @@ export class FloorplanScene extends Phaser.Scene {
       // es el cableado que faltaba.
       this.mission.kineticEvents.onAny((event) => {
         const cell = this.kineticEventPosition(event);
-        if (cell) fireEventEffect(this, cell, event);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
       }),
       this.mission.signalEvents.onAny((event) => {
         const cell = this.mission.blueprint.signalGraph.nodes.find((node) => node.id === event.nodeId)?.position;
-        if (cell) fireEventEffect(this, cell, event);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
       }),
       // Fase 11b: `structuralDegradedEffect`/`structuralFailureEffect` ya
@@ -960,7 +965,7 @@ export class FloorplanScene extends Phaser.Scene {
       this.mission.failureEvents.onAny((event) => {
         const cell = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === event.ref)?.placement
           .position;
-        if (cell) fireEventEffect(this, cell, event);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
         // Estática de fósforo LOCALIZADA (capa "System Failure", roadmap
         // Duskers): la celda del componente averiado pierde "señal". Gate por el
@@ -996,7 +1001,7 @@ export class FloorplanScene extends Phaser.Scene {
             ? this.mission.shipFloorplan.sections.find((entry) => entry.id === event.sectionId)
             : undefined;
         const cell = section && sectionCentroidCell(section);
-        if (cell) fireEventEffect(this, cell, event);
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
         // Mismo overlay de alerta de pantalla completa que ya reacciona a
         // overload fire/explosion (Fase 12a) — cierra el hueco que el propio
@@ -1020,14 +1025,13 @@ export class FloorplanScene extends Phaser.Scene {
           event,
           event.kind === "dismantle-spill"
             ? {
+                ...this.worldEffectOptions,
                 tint: chemicalSubstanceColor(
                   event.substanceId,
                   this.mission.substanceTagsOf(event.substanceId),
                 ),
-                // Sin esto el charco cae en el bug de doble-cámara (ronda 4).
-                onObjectCreated: (obj) => this.markAsWorldObject(obj),
               }
-            : undefined,
+            : this.worldEffectOptions,
         );
         fireEventSound(this, event);
         this.notifications?.push({
@@ -1180,6 +1184,11 @@ export class FloorplanScene extends Phaser.Scene {
       this.shadowLayer.setIntensity(getShadowIntensity());
       this.shadowLayer.setDynamicOccluders(this.collectDynamicOccluderEdges());
       this.shadowLayer.redraw();
+      // La RT de arriba solo oscurece el SUELO; este paso lleva la misma luz a
+      // los sprites vía tinte (Fase 12d, cierre — Obs 16). Va inmediatamente
+      // después del redraw para que ambos lean el mismo estado de luces y
+      // oclusores en el mismo frame.
+      this.applyLightShading();
     }
     // Capa "estructural" del HUD (Fase 12a): tiñe cada sección por su peor RE
     // agregado — barata de recalcular (pocas secciones), se redibuja siempre,
@@ -1999,8 +2008,12 @@ export class FloorplanScene extends Phaser.Scene {
       this.transferHighlights.push(outline);
 
       for (const sprite of this.componentSprites.get(candidate.instanceId) ?? []) {
-        this.transferTintedSprites.push({ sprite, originalTint: sprite.tintTopLeft });
-        sprite.setTint(color);
+        // Se guarda y se escribe el tinte BASE (no el visible, que ya viene
+        // multiplicado por la luz de la celda): si acá se leyera `tintTopLeft`
+        // el resaltado se iría oscureciendo solo, y `setTint` directo lo
+        // borraría el frame siguiente. Ver `baseTints`.
+        this.transferTintedSprites.push({ sprite, originalTint: this.baseTintOf(sprite) });
+        this.setBaseTint(sprite, color);
       }
     }
   }
@@ -2008,7 +2021,7 @@ export class FloorplanScene extends Phaser.Scene {
   /** Restaura el tinte original de los sprites tomados por el resaltado del modo de trasvase — ver `updateTransferMode`. */
   private restoreTransferTintedSprites(): void {
     for (const { sprite, originalTint } of this.transferTintedSprites) {
-      if (sprite.active) sprite.setTint(originalTint);
+      if (sprite.active) this.setBaseTint(sprite, originalTint);
     }
     this.transferTintedSprites = [];
   }
@@ -2808,12 +2821,163 @@ export class FloorplanScene extends Phaser.Scene {
    * Mismo registro que `registerParticleEmitter`, para las luces aditivas
    * persistentes (Fase 12a, `LightHook`) — un `PointLight` es tan susceptible
    * al bug de doble-cámara como un emisor de partículas.
+   *
+   * Depth `dynamicLight` (Fase 12d, cierre / Obs 16): la luz de ambientación se
+   * pinta sobre el SUELO, por debajo de sprites y paredes. Vivía en `effect`
+   * (7), encima de todo, y ese aditivo lavaba las piezas — lo que el operador
+   * leyó como "los sprites no se ven afectados por la luz". Ahora el brillo del
+   * sprite lo da su tinte (`applyLightShading`), no una luz encima.
    */
   private readonly registerLight: LightHook = (light: Phaser.GameObjects.PointLight): void => {
-    light.setDepth(RENDER_DEPTH.effect);
+    light.setDepth(RENDER_DEPTH.dynamicLight);
     this.markAsWorldObject(light);
     // Toda luz dinámica proyecta sombras (Fase 12d): la capa de sombras la
     // enumera para recortar la oscuridad con su polígono de visibilidad.
+    this.shadowLayer?.addLight(light);
+  };
+
+  /**
+   * Registro de CUALQUIER objeto creado por un efecto de evento
+   * (`fireEventEffect`). Cierra la deuda #16 y su generalización: hasta el
+   * cierre de 12d, solo `salvage-hazard-effect.ts` pasaba este hook — el resto
+   * de los 15 efectos del registro creaba sus emisores y luces sin cámara de
+   * mundo ni depth, así que la `hudCamera` los repintaba fijos en pantalla
+   * ("explosiones sueltas", como ya documentaba `handleCrewEvent`).
+   *
+   * El depth se fija solo para emisores y luces: un DECAL (charco, quemadura)
+   * eligió a propósito su propia capa (`bloodDecal`, `substanceSpill`) y
+   * subirlo a `effect` lo pondría por encima de las piezas y la tripulación.
+   *
+   * Una luz va por `registerBurstLight`, así el fogonazo de un incendio también
+   * ILUMINA la sala y proyecta sombras mientras dura, igual que cualquier otra
+   * luz del proyecto — antes quedaba fuera del sistema de sombras.
+   */
+  private readonly registerEffectObject = (obj: Phaser.GameObjects.GameObject): void => {
+    if (obj instanceof Phaser.GameObjects.PointLight) {
+      this.registerBurstLight(obj);
+      return;
+    }
+    if (obj instanceof Phaser.GameObjects.Particles.ParticleEmitter) {
+      obj.setDepth(RENDER_DEPTH.effect);
+    }
+    this.markAsWorldObject(obj);
+  };
+
+  /** Opciones por defecto de todo efecto de evento disparado sobre el plano. */
+  private readonly worldEffectOptions: EventEffectOptions = {
+    onObjectCreated: (obj) => this.registerEffectObject(obj),
+  };
+
+  /**
+   * Tinte PROPIO de cada objeto teñible del plano, antes de aplicarle la luz
+   * (Fase 12d, cierre — Obs 16). Existe porque `setTint` es un recurso ya
+   * disputado: lo escriben el tinte por `condition` del overlay, el estado
+   * ON/OFF del LED, el resaltado del modo de trasvase y el color de personaje
+   * de cada tripulante. Si el sombreado por luz escribiera directamente sobre
+   * `setTint`, cada uno de esos caminos leería como "color original" un valor
+   * YA sombreado y se irían pisando (el trasvase, además, quedaría invisible:
+   * el frame siguiente lo sobreescribe).
+   *
+   * Regla: todos esos caminos escriben acá (`setBaseTint`); el ÚNICO que llama
+   * a `setTint`/`setFillStyle` con el color final es `applyLightShading`.
+   * `WeakMap` porque `redrawOverlay` destruye y re-crea los sprites.
+   */
+  private readonly baseTints = new WeakMap<Phaser.GameObjects.GameObject, number>();
+
+  /**
+   * Tinte base de un objeto. La primera vez que se lo ve, su tinte actual ES la
+   * base (todavía no pasó por el sombreado) — así el tinte por `condition` que
+   * fija `mission-overlay-renderer.ts` al crear el sprite se captura solo, sin
+   * tener que cambiar la firma del renderer.
+   */
+  private baseTintOf(target: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle): number {
+    const known = this.baseTints.get(target);
+    if (known !== undefined) return known;
+    const current =
+      target instanceof Phaser.GameObjects.Rectangle
+        ? target.fillColor
+        : target.isTinted
+          ? target.tintTopLeft
+          : NEUTRAL_TINT;
+    this.baseTints.set(target, current);
+    return current;
+  }
+
+  /** Fija el tinte propio de un objeto. El color visible lo resuelve `applyLightShading`. */
+  private setBaseTint(target: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle, tint: number): void {
+    this.baseTints.set(target, tint);
+  }
+
+  /** Pinta el color final = tinte base × nivel de luz de su celda. */
+  private applyShadedTint(
+    target: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle,
+    level: number,
+  ): void {
+    const color = shade(this.baseTintOf(target), level);
+    if (target instanceof Phaser.GameObjects.Rectangle) {
+      target.setFillStyle(color, target.fillAlpha);
+    } else {
+      target.setTint(color);
+    }
+  }
+
+  /**
+   * Oscurece los sprites del plano según la luz que les llega (Fase 12d,
+   * cierre — Obs 16). La RT de sombras vive DEBAJO de los sprites (criterio de
+   * sombra top-down: oscurece el suelo, no el objeto que la proyecta), así que
+   * sin este paso los componentes y la tripulación quedaban a brillo plano
+   * constante, "pegados encima" del mapa, sin importar si su sección estaba
+   * iluminada o a oscuras.
+   *
+   * Los niveles salen de `DynamicShadowLayer.lightGrid`, que usa la MISMA
+   * geometría de oclusión que la RT que se acaba de pintar: un sprite no puede
+   * quedar brillante dentro de una sombra dibujada.
+   *
+   * NO se sombrean las affordances de UI que viven sobre el mapa (resaltado de
+   * hover, anillos de selección, marcador de problema, líneas de conducto): son
+   * chrome, no objetos del mundo, y atenuarlas sería perder legibilidad justo
+   * donde el jugador necesita ver (patrón 3 del checklist de playtest).
+   */
+  private applyLightShading(): void {
+    if (!this.shadowLayer) return;
+    const { width, height } = this.mission.shipFloorplan.gridSize;
+    const grid = this.shadowLayer.lightGrid(width, height, CELL);
+
+    for (const sprites of this.componentSprites.values()) {
+      for (const sprite of sprites) {
+        if (!sprite.active) continue;
+        const center = sprite.getCenter();
+        this.applyShadedTint(sprite, grid.levelAtPixel(center.x, center.y));
+      }
+    }
+    // Los LED tienen su propio mapa (el overlay los separa para poder
+    // encenderlos/apagarlos), así que no entran por `componentSprites`.
+    for (const led of this.ledIndicators.values()) {
+      if (!led.active) continue;
+      const center = led.getCenter();
+      this.applyShadedTint(led, grid.levelAtPixel(center.x, center.y));
+    }
+    // Tripulación y enemigos con PISO de brillo: un actor en una sala sin luz
+    // se oscurece, pero nunca hasta volverse invisible o inclickeable.
+    for (const { dot } of this.crewTokens.values()) {
+      if (!dot.active) continue;
+      this.applyShadedTint(dot, actorLightLevel(grid.levelAtPixel(dot.x, dot.y)));
+    }
+    for (const { shape } of this.enemyTokens.values()) {
+      if (!shape.active) continue;
+      this.applyShadedTint(shape, actorLightLevel(grid.levelAtPixel(shape.x, shape.y)));
+    }
+  }
+
+  /**
+   * Variante de `registerLight` para el fogonazo de un BURST (combustión,
+   * electrocución): se queda en `RENDER_DEPTH.effect`, junto a las partículas
+   * que acompaña — bajarlo a `dynamicLight` dejaría el destello detrás de su
+   * propia llama y de las paredes. Igual proyecta sombras mientras dura.
+   */
+  private readonly registerBurstLight: LightHook = (light: Phaser.GameObjects.PointLight): void => {
+    light.setDepth(RENDER_DEPTH.effect);
+    this.markAsWorldObject(light);
     this.shadowLayer?.addLight(light);
   };
 
@@ -2943,11 +3107,9 @@ export class FloorplanScene extends Phaser.Scene {
       const node = nodeByOwner.get(instanceId);
       const active = node ? this.mission.signalRuntime.outputOf(node.id) : false;
       const color = active ? LED_ACTIVE_TINT : LED_INACTIVE_TINT;
-      if (sprite instanceof Phaser.GameObjects.Rectangle) {
-        sprite.setFillStyle(color);
-      } else {
-        sprite.setTint(color);
-      }
+      // Tinte BASE, no el visible: el color final (base × luz de la celda) lo
+      // pinta `applyLightShading` — ver `baseTints`.
+      this.setBaseTint(sprite, color);
       this.syncLedLight(instanceId, sprite, active);
     }
   }
@@ -3899,14 +4061,14 @@ export class FloorplanScene extends Phaser.Scene {
       const origin = this.nearestWallPx(target);
       const objects = fireEnvironmentalDamage(this, event.cause, target, { origin });
       if (objects.length > 0) {
-        for (const obj of objects) {
-          obj.setDepth(RENDER_DEPTH.effect);
-          this.markAsWorldObject(obj);
-        }
+        // Mismo registro que cualquier otro efecto de evento (cierre de 12d):
+        // antes esto duplicaba el depth + cámara a mano y dejaba la luz del
+        // arco fuera del sistema de sombras.
+        for (const obj of objects) this.registerEffectObject(obj);
       } else {
         // Causa sin fenómeno ambiental propio: cae al efecto de cuerpo del registro.
         const cell = { x: Math.floor(token.dot.x / CELL), y: Math.floor(token.dot.y / CELL) };
-        fireEventEffect(this, cell, event);
+        fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
       }
       this.flashCrewToken(event.actorId);

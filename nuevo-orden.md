@@ -133,7 +133,15 @@ Modelo recomendado: Sonnet 3.5 para la implementación de transiciones en /game.
 - **Creación Compuesta con Sprites Reales (deuda `PENDIENTES_OBSERVACIONES.md` #8):** Una creación instalada (`creation-XXXX`) se dibuja hoy como rectángulo placeholder en el plano de misión porque no tiene sprite propio. Descomponer el compuesto (su receta) y pintar el sprite de cada parte en su offset dentro del footprint, con fallback al placeholder cuando falte alguno. Distinto de la mesa de creación (deuda #7, ya resuelta): esto es el plano de misión. Refuerza la "satisfacción de deconstrucción" de Shipbreaker junto con la recolección de elementos de arriba.
 
 
-#### Subfase 12d: Sombras Dinámicas (planificada 2026-07-29, pendiente de ciclo de preguntas propio)
+#### Subfase 12d: Sombras Dinámicas ✅ CERRADA (2026-08-24)
+
+**Cierre (12d.5, 2026-08-24):** los tres ítems del spec de abajo quedaron resueltos. El ciclo de preguntas
+técnico se respondió en 12d.1-12d.4 (raycast/oclusión real, no Light2D). Obs 16 se resolvió sin migrar a
+`scene.lights`: depth nuevo `dynamicLight` (1.8) para la luz de ambientación + tinte por nivel de luz
+(`render/shadows/light-grid.ts` + `light-shading.ts`) para que el sprite reaccione a su sección. La deuda #16
+residual se cerró con `EventEffectOptions.onObjectCreated` (que 13e ronda 4 ya había agregado), extendida a
+los 15 efectos del registro. Detalle en `changelog.log` y `ORDEN_DE_TRABAJO.md`. Autorar la capa `luces` en
+los otros 3 arquetipos queda como pendiente #35 (depende del arte de esas naves, no de esta subfase).
 
 Pedido del operador tras el playtest de 12a: "no veo sombras de los elementos en el mapa, ya sea de las cosas
 en la capa `objects` autoradas en Tiled, o de los componentes que se ponen en el mapa y con los que puede

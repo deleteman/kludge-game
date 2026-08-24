@@ -25,7 +25,7 @@ const RADIUS_BY_SEVERITY: Readonly<Record<HazardSeverity, number>> = {
 function hazardCloud<K extends HazardEvent["kind"]>(kind: K): EventDrivenEffect<K> {
   return {
     kind,
-    trigger(scene, position: GridPosition, event: HazardEvent): void {
+    trigger(scene, position: GridPosition, event: HazardEvent, options): void {
       const { px, py } = toPixel(position);
       const radius = RADIUS_BY_SEVERITY[event.severity];
       spawnBurst(
@@ -45,9 +45,10 @@ function hazardCloud<K extends HazardEvent["kind"]>(kind: K): EventDrivenEffect<
         },
         1200,
         SMOKE_TEXTURES,
+        options?.onObjectCreated,
       );
       if (event.severity === "lethal") {
-        crewDamageFlash(scene, px, py, radius);
+        crewDamageFlash(scene, px, py, radius, options?.onObjectCreated);
       }
     },
   };

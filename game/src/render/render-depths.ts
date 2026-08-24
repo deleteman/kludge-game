@@ -24,6 +24,22 @@ export const RENDER_DEPTH = {
   sectionScar: 1.5,
   /** RenderTexture de sombras dinámicas con oclusión (Fase 12d) — sobre el suelo/decals, DEBAJO de objetos/componentes/tripulación/paredes: oscurece el suelo, no los sprites que la proyectan (criterio de sombra top-down). */
   dynamicShadows: 1.7,
+  /**
+   * Luz aditiva PERSISTENTE de ambientación (Fase 12d, cierre — Obs 16): focos
+   * autorados en Tiled, LED encendido, chispas de conductor sobrecargado.
+   * Justo encima de las sombras y DEBAJO de objetos/tripulación/paredes, por el
+   * mismo criterio que ya rige a `dynamicShadows`: **luz y sombra actúan sobre
+   * el plano del suelo**. Antes vivían en `effect` (7), o sea encima de TODO —
+   * el aditivo lavaba paredes y sprites, y eso es lo que se leía como "el
+   * sprite no recibe luz". El brillo de un sprite ya no lo da una luz pintada
+   * encima sino su TINTE, derivado de `shadows/light-grid.ts`.
+   *
+   * Las luces de BURST (el fogonazo de una combustión) NO usan este depth: se
+   * quedan en `effect` junto a las partículas que acompañan, o el fogonazo
+   * quedaría detrás de su propia llama. Ver `registerBurstLight` en
+   * `floorplan-scene.ts`.
+   */
+  dynamicLight: 1.8,
   /** Tile layer "objects" (containerizada en el base) y overlay de componentes colocados (top-level): encima del suelo, debajo de paredes. */
   objects: 2,
   /**

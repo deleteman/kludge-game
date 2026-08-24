@@ -5,6 +5,7 @@ import type {
   EventDrivenEffect,
   EventEffectOptions,
   GridPosition,
+  ObjectCreatedHook,
 } from "../particle-effect.types.js";
 import {
   type EffectScene,
@@ -45,7 +46,7 @@ const LEAK_COLOR = 0xbcd2e0;
 
 export const dismantleSparkEffect: EventDrivenEffect<"dismantle-spark"> = {
   kind: "dismantle-spark",
-  trigger(scene, position: GridPosition): void {
+  trigger(scene, position: GridPosition, _event, options): void {
     const { px, py } = toPixel(position);
     spawnBurst(
       scene as EffectScene,
@@ -65,6 +66,7 @@ export const dismantleSparkEffect: EventDrivenEffect<"dismantle-spark"> = {
       },
       260,
       SPARK_TEXTURES,
+      options?.onObjectCreated,
     );
   },
 };
@@ -89,7 +91,7 @@ export function firePouredSubstance(
    * veía donde tenía que verse. Es el mismo hook que usan los efectos
    * state-driven (`ParticleEmitterHook`).
    */
-  onObjectCreated?: (obj: Phaser.GameObjects.GameObject) => void,
+  onObjectCreated?: ObjectCreatedHook,
 ): void {
   const { px, py } = toPixel(position);
   // Salpicadura: gotas bajas y lentas, cayendo alrededor de la celda.
@@ -154,7 +156,7 @@ export const dismantleSpillEffect: EventDrivenEffect<"dismantle-spill"> = {
 
 export const dismantleLeakEffect: EventDrivenEffect<"dismantle-leak"> = {
   kind: "dismantle-leak",
-  trigger(scene, position: GridPosition, event: DismantleLeakEvent): void {
+  trigger(scene, position: GridPosition, event: DismantleLeakEvent, options): void {
     const { px, py } = toPixel(position);
     // Chorro ancho y lento que se disipa: aire escapando por el hueco que dejó
     // la pieza. Dura tanto como la fuga que el motor abrió, para que lo que se
@@ -177,6 +179,7 @@ export const dismantleLeakEffect: EventDrivenEffect<"dismantle-leak"> = {
       },
       durationMs,
       SMOKE_TEXTURES,
+      options?.onObjectCreated,
     );
   },
 };
