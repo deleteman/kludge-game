@@ -3,7 +3,7 @@ import type { CrewDamageCause } from "engine";
 
 import { type EffectScene, spawnBurst, spreadRange, textureScale } from "../particle-utils.js";
 import { FLARE_TEXTURE, SPARK_TEXTURES } from "../particle-texture-registry.js";
-import { createDynamicLight } from "./dynamic-light.js";
+import { createBurstLight } from "./dynamic-light.js";
 
 /**
  * Daño AMBIENTAL sobre un tripulante — el entorno lo ataca (a diferencia de las
@@ -141,16 +141,19 @@ export function electricArcEffect(
   // Intensidad/radio bajos A PROPÓSITO (2ª corrección, mismo playtest): la
   // primera versión (radio 60, intensidad hasta 1) tapaba el rayo y las
   // chispas del propio arco — la luz debe acompañar el fenómeno, no taparlo.
+  // 12d.7: mismo corte seco que tenía la combustión (parpadeo + destroy sin
+  // desvanecido). Acá se notaba menos porque el corte era desde 0.15, pero es
+  // el mismo defecto y se arregla con el mismo helper.
   const totalArcMs = ARC_STRIKES * ARC_STRIKE_MS;
-  const light = createDynamicLight(scene, target.x, target.y, ARC_CORE_COLOR, 26, 0.2);
-  scene.tweens.add({
-    targets: light,
-    intensity: { from: 0.15, to: 0.35 },
-    duration: 60,
-    yoyo: true,
-    repeat: Math.ceil(totalArcMs / 120),
+  const light = createBurstLight(scene, {
+    x: target.x,
+    y: target.y,
+    color: ARC_CORE_COLOR,
+    radiusPx: 26,
+    flicker: { from: 0.15, to: 0.35, halfCycleMs: 60 },
+    sustainMs: totalArcMs,
+    fadeMs: 200,
   });
-  scene.time.delayedCall(totalArcMs + 150, () => light.destroy());
 
   return [graphics, sparks, flash, light];
 }

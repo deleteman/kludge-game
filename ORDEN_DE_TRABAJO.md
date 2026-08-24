@@ -2706,7 +2706,33 @@ del operador); `LIGHT_CLEAR_ALPHA_FLOOR` = 0.3 es **opacidad de oscurecido** de 
 
 Suite: `/engine` 886, `/game` 60 → **61**. `tsc --noEmit`, `eslint` y `vite build` limpios.
 
-**Cierre Fase 12d:** código completo (12d.1–12d.6 + iteración post-playtest). Cierra con `nave-exploracion`,
+#### Fixes de playtest, ronda 2 ✅ (2026-08-24) — Fase 12d.7
+
+Un solo punto: **"el efecto visual de combustión deja una luz que luego desaparece de golpe, no se
+desvanece"**. La luz tenía tres fases y la tercera no existía — el tween de parpadeo tiene `repeat` finito,
+así que al terminar dejaba la luz QUIETA en su valor `from` (0.4) durante ~1.6s, y recién después un
+`delayedCall` la destruía de un frame al otro. Ningún tween llevaba la intensidad a 0.
+
+* **Defecto de 12a que 12d.5 volvió el doble de visible:** desde entonces estas luces se registran en la capa
+  de sombras (`registerBurstLight`), así que el corte seco arrastraba también la SOMBRA — la oscuridad del
+  suelo volvía de golpe con la luz.
+* **El mismo defecto estaba en un segundo sitio**, con la misma forma exacta: el arco eléctrico de
+  `environmental-damage-effect.ts`. Ahí el corte era desde 0.15 y se notaba mucho menos, pero es el mismo bug
+  (patrón 4: dos elementos del mismo tipo no deberían comportarse distinto).
+* **Resuelto con `createBurstLight`** en `dynamic-light.ts`, que es la mitad que le faltaba a ese módulo: su
+  docblock ya decía que generalizaba el patrón "tanto para bursts como para luz persistente", pero solo se
+  había escrito la persistente (`createDynamicLight`), y por eso los dos bursts existentes copiaron el patrón
+  a mano y heredaron el mismo agujero. Ciclo completo parpadeo → desvanecido → destrucción, **encadenado por
+  `onComplete`** y no por aritmética de tiempos: dos tweens sobre la misma propiedad (`intensity`) se pelean
+  si se solapan, que es exactamente lo que pasaría con un `delayedCall` calculado a mano si alguien cambiara
+  una duración.
+* **La vida total de la luz de combustión no cambia** (sigue siendo `duration × 2.5`): lo que era un hold
+  estático inútil pasa a ser el desvanecido, que ahora acompaña al humo (`duration × 1.5`). Los `repeat` del
+  parpadeo se derivan con la misma fórmula que tenían, así que el tramo aprobado en playtest queda idéntico.
+
+Suite sin cambios (`/engine` 886, `/game` 61); `tsc --noEmit`, `eslint` y `vite build` limpios.
+
+**Cierre Fase 12d:** código completo (12d.1–12d.7 + iteración post-playtest). Cierra con `nave-exploracion`,
 el único arquetipo con arte y con la capa `luces` autorada (21 focos) — los otros 3 mapas no tienen ni tile
 layers, así que autorar sus luces es trabajo del arte de esos arquetipos y queda registrado en
 `PENDIENTES_OBSERVACIONES.md`, no bloquea 12d. Suite: `/engine` 886 tests, `/game` 40 → **60** (20 nuevos de

@@ -10,6 +10,7 @@ import {
   toPixel,
 } from "../particle-utils.js";
 import { BLOOD_TEXTURES, FLAME_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
+import { createBurstLight } from "./dynamic-light.js";
 
 /**
  * Fenómeno de referencia de Fase 8 (llamas + humo + luz parpadeante, GDD
@@ -121,22 +122,24 @@ export const combustionEffect: EventDrivenEffect<"combustion"> = {
     // por el hook, así que la `hudCamera` lo repintaba fijo en pantalla. Desde
     // 13a la combustión se dispara en partida real (antes solo en la galería),
     // así que el duplicado era visible de verdad.
-    const light = scene.add.pointlight(
-      px,
-      py,
-      FLAME_COLOR_BY_INTENSITY[event.intensity],
-      emitRadius * 2,
-      0.6,
+    //
+    // 12d.7: la vida TOTAL de la luz sigue siendo `duration × 2.5`, igual que
+    // antes; lo que cambia es que el tramo final deja de ser un hold estático
+    // en 0.4 seguido de un corte seco y pasa a ser un desvanecido que acompaña
+    // al humo (que dura `duration × 1.5`).
+    createBurstLight(
+      scene,
+      {
+        x: px,
+        y: py,
+        color: FLAME_COLOR_BY_INTENSITY[event.intensity],
+        radiusPx: emitRadius * 2,
+        flicker: { from: 0.4, to: 0.8, halfCycleMs: 90 },
+        sustainMs: duration,
+        fadeMs: duration * 1.5,
+      },
+      options?.onObjectCreated,
     );
-    options?.onObjectCreated?.(light);
-    scene.tweens.add({
-      targets: light,
-      intensity: { from: 0.4, to: 0.8 },
-      duration: 90,
-      yoyo: true,
-      repeat: Math.ceil(duration / 180),
-    });
-    scene.time.delayedCall(duration * 2.5, () => light.destroy());
 
     if (event.crewDamage !== "none") {
       crewDamageFlash(scene, px, py, emitRadius, options?.onObjectCreated);

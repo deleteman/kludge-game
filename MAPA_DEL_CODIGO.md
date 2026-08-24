@@ -1157,3 +1157,11 @@
 
 ## `game/src/i18n/es.ts` / `en.ts` (modificado, Fase 12d.6)
 - `ui.floorplan.dev.no-cell` / `ui.floorplan.dev.fired` — avisos de la tecla de dev.
+
+## `game/src/particles/effects/dynamic-light.ts` (modificado, Fase 12d.7)
+- `createBurstLight` — luz de burst con ciclo de vida completo: parpadeo → desvanecido → destrucción, con las
+  fases encadenadas por `onComplete` (dos tweens sobre `intensity` se pelean si se solapan). Es la mitad que
+  faltaba del módulo: solo existía `createDynamicLight` (luz persistente), así que los dos bursts del proyecto
+  copiaban el patrón a mano y ambos destruían la luz sin fade.
+- Consumidores: `combustion-effect.ts` (`sustainMs` = duración de la llama, `fadeMs` = 1.5×, misma vida total
+  que antes) y `environmental-damage-effect.ts` (arco eléctrico, `fadeMs` 200).

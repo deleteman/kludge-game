@@ -2286,7 +2286,7 @@
                         {
                          "name":"intensity",
                          "type":"float",
-                         "value":0.3
+                         "value":0.03
                         }, 
                         {
                          "name":"radius",

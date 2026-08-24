@@ -4654,3 +4654,51 @@ limpios. Smoke visual del operador pendiente.
 
 Razón: los tres primeros puntos del playtest eran el mismo bug de escala; el cuarto era una receta de prueba
 que entregué sin haberla podido ejecutar nunca.
+
+================================================================================
+2026-08-24 — Fase 12d.7: la luz de un burst se apagaba de golpe (playtest ronda 2)
+================================================================================
+
+REPORTE: "el efecto visual de combustión deja una luz que luego desaparece de golpe. no se desvanece."
+
+DIAGNÓSTICO. La luz tenía tres fases y la tercera no existía:
+
+  0 ──────────► ~duration+180ms ──────────► duration × 2.5
+     parpadeo      HOLD ESTÁTICO en 0.4       destroy()  ← corte seco
+
+El tween de parpadeo tiene `repeat` finito, así que al completarse vuelve a su valor `from` (0.4) y ahí se
+queda QUIETO; el `delayedCall` la destruía mucho después, de un frame al siguiente. Para una combustión
+`standard` (1200ms) eso son ~1.6 segundos de luz estática y después un corte. Ningún tween llevaba la
+intensidad a 0.
+
+Es un defecto de 12a, pero 12d.5 lo volvió el doble de visible: desde entonces las luces de burst se
+registran en la capa de sombras (`registerBurstLight`), así que al desaparecer de golpe la SOMBRA del suelo
+también volvía de un frame al otro.
+
+MISMO DEFECTO EN UN SEGUNDO SITIO, con la misma forma exacta (parpadeo + `delayedCall` + destroy sin fade):
+el arco eléctrico de `environmental-damage-effect.ts`. Ahí el corte era desde 0.15 y se notaba mucho menos,
+pero es el mismo bug — patrón 4 del checklist, dos elementos del mismo tipo no deberían comportarse distinto.
+
+RESUELTO con `createBurstLight` en `dynamic-light.ts`. Ese módulo es el sitio natural y la causa de fondo del
+duplicado: su docblock dice desde 12a que generaliza el patrón de `combustion-effect.ts` "tanto para bursts
+como para luz persistente", pero SOLO se llegó a escribir la mitad persistente (`createDynamicLight`). Los
+dos bursts que existen copiaron el patrón a mano y por eso los dos comparten el mismo agujero.
+
+El helper encadena las tres fases por `onComplete` y no por aritmética de tiempos: dos tweens sobre la MISMA
+propiedad (`intensity`) se pelean si se solapan, y arrancar el fade con un `delayedCall` calculado a mano es
+justamente la forma de que se solapen el día que alguien cambie una duración. Guarda `if (light.active)` en
+ambos `onComplete` por si la escena se cerró en el medio.
+
+TIMING PRESERVADO: la vida total de la luz de combustión sigue siendo `duration × 2.5`, y el `repeat` del
+parpadeo se deriva con la misma fórmula que tenía (`sustainMs / (halfCycleMs × 2)` = el `duration / 180`
+original). Lo único que cambia es que el hold estático pasa a ser el desvanecido, que ahora acompaña al humo
+(`duration × 1.5`). No se altera ningún tramo que el operador ya hubiera aprobado.
+
+ARCHIVOS: `dynamic-light.ts`, `combustion-effect.ts`, `environmental-damage-effect.ts`.
+
+VERIFICACIÓN: `/engine` 886 y `/game` 61 tests verdes (sin cambios: es glue de Phaser, fuera del criterio de
+test de `/engine` — `dynamic-light.ts` no tiene tests hoy por el mismo motivo). `tsc --noEmit`, `eslint` y
+`vite build` limpios. Smoke visual con la tecla F de 12d.6.
+
+Razón: una luz que se corta de golpe rompe la legibilidad del fenómeno (principio 6) y, desde 12d.5, hace
+saltar también la sombra.
