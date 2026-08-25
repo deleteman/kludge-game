@@ -16,10 +16,16 @@ export const HP_LOSS_FRACTION = {
   high: 1, // letal por sí sola, salvo que ya se hubiera curado HP de más (no modelado aquí).
 } as const;
 
-/** Resultado de aplicar daño a un `CrewActor`: el actor actualizado + el evento de dominio a emitir. */
+/**
+ * Resultado de aplicar daño a un `CrewActor`: el actor actualizado + el evento
+ * de dominio a emitir.
+ *
+ * `event` es OPCIONAL desde la ronda 1 de playtest de 13f: un daño que no quitó
+ * ni un punto de vida no emite nada. Ver `applyHpLoss`.
+ */
 export interface CrewHpResolution {
   readonly actor: CrewActor;
-  readonly event: CrewDomainEvent;
+  readonly event?: CrewDomainEvent;
 }
 
 /**
@@ -40,11 +46,26 @@ function applyHpLoss(
   const remainingHp = Math.max(minHp, actor.hp - rawLoss);
   const hpLost = actor.hp - remainingHp;
   const updated: CrewActor = { ...actor, hp: remainingHp };
-  const event: CrewDomainEvent =
-    remainingHp <= 0
-      ? { kind: "crew-death", actorId: actor.id, cause, elapsedSeconds }
-      : { kind: "crew-damaged", actorId: actor.id, cause, hpLost, remainingHp, elapsedSeconds };
-  return { actor: updated, event };
+
+  if (remainingHp <= 0) {
+    return { actor: updated, event: { kind: "crew-death", actorId: actor.id, cause, elapsedSeconds } };
+  }
+
+  // Ronda 1 de playtest de 13f: un daño que NO quitó vida no es un daño, es
+  // ruido. Sin este guard, un llamador que aplique una fracción muy chica
+  // (`Math.round` la lleva a 0) emite `crew-damaged` en cada tick para siempre
+  // — que es exactamente lo que hacía el vacío: sangre saltando sobre un
+  // tripulante que no perdía un solo punto de vida, ~60 eventos por segundo.
+  // El guard vive acá y no en el llamador a propósito: corta la clase entera de
+  // bug para cualquier fuente de daño futura.
+  if (hpLost <= 0) {
+    return { actor: updated };
+  }
+
+  return {
+    actor: updated,
+    event: { kind: "crew-damaged", actorId: actor.id, cause, hpLost, remainingHp, elapsedSeconds },
+  };
 }
 
 /**

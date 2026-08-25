@@ -4776,3 +4776,79 @@ cierran solas) con `override` cuando algo las gobierna; sin energía se CONGELAN
 
 ARCHIVOS: `nuevo-orden.md` (13h nueva entre 13f y 13g + nota en 13g de que la puerta es su consumidor eléctrico
 de referencia + marcas ✅ que faltaban en 13a/13b/13c), `PENDIENTES_OBSERVACIONES.md`, `MAPA_DEL_CODIGO.md`.
+
+--------------------------------------------------------------------------------
+2026-08-25 — Subfase 13f: fixes de playtest ronda 1
+--------------------------------------------------------------------------------
+
+RAZÓN: primera ronda de playtest de 13f, cinco reportes del operador. Dos de ellos NO eran de 13f sino bugs
+preexistentes del meta-juego que la subfase volvió visibles por primera vez, y uno de los míos tenía dos
+síntomas muy distintos con la misma causa raíz.
+
+1. **El vacío no quitaba vida y sangraba a 60 eventos por segundo.** `applyVacuum` escalaba una fracción de HP
+   con `dtSeconds`; con el core loop corriendo por frame (~0.016 s), `Math.round(100 × 0.1 × 0.016)` = 0. Cero
+   daño real y un `crew-damaged` por frame, para siempre. Ahora el vacío aplica MORDISCOS DISCRETOS por actor
+   (uno cada 2 s, ~10 s hasta la muerte, el primero no letal como aviso) y se resetea al salir de la sección.
+   Además `applyHpLoss` gana un guard general: un daño que no quita ni un punto de vida NO emite evento. El
+   guard vive en el punto único de resolución y no en el llamador a propósito — corta la clase entera de bug
+   para cualquier fuente de daño futura. `CrewHpResolution.event` pasa a opcional y los cinco llamadores lo
+   guardan.
+
+2. **El tripulante perdía el sprite al moverse.** Mismo origen que (1): `flashCrewToken` hacía un tween
+   RELATIVO (`scaleX: dot.scaleX * 1.4`) por evento de daño. Con decenas de flashes solapados por segundo,
+   cada uno tomaba como base un valor ya inflado y la escala se disparaba sin techo; `hopMove` la cristalizaba
+   al capturar `target.scaleX` como base del salto. Ahora el token registra su escala en REPOSO al crearse, el
+   flash es absoluto sobre esa base con `killTweensOf` previo, y `hopMove` recibe la misma base.
+
+3. **Una sola explosión dejaba la integridad de casco casi en 0.** La agregación era "peor sección gana", así
+   que una sección al 17% ponía toda la nave al 17%. Pasa a media PONDERADA por tamaño (`maxHp`), con las
+   secciones brechadas pesando el triple. El multiplicador no es adorno: con el mapa real (335 celdas en 11
+   secciones) la media plana movía la fila un 7% al perder una sala entera, o sea que arreglar un indicador
+   que gritaba de más dejaba uno que no decía nada.
+
+4. **La celda clickeada no quedaba marcada.** La brecha se abría en el centroide geométrico de la sección: en
+   medio del piso, lejos del daño, y físicamente imposible. Módulo puro nuevo `integrity/breach-cell.ts`: se
+   elige la celda que toca el exterior más cercana al origen del daño, con desempate determinista. La celda se
+   graba en `SectionIntegrity.breachCell` y se persiste — recalcularla al cargar mudaba el agujero de pared y
+   dejaba el parche del jugador en el lugar equivocado.
+
+5. **Sellar con una junta hermética "parece no funcionar".** Era correcto por diseño (`isBreachPatch` pide
+   `EST` + RE ≥ M) pero el juego no lo decía en ningún lado: la tarea se completaba, la pieza quedaba puesta y
+   la fuga seguía. Decisión del operador: mantener el requisito y hacerlo VISIBLE. La brecha es inspeccionable
+   en el panel de acciones (molde del badge de riesgo de 13d), instalar algo que no sirve dispara una
+   notificación que explica qué hace falta, y cada brecha tiene un marcador pulsante propio en el plano que
+   cambia de color al sellarse. El veredicto lo da siempre el motor (`isBreachSealed`), así que la UI no puede
+   contradecirlo.
+
+6. **PREEXISTENTE — "Guardar y salir" no guardaba nada de la misión.** Persistía `campaignSession.touch()`,
+   que solo reescribe `updatedAt`. El único punto del juego que volcaba el estado vivo al save era
+   `goToCrisisResult`, o sea que salir a mitad de misión tiraba en silencio atmósfera, desgaste, `condition`,
+   stock, química, HP y la cicatriz. Nuevo `game/src/meta/live-mission-save.ts`: `FloorplanScene` registra cómo
+   construir el save actualizado y la pausa lo invoca, sin que la escena de pausa conozca `MissionRuntime`.
+
+7. **PREEXISTENTE — "Continuar" cargaba la partida equivocada.** Tomaba `saves[0]` de un `readdir` sin ordenar;
+   con 23 campañas en disco entraba en una de julio, con tres componentes y schema viejo, y sin ningún error
+   visible porque los guards de deserialización son tolerantes a propósito. Nuevo `mostRecentCampaignSave()`,
+   que ordena por `updatedAt` (no por el timestamp del id, que marca la creación) y omite las ilegibles.
+
+8. La tecla de dev **H** pasa a emitir una combustión de media sección: con `full-section` una sola pulsación
+   reventaba la sección de un golpe y no había progresión que observar.
+
+FUERA DE ALCANCE, registrado en `PENDIENTES_OBSERVACIONES.md` #41-#45: pérdida de piezas ferromagnéticas
+promovidas a proyectil al guardar, el token de un tripulante muerto que sigue dibujado entero, la causa `"cold"`
+reutilizada para el vacío, la falta de materiales del cañón de riel en el Cap.1, y el castigo periódico del
+Cap.2 que se vuelve invisible tras el primer golpe ahora que el juego dejó de emitir daño nulo.
+
+ARCHIVOS: `engine/src/crew/hp-resolution.ts`, `engine/src/mission/mission-hazard-runtime.ts` +
+`mission-hazard-parameters.ts`, `engine/src/mission/mission-section-integrity-runtime.ts`,
+`engine/src/integrity/breach-cell.ts` (nuevo) + `section-integrity.types.ts` + `section-integrity.ts` +
+`section-integrity-parameters.ts`, `engine/src/ship-status/ship-status-aggregation.ts` + `-runtime.ts`,
+`engine/src/blueprint/blueprint-serializer.ts`, `engine/src/{salvage,mission,enemies}/*` (guards del evento
+opcional), `game/src/meta/live-mission-save.ts` (nuevo) + `save-adapter.ts`, `game/src/scenes/{floorplan,
+pause-menu,title}-scene.ts`, `game/src/mission/{mission-runtime,mission-interaction-controller}.ts`,
+`game/src/ui/widgets/mission-action-panel.ts`, `game/src/crew/hop-movement.ts`, `game/src/render/palette.ts`,
+i18n es/en.
+
+SUITE: `/engine` 917 → 936 tests, `/game` 61 → 68 (primera cobertura de `save-adapter` y del puente
+misión→save; `/game` no tenía ninguna). `tsc --noEmit` y `eslint` limpios en ambos workspaces, `vite build`
+limpio.

@@ -60,6 +60,9 @@ export function applySectionDamage(input: ApplySectionDamageInput): ReadonlyArra
 
   if (integrity.hp <= 0 && !integrity.breached) {
     integrity.breached = true;
+    // La celda queda GRABADA en el estado de la sección, no solo en el evento:
+    // es lo que se persiste y lo que la UI consulta para marcar el agujero.
+    integrity.breachCell = breachCell;
     events.push({
       kind: "section-breached",
       sectionId,

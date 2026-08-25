@@ -734,3 +734,36 @@ dónde, y qué costaría arreglarlo.
     banco de explosión grave (`AUDIO_KEYS.overloadExplosion`), misma familia de carencia que la deuda #17 y
     mismo punto de cambio único (`AUDIO_KEYS`). Si en algún momento se quiere un tile de brecha dibujado sobre
     el casco, iría en `game/assets/sprites/tiles/`.
+
+41. **Las piezas ferromagnéticas promovidas a proyectil se pierden al guardar** (relevado en la ronda 1 de
+    playtest de 13f, 2026-08-25, mientras se auditaba la persistencia). `LooseFerromagneticPromoter.promote()`
+    saca la instancia de `Blueprint.placedComponents` y la pasa a `ProjectileSimulation`, que **no tiene
+    ningún campo de schema donde persistirse**. Consecuencia: cualquier pieza MAG que haya sido promovida
+    desaparece para siempre al recargar la partida — pérdida real de datos, no cosmética. Es preexistente y
+    quedó tapado hasta ahora porque "Guardar y salir" no persistía nada del estado de misión (ver #42).
+    Arreglarlo pide un campo propio en el `Blueprint` y un bump de `schemaVersion`, así que no entró en la
+    ronda de fixes.
+
+42. **`crew-death` no destruye ni atenúa el token de tripulación en el plano** (relevado en la ronda 1 de
+    playtest de 13f, 2026-08-25). Un tripulante muerto sigue dibujado entero sobre el mapa, indistinguible de
+    uno vivo; los enemigos sí lo resuelven (`destroyEnemyToken`). Con el daño por vacío de 13f ahora hay un
+    camino jugable frecuente para morir, así que la inconsistencia se ve. Principio 6: dos estados distintos
+    no pueden verse igual.
+
+43. **El daño por vacío reutiliza la causa `"cold"`** (decisión tomada al implementar 13f y revisada en la
+    ronda 1, 2026-08-25). En `crew-death-effect.ts` esa causa mapea a astillas de hielo, que es defendible
+    —una descompresión congela— pero no es la lectura ideal de "se quedó sin aire". Si se quiere una variante
+    visual propia, es un fenómeno nuevo del registro de efectos y su propia decisión de arte, no un ajuste.
+
+44. **No hay materiales para el cañón de riel en el Cap.1** (reporte 3 de la ronda 1 de playtest de 13f,
+    2026-08-25). El impacto cinético contra pared es uno de los cuatro escritores de daño estructural de 13f y
+    el único con camino jugable propio, pero el stock inicial del capítulo no alcanza para montar el cañón, así
+    que en la práctica no se puede ejercitar jugando. Hermano de las deudas #38 y #39: es diseño de capítulo.
+
+45. **Un aviso periódico de crisis deja de emitir en cuanto la víctima toca su piso de HP** (relevado en la
+    ronda 1 de playtest de 13f, 2026-08-25, al añadir el guard de daño nulo en `applyHpLoss`). Las descargas
+    del Cap.2 usan severidad `high` con `lethal: false`, o sea `minHp: 1`: la primera deja al tripulante en 1
+    HP y desde ahí ninguna quita nada. Antes se emitía igual un `crew-damaged` con `hpLost: 0` en cada
+    descarga, lo que hacía que el castigo PARECIERA seguir; ahora el juego es honesto y el castigo se vuelve
+    invisible tras el primer golpe. La deuda es de DISEÑO del capítulo: un castigo periódico que no escala
+    necesita otro efecto (rotar de víctima, degradar una tarea, subir la severidad), no un evento cosmético.

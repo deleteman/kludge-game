@@ -111,6 +111,8 @@ import {
   CRISIS_FATAL_COLOR,
   CRISIS_SAFE_COLOR,
   SEALED_VALVE_COLOR,
+  BREACH_MARKER_COLOR,
+  BREACH_SEALED_MARKER_COLOR,
   sectionScarFlickerAlpha,
   SELECTED_CELL_COLOR,
   TIMER_TEXT_COLORS,
@@ -122,6 +124,7 @@ import {
 } from "../render/palette.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
 import { campaignSession } from "../meta/campaign-session.js";
+import { clearLiveMissionSave, registerLiveMissionSave } from "../meta/live-mission-save.js";
 import { buildCrisisOutcome, setPendingCrisisOutcome } from "../meta/crisis-outcome.js";
 import { saveCampaignSave, loadSettings } from "../meta/save-adapter.js";
 import { MissionRuntime } from "../mission/mission-runtime.js";
@@ -376,6 +379,8 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private actionPanelBounds?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   private problemMarker?: Phaser.GameObjects.Arc;
+  /** Marcador pulsante por brecha de casco abierta (13f ronda 1), clave `x,y` — ver `syncBreachMarkers`. */
+  private readonly breachMarkers = new Map<string, Phaser.GameObjects.Arc>();
   private briefingContainer?: Phaser.GameObjects.Container;
   private briefingOpen = false;
   /** Evita transicionar dos veces a la pantalla de resultado (el evento `crisis-resolved` es terminal, pero es barato blindarlo). */
@@ -482,6 +487,19 @@ export class FloorplanScene extends Phaser.Scene {
       readonly workingRing: Phaser.GameObjects.Arc;
       /** Anillo estático que marca al tripulante SELECCIONADO en el panel (playtest #11) — distinto del `workingRing` pulsante. */
       readonly selectionRing: Phaser.GameObjects.Arc;
+      /**
+       * Escala en REPOSO del sprite, registrada una sola vez al crearlo
+       * (ronda 1 de playtest de 13f). El sprite usa una escala fraccional de
+       * `setDisplaySize`, así que todo lo que lo deforma —el pulso de daño, el
+       * estiramiento del salto, el squash de aterrizaje— necesita un valor base
+       * contra el que multiplicar. Antes cada uno leía `dot.scaleX` en el
+       * momento: con dos animaciones solapadas, cada una tomaba como base un
+       * valor ya inflado por la otra y la escala se disparaba sin techo hasta
+       * que el tripulante desaparecía de pantalla. UN registro del valor BASE,
+       * y todos escriben el valor final desde ahí.
+       */
+      readonly baseScaleX: number;
+      readonly baseScaleY: number;
     }
   >();
 
@@ -616,6 +634,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.objectivesOpen = false;
     this.queueRedrawAccumulatorMs = 0;
     this.crewTokens.clear();
+    this.breachMarkers.clear();
     this.enemyTokens.clear();
 
     const save = campaignSession.requireActive();
@@ -716,6 +735,8 @@ export class FloorplanScene extends Phaser.Scene {
     this.initCrewTokens();
     this.initEnemyTokens();
     this.initProblemMarker();
+    // Una brecha cargada de un save ya existe antes del primer redibujo.
+    this.syncBreachMarkers();
     this.initSectionAtmosphereEffects();
     this.initConduitFlowEffects();
     this.syncSignalWireFlowEffects();
@@ -1124,8 +1145,14 @@ export class FloorplanScene extends Phaser.Scene {
         }
       }),
     ];
+    // "Guardar y salir" tiene que persistir la misión viva, no solo `updatedAt`
+    // (ronda 1 de playtest de 13f — bug preexistente). La escena de pausa no
+    // conoce `MissionRuntime`: se le deja registrado cómo construir el save.
+    registerLiveMissionSave((base) => this.mission.toUpdatedSave(base));
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       for (const unsubscribe of missionSubscriptions) unsubscribe();
+      clearLiveMissionSave();
       // Los loops de audio (`gasLeakSound`) viven en el `SoundManager` del
       // juego, no en la escena — a diferencia de los emisores de partículas,
       // Phaser no los destruye solo al cambiar de escena. Sin este stop, un
@@ -1781,6 +1808,57 @@ export class FloorplanScene extends Phaser.Scene {
 
   private updateProblemMarkerVisibility(): void {
     this.problemMarker?.setVisible(this.mission.crisisState === "active");
+  }
+
+  /**
+   * Marcador PERSISTENTE sobre cada brecha de casco (13f, ronda 1 de playtest).
+   *
+   * El decal que dejaba el efecto de partículas se perdía entre el arte del
+   * piso, así que el operador no encontraba "la celda marcada". Mismo molde
+   * pulsante que `initProblemMarker`, que ya resolvió este problema para la
+   * válvula del Cap.1: un anillo que late no se confunde con el suelo.
+   *
+   * Se sincroniza por celda en vez de recrearse: un anillo reconstruido en cada
+   * `redrawOverlay` perdería su tween y quedaría fijo (patrón 22).
+   */
+  private syncBreachMarkers(): void {
+    const open = this.mission.openBreachCells();
+    const seen = new Set<string>();
+    for (const breach of open) {
+      const key = `${breach.cell.x},${breach.cell.y}`;
+      seen.add(key);
+      let marker = this.breachMarkers.get(key);
+      if (!marker) {
+        marker = this.add
+          .circle((breach.cell.x + 0.5) * CELL, (breach.cell.y + 0.5) * CELL, CELL * 0.6)
+          .setStrokeStyle(3, BREACH_MARKER_COLOR, 1)
+          .setFillStyle(BREACH_MARKER_COLOR, 0.12)
+          .setDepth(RENDER_DEPTH.problemMarker);
+        this.markAsWorldObject(marker);
+        this.tweens.add({
+          targets: marker,
+          alpha: { from: 1, to: 0.3 },
+          scale: { from: 0.9, to: 1.2 },
+          duration: 700,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+        this.breachMarkers.set(key, marker);
+      }
+      // Sellada: el agujero sigue ahí (el casco no se repara, principio 5),
+      // pero deja de ser una emergencia — se atenúa en vez de desaparecer.
+      const color = breach.sealed ? BREACH_SEALED_MARKER_COLOR : BREACH_MARKER_COLOR;
+      marker.setStrokeStyle(3, color, 1);
+      marker.setFillStyle(color, breach.sealed ? 0 : 0.12);
+    }
+    for (const [key, marker] of this.breachMarkers) {
+      if (!seen.has(key)) {
+        this.tweens.killTweensOf(marker);
+        marker.destroy();
+        this.breachMarkers.delete(key);
+      }
+    }
   }
 
   /**
@@ -2778,6 +2856,10 @@ export class FloorplanScene extends Phaser.Scene {
     // El grafo de señal (nodos + cables) es la capa `señales` (Fase 11f.3): al
     // reconstruirse el overlay reaplica el estado actual del toggle.
     this.applyLayerAlpha("senal");
+    // Las brechas viven FUERA del overlay (no se destruyen con él, para no
+    // perder su tween pulsante), pero se sincronizan en el mismo punto: instalar
+    // el parche tiene que apagar la alarma en el acto.
+    this.syncBreachMarkers();
   }
 
   // --- Proyectiles ferromagnéticos y trayectoria fantasma (Fase 11a.3) ----
@@ -3089,7 +3171,11 @@ export class FloorplanScene extends Phaser.Scene {
     this.mission.reactionEvents.emit({
       kind: "combustion",
       intensity: "violent",
-      radius: "full-section",
+      // Media sección, no `full-section` (ronda 1 de playtest): con el radio
+      // máximo una sola pulsación reventaba la sección de un golpe y no había
+      // nada que observar. El punto de la tecla es ver la barra bajar por pasos
+      // y llegar al colapso insistiendo.
+      radius: "half-section",
       crewDamage: "medium",
       sectionId: section.id,
       elapsedSeconds: this.mission.elapsedSeconds,
@@ -3565,7 +3651,14 @@ export class FloorplanScene extends Phaser.Scene {
         .setVisible(false);
       this.markAsWorldObject(selectionRing);
 
-      this.crewTokens.set(actor.id, { dot, label, workingRing, selectionRing });
+      this.crewTokens.set(actor.id, {
+        dot,
+        label,
+        workingRing,
+        selectionRing,
+        baseScaleX: dot.scaleX,
+        baseScaleY: dot.scaleY,
+      });
       this.updateCrewTokenWorking(actor.id);
     });
   }
@@ -3782,7 +3875,10 @@ export class FloorplanScene extends Phaser.Scene {
    * — mismo mecanismo de viaje celda a celda, firma de salto distinta.
    */
   private chainHops(
-    token: { readonly dot: HopTarget },
+    // `baseScaleX/Y` opcionales: los tokens de tripulación llevan su escala en
+    // reposo registrada y la pasan a `hopMove`; los de enemigo (rectángulos a
+    // escala 1) no la necesitan.
+    token: { readonly dot: HopTarget; readonly baseScaleX?: number; readonly baseScaleY?: number },
     waypoints: ReadonlyArray<{ x: number; y: number }>,
     perHopMs: number,
     cadence: HopCadence = "normal",
@@ -3799,7 +3895,16 @@ export class FloorplanScene extends Phaser.Scene {
       this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
       this.faceHopTarget(token.dot, next.x);
     }
-    const tween = hopMove(this, token.dot, { x: token.dot.x, y: token.dot.y }, next, cadence, signature, perHopMs);
+    const tween = hopMove(
+      this,
+      token.dot,
+      { x: token.dot.x, y: token.dot.y },
+      next,
+      cadence,
+      signature,
+      perHopMs,
+      baseScaleOf(token),
+    );
     this.trackHopTween(tween);
     tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
   }
@@ -3854,7 +3959,18 @@ export class FloorplanScene extends Phaser.Scene {
     this.sound.play(pickSoundKey(AUDIO_KEYS.footstep), { volume: 0.25 });
     const asidePx = this.cellCenterPx(aside);
     this.faceHopTarget(token.dot, asidePx.x);
-    this.trackHopTween(hopMove(this, token.dot, from, asidePx, this.cadenceForActor(actorId), CREW_SIGNATURE));
+    this.trackHopTween(
+      hopMove(
+        this,
+        token.dot,
+        from,
+        asidePx,
+        this.cadenceForActor(actorId),
+        CREW_SIGNATURE,
+        undefined,
+        baseScaleOf(token),
+      ),
+    );
   }
 
   /** Primer vecino ortogonal transitable de `cell`, o `undefined` si no hay grilla / ninguno lo es. */
@@ -3892,6 +4008,32 @@ export class FloorplanScene extends Phaser.Scene {
   /** Placement completo (posición + footprint + rotación) de una instancia colocada — ronda 8, resaltado por contorno de footprint real en vez de un círculo suelto. */
   private instancePlacement(instanceId: PlacedComponentInstanceId): PlacedFootprint | undefined {
     return this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId)?.placement;
+  }
+
+  /**
+   * ¿La pieza recién instalada tapó la brecha, o no servía? (13f, ronda 1 de
+   * playtest.)
+   *
+   * El operador instaló una junta hermética sobre una brecha y "parece no
+   * funcionar": la tarea se completaba, la pieza quedaba puesta y la sección
+   * seguía vaciándose, sin ningún aviso. Una acción que no sirve tiene que
+   * distinguirse de una que sí (patrón 8). El veredicto lo da el motor
+   * (`breachCovering` → `isBreachSealed`), no un criterio propio de la UI.
+   */
+  private notifyBreachPatchOutcome(taskId: CrewTaskId): void {
+    const payload = this.mission.scheduler.getTask(taskId)?.payload;
+    if (payload?.kind !== "install") return;
+    const breach = this.mission.breachCovering(occupiedCells(payload.placement));
+    if (!breach) return;
+    this.notifications?.push(
+      breach.sealed
+        ? { title: t("ui.floorplan.notification.breach-sealed"), type: "success" }
+        : {
+            title: t("ui.floorplan.notification.breach-patch-failed"),
+            lines: [t("ui.floorplan.notification.breach-patch-failed-detail")],
+            type: "warning",
+          },
+    );
   }
 
   /** Celda donde ocurre físicamente una tarea de acción, derivada de su payload. */
@@ -3953,6 +4095,7 @@ export class FloorplanScene extends Phaser.Scene {
         if (event.type !== "go-to") {
           if (event.type === "install") {
             this.sound.play(pickSoundKey(AUDIO_KEYS.install), { volume: 0.6 });
+            this.notifyBreachPatchOutcome(event.taskId);
           }
           this.redrawOverlay();
           // El grafo de cables pudo cambiar (connect/dismantle del dueño de un
@@ -4390,14 +4533,21 @@ export class FloorplanScene extends Phaser.Scene {
       .setDepth(RENDER_DEPTH.effect);
     this.markAsWorldObject(flash);
     this.tweens.add({ targets: flash, alpha: 0, scale: 1.8, duration: 320, onComplete: () => flash.destroy() });
-    // Pulso RELATIVO a la escala en reposo (el sprite usa una escala fraccional
-    // de `setDisplaySize`, no 1): multiplicar por 1.4, no fijar 1.4 absoluto.
+    // Pulso ABSOLUTO sobre la escala BASE registrada, no sobre `dot.scaleX` en
+    // el momento (ronda 1 de playtest de 13f). Multiplicar por el valor actual
+    // parecía lo correcto —el sprite no está a escala 1— pero convierte cada
+    // flash solapado en una multiplicación compuesta: con una ráfaga de daño el
+    // token crecía sin techo y el `yoyo` lo devolvía a un valor ya corrupto.
+    // El `killTweensOf` previo garantiza que solo haya UN escritor de la escala.
+    this.tweens.killTweensOf(token.dot);
+    token.dot.setScale(token.baseScaleX, token.baseScaleY);
     this.tweens.add({
       targets: token.dot,
-      scaleX: token.dot.scaleX * 1.4,
-      scaleY: token.dot.scaleY * 1.4,
+      scaleX: token.baseScaleX * 1.4,
+      scaleY: token.baseScaleY * 1.4,
       duration: 90,
       yoyo: true,
+      onComplete: () => token.dot.setScale(token.baseScaleX, token.baseScaleY),
     });
   }
 
@@ -4528,6 +4678,20 @@ export class FloorplanScene extends Phaser.Scene {
     this.markAsHudObject(flash);
     this.tweens.add({ targets: flash, alpha: 0, duration: 500, onComplete: () => flash.destroy() });
   }
+}
+
+/**
+ * Escala en reposo registrada de un token, en la forma que espera `hopMove`.
+ * `undefined` si el token no la lleva (enemigos): `hopMove` cae entonces a leer
+ * la escala actual, que para un rectángulo a escala 1 es correcto.
+ */
+function baseScaleOf(token: {
+  readonly baseScaleX?: number;
+  readonly baseScaleY?: number;
+}): { readonly x: number; readonly y: number } | undefined {
+  return token.baseScaleX === undefined || token.baseScaleY === undefined
+    ? undefined
+    : { x: token.baseScaleX, y: token.baseScaleY };
 }
 
 /** `ConduitConnection` no tiene id propio (Fase 11f) — clave compuesta para `conduitFlowEffects`. */

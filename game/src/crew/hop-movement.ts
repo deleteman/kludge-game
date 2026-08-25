@@ -107,14 +107,22 @@ export function hopMove(
   signature: JumpSignature = CREW_SIGNATURE,
   /** Duración fija de ESTE salto (ms), si el llamador quiere repartir un viaje en una duración total (ej. la del `go-to`). Sobreescribe la duración de la cadencia; la altura sigue de la cadencia. */
   durationMsOverride?: number,
+  /**
+   * Escala en reposo del sprite. Si el llamador la lleva registrada, DEBE
+   * pasarla: leer `target.scaleX` al empezar el salto cristaliza como base
+   * cualquier deformación que otra animación estuviera aplicando en ese
+   * instante (ronda 1 de playtest de 13f — un pulso de daño solapado con un
+   * salto dejaba al tripulante escalado de forma permanente).
+   */
+  baseScale?: { readonly x: number; readonly y: number },
 ): Phaser.Tweens.Tween {
   const base = HOP_CADENCE_PARAMS[cadence];
   const irregularity = Math.min(1, base.irregularity + signature.extraIrregularity);
   const durationMs =
     durationMsOverride ?? jittered(base.durationMs * signature.durationScale, irregularity);
   const heightPx = jittered(base.heightPx * signature.heightScale, irregularity);
-  const baseScaleX = target.scaleX;
-  const baseScaleY = target.scaleY;
+  const baseScaleX = baseScale?.x ?? target.scaleX;
+  const baseScaleY = baseScale?.y ?? target.scaleY;
 
   target.x = from.x;
   target.y = from.y;

@@ -43,6 +43,7 @@ import {
   MissionHazardRuntime,
   registerKineticDamage,
   sectionBreachPressureSink,
+  isBreachSealed,
   TransientLeakPressureSink,
   dismantleHazardKinds,
   isElectricSource,
@@ -949,6 +950,42 @@ export class MissionRuntime {
         this.componentRegistry,
       ),
     );
+  }
+
+  /**
+   * Brecha de casco que cubre alguna de estas celdas, con si YA está sellada
+   * (13f, ronda 1 de playtest).
+   *
+   * Reusa `isBreachSealed` del motor, la MISMA función que decide si la fuga se
+   * detiene: así el panel no puede decir "sellada" mientras la sección se sigue
+   * vaciando, ni al revés. Mismo criterio que `dismantleHazardsFor` con
+   * `assessDismantleHazards` en 13d.
+   *
+   * Recibe varias celdas porque una pieza instalada ocupa más de una: el parche
+   * cuenta si CUALQUIERA de sus celdas cae sobre el agujero.
+   */
+  breachCovering(
+    cells: ReadonlyArray<GridPosition>,
+  ): { readonly cell: GridPosition; readonly sealed: boolean } | undefined {
+    const breach = this.sectionIntegrityRuntime
+      .openBreaches()
+      .find((entry) => cells.some((cell) => cell.x === entry.cell.x && cell.y === entry.cell.y));
+    if (!breach) {
+      return undefined;
+    }
+    return {
+      cell: breach.cell,
+      sealed: isBreachSealed(this.shipState.get(), breach, this.componentRegistry),
+    };
+  }
+
+  /** Celdas de TODAS las brechas abiertas, para el marcador persistente del plano. */
+  openBreachCells(): ReadonlyArray<{ readonly cell: GridPosition; readonly sealed: boolean }> {
+    const blueprint = this.shipState.get();
+    return this.sectionIntegrityRuntime.openBreaches().map((breach) => ({
+      cell: breach.cell,
+      sealed: isBreachSealed(blueprint, breach, this.componentRegistry),
+    }));
   }
 
   /**

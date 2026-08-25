@@ -1181,13 +1181,19 @@
 - `section-integrity.ts` — `applySectionDamage`: aplica, emite `section-damaged` solo al CRUZAR de nivel del corte del
   HUD (`fractionToLevel`, así el evento coincide con lo que ve el jugador) y `section-breached` una sola vez.
 - `integrity-events.types.ts` — `SectionDamagedEvent`/`SectionBreachedEvent` (con `breachCell`) + `SectionDamageCause`.
+- `breach-cell.ts` (ronda 1 de playtest de 13f) — `hullBreachCell`/`isHullEdgeCell`, puras: la brecha se abre en la celda
+  de la sección que TOCA el exterior más cercana al origen del daño, con desempate determinista. Antes se usaba el
+  centroide y el agujero aparecía en medio del piso, lejos de donde el jugador había clickeado.
 
 ## `engine/src/mission/mission-section-integrity-runtime.ts` (nuevo, Subfase 13f)
 - `MissionSectionIntegrityRuntime` — `Tickable`, molde de `MissionStructuralRuntime`; se registra tras `atmosphereRuntime`.
   Corrosión y descompresión por tick; impacto contra pared y combustión por suscripción. Al colapsar: brecha, desgaste de
   toda la maquinaria de la sección (reusa `worsenWear`, no un segundo eje de daño) y 1..N combustiones REALES por el
   emisor de reacciones. `ignoredCombustionRefs` evita que el colapso se dañe a sí mismo en bucle. Expone `fractionOf`/
-  `allFractions` (implementa `SectionIntegritySource`), `openBreaches`, `pressureFloorFor` y `toSnapshots`.
+  `weightedFractions` (implementa `SectionIntegritySource`), `openBreaches`, `pressureFloorFor` y `toSnapshots`.
+  `weightedFractions` pondera cada sección por su `maxHp` y multiplica el peso de las brechadas
+  (`breachedSectionWeightMultiplier`) — ronda 1 de playtest: la agregación "peor sección gana" hundía el casco de toda
+  la nave por una sala, y la media plana no lo movía casi nada.
 
 ## `engine/src/mission/section-breach-pressure-sink.ts` (nuevo, Subfase 13f)
 - `sectionBreachPressureSink` — hermano de `sealBreachPressureSink` con una diferencia física deliberada: la brecha no
@@ -1199,7 +1205,9 @@
 - `MissionHazardRuntime` — llamador de producción que le faltaba a `HazardAccumulator` (deuda #16). Hermano del runtime
   de sección: misma lectura de atmósfera aplicada al tripulante. Tóxico, corrosivo y **vacío** (que usa la causa `"cold"`
   ya existente en vez de inventar un `kind` nuevo de `HazardEvent`). `incapacitation` hiere con `minHp: 1`, solo
-  `lethal` mata.
+  `lethal` mata. El vacío aplica **mordiscos discretos por actor** (~10 s hasta la muerte, el primero no letal como
+  aviso): la versión original escalaba una fracción con `dtSeconds` y por frame redondeaba a cero daño mientras emitía
+  un `crew-damaged` por frame.
 
 ## `engine/src/mission/kinetic-damage-handler.ts` (nuevo, Subfase 13f)
 - `registerKineticDamage` — llamador de producción de `applyKineticDamage`, que existía desde 11a sin ninguno. Enemigos
@@ -1251,3 +1259,16 @@
 - `fireDevSectionDamage()` + tecla **H** — emite una combustión REAL por el emisor del motor, o sea que recorre el
   camino de producción entero (daño, colapso, brecha, drenaje, desgaste). Existe porque ningún capítulo autorado tiene
   hoy forma jugable de dañar el casco, y sin esto los pasos de prueba manual serían imposibles de ejecutar.
+
+
+## `game/src/meta/live-mission-save.ts` (nuevo, ronda 1 de playtest de 13f)
+- Registro de una función `(base) => CampaignSaveState` que `FloorplanScene` publica al montar la misión y libera en su
+  SHUTDOWN, para que `PauseMenuScene` pueda persistir el estado VIVO sin conocer `MissionRuntime`. Cierra un bug
+  preexistente: "Guardar y salir" guardaba `campaignSession.touch()`, o sea solo `updatedAt`, y tiraba en silencio
+  atmósfera, desgaste, `condition`, stock, química, HP y la cicatriz de casco.
+
+## `game/src/meta/save-adapter.ts` (modificado, ronda 1 de playtest de 13f)
+- `mostRecentCampaignSave()` — ordena por `metadata.updatedAt` y omite las partidas ilegibles. "Continuar" tomaba
+  `saves[0]` de un `readdir` SIN ORDENAR, así que con varias campañas en disco entraba en una vieja sin ningún error
+  visible (los guards de deserialización son tolerantes a propósito) y el jugador leía "los componentes desaparecieron".
+  Se ordena por `updatedAt` y no por el timestamp del id, que marca la CREACIÓN y no el último guardado.

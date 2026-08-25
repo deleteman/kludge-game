@@ -172,6 +172,16 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
       ) {
         throw new BlueprintParseError("Invalid entry in Blueprint.sectionIntegrity");
       }
+      // `breachCell` es opcional: los saves anteriores a la ronda 1 de playtest
+      // de 13f no lo tienen y siguen cargando (la brecha se recoloca sola).
+      if (
+        entry.breachCell !== undefined &&
+        (!isPlainObject(entry.breachCell) ||
+          typeof entry.breachCell.x !== "number" ||
+          typeof entry.breachCell.y !== "number")
+      ) {
+        throw new BlueprintParseError("Invalid breachCell in Blueprint.sectionIntegrity");
+      }
     }
   }
 

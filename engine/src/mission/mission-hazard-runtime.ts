@@ -16,7 +16,7 @@ import {
   type HazardAccumulator,
 } from "../atmosphere/hazard-accumulation.js";
 import { sectionTaggedConcentration } from "../atmosphere/tagged-concentration.js";
-import type { CrewActor } from "../crew/crew-actor.types.js";
+import type { CrewActor, CrewActorId } from "../crew/crew-actor.types.js";
 import type { CrewDamageCause, CrewDomainEvent } from "../crew/crew-events.types.js";
 import { applyCrewDamage, HP_LOSS_FRACTION } from "../crew/hp-resolution.js";
 import { HAZARD_PARAMETERS } from "./mission-hazard-parameters.js";
@@ -70,17 +70,27 @@ export interface MissionHazardRuntimeDeps {
 export class MissionHazardRuntime implements Tickable {
   private readonly toxicBySection = new Map<SectionId, HazardAccumulator>();
   private readonly corrosiveBySection = new Map<SectionId, HazardAccumulator>();
+  /**
+   * Exposición al vacío POR ACTOR, no por sección — al revés que los hazards
+   * químicos de arriba. Es deliberado: el veneno es una propiedad de la sala
+   * ("esta sala ya es letal"), pero el vacío es una cuenta de la persona, y el
+   * jugador tiene que poder sacar a un tripulante y meter a otro sin que el
+   * segundo herede los mordiscos del primero.
+   */
+  private readonly vacuumExposure = new Map<CrewActorId, VacuumExposure>();
 
   constructor(private readonly deps: MissionHazardRuntimeDeps) {}
 
   tick(ctx: TickContext): void {
     for (const actor of this.deps.crewState.all()) {
       if (actor.hp <= 0 || !actor.currentCell) {
+        this.vacuumExposure.delete(actor.id);
         continue;
       }
       const section = sectionContainingCell(this.deps.shipFloorplan, actor.currentCell);
       const atmosphere = section && this.deps.atmosphereRuntime.atmosphereOf(section.id);
       if (!section || !atmosphere) {
+        this.vacuumExposure.delete(actor.id);
         continue;
       }
 
@@ -107,6 +117,10 @@ export class MissionHazardRuntime implements Tickable {
 
       if (atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa) {
         this.applyVacuum(actor, ctx);
+      } else {
+        // Salir de la sección brechada resetea la cuenta: el vacío no deja
+        // daño acumulado latente, o volver a entrar mataría de inmediato.
+        this.vacuumExposure.delete(actor.id);
       }
     }
   }
@@ -119,15 +133,30 @@ export class MissionHazardRuntime implements Tickable {
   }
 
   /**
-   * Daño por vacío. A diferencia de los hazards por umbral, es CONTINUO
-   * mientras el actor siga ahí: no hay un "cruce" que emitir una vez, hay una
-   * sección sin aire. Por eso escala con `dtSeconds` en vez de aplicar una
-   * fracción de golpe.
+   * Daño por vacío: mordiscos DISCRETOS, no un goteo continuo.
+   *
+   * La primera versión de 13f escalaba una fracción con `dtSeconds` en cada
+   * tick. Con el core loop corriendo por frame la pérdida redondeaba a cero:
+   * cero daño real y un `crew-damaged` por frame. El vacío es ahora un
+   * mordisco cada `biteIntervalSeconds`, el primero de ellos inmediato y no
+   * letal (el aviso), y ~10 s hasta la muerte desde HP lleno.
    */
   private applyVacuum(actor: CrewActor, ctx: TickContext): void {
-    this.hurt(actor, HAZARD_PARAMETERS.vacuum.hpFractionPerSecond * ctx.dtSeconds, "cold", ctx, {
-      lethal: true,
-    });
+    const exposure = this.vacuumExposure.get(actor.id) ?? { secondsSinceBite: 0, bites: 0 };
+    exposure.secondsSinceBite += ctx.dtSeconds;
+
+    const firstBite = exposure.bites === 0;
+    if (firstBite || exposure.secondsSinceBite >= HAZARD_PARAMETERS.vacuum.biteIntervalSeconds) {
+      this.hurt(actor, HAZARD_PARAMETERS.vacuum.hpFractionPerBite, "cold", ctx, {
+        // El primer mordisco es el aviso: hiere pero deja vivo. A partir del
+        // segundo el vacío mata de verdad.
+        lethal: !firstBite,
+      });
+      exposure.bites += 1;
+      exposure.secondsSinceBite = 0;
+    }
+
+    this.vacuumExposure.set(actor.id, exposure);
   }
 
   private hurt(
@@ -155,6 +184,12 @@ export class MissionHazardRuntime implements Tickable {
       this.deps.crewEmitter?.emit(event);
     }
   }
+}
+
+/** Cuenta de mordiscos de vacío de UN tripulante. Mutable a propósito: es estado de tick, no de dominio. */
+interface VacuumExposure {
+  secondsSinceBite: number;
+  bites: number;
 }
 
 function accumulatorFor(

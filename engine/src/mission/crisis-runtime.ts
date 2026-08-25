@@ -133,7 +133,9 @@ export class CrisisRuntime implements Tickable {
       lethal === false ? { minHp: 1 } : undefined,
     );
     this.crew?.set(actor);
-    this.crewEmitter?.emit(event);
+    if (event) {
+      this.crewEmitter?.emit(event);
+    }
     return true;
   }
 

@@ -99,6 +99,23 @@ export const SECTION_INTEGRITY_PARAMETERS = {
      * tapa el agujero. Ver `isBreachPatch`.
      */
     minPatchResistance: "M" as StructuralResistanceLevel,
+    /**
+     * Cuánto pesa una sección BRECHADA en el indicador de casco de la nave, en
+     * múltiplos de su tamaño (ronda 1 de playtest de 13f).
+     *
+     * Existe porque la media ponderada por tamaño, sola, se pasaba de frenada:
+     * con el mapa real (335 celdas repartidas en 11 secciones) perder una
+     * sección típica movía la fila del HUD un 7%, o sea casi nada. Corregir un
+     * indicador que gritaba de más para dejar uno que no dice nada no es
+     * corregirlo (patrón 7).
+     *
+     * Que pese MÁS que su volumen no es un truco de balance: un agujero al
+     * vacío compromete a toda la nave, no solo a la sala que se abrió. Con 3,
+     * una sección perdida deja el casco ~80%, tres lo llevan a la mitad y media
+     * nave rota lo pone en crítico. Valor de playtesting, como el resto de este
+     * archivo — ningún documento lo fija.
+     */
+    breachedSectionWeightMultiplier: 3,
   },
 
   collapse: {

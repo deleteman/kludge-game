@@ -131,6 +131,9 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.hazard.dismantle-spill": "Reservorio con contenido: se derramará al desmontar",
   "ui.floorplan.mission.inspector.hazard.dismantle-leak": "Atmósfera comprometida: desmontar agravará la fuga",
   "ui.floorplan.mission.inspector.hazard.source-charge": "Fuente con carga propia: cortar la sección no la vuelve segura",
+  "ui.floorplan.mission.inspector.breach-open":
+    "Brecha en el casco: la sección se vacía al vacío. Solo la sella una pieza ESTRUCTURAL de resistencia media o superior — una junta o una manguera no aguantan el agujero.",
+  "ui.floorplan.mission.inspector.breach-sealed": "Brecha sellada: la fuga está detenida (el casco sigue dañado).",
   "ui.floorplan.mission.inspector.install-here": "Instalar aquí",
   "ui.floorplan.mission.inspector.close": "Cerrar",
   "ui.floorplan.mission.inspector.empty-title": "Celda vacía",
@@ -168,6 +171,10 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-damaged": "Estructura dañada",
   "ui.floorplan.notification.section-breached": "¡Brecha en el casco!",
   "ui.floorplan.notification.section-breached-detail": "La sección se está vaciando al vacío. Instalá una pieza estructural sobre la brecha.",
+  "ui.floorplan.notification.breach-sealed": "Brecha sellada: la fuga se detuvo",
+  "ui.floorplan.notification.breach-patch-failed": "Esa pieza no sella la brecha",
+  "ui.floorplan.notification.breach-patch-failed-detail":
+    "Hace falta una pieza ESTRUCTURAL de resistencia media o superior. Probá desarmar algo que tenga una plancha metálica.",
   "ui.floorplan.notification.toxic-threshold": "Exposición tóxica en la tripulación",
   "ui.floorplan.notification.corrosive-exposure": "¡Corrosión sobre un tripulante!",
   "ui.floorplan.notification.synthesized": "Sustancia sintetizada",

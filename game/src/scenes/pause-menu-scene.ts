@@ -6,6 +6,7 @@ import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { createKenneyPanel } from "../ui/widgets/kenney-panel.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
 import { campaignSession } from "../meta/campaign-session.js";
+import { captureLiveMissionSave } from "../meta/live-mission-save.js";
 import { saveCampaignSave } from "../meta/save-adapter.js";
 import { SCENE_KEYS } from "../meta/scene-keys.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
@@ -44,7 +45,13 @@ export class PauseMenuScene extends Phaser.Scene {
     createKenneyButton(self, 640, 372, t("ui.menu.pause.save-and-quit"), {
       width: 320,
       onClick: () => {
-        const state = campaignSession.touch();
+        // Ronda 1 de playtest de 13f (bug PREEXISTENTE): esto guardaba
+        // `campaignSession.touch()`, que solo reescribe `updatedAt`. El estado
+        // vivo de la misión —atmósfera, desgaste, `condition`, stock, química,
+        // HP y la cicatriz de casco— solo se volcaba al resolver una crisis, así
+        // que salir a mitad de misión tiraba TODO el progreso en silencio.
+        const state = captureLiveMissionSave(campaignSession.touch());
+        campaignSession.load(state);
         void saveCampaignSave(state).then(() => metaGameStateMachine.transition("title"));
       },
     });

@@ -280,6 +280,53 @@ describe("13f — una explosión abre una brecha que drena presión", () => {
     expect(world.atmosphereRuntime.atmosphereOf(SECTION)?.pressureKpa).toBe(0);
   });
 
+  /**
+   * Ronda 1 de playtest de 13f. La brecha se abre PEGADA AL CASCO y la celda
+   * queda grabada en el estado de la sección, no solo en el evento: si se
+   * recalculara al cargar la partida, el agujero se mudaría de pared y el
+   * parche que el jugador dejó puesto quedaría en el lugar equivocado.
+   */
+  it("la brecha se abre en una celda de borde y queda grabada para el save", () => {
+    const world = mount();
+    world.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "high",
+      sectionId: SECTION,
+      elapsedSeconds: 0,
+    });
+
+    const breach = world.integrityRuntime.openBreaches()[0]!;
+    // En una sección de 3×3 que ocupa todo el plano, el centro (1,1) es la
+    // ÚNICA celda que no toca el exterior: la brecha no puede caer ahí.
+    expect(breach.cell).not.toEqual({ x: 1, y: 1 });
+
+    const snapshot = world.integrityRuntime.toSnapshots().find((entry) => entry.sectionId === SECTION)!;
+    expect(snapshot.breachCell).toEqual(breach.cell);
+  });
+
+  /**
+   * Ronda 1 de playtest: "al presionar H una vez, la integridad del casco queda
+   * en casi 0 de una". La sección brechada aporta 0, pero pesa; el resto de la
+   * nave sigue contando.
+   */
+  it("una sección brechada pesa MÁS que su tamaño en el indicador de nave, sin hundirlo sola", () => {
+    const world = mount();
+    world.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "high",
+      sectionId: SECTION,
+      elapsedSeconds: 0,
+    });
+
+    const [entry] = world.integrityRuntime.weightedFractions();
+    expect(entry?.fraction).toBe(0);
+    expect(entry?.weight).toBe(90 * 3);
+  });
+
   it("la descompresión sola deteriora la sección pero nunca la abre", () => {
     const world = mount();
     const atmosphere = world.atmosphereRuntime.atmosphereOf(SECTION)!;

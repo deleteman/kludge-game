@@ -726,6 +726,14 @@ export class MissionInteractionController {
     this.redrawActionPanel();
   }
 
+  /** Brecha que cubren las celdas ocupadas por esta pieza (13f ronda 1), o `undefined`. */
+  private breachInfoFor(instanceId: PlacedComponentInstanceId): { readonly sealed: boolean } | undefined {
+    const instance = this.mission.blueprint.placedComponents.find(
+      (entry) => entry.instanceId === instanceId,
+    );
+    return instance ? this.mission.breachCovering(occupiedCells(instance.placement)) : undefined;
+  }
+
   private redrawActionPanel(): void {
     this.actionPanelContainer?.destroy(true);
     this.actionPanelContainer = undefined;
@@ -754,8 +762,15 @@ export class MissionInteractionController {
             // sin tener que cerrar y reabrir el panel.
             fabricatorBlocked:
               this.mission.coreLoop.mode === "planning" ? undefined : ("execution" as const),
+            // Brecha bajo la pieza (13f ronda 1): si el jugador instaló algo
+            // que no sirve de parche, el panel tiene que decirlo. Derivado del
+            // mundo vivo como el resto, para que instalar la plancha apague el
+            // aviso sin cerrar y reabrir el panel.
+            breach: this.breachInfoFor(this.actionPanelContent.instanceId),
           }
-        : this.actionPanelContent;
+        : this.actionPanelContent.kind === "empty"
+          ? { ...this.actionPanelContent, breach: this.mission.breachCovering([this.actionPanelContent.position]) }
+          : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,
@@ -771,6 +786,10 @@ export class MissionInteractionController {
         emptyHint: t("ui.floorplan.mission.inspector.empty-hint"),
         dismantle: t("ui.floorplan.mission.inspector.dismantle"),
         hazardWarning: (kind) => t(`ui.floorplan.mission.inspector.hazard.${kind}`),
+        breachWarning: (sealed) =>
+          sealed
+            ? t("ui.floorplan.mission.inspector.breach-sealed")
+            : t("ui.floorplan.mission.inspector.breach-open"),
         cutPower: t("ui.floorplan.mission.inspector.cut-power"),
         purgeReservoir: t("ui.floorplan.mission.inspector.purge-reservoir"),
         dischargeSource: t("ui.floorplan.mission.inspector.discharge-source"),

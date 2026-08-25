@@ -131,6 +131,9 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.hazard.dismantle-spill": "Reservoir still full: it will spill when dismantled",
   "ui.floorplan.mission.inspector.hazard.dismantle-leak": "Compromised atmosphere: dismantling will worsen the leak",
   "ui.floorplan.mission.inspector.hazard.source-charge": "Self-powered source: cutting the section will not make it safe",
+  "ui.floorplan.mission.inspector.breach-open":
+    "Hull breach: the section is venting to vacuum. Only a STRUCTURAL part of medium resistance or better seals it — a gasket or a hose will not hold.",
+  "ui.floorplan.mission.inspector.breach-sealed": "Breach sealed: the leak has stopped (the hull is still damaged).",
   "ui.floorplan.mission.inspector.install-here": "Install here",
   "ui.floorplan.mission.inspector.close": "Close",
   "ui.floorplan.mission.inspector.empty-title": "Empty cell",
@@ -168,6 +171,10 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-damaged": "Structure damaged",
   "ui.floorplan.notification.section-breached": "Hull breach!",
   "ui.floorplan.notification.section-breached-detail": "The section is venting to vacuum. Install a structural part over the breach.",
+  "ui.floorplan.notification.breach-sealed": "Breach sealed: the leak has stopped",
+  "ui.floorplan.notification.breach-patch-failed": "That part does not seal the breach",
+  "ui.floorplan.notification.breach-patch-failed-detail":
+    "You need a STRUCTURAL part of medium resistance or better. Try dismantling something that yields a metal plate.",
   "ui.floorplan.notification.toxic-threshold": "Toxic exposure among the crew",
   "ui.floorplan.notification.corrosive-exposure": "Corrosion on a crew member!",
   "ui.floorplan.notification.synthesized": "Substance synthesized",

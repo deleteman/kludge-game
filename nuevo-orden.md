@@ -677,6 +677,37 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
   camino jugable (ningún capítulo autora una sustancia `CORR` viva), documentado en el docblock del runtime en vez
   de darlo por bueno. Tecla de dev **H** para provocar el colapso por el camino de producción.
 
+* **Ronda 1 de playtest (2026-08-25).** Cinco reportes; dos de ellos resultaron ser bugs **preexistentes del
+  meta-juego** que 13f volvió visibles por primera vez.
+  - *Integridad de casco casi a 0 con una sola explosión.* La agregación era "peor sección gana", así que una
+    sección al 17% ponía toda la nave al 17%. Pasa a **media ponderada por tamaño**, con las secciones
+    brechadas pesando el triple (`breachedSectionWeightMultiplier`): la fila del HUD deja de desplomarse por
+    una sala y sigue moviéndose lo bastante como para contar algo. La alarma localizada no se pierde — la capa
+    "estructural", el overlay de alerta y la alarma sonora ya estaban donde corresponde.
+  - *La celda clickeada no quedaba marcada.* La brecha se abría en el **centroide** de la sección: en medio del
+    piso, lejos del daño y físicamente imposible. Nuevo módulo puro `integrity/breach-cell.ts` — se elige la
+    celda que toca el exterior más cercana al origen del daño, con desempate determinista. La celda se GRABA en
+    `SectionIntegrity.breachCell` y se persiste: recalcularla al cargar mudaba el agujero de pared y dejaba el
+    parche del jugador en el lugar equivocado.
+  - *Sangre saltando sobre un tripulante que no perdía vida, y el sprite roto al moverse.* Mismo origen: el
+    daño por vacío escalaba una fracción con `dtSeconds`, que por frame redondeaba a 0 — cero daño y ~60
+    `crew-damaged` por segundo. El vacío pasa a **mordiscos discretos** (~10 s hasta la muerte, el primero no
+    letal como aviso), y `applyHpLoss` gana un **guard general**: un daño que no quita vida no emite evento,
+    lo que corta la clase entera de bug para cualquier fuente futura. El sprite se rompía porque el flash de
+    daño era un tween RELATIVO sobre la escala actual; ahora es absoluto sobre una escala BASE registrada, que
+    `hopMove` también lee.
+  - *Sellar con una junta hermética no funcionaba.* Correcto por diseño y **el requisito se mantiene** (una
+    goma no tapa un agujero al vacío), pero el juego no lo decía en ningún lado. Ahora la brecha es
+    inspeccionable en el panel, instalar algo que no sirve avisa por qué, y cada brecha tiene un marcador
+    pulsante propio en el plano que cambia de color al sellarse.
+  - *Preexistentes:* "Guardar y salir" persistía `campaignSession.touch()` (solo `updatedAt`), así que salir a
+    mitad de misión tiraba TODO el estado vivo; y "Continuar" cargaba `saves[0]` de un `readdir` sin ordenar,
+    entrando en una campaña de hacía un mes sin ningún error visible. Resueltos con `meta/live-mission-save.ts`
+    y `mostRecentCampaignSave()`. Sin esto la cicatriz de 13f no era verificable.
+  - La tecla **H** pasa a emitir media sección en vez del radio máximo: con `full-section` una sola pulsación
+    reventaba la sección de un golpe y no había progresión que observar.
+  - Registrados sin arreglar: deudas #41 a #45 de `PENDIENTES_OBSERVACIONES.md`.
+
 #### Subfase 13h: Puertas y Compartimentación
 
 > **Orden de ejecución: 13f → 13h → 13g.** Se documenta acá, entre 13f y 13g, pero conserva la letra `h` para no

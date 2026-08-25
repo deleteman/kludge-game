@@ -82,8 +82,10 @@ export type ActionPanelContent =
        * en el header que el jugador no ve.
        */
       readonly fabricatorBlocked?: "execution";
+      /** Ver `BreachPanelInfo` — la pieza está tapando (o no) una brecha de casco. */
+      readonly breach?: BreachPanelInfo;
     }
-  | { readonly kind: "empty"; readonly position: GridPosition }
+  | { readonly kind: "empty"; readonly position: GridPosition; readonly breach?: BreachPanelInfo }
   | {
       readonly kind: "substance";
       readonly substanceId: ChemicalSubstanceId;
@@ -145,6 +147,21 @@ export interface ReservoirPanelInfo {
   readonly analyzed?: boolean;
 }
 
+/**
+ * Brecha de casco sobre la celda seleccionada (13f, ronda 1 de playtest).
+ *
+ * El operador intentó sellar una brecha con una junta hermética y "parece no
+ * funcionar": el motor la rechazaba (una junta no tiene la propiedad `EST`),
+ * pero el juego no lo decía en ningún lado — la tarea se completaba, la pieza
+ * quedaba puesta y la fuga seguía. Una acción que no sirve tiene que
+ * distinguirse de una que sí. `sealed` ya viene resuelto por el llamador contra
+ * el motor (`isBreachSealed`), igual que los hazards de 13d: el panel pinta, no
+ * decide qué tapa un agujero.
+ */
+export interface BreachPanelInfo {
+  readonly sealed: boolean;
+}
+
 /** Una sustancia disponible para analizar (Fase 11e), listada en `substances-list`. */
 export interface AvailableSubstanceEntry {
   readonly substanceId: ChemicalSubstanceId;
@@ -162,6 +179,8 @@ export interface ActionPanelLabels {
   readonly installHere: string;
   /** Aviso de riesgo al desmontar (13d), una línea por hazard vivo. */
   readonly hazardWarning: (kind: DismantleHazardKind) => string;
+  /** Brecha de casco sobre esta celda (13f ronda 1): qué es y qué hace falta para sellarla. */
+  readonly breachWarning: (sealed: boolean) => string;
   /** Tareas de asegurado que neutralizan el riesgo (13d). */
   readonly cutPower: string;
   readonly purgeReservoir: string;
@@ -385,6 +404,26 @@ export function renderMissionActionPanel(
       .setOrigin(0.5, 0);
     container.add(notice);
     flowY += notice.height + 6;
+    claim(flowY);
+  }
+
+  // Brecha de casco sobre esta celda (13f ronda 1). Va ANTES del bloque por
+  // tipo de contenido a propósito: aplica igual a la celda vacía (todavía sin
+  // parche) que a la que ya tiene una pieza encima (que puede no servir), y en
+  // los dos casos es lo primero que el jugador necesita saber.
+  const breach = content.kind === "instance" || content.kind === "empty" ? content.breach : undefined;
+  if (breach) {
+    const breachText = scene.add
+      .text(width / 2, flowY, `${breach.sealed ? "✔" : "⚠"} ${labels.breachWarning(breach.sealed)}`, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: breach.sealed ? LABEL_COLOR : CRISIS_WARNING_CSS,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(breachText);
+    flowY += breachText.height + 6;
     claim(flowY);
   }
 

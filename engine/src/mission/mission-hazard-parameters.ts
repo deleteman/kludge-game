@@ -15,11 +15,25 @@ export const HAZARD_PARAMETERS = {
      */
     onsetKpa: 20,
     /**
-     * Fracción de HP máximo perdida por segundo en vacío. Calibrado para dar
-     * ~10 segundos de margen desde HP lleno: tiempo suficiente para que el
-     * jugador vea el aviso y saque al tripulante, no tanto como para que
-     * entrar a una sección colapsada sea gratis.
+     * Segundos entre mordiscos de daño por vacío.
+     *
+     * Ronda 1 de playtest de 13f: antes esto era una fracción CONTINUA por
+     * segundo (`0.1`), escalada por `dtSeconds` en cada tick. Con el core loop
+     * corriendo por frame (~0.016 s), la pérdida real era
+     * `Math.round(100 × 0.0016)` = **0**: el tripulante no perdía vida y aun
+     * así se emitía un `crew-damaged` por frame, ~60 por segundo. Sangre
+     * saltando sobre alguien inmortal.
+     *
+     * El daño por vacío pasa a ser DISCRETO: un mordisco visible cada
+     * `biteIntervalSeconds`, que es además lo que el principio 6 pide — un
+     * fenómeno del motor con una representación que se puede contar.
      */
-    hpFractionPerSecond: 0.1,
+    biteIntervalSeconds: 2,
+    /**
+     * Fracción de HP máximo que se lleva cada mordisco. Con un mordisco cada
+     * 2 s, cinco mordiscos (~10 s desde HP lleno) matan: el margen que el
+     * diseño de 13f pide para que el jugador vea el aviso y saque a su gente.
+     */
+    hpFractionPerBite: 0.2,
   },
 } as const;

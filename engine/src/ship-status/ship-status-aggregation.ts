@@ -6,6 +6,7 @@ import { getGasFraction, standardSectionAtmosphere } from "../atmosphere/section
 import { sectionTaggedConcentration } from "../atmosphere/tagged-concentration.js";
 import { OXYGEN_COMBUSTION_THRESHOLDS } from "../atmosphere/combustion-atmosphere.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
+import type { WeightedSectionIntegrity } from "../integrity/section-integrity.types.js";
 import type { ShipStatusIndicator, ShipStatusLevel } from "./ship-status.types.js";
 
 /**
@@ -95,9 +96,20 @@ export function aggregateLifeSupport(sections: ReadonlyArray<SectionAtmosphereEn
 }
 
 /**
- * Agregación a nivel de nave de integridad de casco (Subfase 13f): PEOR
- * SECCIÓN GANA sobre la vida propia de cada sección
+ * Agregación a nivel de nave de integridad de casco (Subfase 13f): MEDIA
+ * PONDERADA POR TAMAÑO sobre la vida propia de cada sección
  * (`integrity/section-integrity.types.ts`).
+ *
+ * Empezó siendo "peor sección gana", como los otros indicadores del HUD, y la
+ * ronda 1 de playtest lo tumbó: una sola explosión sobre una sección chica
+ * dejaba el casco de TODA la nave al 17%, que además de injusto es falso — una
+ * nave con una sección rota de once no está a punto de partirse. La alarma
+ * localizada no se pierde por esto: la capa "estructural" del plano pinta esa
+ * sección en rojo crítico y la brecha dispara su propio overlay y su alarma.
+ * Esta fila dice otra cosa, y ahora la dice bien.
+ *
+ * El peso es el `maxHp` de la sección (área × HP por celda), no un voto por
+ * sección: perder la bodega tiene que doler más que perder la esclusa.
  *
  * Reemplaza por completo el modelo de la Subfase 11g, que derivaba la
  * integridad del `RE` de las piezas INSTALADAS. Ese modelo estaba mal desde el
@@ -107,20 +119,18 @@ export function aggregateLifeSupport(sections: ReadonlyArray<SectionAtmosphereEn
  * (filtrar por tag `EST` y ponderar por `damageResistance`) se borró entero
  * junto con `instanceHullContribution` y `weightedHullFraction`.
  *
- * "Peor sección gana" es además el mismo criterio que ya usan
- * `aggregateAtmosphere` y `aggregateLifeSupport`: los tres indicadores del HUD
- * se leen igual porque se calculan igual.
- *
  * Recibe fracciones ya calculadas y no el runtime de integridad a propósito:
  * `ship-status/` resume, no conoce dominios. Sin secciones: nominal.
  */
 export function aggregateHullIntegrity(
-  sectionFractions: ReadonlyArray<number>,
+  sections: ReadonlyArray<WeightedSectionIntegrity>,
 ): ShipStatusIndicator {
-  if (sectionFractions.length === 0) {
+  const totalWeight = sections.reduce((sum, section) => sum + section.weight, 0);
+  if (sections.length === 0 || totalWeight <= 0) {
     return indicator(1);
   }
-  return indicator(Math.min(...sectionFractions));
+  const weighted = sections.reduce((sum, section) => sum + section.fraction * section.weight, 0);
+  return indicator(weighted / totalWeight);
 }
 
 export interface EnergyAggregationInput {

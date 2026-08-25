@@ -97,5 +97,7 @@ export function applyDismantleHazardDamage(
     { minHp: SALVAGE_HAZARD_PARAMETERS.crewDamageMinHp },
   );
   deps.setActor?.(damaged);
-  deps.crewEmitter?.emit(event);
+  if (event) {
+    deps.crewEmitter?.emit(event);
+  }
 }

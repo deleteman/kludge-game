@@ -24,6 +24,7 @@ import {
   kineticImpactSectionDamage,
   SECTION_ENVIRONMENTAL_DAMAGE_RULES,
 } from "../integrity/section-damage-rules.js";
+import { hullBreachCell } from "../integrity/breach-cell.js";
 import { SECTION_INTEGRITY_PARAMETERS } from "../integrity/section-integrity-parameters.js";
 import { applySectionDamage } from "../integrity/section-integrity.js";
 import {
@@ -33,6 +34,7 @@ import {
   toSectionIntegritySnapshot,
   type SectionIntegrity,
   type SectionIntegritySnapshot,
+  type WeightedSectionIntegrity,
 } from "../integrity/section-integrity.types.js";
 import { PRESSURE_SINK_FLOOR_KPA } from "./mission-atmosphere-runtime.js";
 import type { MissionAtmosphereRuntime } from "./mission-atmosphere-runtime.js";
@@ -108,7 +110,12 @@ export class MissionSectionIntegrityRuntime implements Tickable {
       if (integrity.breached) {
         // Cicatriz cargada de un save: la brecha vuelve a existir, y con ella
         // su fuga. Sin esto, cargar la partida "reparaba" la nave sola.
-        this.breaches.push({ sectionId: section.id, cell: sectionCentroid(section) });
+        this.breaches.push({
+          sectionId: section.id,
+          // La celda viene del save. El fallback solo cubre saves anteriores a
+          // la ronda 1 de 13f, donde el campo no existía.
+          cell: integrity.breachCell ?? this.breachCellFor(section.id),
+        });
       }
     }
 
@@ -119,7 +126,7 @@ export class MissionSectionIntegrityRuntime implements Tickable {
       }
       const section = sectionContainingCell(deps.shipFloorplan, event.position);
       if (section) {
-        this.damage(section.id, amount, "kinetic-impact", event.position);
+        this.damage(section.id, amount, "kinetic-impact", this.breachCellFor(section.id, event.position));
       }
     });
 
@@ -144,9 +151,19 @@ export class MissionSectionIntegrityRuntime implements Tickable {
     return integrity ? integrityFraction(integrity) : 1;
   }
 
-  /** Fracciones de TODAS las secciones, para la agregación a nivel de nave. */
-  allFractions(): ReadonlyArray<number> {
-    return [...this.bySection.values()].map(integrityFraction);
+  /**
+   * Vida de TODAS las secciones para la agregación a nivel de nave, cada una
+   * con su peso. El peso base es el `maxHp`, que ya es área × HP por celda:
+   * perder la esclusa de 10 celdas no puede pesar lo mismo que perder la bodega
+   * de 60. Una sección BRECHADA pesa además un múltiplo de eso — ver
+   * `breachedSectionWeightMultiplier`.
+   */
+  weightedFractions(): ReadonlyArray<WeightedSectionIntegrity> {
+    const { breachedSectionWeightMultiplier } = SECTION_INTEGRITY_PARAMETERS.breach;
+    return [...this.bySection.values()].map((integrity) => ({
+      fraction: integrityFraction(integrity),
+      weight: integrity.maxHp * (integrity.breached ? breachedSectionWeightMultiplier : 1),
+    }));
   }
 
   /** Brechas abiertas, para el sumidero de presión (`sectionBreachPressureSink`). */
@@ -185,7 +202,13 @@ export class MissionSectionIntegrityRuntime implements Tickable {
         if (damage.amount <= 0) {
           continue;
         }
-        this.applyAndResolve(section.id, damage.amount, rule.cause, sectionCentroid(section), damage.floorHp);
+        this.applyAndResolve(
+          section.id,
+          damage.amount,
+          rule.cause,
+          this.breachCellFor(section.id),
+          damage.floorHp,
+        );
       }
     }
   }
@@ -296,9 +319,22 @@ export class MissionSectionIntegrityRuntime implements Tickable {
     }
   }
 
-  private breachCellFor(sectionId: SectionId): GridPosition {
+  /**
+   * Celda donde se abriría la brecha de esta sección: la celda de casco (una
+   * que toca el exterior) más cercana al origen del daño.
+   *
+   * `origin` es la celda exacta cuando el fenómeno la tiene (un impacto
+   * cinético) y el centroide cuando no (una explosión daña "la sección", no una
+   * pared puntual). En los dos casos el resultado se proyecta al borde: la
+   * primera versión de 13f devolvía el centroide tal cual y abría el agujero en
+   * medio del piso, lejos de donde el operador había clickeado.
+   */
+  private breachCellFor(sectionId: SectionId, origin?: GridPosition): GridPosition {
     const section = this.deps.shipFloorplan.sections.find((entry) => entry.id === sectionId);
-    return section ? sectionCentroid(section) : { x: 0, y: 0 };
+    if (!section) {
+      return origin ?? { x: 0, y: 0 };
+    }
+    return hullBreachCell(this.deps.shipFloorplan, section, origin ?? sectionCentroid(section));
   }
 }
 

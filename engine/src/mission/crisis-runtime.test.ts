@@ -248,9 +248,15 @@ describe("CrisisRuntime", () => {
     expect(crewEvents).toHaveLength(0);
 
     // Pasado el umbral: una descarga (t=60s) y otra al siguiente intervalo (t=75s).
+    //
+    // Solo la PRIMERA emite: con severidad `high` y `lethal: false`, la primera
+    // descarga ya deja al tripulante clavado en el piso de 1 HP, y desde la
+    // ronda 1 de playtest de 13f un daño que no quita vida no emite evento
+    // (`applyHpLoss`). Antes se emitía un `crew-damaged` con `hpLost: 0` por
+    // cada descarga: sangre saltando sobre alguien que no perdía nada.
     runtime.tick({ dtSeconds: 1, elapsedSeconds: 60 });
     runtime.tick({ dtSeconds: 1, elapsedSeconds: 75 });
-    expect(crewEvents.length).toBeGreaterThanOrEqual(2);
+    expect(crewEvents).toHaveLength(1);
     expect(crewEvents.every((event) => event.kind === "crew-damaged")).toBe(true);
     // No letal: el HP nunca baja de 1 pese a severidad "high".
     expect(crew.get("crew-1" as CrewActorId)!.hp).toBeGreaterThanOrEqual(1);

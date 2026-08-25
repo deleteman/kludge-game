@@ -1,6 +1,7 @@
 import type { FloorplanSection } from "../floorplan/floorplan.types.js";
 import { sectionArea } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import type { GridPosition } from "../geometry/grid-position.types.js";
 import { SECTION_INTEGRITY_PARAMETERS } from "./section-integrity-parameters.js";
 
 /**
@@ -29,6 +30,16 @@ export interface SectionIntegrity {
   readonly maxHp: number;
   /** `true` desde que la vida llegó a 0. Nunca vuelve a `false` (principio 5). */
   breached: boolean;
+  /**
+   * Celda EXACTA donde se abrió el agujero (ronda 1 de playtest de 13f).
+   * `undefined` mientras la sección no esté brechada.
+   *
+   * Se guarda en vez de recalcularse al cargar porque depende de dónde ocurrió
+   * el daño, y eso no se puede reconstruir desde un save: sin este campo, la
+   * brecha se "mudaba" de pared al recargar la partida y el parche que el
+   * jugador dejó instalado quedaba en el lugar equivocado.
+   */
+  breachCell?: GridPosition;
 }
 
 /**
@@ -40,6 +51,8 @@ export interface SectionIntegritySnapshot {
   readonly hp: number;
   readonly maxHp: number;
   readonly breached: boolean;
+  /** Ver `SectionIntegrity.breachCell`. Ausente en saves anteriores a la ronda 1 de 13f. */
+  readonly breachCell?: GridPosition;
 }
 
 export function toSectionIntegritySnapshot(
@@ -51,11 +64,17 @@ export function toSectionIntegritySnapshot(
     hp: integrity.hp,
     maxHp: integrity.maxHp,
     breached: integrity.breached,
+    ...(integrity.breachCell ? { breachCell: integrity.breachCell } : {}),
   };
 }
 
 export function fromSectionIntegritySnapshot(snapshot: SectionIntegritySnapshot): SectionIntegrity {
-  return { hp: snapshot.hp, maxHp: snapshot.maxHp, breached: snapshot.breached };
+  return {
+    hp: snapshot.hp,
+    maxHp: snapshot.maxHp,
+    breached: snapshot.breached,
+    ...(snapshot.breachCell ? { breachCell: snapshot.breachCell } : {}),
+  };
 }
 
 /**
@@ -67,6 +86,22 @@ export function fromSectionIntegritySnapshot(snapshot: SectionIntegritySnapshot)
 export function initialSectionIntegrity(section: FloorplanSection): SectionIntegrity {
   const maxHp = sectionArea(section) * SECTION_INTEGRITY_PARAMETERS.hpPerCell;
   return { hp: maxHp, maxHp, breached: false };
+}
+
+/**
+ * Vida de una sección lista para agregar a nivel de nave: la fracción y el peso
+ * que le toca en la media (ronda 1 de playtest de 13f).
+ *
+ * El peso existe porque la nave no es una lista de secciones intercambiables.
+ * Sin él, la agregación tenía que elegir entre "peor sección gana" —que ponía
+ * TODA la nave al 17% por una esclusa reventada— y una media plana, que le da
+ * a la esclusa el mismo voto que a la bodega. El `maxHp` ya codifica el tamaño
+ * (área × HP por celda), así que no hace falta un segundo número que mantener
+ * en sincronía.
+ */
+export interface WeightedSectionIntegrity {
+  readonly fraction: number;
+  readonly weight: number;
 }
 
 /** Fracción [0,1] de vida restante, insumo del `ShipStatusIndicator` del HUD. */

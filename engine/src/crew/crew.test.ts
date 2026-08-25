@@ -145,6 +145,36 @@ describe("hp-resolution: daño a tripulante (case 17 y combustión, caso 11)", (
     expect(updated.hp).toBe(0);
     expect(event).toMatchObject({ kind: "crew-death", cause: "electrocution" });
   });
+
+  /**
+   * REGRESIÓN de la ronda 1 de playtest de 13f. Una fuente de daño continua
+   * que aplicaba una fracción por FRAME redondeaba a 0 de pérdida y aun así
+   * emitía `crew-damaged`: partículas de sangre ~60 veces por segundo sobre un
+   * tripulante que no perdía un solo punto de vida. El guard vive en
+   * `applyHpLoss`, no en el llamador, para cortar la clase entera de bug.
+   */
+  it("un daño que no quita ni un punto de vida NO emite evento", () => {
+    const { actor: updated, event } = applyCrewDamage(
+      actor({ hp: 100, maxHp: 100 }),
+      0.001, // Math.round(100 × 0.001) = 0
+      "cold",
+      1,
+    );
+    expect(updated.hp).toBe(100);
+    expect(event).toBeUndefined();
+  });
+
+  it("tampoco emite si el HP ya está clavado en el piso `minHp`", () => {
+    const { actor: updated, event } = applyCrewDamage(
+      actor({ hp: 1, maxHp: 100 }),
+      HP_LOSS_FRACTION.high,
+      "electrocution",
+      30,
+      { minHp: 1 },
+    );
+    expect(updated.hp).toBe(1);
+    expect(event).toBeUndefined();
+  });
 });
 
 describe("crew-roster: selección pre-misión (GDD 6.2)", () => {

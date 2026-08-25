@@ -84,21 +84,48 @@ describe("aggregateLifeSupport (respirabilidad, peor sección gana)", () => {
   });
 });
 
-describe("aggregateHullIntegrity (Subfase 13f: peor SECCIÓN gana sobre la vida por sección)", () => {
+describe("aggregateHullIntegrity (13f, ronda 1: media PONDERADA por tamaño de sección)", () => {
+  /** Secciones de igual tamaño, para aislar la fracción del peso. */
+  const evenly = (...fractions: ReadonlyArray<number>) =>
+    fractions.map((fraction) => ({ fraction, weight: 100 }));
+
   it("nominal sin secciones", () => {
     expect(aggregateHullIntegrity([])).toEqual({ level: "nominal", fraction: 1 });
   });
 
   it("con la nave intacta, nominal", () => {
-    expect(aggregateHullIntegrity([1, 1, 1])).toEqual({ level: "nominal", fraction: 1 });
+    expect(aggregateHullIntegrity(evenly(1, 1, 1))).toEqual({ level: "nominal", fraction: 1 });
   });
 
-  it("peor sección gana: una sección a media vida degrada el indicador de toda la nave", () => {
-    expect(aggregateHullIntegrity([1, 0.4, 1])).toEqual({ level: "warning", fraction: 0.4 });
+  /**
+   * REGRESIÓN de la ronda 1 de playtest de 13f: "al presionar H una vez, la
+   * integridad del casco queda en casi 0 de una". Era "peor sección gana" —
+   * una sección al 17% ponía TODA la nave al 17%. Una nave con una sección
+   * rota de once no está en crítico, y decir que sí deja al indicador sin
+   * capacidad de contar nada más.
+   */
+  it("una sola sección colapsada NO hunde el indicador de toda la nave", () => {
+    const result = aggregateHullIntegrity(evenly(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0));
+    expect(result.level).toBe("nominal");
+    expect(result.fraction).toBeCloseTo(10 / 11, 5);
   });
 
-  it("una sección colapsada pone el casco en crítico", () => {
-    expect(aggregateHullIntegrity([1, 1, 0])).toEqual({ level: "critical", fraction: 0 });
+  it("pondera por tamaño: perder la bodega duele más que perder la esclusa", () => {
+    const esclusa = aggregateHullIntegrity([
+      { fraction: 0, weight: 100 },
+      { fraction: 1, weight: 600 },
+    ]);
+    const bodega = aggregateHullIntegrity([
+      { fraction: 1, weight: 100 },
+      { fraction: 0, weight: 600 },
+    ]);
+    expect(esclusa.fraction).toBeGreaterThan(bodega.fraction);
+    expect(esclusa.fraction).toBeCloseTo(600 / 700, 5);
+    expect(bodega.fraction).toBeCloseTo(100 / 700, 5);
+  });
+
+  it("con toda la nave destruida el casco llega a 0", () => {
+    expect(aggregateHullIntegrity(evenly(0, 0, 0))).toEqual({ level: "critical", fraction: 0 });
   });
 
   /**
@@ -113,8 +140,8 @@ describe("aggregateHullIntegrity (Subfase 13f: peor SECCIÓN gana sobre la vida 
    * que borrarlo a mano y explicar por qué.
    */
   it("ninguna pieza instalada puede mover el indicador de casco", () => {
-    const intacta = aggregateHullIntegrity([1, 1]);
-    expect(aggregateHullIntegrity([1, 1])).toEqual(intacta);
+    const intacta = aggregateHullIntegrity(evenly(1, 1));
+    expect(aggregateHullIntegrity(evenly(1, 1))).toEqual(intacta);
     expect(aggregateHullIntegrity.length).toBe(1);
   });
 });

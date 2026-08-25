@@ -125,7 +125,9 @@ export class EnemyThreatRuntime implements Tickable {
     this.lastAttackSeconds.set(enemy.id, elapsedSeconds);
     this.enemies.set({ ...enemy, status: "attacking" });
     this.crew.set(outcome.hp.actor);
-    this.crewEmitter?.emit(outcome.hp.event);
+    if (outcome.hp.event) {
+      this.crewEmitter?.emit(outcome.hp.event);
+    }
     this.enemyEmitter?.emit({
       kind: "enemy-attacked",
       enemyId: enemy.id,

@@ -154,6 +154,77 @@ describe("13f — HazardEvent en producción (deuda #16)", () => {
     expect(world.crewFired.at(-1)).toMatchObject({ cause: "cold" });
   });
 
+  /**
+   * REGRESIÓN de la ronda 1 de playtest de 13f: "sigue recibiendo daño (veo
+   * sangre saltandole aunque no recibe daño en su vida)".
+   *
+   * El vacío escalaba una fracción con `dtSeconds`. Con el core loop corriendo
+   * por FRAME (~0.016 s), `Math.round(100 × 0.1 × 0.016)` = 0: cero daño real y
+   * un `crew-damaged` por frame. Este test corre a cadencia de frame a
+   * propósito — con ticks de 1 segundo el bug era invisible.
+   */
+  describe("vacío a cadencia de frame (ronda 1 de playtest)", () => {
+    const FRAME = 1 / 60;
+
+    /** Corre `seconds` de simulación a 60 fps. */
+    const runFrames = (world: ReturnType<typeof mount>, seconds: number) => {
+      const frames = Math.round(seconds / FRAME);
+      for (let frame = 1; frame <= frames; frame += 1) {
+        world.runtime.tick({ dtSeconds: FRAME, elapsedSeconds: frame * FRAME });
+      }
+    };
+
+    it("cada mordisco quita vida DE VERDAD y no se emite un evento por frame", () => {
+      const world = mount([[GAS.OXYGEN, 0]], 0);
+      runFrames(world, 5);
+
+      expect(world.crewFired.length).toBeGreaterThan(0);
+      // 5 segundos a 60 fps son 300 ticks. Mordiscos cada 2 s (+ el inmediato):
+      // 3 eventos, no 300.
+      expect(world.crewFired.length).toBeLessThanOrEqual(5);
+      for (const event of world.crewFired) {
+        if (event.kind === "crew-damaged") {
+          expect(event.hpLost).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it("el primer mordisco avisa pero no mata, ni siquiera con el tripulante a 1 HP", () => {
+      const world = mount([[GAS.OXYGEN, 0]], 0);
+      world.crewState.set({ ...world.crewState.all()[0]!, hp: 5 });
+      world.runtime.tick({ dtSeconds: FRAME, elapsedSeconds: FRAME });
+
+      expect(world.crewState.all()[0]?.hp).toBe(1);
+      expect(world.crewFired.every((event) => event.kind !== "crew-death")).toBe(true);
+    });
+
+    it("mata en ~10 segundos desde HP lleno, no antes", () => {
+      const world = mount([[GAS.OXYGEN, 0]], 0);
+      runFrames(world, 7);
+      expect(world.crewState.all()[0]!.hp).toBeGreaterThan(0);
+
+      runFrames(world, 5);
+      expect(world.crewState.all()[0]!.hp).toBe(0);
+      expect(world.crewFired.some((event) => event.kind === "crew-death")).toBe(true);
+    });
+
+    it("salir de la sección brechada resetea la cuenta de mordiscos", () => {
+      const world = mount([[GAS.OXYGEN, 0]], 0);
+      runFrames(world, 5);
+      const hurtHp = world.crewState.all()[0]!.hp;
+
+      // El tripulante sale del plano: deja de estar expuesto.
+      world.crewState.set({ ...world.crewState.all()[0]!, currentCell: undefined });
+      runFrames(world, 5);
+      expect(world.crewState.all()[0]!.hp).toBe(hurtHp);
+
+      // Al volver, el primer mordisco vuelve a ser el aviso no letal.
+      world.crewState.set({ ...world.crewState.all()[0]!, currentCell: { x: 0, y: 0 }, hp: 5 });
+      world.runtime.tick({ dtSeconds: FRAME, elapsedSeconds: 100 });
+      expect(world.crewState.all()[0]!.hp).toBe(1);
+    });
+  });
+
   it("una fuga que se estabiliza en el piso de 40 kPa no mata a nadie", () => {
     const world = mount([[GAS.OXYGEN, 0.21]], 40);
     for (let second = 1; second <= 60; second += 1) {

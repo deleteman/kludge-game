@@ -5,7 +5,7 @@ import { preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { createKenneyButton } from "../ui/widgets/kenney-button.js";
 import { popIn } from "../ui/ui-effects.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
-import { listCampaignSaves, loadCampaignSave } from "../meta/save-adapter.js";
+import { mostRecentCampaignSave } from "../meta/save-adapter.js";
 import { campaignSession } from "../meta/campaign-session.js";
 import { SCENE_KEYS } from "../meta/scene-keys.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
@@ -99,20 +99,18 @@ export class TitleScene extends Phaser.Scene {
     // dispara después de que el resto de los botones sync ya avanzó `y` (bug
     // de playtest 12g: sin esto "Continuar" terminaba dibujado encima de "Salir").
     const continueY = y;
-    void listCampaignSaves().then((saves) => {
-      // Simplificación: "Continuar" carga la primera partida listada, sin
-      // selector por fecha (`list()` no trae metadata, solo ids). Suficiente
-      // para el smoke test de guardar→cerrar→continuar del plan de Fase 9.5.
-      const hasSaves = saves.length > 0;
+    // "Continuar" carga la partida MÁS RECIENTE por `updatedAt` (ronda 1 de
+    // playtest de 13f — bug preexistente). Antes tomaba `saves[0]` de un
+    // `readdir` sin ordenar, así que con varias campañas en disco entraba en una
+    // vieja y el jugador veía "los componentes desaparecieron".
+    void mostRecentCampaignSave().then((mostRecent) => {
       animateButtonIn(
         createKenneyButton(self, menuX, continueY, t("ui.menu.title.continue"), {
-          enabled: hasSaves,
+          enabled: mostRecent !== undefined,
           onClick: () => {
-            if (!hasSaves) return;
-            void loadCampaignSave(saves[0]!).then((state) => {
-              campaignSession.load(state);
-              metaGameStateMachine.transition("in-mission");
-            });
+            if (!mostRecent) return;
+            campaignSession.load(mostRecent);
+            metaGameStateMachine.transition("in-mission");
           },
         }),
       );

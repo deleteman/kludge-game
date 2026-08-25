@@ -92,6 +92,16 @@ export const SEALED_VALVE_COLOR = CRISIS_FATAL_COLOR;
  */
 export const POWER_BLOCKED_FLASH_COLOR = CRISIS_FATAL_COLOR;
 
+/**
+ * Marcador persistente sobre una brecha de casco abierta (13f, ronda 1 de
+ * playtest). Rojo del contrato de 12e: es lo más grave que le puede pasar a una
+ * sección. Al sellarla pasa a `BREACH_SEALED_MARKER_COLOR` — el agujero sigue
+ * ahí (el casco no se repara, principio 5) pero deja de ser una emergencia, y
+ * dos estados distintos no pueden verse igual (principio 6).
+ */
+export const BREACH_MARKER_COLOR = CRISIS_FATAL_COLOR;
+export const BREACH_SEALED_MARKER_COLOR = CRISIS_SAFE_COLOR;
+
 /** Opacidad de una capa del plano desactivada por el toggle de HUD (Fase 11f) — atenuada, nunca oculta del todo. */
 export const CONDUIT_LAYER_INACTIVE_ALPHA = 0.25;
 

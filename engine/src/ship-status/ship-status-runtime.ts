@@ -3,6 +3,7 @@ import type { ChemicalSubstanceDefinition, ChemicalSubstanceId } from "../chemis
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import type { WeightedSectionIntegrity } from "../integrity/section-integrity.types.js";
 import type { MissionAtmosphereRuntime } from "../mission/mission-atmosphere-runtime.js";
 import type { MutableShipState } from "../mission/mutable-ship-state.js";
 import {
@@ -44,7 +45,7 @@ export interface PowerSupplySource {
  */
 export interface SectionIntegritySource {
   fractionOf(sectionId: SectionId): number;
-  allFractions(): ReadonlyArray<number>;
+  weightedFractions(): ReadonlyArray<WeightedSectionIntegrity>;
 }
 
 export class ShipStatusQuery {
@@ -69,7 +70,7 @@ export class ShipStatusQuery {
       // Subfase 13f: la integridad sale de la vida propia de cada sección, no
       // del RE de las piezas instaladas. Instalar o desmontar una manguera ya
       // no mueve este indicador.
-      hullIntegrity: aggregateHullIntegrity(this.sectionIntegrity.allFractions()),
+      hullIntegrity: aggregateHullIntegrity(this.sectionIntegrity.weightedFractions()),
       // Fase 13b (ronda 5): además de la cicatriz permanente, el indicador mira
       // si la nave puede entregar lo que el jugador repartió — sin eso quedaba
       // clavado en nominal, porque `unpoweredSectionIds` solo lleva la cicatriz
