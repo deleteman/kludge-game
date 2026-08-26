@@ -4,7 +4,6 @@ import {
   effectiveResistance,
   ATOMIC_COMPONENT_CATALOG,
   assertSignalWiringReachable,
-  findFittingInstallPlacement,
   isCompositeEntity,
   occupiedCells,
   sectionContainingCell,
@@ -95,6 +94,12 @@ export interface MissionInteractionCallbacks {
    * activo (mismo criterio que `onWireModeChanged`/`onWireSelectionChanged`).
    */
   readonly onTransferModeChanged: () => void;
+  /**
+   * Se llama al entrar/salir del modo de COLOCACIÓN de una pieza (13f ronda 3)
+   * — el llamador construye/destruye el botón de cancelar y el fantasma del
+   * footprint. Mismo criterio que `onTransferModeChanged`.
+   */
+  readonly onInstallPlacementChanged: () => void;
 }
 
 /**
@@ -141,11 +146,26 @@ export class MissionInteractionController {
   /** Celda actualmente marcada (sobre la que se va a actuar); `undefined` sin selección. */
   private selectedCellValue?: GridPosition;
   private installPickerState?: {
-    readonly position: GridPosition;
     /** Lista unificada (ronda 8): habilitados primero, bloqueados después con su motivo — ver `buildInstallOptions`. */
     readonly options: ReadonlyArray<InstallPickerOption>;
     readonly selectedIndex: number;
   };
+  /**
+   * Pieza elegida, esperando a que el jugador marque DÓNDE va (13f ronda 3).
+   *
+   * El flujo se invirtió: antes se clickeaba la celda, se abría el selector y
+   * la pieza se colocaba sola en "la celda válida más cercana"
+   * (`findFittingInstallPlacement`). Eso ponía la plancha AL LADO de la brecha
+   * cuando la celda estaba ocupada, sin rechazar la acción y sin avisar. El
+   * preview del footprint existía, pero se dibujaba debajo de un modal
+   * bloqueante con fondo negro al 55%: información que no se podía ver.
+   *
+   * Ahora se elige la pieza primero y se coloca después, con el footprint
+   * siguiendo al cursor. Molde de `transferModeState`, que ya resolvía
+   * "elegir un punto del mapa" desde 13e ronda 7 — mismo patrón de estado,
+   * mismo ESC para cancelar, mismo botón de cancelar en la cabecera.
+   */
+  private installPlacementState?: { readonly option: InstallPickerOption };
   private installPickerContainer?: Phaser.GameObjects.Container;
   /** Panel scrolleable vivo de la lista del selector, para preservar su scroll entre rebuilds (deuda #2). */
   private installPickerList?: ScrollablePanel;
@@ -171,30 +191,37 @@ export class MissionInteractionController {
     return this.selectedCellValue;
   }
 
+  /** `true` mientras el jugador está marcando dónde va la pieza elegida (13f ronda 3). */
+  get installPlacementMode(): boolean {
+    return this.installPlacementState !== undefined;
+  }
+
+  /** Nombre de la pieza pendiente de colocar, para el texto de estado y el botón de cancelar. */
+  get installPlacementName(): string | undefined {
+    return this.installPlacementState?.option.name;
+  }
+
   /**
-   * Celdas que realmente ocuparía la instalación en curso (footprint completo
-   * de la opción enfocada en el picker, en la posición donde de verdad
-   * encajaría — `findFittingInstallPlacement`, motor, misma resolución que usa
-   * `confirmInstall`), para que `FloorplanScene` resalte el footprint entero
-   * en vez de una sola celda y así no tape overlaps sin querer (playtest,
-   * Subfase 11h). `undefined` si no hay picker abierto o la opción enfocada no
-   * encaja en ningún lado (sin resaltado, se mantiene el 1x1 de `selectedCell`).
+   * Cómo se vería la pieza pendiente anclada EXACTAMENTE en esta celda: las
+   * celdas que ocuparía y si ahí entra.
+   *
+   * Anclaje exacto y no "la celda válida más cercana": lo que el jugador ve es
+   * lo que se instala. La concesión de 11h (reubicar para perdonar apuntar mal
+   * con piezas grandes) existía porque no había forma de ver el footprint antes
+   * de confirmar; con el fantasma en vivo sobra, y era justamente la que ponía
+   * el parche al lado del agujero.
    */
-  get installPickerHighlightCells(): ReadonlyArray<GridPosition> | undefined {
-    if (!this.installPickerState) return undefined;
-    const state = this.installPickerState;
-    const option = state.options[state.selectedIndex];
+  installPlacementPreviewAt(
+    position: GridPosition,
+  ): { readonly cells: ReadonlyArray<GridPosition>; readonly valid: boolean } | undefined {
+    const option = this.installPlacementState?.option;
     if (!option) return undefined;
-    const section = sectionContainingCell(this.mission.shipFloorplan, state.position);
-    if (!section) return undefined;
-    const fitPosition = findFittingInstallPlacement(
-      section,
-      this.mission.blueprint.placedComponents,
-      option.footprint,
-      state.position,
-    );
-    if (!fitPosition) return undefined;
-    return occupiedCells({ position: fitPosition, footprint: option.footprint, rotation: 0 });
+    const placement = { position, footprint: option.footprint, rotation: 0 as const };
+    const section = sectionContainingCell(this.mission.shipFloorplan, position);
+    const valid =
+      section !== undefined &&
+      validateInstallation(section, this.mission.blueprint.placedComponents, placement).length === 0;
+    return { cells: occupiedCells(placement), valid };
   }
 
   /**
@@ -297,6 +324,72 @@ export class MissionInteractionController {
     this.setActionPanelContent({ kind: "idle" });
     this.callbacks.setStatus(t("ui.floorplan.mission.transfer-mode-hint"));
     this.callbacks.onTransferModeChanged();
+  }
+
+  /**
+   * Abre el selector de pieza desde la barra de botones (13f ronda 3). Ya no
+   * recibe una celda: primero se elige QUÉ instalar, después DÓNDE.
+   */
+  openInstallPicker(): void {
+    if (!this.selectedActorIdValue) {
+      this.callbacks.setStatus(t("ui.floorplan.mission.no-actor-selected"));
+      return;
+    }
+    this.scene.sound.play(pickSoundKey(AUDIO_KEYS.modalOpen), { volume: 0.5 });
+    this.installPickerScrollT = 0;
+    this.installPickerState = { options: this.buildInstallOptions(), selectedIndex: 0 };
+    this.redrawInstallPickerModal();
+  }
+
+  /**
+   * Pieza elegida: se cierra el modal (que tapa el mapa) y se pasa a marcar el
+   * sitio con el fantasma del footprint siguiendo el cursor.
+   */
+  private startInstallPlacement(option: InstallPickerOption): void {
+    this.closeInstallPicker();
+    this.installPlacementState = { option };
+    this.setActionPanelContent({ kind: "idle" });
+    this.callbacks.setStatus(
+      t("ui.floorplan.mission.install-placement-hint").replace("{piece}", option.name),
+    );
+    this.callbacks.onInstallPlacementChanged();
+  }
+
+  cancelInstallPlacement(): void {
+    if (!this.installPlacementState) return;
+    this.installPlacementState = undefined;
+    this.callbacks.setStatus("");
+    this.callbacks.onInstallPlacementChanged();
+  }
+
+  /**
+   * Click en el mapa con una pieza pendiente de colocar. Sobre una celda donde
+   * NO entra no encola nada y dice por qué — mismo criterio que
+   * `handleTransferModeClick`: nunca un rechazo mudo.
+   */
+  handleInstallPlacementClick(position: GridPosition): void {
+    const option = this.installPlacementState?.option;
+    if (!option || !this.selectedActorIdValue) return;
+    const section = sectionContainingCell(this.mission.shipFloorplan, position);
+    const placement = { position, footprint: option.footprint, rotation: 0 as const };
+    const issues = section
+      ? validateInstallation(section, this.mission.blueprint.placedComponents, placement)
+      : [{ detail: t("ui.floorplan.mission.install-placement-outside") }];
+    if (issues.length > 0) {
+      this.scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
+      this.callbacks.setStatus(issues.map((issue) => issue.detail).join(" / "));
+      return;
+    }
+    this.mission.queueInstall(
+      this.selectedActorIdValue,
+      option.id,
+      option.footprint,
+      position,
+      option.wear,
+      option.consumesRecipe,
+    );
+    this.cancelInstallPlacement();
+    this.callbacks.onTaskQueued();
   }
 
   cancelTransferMode(): void {
@@ -430,6 +523,10 @@ export class MissionInteractionController {
   /** Click sobre una celda del plano, ya resuelta en coordenadas de mundo por `FloorplanScene`. */
   handleMapClick(position: GridPosition): void {
     if (this.installPickerOpen) return;
+    if (this.installPlacementState) {
+      this.handleInstallPlacementClick(position);
+      return;
+    }
     if (this.wireModeValue) {
       this.handleWireModeClick(position);
       return;
@@ -806,7 +903,6 @@ export class MissionInteractionController {
         purgeReservoir: t("ui.floorplan.mission.inspector.purge-reservoir"),
         dischargeSource: t("ui.floorplan.mission.inspector.discharge-source"),
         sourceChargeWarning: t("ui.floorplan.mission.inspector.hazard.source-charge"),
-        installHere: t("ui.floorplan.mission.inspector.install-here"),
         noActorSelected: t("ui.floorplan.mission.no-actor-selected"),
         analyzeSubstance: (analyzed) =>
           analyzed
@@ -869,17 +965,6 @@ export class MissionInteractionController {
           if (!this.selectedActorIdValue) return;
           this.mission.queueDischargeSource(this.selectedActorIdValue, instanceId);
           this.callbacks.onTaskQueued();
-        },
-        onOpenInstallPicker: (position) => {
-          this.scene.sound.play(pickSoundKey(AUDIO_KEYS.modalOpen), { volume: 0.5 });
-          this.installPickerScrollT = 0;
-          this.installPickerState = {
-            position,
-            options: this.buildInstallOptions(),
-            selectedIndex: 0,
-          };
-          this.redrawInstallPickerModal();
-          this.callbacks.onSelectionChanged();
         },
         onAnalyzeSubstance: (substanceId) => {
           if (!this.selectedActorIdValue) return;
@@ -1072,7 +1157,7 @@ export class MissionInteractionController {
           this.redrawInstallPickerModal();
           this.callbacks.onSelectionChanged();
         },
-        onInstall: (option) => this.confirmInstall(option, state.position),
+        onInstall: (option) => this.startInstallPlacement(option),
         onCancel: () => this.closeInstallPicker(),
         markAsHudObject: (obj) => this.callbacks.markAsHudObject(obj),
         initialScrollT: this.installPickerScrollT,
@@ -1083,47 +1168,6 @@ export class MissionInteractionController {
     );
     this.installPickerContainer.setDepth(RENDER_DEPTH.hudModal);
     this.callbacks.markAsHudObject(this.installPickerContainer);
-  }
-
-  /**
-   * Ubica dónde instalar la pieza elegida (playtest: `motor-pequeno` 2×2 no
-   * entraba anclado exacto en la celda de la válvula 1×1 clickeada, por vecinos
-   * fijos/otras piezas cerca). En vez de forzar el footprint anclado en la
-   * celda clickeada, se busca la celda de la MISMA sección más cercana a ella
-   * donde sí entra (`findFittingInstallPlacement`, motor) — si el footprint ya
-   * entraba exacto en la celda clickeada (caso 1×1 de siempre), es la que se
-   * devuelve primero, sin cambio de comportamiento.
-   */
-  private confirmInstall(option: InstallPickerOption, position: GridPosition): void {
-    if (!this.selectedActorIdValue) return;
-    const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    if (!section) return;
-    const fitPosition = findFittingInstallPlacement(
-      section,
-      this.mission.blueprint.placedComponents,
-      option.footprint,
-      position,
-    );
-    if (!fitPosition) {
-      const issues = validateInstallation(section, this.mission.blueprint.placedComponents, {
-        position,
-        footprint: option.footprint,
-        rotation: 0,
-      });
-      this.callbacks.setStatus(issues.map((issue) => issue.detail).join(" / "));
-      return;
-    }
-    this.mission.queueInstall(
-      this.selectedActorIdValue,
-      option.id,
-      option.footprint,
-      fitPosition,
-      option.wear,
-      option.consumesRecipe,
-    );
-    this.closeInstallPicker();
-    this.setActionPanelContent({ kind: "idle" });
-    this.callbacks.onTaskQueued();
   }
 
   private closeInstallPicker(): void {

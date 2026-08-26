@@ -506,7 +506,6 @@ export type { NameCreationParams } from "./workbench/creation-naming.js";
 
 export {
   candidateCellsInSection,
-  findFittingInstallPlacement,
   rotateExteriorFootprint,
 } from "./workbench/installation-placement.js";
 export { validateInstallation } from "./workbench/installation-validation.js";

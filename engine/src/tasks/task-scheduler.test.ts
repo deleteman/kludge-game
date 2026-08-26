@@ -3,6 +3,7 @@ import { TaskScheduler, TaskDependencyError } from "./task-scheduler.js";
 import { createCrewTask } from "./task-factory.js";
 import type { CrewTask, CrewTaskId } from "./task.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
+import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { EventEmitter } from "../simulation/event-emitter.js";
 import type { CoreLoopDomainEvent } from "./task-events.types.js";
@@ -556,5 +557,104 @@ describe("task-scheduler: baja de un actor (13f ronda 2)", () => {
     scheduler.standDown(ENGINEER, tickOf(1));
     scheduler.standDown(ENGINEER, tickOf(2));
     expect(scheduler.getActor(ENGINEER)?.status).toBe("dead");
+  });
+});
+
+/**
+ * Trabajo por relevos (13f ronda 3). El operador se quedó sin salida: instaló
+ * la pieza equivocada sobre una brecha, y desmontarla tarda más de lo que
+ * sobrevive nadie en el vacío — "el desmonte inicia de 0 con cada nuevo
+ * tripulante". El progreso vivía en la tarea, y la tarea muere con su actor.
+ */
+describe("task-scheduler: progreso por objetivo (13f ronda 3)", () => {
+  const INSTANCE = "pieza-1" as PlacedComponentInstanceId;
+
+  const dismantleTask = (taskId: string, actorId: CrewActorId): CrewTask =>
+    createCrewTask({
+      id: id(taskId),
+      actorId,
+      type: "dismantle",
+      estimatedDurationSeconds: 10,
+      payload: { kind: "dismantle", instanceId: INSTANCE },
+    });
+
+  it("otro tripulante retoma el desmontaje donde quedó, no desde cero", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.enqueue(dismantleTask("primero", ENGINEER));
+    // 7 de los 10 segundos.
+    for (let second = 1; second <= 7; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    expect(scheduler.getTask(id("primero"))?.state).toBe("in-progress");
+
+    // El primero cae (lo mismo que hace `standDown` al morir).
+    scheduler.standDown(ENGINEER, tickOf(8));
+    expect(scheduler.getTask(id("primero"))?.state).toBe("cancelled");
+
+    const avanzado = scheduler.getTask(id("primero"))!.elapsedSeconds;
+    expect(avanzado).toBeGreaterThan(0);
+
+    // El relevo arranca CON ese avance heredado, no en 0.
+    scheduler.enqueue(dismantleTask("segundo", MEDIC));
+    scheduler.tick(tickOf(9));
+    expect(scheduler.getTask(id("segundo"))?.elapsedSeconds).toBeGreaterThanOrEqual(avanzado);
+
+    // Y por tanto termina en lo que le faltaba al primero, no en los 10 s
+    // completos: cuatro ticks más alcanzan.
+    for (let second = 10; second <= 13; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    expect(scheduler.getTask(id("segundo"))?.state).toBe("completed");
+  });
+
+  it("completar limpia el avance: el siguiente trabajo sobre ese objetivo empieza de cero", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.enqueue(dismantleTask("primero", ENGINEER));
+    for (let second = 1; second <= 11; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    expect(scheduler.getTask(id("primero"))?.state).toBe("completed");
+
+    scheduler.enqueue(dismantleTask("segundo", MEDIC));
+    scheduler.tick(tickOf(12));
+    expect(scheduler.getTask(id("segundo"))?.elapsedSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("el avance NO se filtra a otro objetivo", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.enqueue(dismantleTask("primero", ENGINEER));
+    for (let second = 1; second <= 7; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    scheduler.cancel(id("primero"), tickOf(8));
+
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("otra-pieza"),
+        actorId: MEDIC,
+        type: "dismantle",
+        estimatedDurationSeconds: 10,
+        payload: { kind: "dismantle", instanceId: "pieza-2" as PlacedComponentInstanceId },
+      }),
+    );
+    scheduler.tick(tickOf(9));
+    expect(scheduler.getTask(id("otra-pieza"))?.elapsedSeconds).toBeLessThanOrEqual(1);
+  });
+
+  it("un viaje no acumula nada: no hay trabajo que retomar", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.enqueue(
+      createCrewTask({ id: id("ir"), actorId: ENGINEER, type: "go-to", estimatedDurationSeconds: 10 }),
+    );
+    for (let second = 1; second <= 7; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    scheduler.cancel(id("ir"), tickOf(8));
+
+    scheduler.enqueue(
+      createCrewTask({ id: id("ir-2"), actorId: MEDIC, type: "go-to", estimatedDurationSeconds: 10 }),
+    );
+    scheduler.tick(tickOf(9));
+    expect(scheduler.getTask(id("ir-2"))?.elapsedSeconds).toBeLessThanOrEqual(1);
   });
 });

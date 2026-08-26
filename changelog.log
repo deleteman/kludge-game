@@ -4916,3 +4916,59 @@ ARCHIVOS: `engine/src/crew/crew-actor.types.ts`, `engine/src/tasks/task-schedule
 
 SUITE: `/engine` 936 → 955 tests, `/game` 68 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos
 workspaces, `vite build` limpio.
+
+--------------------------------------------------------------------------------
+2026-08-26 — Subfase 13f: fixes de playtest ronda 3
+--------------------------------------------------------------------------------
+
+RAZÓN: dos reportes, los dos sobre el mismo eje — el presupuesto de tiempo dentro de una sección brechada no
+alcanzaba para nada. Medido contra el código en vez de estimado: morir en vacío tardaba 8 s, instalar 8 s (9,6
+fuera de especialidad) y desmontar 12 (14,4), y el daño empieza en cuanto el token ENTRA en la sección, antes
+de llegar a la celda y antes de que la tarea arranque. O sea que ni siquiera poner el parche bien a la primera
+entraba en la ventana.
+
+1. **Ventana de vacío de ~8 s a ~32 s** (`biteIntervalSeconds` 2 → 8). El 8 no es un redondeo: sale de medir la
+   cadena de recuperación completa —viaje (~4 s) + desmontar la pieza equivocada (14,4) + instalar la plancha
+   (9,6) ≈ 28 s. Equivocarse cuesta casi toda la vida del tripulante y aun así se arregla en un solo viaje. No
+   se tocó `hpFractionPerBite`: la muerte sigue llegando en cinco golpes contables, que es lo que arregló la
+   ronda 1; lo que cambió es el ritmo.
+
+2. **Trabajo por relevos: el progreso se acumula por OBJETIVO, no por tarea.** El operador se quedó sin salida
+   porque "el desmonte inicia de 0 con cada nuevo tripulante": el avance vivía en `CrewTask.elapsedSeconds`, y
+   la tarea muere con su actor. Nuevo `taskProgressKey(task)` (puro, derivado del `payload`) y
+   `TaskScheduler.progressByObjective`: al arrancar, una tarea hereda lo que se hubiera avanzado sobre ese
+   mismo objetivo; al completarla, se limpia. Cancelar o morir NO limpia — eso es justamente el relevo. Es una
+   mecánica nueva, no un parche: dos tripulantes pueden turnarse en un trabajo largo. La clave nunca usa el
+   `instanceId` de la tarea (el de `install` se genera al encolar, así que dos intentos no compartirían nada).
+
+3. **La plancha podía terminar AL LADO de la brecha** — encontrado investigando, no reportado.
+   `findFittingInstallPlacement` recorría todas las celdas de la sección y colocaba la pieza en la válida más
+   cercana a la clickeada. Con la junta ocupando la celda de la brecha, la plancha 2×2 no podía cubrirla y el
+   motor la reubicaba sin rechazar la acción — y sin aviso, porque el de la ronda 1 solo salta si la pieza
+   CUBRE la brecha.
+
+4. **El preview del footprint existía y era invisible.** `installPickerHighlightCells` ya dibujaba el footprint
+   completo de la opción enfocada y ya se actualizaba al cambiar de opción, pero el selector es un modal de
+   720×480 con un fondo negro al 55% sobre TODA la pantalla: el preview se pintaba debajo, tapado y atenuado.
+
+5. **Flujo de instalación invertido** (propuesta del operador, que diagnosticó (4) desde el otro lado): botón
+   "Instalar" en la barra → elegir la pieza → el modal se cierra → marcar el sitio en el mapa con el fantasma
+   del footprint siguiendo el cursor, ANCLADO EXACTO, verde donde entra y rojo donde no; clickear en rojo no
+   encola y explica el motivo. Molde de `transferMode` (13e ronda 7), mismo ESC y mismo botón de cancelar. Se
+   quitó "Instalar aquí" del panel de celda y se BORRÓ `findFittingInstallPlacement` con sus tests: existía
+   solo para el flujo reemplazado y su comportamiento es el contrario del decidido — dejarlo era invitar a
+   reintroducir el bug.
+
+6. **Click derecho = mover a esa celda.** Cubre el hueco que dejó "Instalar aquí" y uno anterior: `go-to` solo
+   apuntaba a una SECCIÓN, y el token únicamente caminaba a una celda exacta cuando había una acción encolada
+   detrás. `CrewTask` gana `targetCell` (hermano de `targetSectionId`; el `payload` sigue siendo solo datos del
+   efecto físico).
+
+ARCHIVOS: `engine/src/mission/mission-hazard-parameters.ts`, `engine/src/tasks/task-progress-key.ts` (nuevo) +
+`task-scheduler.ts` + `task.types.ts` + `task-factory.ts`, `engine/src/workbench/installation-placement.ts`
+(función borrada), `engine/src/index.ts`, `game/src/mission/mission-interaction-controller.ts` +
+`mission-runtime.ts`, `game/src/scenes/floorplan-scene.ts`, `game/src/ui/widgets/mission-action-panel.ts`,
+i18n es/en.
+
+SUITE: `/engine` 955 → 959 tests (se borraron 3 de `findFittingInstallPlacement` y se sumaron 7), `/game` 68
+sin cambios. `tsc --noEmit` y `eslint` limpios en ambos workspaces, `vite build` limpio.

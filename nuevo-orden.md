@@ -733,6 +733,31 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
     de dejar la partida en un bloqueo silencioso (el Cap.1 no tiene temporizador).
   - Registrados sin arreglar: deudas #46 y #47.
 
+* **Ronda 3 de playtest (2026-08-26).** Dos reportes, los dos sobre el mismo eje: el presupuesto de tiempo
+  dentro de una sección brechada no alcanzaba para nada. Medido contra el código: morir en vacío tardaba 8 s,
+  instalar 8-9,6 s y desmontar 12-14,4 s, y el daño empieza en cuanto el token ENTRA en la sección. O sea que
+  **ni siquiera poner el parche bien a la primera era posible**.
+  - *Ventana de vacío* de ~8 s a **~32 s** (`biteIntervalSeconds` 2 → 8). El número sale de medir la cadena de
+    recuperación completa (viaje + desmontar la pieza equivocada + instalar la plancha ≈ 28 s): equivocarse
+    cuesta casi toda la vida del tripulante, pero se arregla en un viaje.
+  - *"El desmonte inicia de 0 con cada nuevo tripulante".* El progreso vivía en la TAREA, y la tarea muere con
+    su actor. Ahora se acumula por **objetivo** (`taskProgressKey`): dos tripulantes pueden turnarse en un
+    trabajo largo. Es una mecánica nueva —trabajo por relevos— no solo un fix; se limpia al COMPLETAR, así que
+    cancelar o morir a mitad deja el avance para el siguiente.
+  - *Encontrado investigando, no reportado:* la plancha 2×2 podía terminar **al lado** de la brecha.
+    `findFittingInstallPlacement` reubicaba la pieza a "la celda válida más cercana" sin rechazar la acción, y
+    el aviso de la ronda 1 no saltaba porque solo se dispara si la pieza CUBRE la brecha. El preview del
+    footprint existía y se actualizaba, pero se dibujaba **debajo** del modal del selector (720×480 con fondo
+    negro al 55%): información que no se podía ver.
+  - *Flujo de instalación invertido* (propuesta del operador): botón **"Instalar" en la barra** → elegir la
+    pieza → el modal se cierra → marcar el sitio en el mapa con el fantasma del footprint siguiendo el cursor,
+    **anclado exacto**, verde donde entra y rojo donde no. Molde de `transferMode` (13e ronda 7). Se quitó
+    "Instalar aquí" del panel de celda y se **borró `findFittingInstallPlacement`**: existía solo para el flujo
+    que se reemplazó, y su comportamiento es justo el contrario del decidido.
+  - *Click derecho = mover a esa celda.* Cubre el hueco que dejó "Instalar aquí" y uno anterior: `go-to` solo
+    apuntaba a una sección, así que mandar a alguien a un punto concreto no tenía forma de expresarse.
+    `CrewTask` gana `targetCell`.
+
 #### Subfase 13h: Puertas y Compartimentación
 
 > **Orden de ejecución: 13f → 13h → 13g.** Se documenta acá, entre 13f y 13g, pero conserva la letra `h` para no

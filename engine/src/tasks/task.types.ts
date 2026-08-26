@@ -3,7 +3,7 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
-import type { PlacedFootprint } from "../geometry/grid-position.types.js";
+import type { GridPosition, PlacedFootprint } from "../geometry/grid-position.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { ComponentWear } from "../wear/wear.types.js";
@@ -236,6 +236,18 @@ export interface CrewTask {
   readonly type: TaskType;
   /** Sección donde ocurre la tarea (Fase 5). Opcional para tareas sin lugar fijo. */
   readonly targetSectionId?: SectionId;
+  /**
+   * Celda EXACTA de destino (13f ronda 3). Hermano de `targetSectionId` —los
+   * dos son "dónde"— y no un `payload`, que sigue reservado a los datos del
+   * efecto físico.
+   *
+   * Existe porque hasta ahora un `go-to` solo apuntaba a una sección: el token
+   * caminaba a una celda concreta únicamente cuando había una acción encolada
+   * detrás (de la que se derivaba el destino). Mover a alguien a un punto
+   * elegido —lo que el jugador hace con click derecho— no tenía forma de
+   * expresarse.
+   */
+  readonly targetCell?: GridPosition;
   /**
    * Secciones que deben tener energía otorgada para que la tarea corra (ronda
    * 11 de fixes de playtest 13e, "sin energía, la máquina no actúa"). Campo

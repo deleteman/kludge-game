@@ -143,7 +143,7 @@ describe("13f — HazardEvent en producción (deuda #16)", () => {
 
   it("el vacío de una sección brechada mata a quien entre, con la causa 'cold' que ya existía", () => {
     const world = mount([[GAS.OXYGEN, 0]], 0);
-    for (let second = 1; second <= 20; second += 1) {
+    for (let second = 1; second <= 40; second += 1) {
       world.runtime.tick(tickOf(second));
     }
 
@@ -176,11 +176,11 @@ describe("13f — HazardEvent en producción (deuda #16)", () => {
 
     it("cada mordisco quita vida DE VERDAD y no se emite un evento por frame", () => {
       const world = mount([[GAS.OXYGEN, 0]], 0);
-      runFrames(world, 5);
+      runFrames(world, 20);
 
       expect(world.crewFired.length).toBeGreaterThan(0);
-      // 5 segundos a 60 fps son 300 ticks. Mordiscos cada 2 s (+ el inmediato):
-      // 3 eventos, no 300.
+      // 20 segundos a 60 fps son 1200 ticks. Mordiscos cada 8 s (+ el
+      // inmediato): 3 eventos, no 1200.
       expect(world.crewFired.length).toBeLessThanOrEqual(5);
       for (const event of world.crewFired) {
         if (event.kind === "crew-damaged") {
@@ -198,24 +198,31 @@ describe("13f — HazardEvent en producción (deuda #16)", () => {
       expect(world.crewFired.every((event) => event.kind !== "crew-death")).toBe(true);
     });
 
-    it("mata en ~10 segundos desde HP lleno, no antes", () => {
+    /**
+     * Ronda 3 de playtest: la ventana pasó de ~8 s a ~32 s porque con la
+     * anterior era imposible instalar el parche siquiera a la primera (instalar
+     * tarda 8-9,6 s y el daño empieza al ENTRAR en la sección). El test fija el
+     * margen por los dos lados: tiene que aguantar la cadena de reparación
+     * completa (~28 s) y aun así matar si el jugador no reacciona.
+     */
+    it("aguanta la cadena de reparación completa (~28 s) y mata poco después", () => {
       const world = mount([[GAS.OXYGEN, 0]], 0);
-      runFrames(world, 7);
+      runFrames(world, 28);
       expect(world.crewState.all()[0]!.hp).toBeGreaterThan(0);
 
-      runFrames(world, 5);
+      runFrames(world, 8);
       expect(world.crewState.all()[0]!.hp).toBe(0);
       expect(world.crewFired.some((event) => event.kind === "crew-death")).toBe(true);
     });
 
     it("salir de la sección brechada resetea la cuenta de mordiscos", () => {
       const world = mount([[GAS.OXYGEN, 0]], 0);
-      runFrames(world, 5);
+      runFrames(world, 20);
       const hurtHp = world.crewState.all()[0]!.hp;
 
       // El tripulante sale del plano: deja de estar expuesto.
       world.crewState.set({ ...world.crewState.all()[0]!, currentCell: undefined });
-      runFrames(world, 5);
+      runFrames(world, 20);
       expect(world.crewState.all()[0]!.hp).toBe(hurtHp);
 
       // Al volver, el primer mordisco vuelve a ser el aviso no letal.

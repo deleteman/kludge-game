@@ -21,6 +21,10 @@ import type { CrewActor, CrewActorId } from "../crew/crew-actor.types.js";
 import { MissionAtmosphereRuntime } from "./mission-atmosphere-runtime.js";
 import { MissionHazardRuntime } from "./mission-hazard-runtime.js";
 import { MutableCrewState } from "./mutable-crew-state.js";
+import { TaskScheduler } from "../tasks/task-scheduler.js";
+import { createCrewTask } from "../tasks/task-factory.js";
+import type { CrewTaskId } from "../tasks/task.types.js";
+import type { CrewDomainEvent } from "../crew/crew-events.types.js";
 import { MissionSectionIntegrityRuntime } from "./mission-section-integrity-runtime.js";
 import { sectionBreachPressureSink } from "./section-breach-pressure-sink.js";
 import { composePressureSinks } from "./composite-pressure-sink.js";
@@ -163,6 +167,22 @@ function mount(options: { readonly random?: () => number } = {}) {
   });
 
   return { floorplan, shipState, registry, atmosphereRuntime, integrityRuntime, fired, explosions, reactionEvents };
+}
+
+/** Tripulante de fixture en una celda concreta. */
+function crewAt(id: CrewActorId, cell: { x: number; y: number }): CrewActor {
+  return {
+    id,
+    name: String(id),
+    specialty: "ingeniero",
+    tier: "novato",
+    trait: "estoico",
+    hp: 100,
+    maxHp: 100,
+    status: "idle",
+    currentSectionId: SECTION,
+    currentCell: cell,
+  };
 }
 
 /** Instala una plancha metálica sobre la celda de la brecha (el parche válido del catálogo). */
@@ -472,5 +492,88 @@ describe("13f ronda 2 — la sección parcheada vuelve a ser habitable", () => {
     const hpTrasParche = world.crewState.get(ACTOR)!.hp;
     run(world, 61, 200);
     expect(world.crewState.get(ACTOR)!.hp).toBe(hpTrasParche);
+  });
+});
+
+/**
+ * Ronda 3 de playtest de 13f, reporte 1: instalar la pieza equivocada sobre una
+ * brecha dejaba la partida sin salida, porque "desmontar una pieza puede
+ * demorar más de lo que demoran en morirse los tripulantes de la sección
+ * colapsada" y **"el desmonte inicia de 0 con cada nuevo tripulante"**.
+ *
+ * Ata los tres sistemas que participan (vacío, scheduler y relevo de trabajo)
+ * porque el bug vivía entre ellos: cada uno por separado hacía lo correcto. La
+ * suscripción `crew-death → standDown` vive en `MissionRuntime` (`/game`), así
+ * que acá se cablea a mano — es la ÚNICA pieza de pegamento del test; el vacío,
+ * el desmontaje y el relevo son los reales.
+ */
+describe("13f ronda 3 — un segundo tripulante termina el trabajo del que murió", () => {
+  it("el relevo hereda el avance del desmontaje en vez de empezar de cero", () => {
+    const world = mount();
+    const primero = "tripulante-1" as CrewActorId;
+    const relevo = "tripulante-2" as CrewActorId;
+
+    // El relevo espera FUERA (sin celda: el vacío no lo alcanza) hasta que el
+    // primero cae. Si entrara ya, moriría en la misma tanda y el test no
+    // probaría el relevo sino una segunda muerte.
+    const crewState = new MutableCrewState([
+      crewAt(primero, { x: 1, y: 1 }),
+      { ...crewAt(relevo, { x: 1, y: 1 }), currentCell: undefined },
+    ]);
+    const crewEvents = new EventEmitter<CrewDomainEvent>();
+    const hazardRuntime = new MissionHazardRuntime({
+      shipFloorplan: world.floorplan,
+      atmosphereRuntime: world.atmosphereRuntime,
+      chemicalRegistry,
+      crewState,
+      crewEmitter: crewEvents,
+    });
+    const scheduler = new TaskScheduler();
+    crewEvents.on("crew-death", (event) => {
+      crewState.markDead(event.actorId);
+      scheduler.standDown(event.actorId, { dtSeconds: 0, elapsedSeconds: 0 });
+    });
+
+    // Sección abierta al vacío.
+    world.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "none",
+      sectionId: SECTION,
+      elapsedSeconds: 0,
+    });
+
+    const dismantle = (taskId: string, actorId: CrewActorId) =>
+      scheduler.enqueue(
+        createCrewTask({
+          id: taskId as CrewTaskId,
+          actorId,
+          type: "dismantle",
+          estimatedDurationSeconds: 60, // más largo que la vida de nadie en vacío
+          payload: { kind: "dismantle", instanceId: CRATE_INSTANCE },
+        }),
+      );
+
+    dismantle("intento-1", primero);
+    for (let second = 1; second <= 60; second += 1) {
+      world.atmosphereRuntime.tick(tickOf(second));
+      hazardRuntime.tick(tickOf(second));
+      scheduler.tick(tickOf(second));
+    }
+
+    // El primero murió sin poder terminar.
+    expect(crewState.get(primero)!.status).toBe("dead");
+    expect(scheduler.getTask("intento-1" as CrewTaskId)?.state).toBe("cancelled");
+    const avanceHeredado = scheduler.getTask("intento-1" as CrewTaskId)!.elapsedSeconds;
+    expect(avanceHeredado).toBeGreaterThan(0);
+
+    // Entra el relevo y NO empieza de cero: retoma el trabajo donde quedó.
+    crewState.set({ ...crewState.get(relevo)!, currentCell: { x: 1, y: 1 } });
+    dismantle("intento-2", relevo);
+    scheduler.tick(tickOf(61));
+    expect(scheduler.getTask("intento-2" as CrewTaskId)!.elapsedSeconds).toBeGreaterThanOrEqual(
+      avanceHeredado,
+    );
   });
 });

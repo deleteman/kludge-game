@@ -134,10 +134,10 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.breach-open":
     "Hull breach: the section is venting to vacuum. Only a STRUCTURAL part of medium resistance or better seals it — a gasket or a hose will not hold.",
   "ui.floorplan.mission.inspector.breach-sealed": "Breach sealed: the leak has stopped (the hull is still damaged).",
-  "ui.floorplan.mission.inspector.install-here": "Install here",
   "ui.floorplan.mission.inspector.close": "Close",
   "ui.floorplan.mission.inspector.empty-title": "Empty cell",
-  "ui.floorplan.mission.inspector.empty-hint": "To install a replacement, click this same cell while it's empty.",
+  "ui.floorplan.mission.inspector.empty-hint":
+    "To install something here, use \"Install\" in the top bar: pick the part first, then mark the spot. Right-click moves the selected crew member to this cell.",
   "ui.floorplan.mission.inspector.install-picker-title": "Choose a component to install",
   "ui.floorplan.mission.inspector.idle-title": "Nothing selected",
   "ui.floorplan.mission.inspector.idle-message": "Select a component on the floorplan to see its available actions.",
@@ -172,6 +172,12 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-breached": "Hull breach!",
   "ui.floorplan.notification.section-breached-detail": "The section is venting to vacuum. Install a structural part over the breach.",
   "ui.floorplan.crew.dead": "K.I.A.",
+  "ui.floorplan.mission.install": "Install",
+  "ui.floorplan.mission.move-order-invalid": "Cannot reach that spot",
+  "ui.floorplan.mission.install-cancel": "Cancel install",
+  "ui.floorplan.mission.install-placement-hint":
+    "Mark where {piece} goes: green = fits, red = does not. ESC to cancel.",
+  "ui.floorplan.mission.install-placement-outside": "Outside any ship section",
   "ui.floorplan.notification.no-crew-left": "No surviving crew left",
   "ui.floorplan.notification.crew-dead": "{name} is dead",
   "ui.floorplan.notification.crew-dead-detail": "Their queued tasks were cancelled.",

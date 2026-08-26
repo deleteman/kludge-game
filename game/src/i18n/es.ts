@@ -134,10 +134,10 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.breach-open":
     "Brecha en el casco: la sección se vacía al vacío. Solo la sella una pieza ESTRUCTURAL de resistencia media o superior — una junta o una manguera no aguantan el agujero.",
   "ui.floorplan.mission.inspector.breach-sealed": "Brecha sellada: la fuga está detenida (el casco sigue dañado).",
-  "ui.floorplan.mission.inspector.install-here": "Instalar aquí",
   "ui.floorplan.mission.inspector.close": "Cerrar",
   "ui.floorplan.mission.inspector.empty-title": "Celda vacía",
-  "ui.floorplan.mission.inspector.empty-hint": "Para instalar un reemplazo, hacé click en esta misma celda mientras esté vacía.",
+  "ui.floorplan.mission.inspector.empty-hint":
+    "Para instalar algo acá, usá \"Instalar\" en la barra de arriba: elegís la pieza y después marcás el sitio. Con click derecho movés al tripulante seleccionado a esta celda.",
   "ui.floorplan.mission.inspector.install-picker-title": "Elegir componente a instalar",
   "ui.floorplan.mission.inspector.idle-title": "Sin selección",
   "ui.floorplan.mission.inspector.idle-message": "Seleccioná un componente en el plano para ver sus acciones disponibles.",
@@ -172,6 +172,12 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-breached": "¡Brecha en el casco!",
   "ui.floorplan.notification.section-breached-detail": "La sección se está vaciando al vacío. Instalá una pieza estructural sobre la brecha.",
   "ui.floorplan.crew.dead": "BAJA",
+  "ui.floorplan.mission.install": "Instalar",
+  "ui.floorplan.mission.move-order-invalid": "Ahí no se puede llegar",
+  "ui.floorplan.mission.install-cancel": "Cancelar instalación",
+  "ui.floorplan.mission.install-placement-hint":
+    "Marcá dónde va {piece}: verde = entra, rojo = no. ESC para cancelar.",
+  "ui.floorplan.mission.install-placement-outside": "Fuera de cualquier sección de la nave",
   "ui.floorplan.notification.no-crew-left": "No queda tripulación con vida",
   "ui.floorplan.notification.crew-dead": "{name} ha muerto",
   "ui.floorplan.notification.crew-dead-detail": "Sus tareas encoladas quedaron canceladas.",

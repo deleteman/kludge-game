@@ -27,12 +27,25 @@ export const HAZARD_PARAMETERS = {
      * El daño por vacío pasa a ser DISCRETO: un mordisco visible cada
      * `biteIntervalSeconds`, que es además lo que el principio 6 pide — un
      * fenómeno del motor con una representación que se puede contar.
+     *
+     * Subido de 2 a 8 en la ronda 3 de playtest. Con 2 s la muerte llegaba a
+     * los ~8 s, y las cifras del propio juego decían que eso era imposible de
+     * jugar: instalar tarda 8 s (9,6 fuera de especialidad) y desmontar 12
+     * (14,4), y el daño empieza en cuanto el token ENTRA en la sección, antes
+     * de llegar a la celda. Ni siquiera poner el parche bien a la primera
+     * entraba en la ventana.
+     *
+     * El 8 no es un redondeo: sale de medir la cadena de recuperación completa
+     * —viaje (~4 s) + desmontar la pieza equivocada (14,4) + instalar la
+     * plancha (9,6) ≈ 28 s— contra los ~32 s que dan cinco mordiscos a este
+     * ritmo. Equivocarse cuesta casi toda la vida del tripulante, pero se
+     * arregla en un solo viaje.
      */
-    biteIntervalSeconds: 2,
+    biteIntervalSeconds: 8,
     /**
-     * Fracción de HP máximo que se lleva cada mordisco. Con un mordisco cada
-     * 2 s, cinco mordiscos (~10 s desde HP lleno) matan: el margen que el
-     * diseño de 13f pide para que el jugador vea el aviso y saque a su gente.
+     * Fracción de HP máximo que se lleva cada mordisco. Cinco mordiscos matan
+     * desde HP lleno: la muerte sigue llegando en golpes contables (lo que
+     * arregló la ronda 1), lo que cambió en la ronda 3 es el ritmo.
      */
     hpFractionPerBite: 0.2,
   },

@@ -50,4 +50,23 @@ describe("createCrewTask", () => {
     const task = createCrewTask({ id: "t1" as CrewTaskId, actorId: ACTOR_A, type: "go-to" });
     expect(task.payload).toBeUndefined();
   });
+
+  /**
+   * 13f ronda 3: mover a un tripulante a un punto elegido (click derecho). Sin
+   * `targetCell`, un `go-to` solo sabía apuntar a una sección entera.
+   */
+  it("conserva la celda exacta de destino de un go-to", () => {
+    const task = createCrewTask({
+      id: "t1" as CrewTaskId,
+      actorId: ACTOR_A,
+      type: "go-to",
+      targetCell: { x: 7, y: 3 },
+    });
+    expect(task.targetCell).toEqual({ x: 7, y: 3 });
+  });
+
+  it("sin celda explícita el go-to se comporta como siempre (solo sección)", () => {
+    const task = createCrewTask({ id: "t1" as CrewTaskId, actorId: ACTOR_A, type: "go-to" });
+    expect(task.targetCell).toBeUndefined();
+  });
 });

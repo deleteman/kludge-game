@@ -1,5 +1,6 @@
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import type { GridPosition } from "../geometry/grid-position.types.js";
 import type { CrewTask, CrewTaskId, TaskPayload, TaskType } from "./task.types.js";
 import { baseDurationFor } from "./task-parameters.js";
 
@@ -8,6 +9,8 @@ export interface CreateCrewTaskInput {
   readonly actorId: CrewActorId;
   readonly type: TaskType;
   readonly targetSectionId?: SectionId;
+  /** Celda exacta de destino (13f ronda 3) — ver `CrewTask.targetCell`. */
+  readonly targetCell?: GridPosition;
   /**
    * Secciones que deben tener energía otorgada para que la tarea corra (ronda
    * 11 de fixes de playtest 13e). Ausente/vacío = nunca se gatea por energía
@@ -44,6 +47,7 @@ export function createCrewTask(input: CreateCrewTaskInput): CrewTask {
     actorId: input.actorId,
     type: input.type,
     targetSectionId: input.targetSectionId,
+    targetCell: input.targetCell,
     powerSectionIds: input.powerSectionIds,
     payload: input.payload,
     estimatedDurationSeconds: duration,

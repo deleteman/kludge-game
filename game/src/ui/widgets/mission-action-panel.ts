@@ -176,7 +176,6 @@ export interface ActionPanelLabels {
   readonly emptyTitle: string;
   readonly emptyHint: string;
   readonly dismantle: string;
-  readonly installHere: string;
   /** Aviso de riesgo al desmontar (13d), una línea por hazard vivo. */
   readonly hazardWarning: (kind: DismantleHazardKind) => string;
   /** Brecha de casco sobre esta celda (13f ronda 1): qué es y qué hace falta para sellarla. */
@@ -227,7 +226,6 @@ export interface ActionPanelCallbacks {
   readonly onPurgeReservoir: (instanceId: PlacedComponentInstanceId) => void;
   /** Encola "Descargar fuente" (13d, fix ronda 1) sobre esta batería/panel. */
   readonly onDischargeSource: (instanceId: PlacedComponentInstanceId) => void;
-  readonly onOpenInstallPicker: (position: GridPosition) => void;
   /** Subfase 13e — acciones sobre un reservorio y apertura de la mesa desde el aparato. */
   /** Abre el modo de selección espacial de destino de trasvase (ronda 7) sobre esta pieza. */
   readonly onStartTransferMode: (instanceId: PlacedComponentInstanceId) => void;
@@ -608,21 +606,12 @@ export function renderMissionActionPanel(
       claim(cursorY);
     }
   } else if (content.kind === "empty") {
-    const installCenter = Math.max(flowY + 17, contentTop + 68);
-    container.add(
-      createKenneyButton(scene, width / 2, installCenter, labels.installHere, {
-        width: width - 40,
-        height: 34,
-        fontSize: "12px",
-        enabled: hasSelectedActor,
-        onClick: () => callbacks.onOpenInstallPicker(content.position),
-      }),
-    );
-    // Texto de contexto (ajuste post-playtest #3): sin esto, nada en pantalla
-    // sugería que instalar un reemplazo se hace clickeando de nuevo la misma
-    // celda vacía — un jugador sin el GDD no podía deducirlo.
+    // Sin botón "Instalar aquí" desde 13f ronda 3: instalar empieza por el
+    // botón de la barra (elegir la pieza) y termina marcando el sitio en el
+    // mapa con el footprint a la vista. El panel de una celda vacía queda como
+    // ficha informativa — sigue siendo donde se avisa de una brecha abierta.
     const hint = scene.add
-      .text(width / 2, installCenter + 28, labels.emptyHint, {
+      .text(width / 2, flowY, labels.emptyHint, {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
         fontSize: "10px",
         color: LABEL_COLOR,
@@ -631,7 +620,7 @@ export function renderMissionActionPanel(
       })
       .setOrigin(0.5, 0);
     container.add(hint);
-    claim(installCenter + 28 + hint.height);
+    claim(flowY + hint.height);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá
     // los valores exactos de riesgo (radio de combustión, segundos por nivel

@@ -925,15 +925,30 @@ export class MissionRuntime {
     return this.crewState.isAlive(actorId);
   }
 
-  private queueGoTo(actorId: CrewActorId, targetSectionId: SectionId): void {
+  private queueGoTo(actorId: CrewActorId, targetSectionId: SectionId, targetCell?: GridPosition): void {
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
         type: "go-to",
         targetSectionId,
+        targetCell,
       }),
     );
+  }
+
+  /**
+   * Mover a un tripulante a una CELDA concreta (13f ronda 3, click derecho).
+   * Hasta ahora `go-to` solo apuntaba a una sección y el token únicamente
+   * caminaba a una celda exacta cuando había una acción encolada detrás.
+   */
+  queueMoveTo(actorId: CrewActorId, targetCell: GridPosition): boolean {
+    const section = sectionContainingCell(this.shipFloorplan, targetCell);
+    if (!section || !this.isActorAlive(actorId)) {
+      return false;
+    }
+    this.queueGoTo(actorId, section.id, targetCell);
+    return true;
   }
 
   private ensureAt(actorId: CrewActorId, targetSectionId: SectionId | undefined): void {

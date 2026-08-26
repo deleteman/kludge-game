@@ -438,6 +438,8 @@ export class FloorplanScene extends Phaser.Scene {
    * de elementos (12c.5), que sigue teniendo sentido apuntando al aparato real.
    */
   private workbenchButton?: Phaser.GameObjects.GameObject;
+  /** Botón "Instalar" de la cabecera (13f ronda 3) — ver `updateInstallButton`. */
+  private installButton?: Phaser.GameObjects.GameObject;
   /** Panel de objetivos (briefing) — modal informativo togglead por su botón (playtest #15). */
   private objectivesPanel?: Phaser.GameObjects.Container;
   private objectivesOpen = false;
@@ -699,6 +701,7 @@ export class FloorplanScene extends Phaser.Scene {
         onSelectionChanged: () => this.updateSelectedHighlight(),
         onWireSelectionChanged: () => this.updateWireHighlights(),
         onTransferModeChanged: () => this.updateTransferMode(),
+        onInstallPlacementChanged: () => this.updateInstallPlacementMode(),
       },
     );
 
@@ -846,6 +849,7 @@ export class FloorplanScene extends Phaser.Scene {
     // el placeholder `undefined`, no hay nada que mostrar todavía.
 
     this.updatePlayPauseButton();
+    this.updateInstallButton();
     this.updateWireModeButton();
     this.updateTransferModeButton();
     this.createObjectivesButton();
@@ -870,8 +874,20 @@ export class FloorplanScene extends Phaser.Scene {
     this.redrawShipStatusHud();
 
     // --- Input: click vs. arrastre (paneo) sobre la zona de mapa ------------
+    // Sin menú contextual del navegador: el click derecho es una orden de
+    // movimiento (13f ronda 3), no un menú.
+    this.input.mouse?.disableContextMenu();
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (this.briefingOpen || this.objectivesOpen || this.interaction.installPickerOpen || this.isOverFixedUi(pointer)) return;
+      // Click DERECHO = "andá a esta celda". Es la contrapartida de haber
+      // quitado "Instalar aquí" del panel de celda vacía: mover a alguien a un
+      // punto elegido no tenía forma de expresarse (`go-to` apuntaba a una
+      // sección entera). No entra en la lógica de arrastre/paneo, que es del
+      // botón izquierdo.
+      if (pointer.rightButtonDown()) {
+        this.handleMoveOrderClick(pointer);
+        return;
+      }
       this.dragOrigin = {
         x: pointer.x,
         y: pointer.y,
@@ -950,6 +966,10 @@ export class FloorplanScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
+      if (this.interaction.installPlacementMode) {
+        this.interaction.cancelInstallPlacement();
+        return;
+      }
       if (this.interaction.transferMode) {
         this.interaction.cancelTransferMode();
         return;
@@ -1555,6 +1575,32 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   /**
+   * Orden de movimiento por click DERECHO (13f ronda 3): el tripulante
+   * seleccionado va a ESA celda.
+   *
+   * Cubre el hueco que dejó sacar "Instalar aquí" del panel de celda vacía, y
+   * uno anterior: no había forma de mandar a alguien a un punto concreto —
+   * `go-to` apuntaba a una sección entera y el token solo caminaba a una celda
+   * exacta cuando había una acción encolada detrás.
+   */
+  private handleMoveOrderClick(pointer: Phaser.Input.Pointer): void {
+    const actorId = this.interaction.selectedActorId;
+    if (!actorId) {
+      this.setStatus(t("ui.floorplan.mission.no-actor-selected"));
+      return;
+    }
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const cell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    if (!this.mission.queueMoveTo(actorId, cell)) {
+      this.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
+      this.setStatus(t("ui.floorplan.mission.move-order-invalid"));
+      return;
+    }
+    this.sound.play(pickSoundKey(AUDIO_KEYS.mapCellSelect), { volume: 0.4 });
+    this.redrawQueuePanel();
+  }
+
+  /**
    * Selección de tripulante por hit-test sobre la tira (playtest #16b). Devuelve
    * `true` si consumió el evento (el puntero estaba en la tira), para que no siga
    * al click de mapa.
@@ -1600,11 +1646,57 @@ export class FloorplanScene extends Phaser.Scene {
     const cell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
     if (this.hoverCell && this.hoverCell.x === cell.x && this.hoverCell.y === cell.y) return;
     this.hoverCell = cell;
+    // Con una pieza pendiente de colocar, el fantasma del footprint reemplaza
+    // al resaltado de una celda: sigue al cursor y se repinta al moverse.
+    if (this.interaction.installPlacementMode) {
+      this.hoverHighlight.setVisible(false);
+      this.updateSelectedHighlight();
+      return;
+    }
     if (!this.interaction.isCellInteractable(cell)) {
       this.hoverHighlight.setVisible(false);
       return;
     }
     this.hoverHighlight.setPosition(cell.x * CELL, cell.y * CELL).setVisible(true);
+  }
+
+  /**
+   * Modo de COLOCACIÓN de una pieza (13f ronda 3): botón de cancelar en la
+   * cabecera y fantasma del footprint. Mismo punto de entrada único que
+   * `updateTransferMode`, del que copia el molde.
+   */
+  private updateInstallPlacementMode(): void {
+    this.updateInstallButton();
+    this.updateSelectedHighlight();
+  }
+
+  /**
+   * Botón "Instalar" de la cabecera (13f ronda 3). Ocupa el casillero que dejó
+   * libre el botón de mesa cuando 13e la movió al aparato. Mientras hay una
+   * pieza pendiente de colocar, pasa a "Cancelar instalación".
+   */
+  private updateInstallButton(): void {
+    (this.installButton as Phaser.GameObjects.GameObject | undefined)?.destroy();
+    const placing = this.interaction.installPlacementMode;
+    this.installButton = createKenneyButton(
+      this.rex,
+      WORKBENCH_BUTTON_X,
+      HEADER_HEIGHT / 2,
+      t(placing ? "ui.floorplan.mission.install-cancel" : "ui.floorplan.mission.install"),
+      {
+        width: 150,
+        height: 30,
+        fontSize: "11px",
+        onClick: () => {
+          if (this.interaction.installPlacementMode) {
+            this.interaction.cancelInstallPlacement();
+          } else {
+            this.interaction.openInstallPicker();
+          }
+        },
+      },
+    ).setDepth(RENDER_DEPTH.hudContent);
+    this.markAsHudObject(this.installButton);
   }
 
   /**
@@ -1726,14 +1818,20 @@ export class FloorplanScene extends Phaser.Scene {
     for (const rect of this.selectedHighlightCells) rect.destroy();
     this.selectedHighlightCells = [];
 
-    const footprintCells = this.interaction.installPickerHighlightCells;
-    const cells = footprintCells ?? (this.interaction.selectedCell ? [this.interaction.selectedCell] : []);
+    // Con una pieza pendiente de colocar (13f ronda 3), el resaltado ES el
+    // fantasma del footprint bajo el cursor: verde donde entra, rojo donde no.
+    // Antes esto pintaba el footprint de la opción enfocada en el selector —
+    // que se dibujaba DEBAJO de un modal bloqueante con fondo negro al 55%, o
+    // sea información que existía y no se podía ver.
+    const ghost = this.hoverCell && this.interaction.installPlacementPreviewAt(this.hoverCell);
+    const cells = ghost?.cells ?? (this.interaction.selectedCell ? [this.interaction.selectedCell] : []);
+    const color = ghost && !ghost.valid ? CRISIS_FATAL_COLOR : SELECTED_CELL_COLOR;
     for (const cell of cells) {
       const rect = this.add
         .rectangle(cell.x * CELL, cell.y * CELL, CELL, CELL)
         .setOrigin(0, 0)
-        .setStrokeStyle(3, SELECTED_CELL_COLOR, 1)
-        .setFillStyle(SELECTED_CELL_COLOR, 0.22)
+        .setStrokeStyle(3, color, 1)
+        .setFillStyle(color, 0.22)
         .setDepth(RENDER_DEPTH.hoverHighlight);
       this.markAsWorldObject(rect);
       this.selectedHighlightCells.push(rect);
@@ -4191,7 +4289,11 @@ export class FloorplanScene extends Phaser.Scene {
         if (event.type === "go-to") {
           const task = this.mission.scheduler.getTask(event.taskId);
           if (task) {
-            const cell = this.nextActionCellFor(event.actorId, event.taskId);
+            // `targetCell` (13f ronda 3, click derecho) gana sobre la celda
+            // derivada de la acción siguiente: si el jugador eligió un punto,
+            // ahí va — no al centro de la sección ni al sitio del próximo
+            // trabajo encolado.
+            const cell = task.targetCell ?? this.nextActionCellFor(event.actorId, event.taskId);
             const targetPx = cell ? this.cellCenterPx(cell) : this.pixelPositionForSection(task.targetSectionId);
             this.travelCrewToken(event.actorId, targetPx, task.estimatedDurationSeconds, event.taskId);
           }

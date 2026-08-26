@@ -1293,3 +1293,23 @@
 - `isAlive`/`allAlive`/`markDead`. Criterio ÚNICO de "vivo": estaba copiado como `hp > 0` en `firstAlive`,
   `healthiestAlive` y cada runtime que aplica daño, y el permadeath añadió un segundo eje (`status`) que tenía que
   decidir lo mismo en todos lados.
+
+
+## `engine/src/tasks/task-progress-key.ts` (nuevo, 13f ronda 3)
+- `taskProgressKey(task)` — identidad del OBJETIVO de una tarea, derivada de su `payload`. Es lo que permite el trabajo
+  por relevos: `TaskScheduler` acumula el avance por objetivo (`progressByObjective`) y no por tarea, así que si el
+  tripulante muere a mitad el siguiente retoma donde quedó. Se limpia al COMPLETAR — cancelar o morir deja el avance a
+  propósito. Nunca usa el `instanceId` de la propia tarea (el de `install` se genera al encolar, así que dos intentos no
+  compartirían nada); `go-to` y las tareas sin payload no acumulan.
+
+## `engine/src/workbench/installation-placement.ts` (modificado, 13f ronda 3)
+- **Borrado `findFittingInstallPlacement`.** Reubicaba la pieza a "la celda válida más cercana" a la clickeada, lo que
+  ponía una plancha 2×2 AL LADO de la brecha cuando su celda estaba ocupada, sin rechazar la acción ni avisar. Existía
+  porque no había forma de ver el footprint antes de confirmar; con el fantasma en vivo del nuevo flujo de instalación
+  sobra, y su comportamiento es justo el contrario del que el operador decidió ("lo que ves es lo que se instala").
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13f ronda 3)
+- Modo de COLOCACIÓN de pieza (`installPlacementState`), molde de `transferModeState`: se elige QUÉ instalar en el modal
+  y DÓNDE en el mapa, con `installPlacementPreviewAt` devolviendo el footprint anclado exacto bajo el cursor y si ahí
+  entra. El selector ya no recibe una celda y "Instalar aquí" desapareció del panel de celda vacía — el flujo empieza en
+  el botón de la barra (`updateInstallButton`, `floorplan-scene.ts`).

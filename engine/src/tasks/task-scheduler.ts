@@ -11,6 +11,7 @@ import {
   validateTaskDependencies,
   type TaskDependencyIssue,
 } from "./task-dependency-graph.js";
+import { taskProgressKey } from "./task-progress-key.js";
 
 /** Motivo por el que una tarea quedó bloqueada de forma no transitoria (dependencia terminal). */
 export type BlockingReason = TaskBlockedEvent["reason"];
@@ -85,6 +86,13 @@ export class TaskScheduler implements Tickable {
   private readonly actors = new Map<CrewActorId, ActorRecord>();
   /** Último motivo de bloqueo emitido por tarea, para emitir solo en transición/cambio de motivo. */
   private readonly lastBlockReason = new Map<CrewTaskId, BlockingReason>();
+  /**
+   * Avance acumulado por OBJETIVO (`taskProgressKey`), no por tarea (13f ronda
+   * 3). Es lo que permite el trabajo por relevos: la tarea muere con su actor,
+   * el objetivo no. Se limpia solo al COMPLETAR — cancelar o morir a mitad deja
+   * el avance ahí a propósito, que es justamente el relevo.
+   */
+  private readonly progressByObjective = new Map<string, number>();
   private readonly notifications: PlayerNotification[] = [];
 
   private readonly emitter?: EventEmitter<CoreLoopDomainEvent>;
@@ -234,6 +242,7 @@ export class TaskScheduler implements Tickable {
       const task = this.activeTaskOf(actorId);
       if (task && task.state === "in-progress") {
         task.elapsedSeconds += ctx.dtSeconds;
+        this.recordProgress(task);
         if (task.elapsedSeconds >= task.estimatedDurationSeconds) {
           this.completeTask(task, ctx);
         }
@@ -319,6 +328,12 @@ export class TaskScheduler implements Tickable {
   private completeTask(task: CrewTask, ctx: TickContext): void {
     task.state = "completed";
     this.lastBlockReason.delete(task.id);
+    // El trabajo está hecho: el objetivo deja de acumular avance, o el
+    // siguiente que instale algo en esa misma celda empezaría medio terminado.
+    const progressKey = taskProgressKey(task);
+    if (progressKey) {
+      this.progressByObjective.delete(progressKey);
+    }
     // Ubicación lógica: al terminar un desplazamiento, el actor pasa a estar allí.
     if (task.type === "go-to" && task.targetSectionId !== undefined) {
       this.actorRecord(task.actorId).currentSectionId = task.targetSectionId;
@@ -353,6 +368,13 @@ export class TaskScheduler implements Tickable {
       return;
     }
     task.state = "in-progress";
+    // Trabajo por relevos (13f ronda 3): si alguien ya avanzó sobre este mismo
+    // objetivo y no pudo terminarlo —lo cancelaron, o se murió a mitad— esta
+    // tarea arranca desde donde quedó, no desde cero.
+    const inherited = this.inheritedProgressFor(task);
+    if (inherited > task.elapsedSeconds) {
+      task.elapsedSeconds = inherited;
+    }
     this.lastBlockReason.delete(task.id);
     this.actorRecord(task.actorId).status = "busy";
     this.emitter?.emit({
@@ -454,6 +476,20 @@ export class TaskScheduler implements Tickable {
       if (task.dependsOn.includes(taskId)) {
         this.blockTask(task, reason, taskId, tick);
       }
+    }
+  }
+
+  /** Avance ya acumulado sobre el objetivo de esta tarea por intentos anteriores. */
+  private inheritedProgressFor(task: CrewTask): number {
+    const key = taskProgressKey(task);
+    return key ? (this.progressByObjective.get(key) ?? 0) : 0;
+  }
+
+  /** Deja constancia del avance en el OBJETIVO, para que sobreviva a esta tarea. */
+  private recordProgress(task: CrewTask): void {
+    const key = taskProgressKey(task);
+    if (key) {
+      this.progressByObjective.set(key, task.elapsedSeconds);
     }
   }
 
