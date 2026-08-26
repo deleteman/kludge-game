@@ -1,8 +1,10 @@
 import type Phaser from "phaser";
 import type { CrewActor, CrewActorId } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
+import { t } from "../../i18n/i18n.js";
 import {
   CREW_TOKEN_COLORS,
+  CRISIS_FATAL_CSS,
   HEADER_COLOR,
   LABEL_COLOR,
   SELECTED_CELL_COLOR,
@@ -103,7 +105,9 @@ export function renderCrewStrip(
 
   crew.forEach((actor, index) => {
     const color = CREW_TOKEN_COLORS[index % CREW_TOKEN_COLORS.length]!;
-    const selected = actor.id === selectedActorId;
+    /** Baja definitiva (permadeath, GDD 6.1) — ver el bloque final de la tarjeta. */
+    const dead = actor.status === "dead";
+    const selected = !dead && actor.id === selectedActorId;
     const cardX = startX + index * (CARD_WIDTH + CARD_GAP);
     const hpFraction = actor.maxHp > 0 ? Math.max(0, Math.min(1, actor.hp / actor.maxHp)) : 0;
 
@@ -207,6 +211,27 @@ export function renderCrewStrip(
         })
         .setOrigin(1, 0),
     );
+
+    if (dead) {
+      // Marca de baja sobre la tarjeta (13f ronda 2). Un muerto NO entra en
+      // `cardHitAreas`: no se lo puede seleccionar, así que ninguna acción del
+      // panel lo alcanza. Una tarjeta que sigue clickeable "y no hace nada"
+      // sería indistinguible de un bug.
+      container.add(
+        scene.add.rectangle(cardX, cardTop, CARD_WIDTH, cardHeight, 0x000000, 0.45).setOrigin(0, 0),
+      );
+      container.add(
+        scene.add
+          .text(cardX + CARD_WIDTH / 2, cardTop + cardHeight / 2, t("ui.floorplan.crew.dead"), {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "12px",
+            color: CRISIS_FATAL_CSS,
+            fontStyle: "bold",
+          })
+          .setOrigin(0.5),
+      );
+      return;
+    }
 
     cardHitAreas.push({ xMin: cardX, xMax: cardX + CARD_WIDTH, actorId: actor.id });
   });

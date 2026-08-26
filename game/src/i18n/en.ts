@@ -171,6 +171,10 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-damaged": "Structure damaged",
   "ui.floorplan.notification.section-breached": "Hull breach!",
   "ui.floorplan.notification.section-breached-detail": "The section is venting to vacuum. Install a structural part over the breach.",
+  "ui.floorplan.crew.dead": "K.I.A.",
+  "ui.floorplan.notification.no-crew-left": "No surviving crew left",
+  "ui.floorplan.notification.crew-dead": "{name} is dead",
+  "ui.floorplan.notification.crew-dead-detail": "Their queued tasks were cancelled.",
   "ui.floorplan.notification.breach-sealed": "Breach sealed: the leak has stopped",
   "ui.floorplan.notification.breach-patch-failed": "That part does not seal the breach",
   "ui.floorplan.notification.breach-patch-failed-detail":

@@ -468,6 +468,8 @@ export {
   serializeCampaignSave,
 } from "./save/campaign-save-serializer.js";
 export { createNewCampaignSave } from "./save/campaign-save-factory.js";
+export { writeBackCrew } from "./save/crew-write-back.js";
+export type { CrewWriteBack, LiveCrewSnapshot } from "./save/crew-write-back.js";
 export type { CreateNewCampaignSaveInput } from "./save/campaign-save-factory.js";
 export { CHAPTER_SEED_BY_ID, advanceChapterProgress } from "./save/chapter-progression.js";
 export type { ChapterSeed } from "./save/chapter-progression.js";

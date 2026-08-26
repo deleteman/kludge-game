@@ -1196,8 +1196,10 @@
   la nave por una sala, y la media plana no lo movía casi nada.
 
 ## `engine/src/mission/section-breach-pressure-sink.ts` (nuevo, Subfase 13f)
-- `sectionBreachPressureSink` — hermano de `sealBreachPressureSink` con una diferencia física deliberada: la brecha no
-  recupera presión al taparse, solo deja de drenar. `isBreachPatch` decide qué sirve de parche **por propiedades**
+- `sectionBreachPressureSink` — mismo molde que `sealBreachPressureSink`: drena mientras el agujero está abierto y
+  recupera (tasa negativa) en cuanto está tapado. La ronda 2 de playtest corrigió la versión original, que solo detenía
+  el drenaje: nada más movía `pressureKpa`, así que la sala quedaba a 0 kPa y letal para siempre con el parche puesto.
+  La diferencia física con la junta rota se mantiene donde importa — drena 12 kPa/s y recupera 2. `isBreachPatch` decide qué sirve de parche **por propiedades**
   (`EST` + RE efectiva suficiente, principio 1) y no por lista de ids; `isBreachSealed` mira TODAS las celdas ocupadas
   por la pieza, no solo su origen.
 
@@ -1272,3 +1274,22 @@
   `saves[0]` de un `readdir` SIN ORDENAR, así que con varias campañas en disco entraba en una vieja sin ningún error
   visible (los guards de deserialización son tolerantes a propósito) y el jugador leía "los componentes desaparecieron".
   Se ordena por `updatedAt` y no por el timestamp del id, que marca la CREACIÓN y no el último guardado.
+
+
+## `engine/src/save/crew-write-back.ts` (nuevo, 13f ronda 2)
+- `writeBackCrew` — vuelca el estado vivo de la tripulación sobre el save: HP y celda de `MutableCrewState`,
+  status/sección del `TaskScheduler`, y la BAJA DEFINITIVA de los muertos (permadeath, GDD 6.1). Un muerto queda `dead`
+  con 0 HP, sale de `activeCrewIds` y sigue en `crew` (el roster conserva a quien fue; `assertCampaignSaveIntegrity`
+  exige justamente esa relación). Vivía dentro de `MissionRuntime.toUpdatedSave`, donde no se podía testear sin
+  levantar una misión entera con plano, assets y registros.
+
+## `engine/src/tasks/task-scheduler.ts` (modificado, 13f ronda 2)
+- `CrewActorStatus` gana `"dead"`, TERMINAL: `standDown(actorId, tick)` cancela la cola del muerto reusando `cancel()`
+  (que ya cascadea `dependency-cancelled` a los dependientes y notifica), el tick deja de avanzarlo, `enqueue` lo
+  rechaza y `registerActor` no lo resucita. Antes el scheduler no sabía nada de HP y un tripulante muerto seguía
+  trabajando.
+
+## `engine/src/mission/mutable-crew-state.ts` (modificado, 13f ronda 2)
+- `isAlive`/`allAlive`/`markDead`. Criterio ÚNICO de "vivo": estaba copiado como `hp > 0` en `firstAlive`,
+  `healthiestAlive` y cada runtime que aplica daño, y el permadeath añadió un segundo eje (`status`) que tenía que
+  decidir lo mismo en todos lados.

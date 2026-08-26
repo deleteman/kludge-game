@@ -19,8 +19,16 @@ export type CrewActorId = Brand<string, "CrewActorId">;
  *  - `busy`    — ejecutando una tarea (avanzando su duración).
  *  - `waiting` — tiene una tarea lista pero bloqueada por una dependencia sin
  *                cumplir; "espera en su sitio" (GDD §4.3).
+ *  - `dead`    — permadeath (GDD 6.1). Estado TERMINAL: no se sale de él nunca.
+ *
+ * `dead` se añadió en la ronda 2 de playtest de 13f. El permadeath existía como
+ * evento (`crew-death`) desde la Fase 9 pero no tenía ninguna consecuencia
+ * mecánica: el operador reportó "el tripulante no muere al llegar a 0 vida,
+ * sigo usándolo para todo sin problema". Va en este enum y no en un booleano
+ * aparte porque el scheduler ya conmuta sobre `status` — un campo paralelo
+ * sería una segunda fuente de verdad sobre "puede trabajar".
  */
-export type CrewActorStatus = "idle" | "busy" | "waiting";
+export type CrewActorStatus = "idle" | "busy" | "waiting" | "dead";
 
 export interface CrewActor {
   readonly id: CrewActorId;

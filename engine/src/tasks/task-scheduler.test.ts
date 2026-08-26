@@ -456,3 +456,105 @@ describe("task-scheduler: power gating (rondas 10-11 de fixes de playtest 13e)",
     expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
   });
 });
+
+/**
+ * Permadeath (GDD 6.1) — ronda 2 de playtest de 13f. El operador reportó "el
+ * tripulante no muere al llegar a 0 vida, sigo usándolo para todo sin
+ * problema": `crew-death` existía desde la Fase 9 pero solo disparaba
+ * partículas, y el scheduler nunca supo nada de HP.
+ */
+describe("task-scheduler: baja de un actor (13f ronda 2)", () => {
+  it("cancela la cola del muerto y avisa a quien dependía de él", () => {
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((event) => events.push(event));
+    const scheduler = new TaskScheduler({ emitter });
+
+    scheduler.enqueue(
+      createCrewTask({ id: id("desmontar"), actorId: ENGINEER, type: "dismantle", estimatedDurationSeconds: 5 }),
+    );
+    scheduler.enqueue(
+      createCrewTask({ id: id("segunda"), actorId: ENGINEER, type: "install", estimatedDurationSeconds: 5 }),
+    );
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("combinar"),
+        actorId: MEDIC,
+        type: "combine",
+        estimatedDurationSeconds: 1,
+        dependsOn: [id("desmontar")],
+      }),
+    );
+    scheduler.tick(tickOf(1));
+
+    scheduler.standDown(ENGINEER, tickOf(2));
+
+    expect(scheduler.getTask(id("desmontar"))?.state).toBe("cancelled");
+    expect(scheduler.getTask(id("segunda"))?.state).toBe("cancelled");
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("dead");
+    // La cadena rota tiene que ser visible: el que esperaba queda bloqueado y
+    // el jugador recibe la notificación, no descubre a mano que nada avanza.
+    expect(scheduler.getTask(id("combinar"))?.state).toBe("blocked");
+    expect(scheduler.pendingNotifications.length).toBeGreaterThan(0);
+  });
+
+  it("`dead` es terminal: el tick no lo devuelve a idle ni le arranca nada", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.enqueue(
+      createCrewTask({ id: id("t"), actorId: ENGINEER, type: "dismantle", estimatedDurationSeconds: 2 }),
+    );
+    scheduler.standDown(ENGINEER, tickOf(1));
+
+    for (let second = 2; second <= 10; second += 1) {
+      scheduler.tick(tickOf(second));
+    }
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("dead");
+    expect(scheduler.getTask(id("t"))?.state).toBe("cancelled");
+  });
+
+  it("no acepta trabajo nuevo", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.standDown(ENGINEER, tickOf(1));
+    expect(scheduler.canAcceptTasks(ENGINEER)).toBe(false);
+
+    scheduler.enqueue(
+      createCrewTask({ id: id("nueva"), actorId: ENGINEER, type: "install", estimatedDurationSeconds: 1 }),
+    );
+    scheduler.tick(tickOf(2));
+    expect(scheduler.getTask(id("nueva"))).toBeUndefined();
+    expect(scheduler.queueFor(ENGINEER)).toHaveLength(0);
+  });
+
+  it("re-registrar a un muerto no lo resucita", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.registerActor({
+      id: ENGINEER,
+      name: "Ríos",
+      specialty: "ingeniero",
+      tier: "novato",
+      trait: "estoico",
+      hp: 100,
+      maxHp: 100,
+      status: "idle",
+    });
+    scheduler.standDown(ENGINEER, tickOf(1));
+    scheduler.registerActor({
+      id: ENGINEER,
+      name: "Ríos",
+      specialty: "ingeniero",
+      tier: "novato",
+      trait: "estoico",
+      hp: 100,
+      maxHp: 100,
+      status: "idle",
+    });
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("dead");
+  });
+
+  it("dar de baja dos veces es idempotente", () => {
+    const scheduler = new TaskScheduler();
+    scheduler.standDown(ENGINEER, tickOf(1));
+    scheduler.standDown(ENGINEER, tickOf(2));
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("dead");
+  });
+});

@@ -33,9 +33,36 @@ export class MutableCrewState {
     this.byId.set(actor.id, actor);
   }
 
-  /** Primer actor vivo (`hp > 0`) en orden de registro, o `undefined` si no queda ninguno. */
+  /**
+   * ¿Sigue en pie este tripulante? Criterio ÚNICO de "vivo" (13f ronda 2):
+   * vivía copiado como `hp > 0` en `firstAlive`, `healthiestAlive` y en cada
+   * runtime que aplica daño, y con el permadeath hay ahora un segundo eje
+   * (`status: "dead"`) que tiene que decidir lo mismo en todos lados.
+   */
+  isAlive(id: CrewActorId): boolean {
+    const actor = this.byId.get(id);
+    return actor !== undefined && actor.hp > 0 && actor.status !== "dead";
+  }
+
+  /** Todos los que siguen en pie, en orden de registro. */
+  allAlive(): ReadonlyArray<CrewActor> {
+    return this.all().filter((actor) => this.isAlive(actor.id));
+  }
+
+  /**
+   * Marca a un tripulante como baja definitiva (permadeath, GDD 6.1). No hay
+   * vuelta atrás: `dead` es terminal en `CrewActorStatus`.
+   */
+  markDead(id: CrewActorId): void {
+    const actor = this.byId.get(id);
+    if (actor && actor.status !== "dead") {
+      this.byId.set(id, { ...actor, hp: 0, status: "dead" });
+    }
+  }
+
+  /** Primer actor vivo en orden de registro, o `undefined` si no queda ninguno. */
   firstAlive(): CrewActor | undefined {
-    return this.all().find((actor) => actor.hp > 0);
+    return this.allAlive()[0];
   }
 
   /**
@@ -44,8 +71,7 @@ export class MutableCrewState {
    * descargas en vez de concentrarlas en un solo tripulante.
    */
   healthiestAlive(): CrewActor | undefined {
-    return this.all()
-      .filter((actor) => actor.hp > 0)
+    return this.allAlive()
       .reduce<CrewActor | undefined>(
         (best, actor) => (best === undefined || actor.hp > best.hp ? actor : best),
         undefined,

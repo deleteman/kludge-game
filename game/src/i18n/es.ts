@@ -171,6 +171,10 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.section-damaged": "Estructura dañada",
   "ui.floorplan.notification.section-breached": "¡Brecha en el casco!",
   "ui.floorplan.notification.section-breached-detail": "La sección se está vaciando al vacío. Instalá una pieza estructural sobre la brecha.",
+  "ui.floorplan.crew.dead": "BAJA",
+  "ui.floorplan.notification.no-crew-left": "No queda tripulación con vida",
+  "ui.floorplan.notification.crew-dead": "{name} ha muerto",
+  "ui.floorplan.notification.crew-dead-detail": "Sus tareas encoladas quedaron canceladas.",
   "ui.floorplan.notification.breach-sealed": "Brecha sellada: la fuga se detuvo",
   "ui.floorplan.notification.breach-patch-failed": "Esa pieza no sella la brecha",
   "ui.floorplan.notification.breach-patch-failed-detail":

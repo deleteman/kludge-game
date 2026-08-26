@@ -1,5 +1,6 @@
 import type { EntityRegistry } from "../composition/entity-registry.js";
 import type { ChemicalSubstanceDefinition, ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import { sectionArea } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { standardSectionAtmosphere } from "../atmosphere/section.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
@@ -62,6 +63,10 @@ export class ShipStatusQuery {
     const blueprint = this.shipState.get();
     const sections = this.shipFloorplan.sections.map((section) => ({
       atmosphere: this.atmosphereRuntime.atmosphereOf(section.id) ?? standardSectionAtmosphere(),
+      // Peso para la agregación de PRESIÓN (13f ronda 2). `aggregateLifeSupport`
+      // recibe el mismo array y simplemente lo ignora: el O2 se agrega por peor
+      // sección gana, porque se difunde.
+      weight: sectionArea(section),
     }));
 
     return {

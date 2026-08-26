@@ -81,12 +81,21 @@ export function isBreachSealed(
 }
 
 /**
- * `SectionPressureSinkSource` de las brechas de casco (Subfase 13f). Hermano
- * de `sealBreachPressureSink`, con una diferencia física deliberada: una junta
- * rota gotea presión y se recupera al repararla, una brecha al vacío la vacía
- * de golpe y **no recupera nada por sí sola** — tapar el agujero solo DETIENE
- * la fuga (tasa 0), y la sección se vuelve a presurizar por los medios que ya
- * existan, no por arte de magia del parche.
+ * `SectionPressureSinkSource` de las brechas de casco (Subfase 13f). Mismo
+ * molde que `sealBreachPressureSink`: drena mientras el agujero está abierto y
+ * **recupera (tasa negativa) en cuanto está tapado**, con el clamp de dos lados
+ * que `MissionAtmosphereRuntime` ya aplica a ambos signos.
+ *
+ * La primera versión de 13f omitía las brechas selladas en vez de devolver una
+ * tasa de recuperación, apoyándose en que "la sección se volvería a presurizar
+ * por los medios que ya existan". La ronda 2 de playtest destapó que no existe
+ * ninguno —`diffuse()` mueve fracciones de gas, jamás `pressureKpa`— así que la
+ * sala quedaba a 0 kPa y letal para siempre, con el parche puesto. La
+ * consecuencia permanente vive en el CASCO (vida 0, `breached` para siempre, un
+ * golpe más lo reabre), no en dejar media nave inhabitable.
+ *
+ * La diferencia física con la junta rota se mantiene donde importa: la brecha
+ * drena un orden de magnitud más rápido de lo que recupera (12 vs. 2 kPa/s).
  *
  * Se compone con el resto de sumideros vía `composePressureSinks` (13d), que
  * ya existía justamente para esto.
@@ -98,12 +107,14 @@ export function sectionBreachPressureSink(
 ): SectionPressureSinkSource {
   return () => {
     const blueprint = shipState.get();
+    const { drainRateKpaPerSecond, recoveryRateKpaPerSecond } = SECTION_INTEGRITY_PARAMETERS.breach;
     const rates = new Map<SectionId, number>();
     for (const breach of breaches()) {
-      if (isBreachSealed(blueprint, breach, componentRegistry)) {
-        continue;
-      }
-      rates.set(breach.sectionId, SECTION_INTEGRITY_PARAMETERS.breach.drainRateKpaPerSecond);
+      const sealed = isBreachSealed(blueprint, breach, componentRegistry);
+      // Se acumula en vez de pisar: dos brechas en la misma sección suman, y
+      // una tapada no puede "cancelar" a otra que sigue abierta.
+      const rate = sealed ? -recoveryRateKpaPerSecond : drainRateKpaPerSecond;
+      rates.set(breach.sectionId, (rates.get(breach.sectionId) ?? 0) + rate);
     }
     return rates;
   };

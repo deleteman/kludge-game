@@ -7,6 +7,8 @@ import { sectionTaggedConcentration } from "../atmosphere/tagged-concentration.j
 import { OXYGEN_COMBUSTION_THRESHOLDS } from "../atmosphere/combustion-atmosphere.js";
 import { REACTION_PARAMETERS } from "../chemistry/reaction/reaction-parameters.js";
 import type { WeightedSectionIntegrity } from "../integrity/section-integrity.types.js";
+import { SECTION_INTEGRITY_PARAMETERS } from "../integrity/section-integrity-parameters.js";
+import { HAZARD_PARAMETERS } from "../mission/mission-hazard-parameters.js";
 import type { ShipStatusIndicator, ShipStatusLevel } from "./ship-status.types.js";
 
 /**
@@ -34,44 +36,73 @@ export interface SectionAtmosphereEntry {
   readonly atmosphere: SectionAtmosphere;
 }
 
+/**
+ * Sección con su peso para la agregación de presión (ronda 2 de playtest de
+ * 13f). El peso es el ÁREA de la sección, la misma magnitud de la que sale el
+ * `maxHp` del casco — no un segundo número que mantener en sincronía.
+ */
+export interface WeightedSectionAtmosphere extends SectionAtmosphereEntry {
+  readonly weight: number;
+}
+
 /** Presión estándar (Subfase 11h) — reutilizada, no re-hardcodeada, para expresar desviación como fracción [0,1]. */
 const STANDARD_PRESSURE_KPA = standardSectionAtmosphere().pressureKpa;
 
 /**
- * Agregación a nivel de nave de la atmósfera (Subfase 11g): peor sección
- * gana. Combina dos factores independientes, cada uno con su propia noción
- * de "peor sección":
- *  - Gas contaminante con tag `TOX`, contra el umbral letal (Espec. §1) que ya
- *    usa `REACTION_PARAMETERS.toxicity` — no se inventan umbrales nuevos.
- *  - Desviación de presión (Subfase 11h, escenario de fuga en Capítulo 1):
- *    `pressureKpa` por debajo de la atmósfera estándar también degrada el
- *    indicador — una fuga es un problema de atmósfera aunque no libere ningún
- *    gas tóxico.
+ * Agregación a nivel de nave de la atmósfera (Subfase 11g). Combina dos
+ * factores independientes que se agregan de forma DISTINTA a propósito:
+ *
+ *  - **Presión: media ponderada por tamaño de sección** (ronda 2 de playtest de
+ *    13f), con las secciones venteadas pesando extra. Antes era peor sección
+ *    gana, así que una sola sección brechada clavaba la fila de TODA la nave en
+ *    0 y ahí se quedaba — el operador reemplazó la junta rota del Cap.1 y no vio
+ *    moverse nada, porque el indicador ya estaba en el suelo por otra sala. Es
+ *    el mismo problema que la ronda 1 corrigió en la integridad de casco, y se
+ *    corrige igual, reusando sus mismas piezas.
+ *
+ *  - **Gas contaminante `TOX`: peor sección gana**, sin ponderar, contra el
+ *    umbral letal de `REACTION_PARAMETERS.toxicity`. NO es una omisión: un gas
+ *    tóxico **se difunde** por los conductos al resto de la nave (`diffuse()`),
+ *    así que una sala envenenada sí es un problema de todos, por chica que sea.
+ *    El vacío no se propaga: se queda en la sala que se abrió. Dos fenómenos con
+ *    física distinta no pueden agregarse igual.
  */
 export function aggregateAtmosphere(
-  sections: ReadonlyArray<SectionAtmosphereEntry>,
+  sections: ReadonlyArray<WeightedSectionAtmosphere>,
   chemicalRegistry: EntityRegistry<ChemicalSubstanceId, ChemicalSubstanceDefinition>,
 ): ShipStatusIndicator {
   if (sections.length === 0) {
     return indicator(1);
   }
-  let worstFraction = 1;
-  for (const { atmosphere } of sections) {
-    const pressureFraction = atmosphere.pressureKpa / STANDARD_PRESSURE_KPA;
-    worstFraction = Math.min(worstFraction, pressureFraction);
+  let pressureWeighted = 0;
+  let totalWeight = 0;
+  let worstToxicFraction = 1;
+
+  for (const { atmosphere, weight } of sections) {
+    // Una sección cuenta como VENTEADA exactamente cuando es letal para quien
+    // entre — se reusa el umbral del hazard de vacío en vez de inventar un
+    // segundo número que signifique casi lo mismo.
+    const vented = atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa;
+    const effectiveWeight =
+      weight * (vented ? SECTION_INTEGRITY_PARAMETERS.breach.breachedSectionWeightMultiplier : 1);
+    pressureWeighted += Math.min(1, atmosphere.pressureKpa / STANDARD_PRESSURE_KPA) * effectiveWeight;
+    totalWeight += effectiveWeight;
+
     // Subfase 13f: el recorrido de "gases contaminantes con tag X" se extrajo a
     // `sectionTaggedConcentration` — vivía copiado acá, en
     // `sectionCorrosiveLevel` y hacía falta una tercera copia para el runtime
     // de hazards.
     const toxic = sectionTaggedConcentration(atmosphere, chemicalRegistry, "TOX");
     if (toxic > 0) {
-      worstFraction = Math.min(
-        worstFraction,
+      worstToxicFraction = Math.min(
+        worstToxicFraction,
         1 - toxic / REACTION_PARAMETERS.toxicity.lethalConcentration,
       );
     }
   }
-  return indicator(worstFraction);
+
+  const pressureFraction = totalWeight > 0 ? pressureWeighted / totalWeight : 1;
+  return indicator(Math.min(pressureFraction, worstToxicFraction));
 }
 
 /**

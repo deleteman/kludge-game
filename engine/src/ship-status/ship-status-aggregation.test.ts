@@ -30,31 +30,37 @@ describe("fractionToLevel (Subfase 11g)", () => {
   });
 });
 
-describe("aggregateAtmosphere (peor sección gana)", () => {
+describe("aggregateAtmosphere (13f ronda 2: presión ponderada, tóxico peor-sección-gana)", () => {
+  const clean = (weight = 10) => ({
+    atmosphere: atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }),
+    weight,
+  });
+  const atPressure = (pressureKpa: number, weight = 10) => ({
+    atmosphere: { ...atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }), pressureKpa },
+    weight,
+  });
+
   it("returns nominal (fraction 1) with no sections", () => {
     expect(aggregateAtmosphere([], chemicalRegistry)).toEqual({ level: "nominal", fraction: 1 });
   });
 
   it("returns nominal when no toxic gas is present anywhere", () => {
-    const result = aggregateAtmosphere(
-      [{ atmosphere: atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }) }],
-      chemicalRegistry,
-    );
-    expect(result.level).toBe("nominal");
+    expect(aggregateAtmosphere([clean()], chemicalRegistry).level).toBe("nominal");
   });
 
-  it("a single critically-toxic section drags the ship-wide aggregate down even if others are clean", () => {
-    const clean = { atmosphere: atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }) };
-    const poisoned = { atmosphere: atmosphereWith({ [GAS.OXYGEN]: 0.1, [cloro]: 0.6 }) };
-    const result = aggregateAtmosphere([clean, poisoned], chemicalRegistry);
+  /**
+   * El gas tóxico NO se pondera, y es deliberado: se difunde por los conductos
+   * al resto de la nave, así que una sala envenenada es un problema de todos por
+   * chica que sea. El vacío no se propaga — por eso la presión sí se pondera.
+   */
+  it("una sección crítica por tóxico hunde el agregado aunque sea diminuta", () => {
+    const poisoned = { atmosphere: atmosphereWith({ [GAS.OXYGEN]: 0.1, [cloro]: 0.6 }), weight: 1 };
+    const result = aggregateAtmosphere([clean(100), poisoned], chemicalRegistry);
     expect(result.level).toBe("critical");
   });
 
   it("Subfase 11h: una fuga de presión sin gas tóxico también degrada el indicador", () => {
-    const leaking = {
-      atmosphere: { ...atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }), pressureKpa: 40 },
-    };
-    const result = aggregateAtmosphere([leaking], chemicalRegistry);
+    const result = aggregateAtmosphere([atPressure(40)], chemicalRegistry);
     // 40/101 ≈ 0.396 → "warning", no "critical": el piso real de la fuga
     // (`PRESSURE_SINK_FLOOR_KPA`, `mission-atmosphere-runtime.ts`) es
     // justamente 40 kPa — "fuga menor" por diseño, nunca llega a crítico.
@@ -62,13 +68,39 @@ describe("aggregateAtmosphere (peor sección gana)", () => {
     expect(result.fraction).toBeCloseTo(40 / 101, 5);
   });
 
-  it("Subfase 11h: una fuga en una sección degrada el agregado aunque otra esté a presión estándar", () => {
-    const clean = { atmosphere: atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }) };
-    const leaking = {
-      atmosphere: { ...atmosphereWith({ [GAS.OXYGEN]: STANDARD_OXYGEN_FRACTION }), pressureKpa: 35 },
-    };
-    const result = aggregateAtmosphere([clean, leaking], chemicalRegistry);
-    expect(result.level).toBe("warning");
+  /**
+   * REGRESIÓN de la ronda 2 de playtest: "la atmósfera queda en 0 (...) y no se
+   * restaura". Con peor-sección-gana, UNA sección venteada clavaba la fila de
+   * toda la nave en 0, así que reparar la fuga del Cap.1 en otra sala no movía
+   * nada y el jugador leía que su reparación no había servido.
+   */
+  it("una sola sección venteada no clava la fila de toda la nave en 0", () => {
+    const sections = [...Array.from({ length: 10 }, () => clean()), atPressure(0)];
+    const result = aggregateAtmosphere(sections, chemicalRegistry);
+    expect(result.fraction).toBeGreaterThan(0);
+    // Pesa el triple que su tamaño (`breachedSectionWeightMultiplier`): 100 de
+    // sección sana sobre 130 de peso total.
+    expect(result.fraction).toBeCloseTo(100 / 130, 5);
+  });
+
+  it("ventear la bodega duele más que ventear la esclusa", () => {
+    const esclusa = aggregateAtmosphere([atPressure(0, 10), clean(60)], chemicalRegistry);
+    const bodega = aggregateAtmosphere([clean(10), atPressure(0, 60)], chemicalRegistry);
+    expect(esclusa.fraction).toBeGreaterThan(bodega.fraction);
+  });
+
+  it("con toda la nave venteada la fila llega a 0", () => {
+    expect(aggregateAtmosphere([atPressure(0), atPressure(0)], chemicalRegistry).fraction).toBe(0);
+  });
+
+  /**
+   * Una fuga que se estabiliza en el piso de 40 kPa NO cuenta como venteada
+   * (el umbral es el del hazard de vacío, 20 kPa): sigue pesando lo que su
+   * tamaño, porque la sala todavía es habitable.
+   */
+  it("una fuga por encima del umbral de vacío no recibe el peso extra", () => {
+    const conFuga = aggregateAtmosphere([clean(10), atPressure(40, 10)], chemicalRegistry);
+    expect(conFuga.fraction).toBeCloseTo((1 + 40 / 101) / 2, 5);
   });
 });
 

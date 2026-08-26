@@ -17,7 +17,10 @@ import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { ReactionDomainEvent } from "../chemistry/reaction/reaction-events.types.js";
 import type { IntegrityDomainEvent } from "../integrity/integrity-events.types.js";
+import type { CrewActor, CrewActorId } from "../crew/crew-actor.types.js";
 import { MissionAtmosphereRuntime } from "./mission-atmosphere-runtime.js";
+import { MissionHazardRuntime } from "./mission-hazard-runtime.js";
+import { MutableCrewState } from "./mutable-crew-state.js";
 import { MissionSectionIntegrityRuntime } from "./mission-section-integrity-runtime.js";
 import { sectionBreachPressureSink } from "./section-breach-pressure-sink.js";
 import { composePressureSinks } from "./composite-pressure-sink.js";
@@ -162,6 +165,18 @@ function mount(options: { readonly random?: () => number } = {}) {
   return { floorplan, shipState, registry, atmosphereRuntime, integrityRuntime, fired, explosions, reactionEvents };
 }
 
+/** Instala una plancha metálica sobre la celda de la brecha (el parche válido del catálogo). */
+function patchBreach(world: ReturnType<typeof mount>, cell: { x: number; y: number }): void {
+  const blueprint = world.shipState.get();
+  world.shipState.set({
+    ...blueprint,
+    placedComponents: [
+      ...blueprint.placedComponents,
+      placed("parche" as PlacedComponentInstanceId, PLATE, cell.x, cell.y, { width: 2, height: 2 }),
+    ],
+  });
+}
+
 describe("13f — una explosión abre una brecha que drena presión", () => {
   it("la combustión daña la sección, la colapsa y la vacía hasta el vacío real", () => {
     // `random: () => 0.99` fija el máximo de explosiones de colapso: el peor
@@ -250,6 +265,45 @@ describe("13f — una explosión abre una brecha que drena presión", () => {
     // el casco. Un golpe más y se vuelve a abrir.
     expect(world.integrityRuntime.integrityOf(SECTION)?.hp).toBe(0);
     expect(world.integrityRuntime.fractionOf(SECTION)).toBe(0);
+  });
+
+  /**
+   * REGRESIÓN de la ronda 2 de playtest: "he bloqueado la sección dañada con
+   * una plancha de metal (...) pero la atmósfera no se restaura, ¿está bien
+   * eso?". No lo estaba: sellar solo detenía el drenaje y NADA volvía a subir
+   * la presión (`diffuse()` no toca `pressureKpa`), así que la sala quedaba a
+   * 0 kPa y letal para siempre con el parche puesto.
+   */
+  it("sellar la brecha represuriza la sección hasta la estándar, sin pasarse", () => {
+    const world = mount();
+    world.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "high",
+      sectionId: SECTION,
+      elapsedSeconds: 0,
+    });
+    const breach = world.integrityRuntime.openBreaches()[0]!;
+
+    // Se desangra hasta el vacío real con el agujero abierto.
+    for (let second = 1; second <= 30; second += 1) {
+      world.atmosphereRuntime.tick(tickOf(second));
+    }
+    expect(world.atmosphereRuntime.atmosphereOf(SECTION)?.pressureKpa).toBe(0);
+
+    patchBreach(world, breach.cell);
+
+    for (let second = 31; second <= 200; second += 1) {
+      world.atmosphereRuntime.tick(tickOf(second));
+    }
+
+    // Recuperada, y clavada en el techo: no se pasa de la atmósfera estándar.
+    expect(world.atmosphereRuntime.atmosphereOf(SECTION)?.pressureKpa).toBe(101);
+    // La cicatriz NO se cura (principio 5): el casco sigue reventado y un
+    // impacto más vuelve a abrir el agujero.
+    expect(world.integrityRuntime.integrityOf(SECTION)?.hp).toBe(0);
+    expect(world.integrityRuntime.integrityOf(SECTION)?.breached).toBe(true);
   });
 
   it("una pieza que no es estructura no sirve de parche", () => {
@@ -341,5 +395,82 @@ describe("13f — una explosión abre una brecha que drena presión", () => {
     expect(integrity.breached).toBe(false);
     expect(integrity.hp).toBeGreaterThan(0);
     expect(integrity.hp).toBeLessThan(integrity.maxHp);
+  });
+});
+
+/**
+ * Ronda 2 de playtest de 13f, reporte 3: "enviar un tripulante nuevo a la zona
+ * que estaba dañada (pero ahora arreglada con la plancha de metal) sigue
+ * dañando al tripulante, ¿está bien eso?".
+ *
+ * No lo estaba, y la causa no vivía en los hazards sino en la presión: la
+ * sección parcheada seguía a 0 kPa para siempre, o sea por debajo del umbral de
+ * vacío. Este test ata los dos runtimes precisamente porque el bug estaba en la
+ * costura — cada uno por separado hacía lo correcto.
+ */
+describe("13f ronda 2 — la sección parcheada vuelve a ser habitable", () => {
+  const ACTOR = "tripulante-1" as CrewActorId;
+
+  function actorAt(hp: number): CrewActor {
+    return {
+      id: ACTOR,
+      name: "Tripulante",
+      specialty: "ingeniero",
+      tier: "novato",
+      trait: "estoico",
+      hp,
+      maxHp: 100,
+      status: "idle",
+      currentSectionId: SECTION,
+      currentCell: { x: 1, y: 1 },
+    };
+  }
+
+  function mountWithCrew() {
+    const world = mount();
+    const crewState = new MutableCrewState([actorAt(100)]);
+    const hazardRuntime = new MissionHazardRuntime({
+      shipFloorplan: world.floorplan,
+      atmosphereRuntime: world.atmosphereRuntime,
+      chemicalRegistry,
+      crewState,
+    });
+    return { ...world, crewState, hazardRuntime };
+  }
+
+  /** Avanza atmósfera + hazards juntos, en el mismo orden que el core loop real. */
+  function run(world: ReturnType<typeof mountWithCrew>, fromSecond: number, toSecond: number): void {
+    for (let second = fromSecond; second <= toSecond; second += 1) {
+      world.atmosphereRuntime.tick(tickOf(second));
+      world.hazardRuntime.tick(tickOf(second));
+    }
+  }
+
+  it("con la brecha abierta el vacío mata; con el parche puesto deja de dañar", () => {
+    const world = mountWithCrew();
+    world.reactionEvents.emit({
+      kind: "combustion",
+      intensity: "violent",
+      radius: "full-section",
+      crewDamage: "none",
+      sectionId: SECTION,
+      elapsedSeconds: 0,
+    });
+    const breach = world.integrityRuntime.openBreaches()[0]!;
+
+    // Con el agujero abierto, la sección se vacía y el tripulante sufre.
+    run(world, 1, 20);
+    expect(world.crewState.get(ACTOR)!.hp).toBeLessThan(100);
+
+    // Parche + tiempo suficiente para represurizar por encima del umbral.
+    patchBreach(world, breach.cell);
+    world.crewState.set({ ...world.crewState.get(ACTOR)!, hp: 100 });
+    run(world, 21, 60);
+    expect(world.atmosphereRuntime.atmosphereOf(SECTION)!.pressureKpa).toBeGreaterThan(20);
+
+    // A partir de acá, un relevo entra y NO recibe un solo punto de daño.
+    const hpTrasParche = world.crewState.get(ACTOR)!.hp;
+    run(world, 61, 200);
+    expect(world.crewState.get(ACTOR)!.hp).toBe(hpTrasParche);
   });
 });

@@ -708,6 +708,31 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
     reventaba la sección de un golpe y no había progresión que observar.
   - Registrados sin arreglar: deudas #41 a #45 de `PENDIENTES_OBSERVACIONES.md`.
 
+* **Ronda 2 de playtest (2026-08-25).** Tres reportes. Ninguno era un bug de la ronda 1: dos son huecos que 13f
+  destapó al darle por fin camino jugable a la muerte y al vacío, y el tercero era consecuencia del segundo.
+  - *"El tripulante no muere al llegar a 0 vida, sigo usándolo para todo".* **El permadeath del GDD 6.1 nunca
+    se había implementado más allá del evento**: `crew-death` disparaba partículas y un bark, y ahí terminaba.
+    `CrewActorStatus` gana `"dead"` (estado TERMINAL, no un booleano suelto), el scheduler cancela la cola del
+    muerto —avisando por `dependency-cancelled` a quien dependía de él— y deja de darle trabajo, la UI no lo
+    deja seleccionar, su token sale del plano y el save lo saca de `activeCrewIds` conservándolo en `crew`.
+    El volcado de tripulación al save se extrajo a `writeBackCrew` en `/engine`, donde sí se puede testear.
+    Cierra el pendiente #42.
+  - *"La atmósfera queda en 0 y no se restaura al sellar".* Dos causas encadenadas. (a) Sellar la brecha solo
+    DETENÍA el drenaje y nada volvía a subir la presión — `diffuse()` reparte fracciones de gas pero nunca toca
+    `pressureKpa`, así que la sala quedaba a 0 kPa para siempre con el parche puesto. 13f había apostado a que
+    "se represurizaría por los medios que ya existan"; no existía ninguno. Ahora el sumidero devuelve una tasa
+    de recuperación en negativo, igual que la junta del Cap.1, y la cicatriz permanente se queda donde
+    corresponde: en el casco (vida 0, `breached` para siempre, un golpe más lo reabre). (b) La fila "Atmósfera"
+    usaba peor-sección-gana sobre la presión, así que una sección venteada la clavaba en 0 para toda la nave y
+    reparar la fuga en otra sala no movía nada. Pasa a media ponderada por tamaño, reusando el peso por área y
+    el multiplicador de brechadas de la ronda 1. **El término de gas tóxico se queda con peor-sección-gana a
+    propósito**: un tóxico se difunde al resto de la nave, el vacío no.
+  - *"El tripulante sigue dañándose en la zona ya parcheada".* Consecuencia directa de lo anterior: la sección
+    seguía por debajo del umbral de vacío. Se cierra sin tocar nada de hazards.
+  - Sumado por decisión del operador: con toda la tripulación muerta la crisis pasa a `resolved-failure` en vez
+    de dejar la partida en un bloqueo silencioso (el Cap.1 no tiene temporizador).
+  - Registrados sin arreglar: deudas #46 y #47.
+
 #### Subfase 13h: Puertas y Compartimentación
 
 > **Orden de ejecución: 13f → 13h → 13g.** Se documenta acá, entre 13f y 13g, pero conserva la letra `h` para no

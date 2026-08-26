@@ -299,3 +299,78 @@ describe("CrisisRuntime", () => {
     expect(runtime.crisisState).toBe("active");
   });
 });
+
+/**
+ * Ronda 2 de playtest de 13f. Con el permadeath ya implementado, perder a toda
+ * la tripulación dejaba la partida en un bloqueo SILENCIOSO: en el Cap.1, que
+ * no tiene temporizador, no hay a quién dar órdenes y ningún camino a la
+ * pantalla de resultado.
+ */
+describe("CrisisRuntime: sin tripulación viva, fin de misión (13f ronda 2)", () => {
+  function actorOf(id: string, overrides: Partial<CrewActor> = {}): CrewActor {
+    return {
+      id: id as CrewActorId,
+      name: id,
+      specialty: "ingeniero",
+      tier: "novato",
+      trait: "estoico",
+      hp: 100,
+      maxHp: 100,
+      status: "idle",
+      ...overrides,
+    };
+  }
+
+  function runtimeWith(crew: MutableCrewState, flags = { triggered: true, resolved: false }) {
+    const emitter = new EventEmitter<CrisisDomainEvent>();
+    const events: CrisisDomainEvent[] = [];
+    emitter.onAny((event) => events.push(event));
+    const runtime = new CrisisRuntime({
+      definition: definitionOf(),
+      shipState: new MutableShipState(fixtureShip()),
+      registries: registriesOf(flags),
+      crew,
+      emitter,
+    });
+    return { runtime, events };
+  }
+
+  it("con toda la tripulación muerta la crisis falla y lo anuncia una sola vez", () => {
+    const crew = new MutableCrewState([actorOf("crew-1"), actorOf("crew-2")]);
+    const { runtime, events } = runtimeWith(crew);
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 1 });
+    expect(runtime.crisisState).toBe("active");
+
+    crew.markDead("crew-1" as CrewActorId);
+    crew.markDead("crew-2" as CrewActorId);
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 2 });
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 3 });
+
+    expect(runtime.crisisState).toBe("resolved-failure");
+    const failures = events.filter(
+      (event) => event.kind === "crisis-resolved" && event.outcome === "resolved-failure",
+    );
+    expect(failures).toHaveLength(1);
+  });
+
+  it("con un solo superviviente la crisis sigue viva", () => {
+    const crew = new MutableCrewState([actorOf("crew-1"), actorOf("crew-2")]);
+    const { runtime } = runtimeWith(crew);
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 1 });
+
+    crew.markDead("crew-1" as CrewActorId);
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 2 });
+
+    expect(runtime.crisisState).toBe("active");
+  });
+
+  /**
+   * "No hay lista de tripulación" no es "murieron todos": los tests de crisis y
+   * el modo creativo construyen el runtime sin `crew`, y no deben fallar solos.
+   */
+  it("sin tripulación registrada la crisis se comporta como siempre", () => {
+    const { runtime } = runtimeWith(new MutableCrewState([]));
+    runtime.tick({ dtSeconds: 1, elapsedSeconds: 1 });
+    expect(runtime.crisisState).toBe("active");
+  });
+});

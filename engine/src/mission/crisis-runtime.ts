@@ -89,6 +89,10 @@ export class CrisisRuntime implements Tickable {
 
   tick(ctx: TickContext): void {
     const previousState = this.state;
+    if (this.hasLostAllCrew()) {
+      this.failForLostCrew(ctx);
+      return;
+    }
     const result = evaluateCrisis(
       this.state,
       this.definition,
@@ -112,6 +116,44 @@ export class CrisisRuntime implements Tickable {
     for (const event of result.events) {
       this.emitter?.emit(event);
     }
+  }
+
+  /**
+   * ¿Se quedó la misión sin nadie en pie? (ronda 2 de playtest de 13f.)
+   *
+   * Con el permadeath ya implementado, morir del todo dejaba la partida en un
+   * bloqueo SILENCIOSO: en un capítulo sin temporizador (el 1) no hay a quién
+   * dar órdenes y ningún camino a la pantalla de resultado.
+   *
+   * `false` sin tripulación registrada: los tests de crisis y el modo creativo
+   * construyen el runtime sin `crew`, y "no hay lista" no es "murieron todos".
+   */
+  private hasLostAllCrew(): boolean {
+    if (!this.crew || this.crew.all().length === 0) {
+      return false;
+    }
+    return this.crew.firstAlive() === undefined;
+  }
+
+  /**
+   * Fin de misión por tripulación aniquilada. Entra por el MISMO evento
+   * `crisis-resolved` que el resto de desenlaces, así que `/game` no necesita
+   * un camino nuevo: `goToCrisisResult` ya persiste y transiciona.
+   *
+   * No se aplica `applyFailureConsequence`: la consecuencia declarada del
+   * capítulo hiere a un tripulante, y acá justamente no queda ninguno.
+   */
+  private failForLostCrew(ctx: TickContext): void {
+    if (this.state === "resolved-failure") {
+      return;
+    }
+    this.state = "resolved-failure";
+    this.emitter?.emit({
+      kind: "crisis-resolved",
+      crisisId: this.definition.id,
+      outcome: "resolved-failure",
+      elapsedSeconds: ctx.elapsedSeconds,
+    });
   }
 
   /** Descarga de daño a un tripulante, no-letal si `lethal === false`. Devuelve si golpeó a alguien. */

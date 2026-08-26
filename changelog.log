@@ -4852,3 +4852,67 @@ i18n es/en.
 SUITE: `/engine` 917 → 936 tests, `/game` 61 → 68 (primera cobertura de `save-adapter` y del puente
 misión→save; `/game` no tenía ninguna). `tsc --noEmit` y `eslint` limpios en ambos workspaces, `vite build`
 limpio.
+
+--------------------------------------------------------------------------------
+2026-08-25 — Subfase 13f: fixes de playtest ronda 2
+--------------------------------------------------------------------------------
+
+RAZÓN: segunda ronda de playtest, tres reportes. Ninguno era un bug de la ronda 1: dos son huecos que 13f
+destapó al darle por fin un camino jugable a la muerte y al vacío, y el tercero era consecuencia del segundo.
+
+1. **El permadeath del GDD 6.1 nunca se había implementado más allá del evento** ("el tripulante no muere al
+   llegar a 0 vida, sigo usándolo para todo sin problema"). `crew-death` disparaba partículas, bark y la
+   reacción del retrato, y ahí terminaba: el scheduler no modela HP, la UI no filtraba, y el save persistía al
+   muerto con 0 HP — o sea que volvía entero en la misión siguiente. Ahora `CrewActorStatus` gana `"dead"`
+   (estado TERMINAL en el enum, no un booleano paralelo: el scheduler ya conmuta sobre `status`).
+   `TaskScheduler.standDown` cancela toda la cola del muerto reusando `cancel()`, que ya cascadea
+   `dependency-cancelled` a quien dependía de él — el jugador se entera de que la cadena quedó rota en vez de
+   descubrirlo cuando nada avanza. `MissionRuntime` da la baja en UN punto suscrito a `crew-death`, así que
+   cubre todas las fuentes de muerte a la vez (vacío, tóxico, combustión, impacto, enemigo, crisis). En `/game`
+   el token sale del plano, la tarjeta queda marcada como BAJA y deja de ser clickeable, y si era el
+   seleccionado se deselecciona. Cierra el pendiente #42.
+
+2. **Sellar una brecha no represurizaba la sección** ("he bloqueado la sección dañada con una plancha de metal
+   (...) pero la atmósfera no se restaura, ¿está bien eso?"). No lo estaba. 13f había decidido que sellar solo
+   detuviera el drenaje, apostando a que la sección "se represurizaría por los medios que ya existan" — y no
+   existe ninguno: `diffuse()` reparte fracciones de gas pero jamás toca `pressureKpa`, y el sumidero es el
+   único mecanismo que lo mueve. La sala quedaba a 0 kPa, y por tanto letal, para siempre con el parche puesto:
+   el jugador hacía todo bien y no había vuelta atrás. Ahora `sectionBreachPressureSink` devuelve una tasa de
+   recuperación EN NEGATIVO para las brechas selladas, exactamente como `sealBreachPressureSink` con la junta
+   del Cap.1; el runtime de atmósfera ya aplicaba la misma fórmula a ambos signos, así que no hizo falta nada
+   nuevo ahí. La consecuencia permanente sigue donde ocurrió el daño: vida en 0, `breached` para siempre y un
+   impacto más vuelve a abrir el agujero.
+
+3. **El tripulante seguía dañándose en la zona parcheada.** Consecuencia directa de (2): la sección seguía por
+   debajo del umbral de vacío. Se cierra sin tocar nada de hazards. El test que lo cubre ata los dos runtimes a
+   propósito — el bug estaba en la costura y cada uno por separado hacía lo correcto.
+
+4. **La fila "Atmósfera" del HUD se desplomaba por una sola sección.** Usaba peor-sección-gana sobre la
+   presión, así que una sección venteada la clavaba en 0 para toda la nave: el operador reemplazó la junta rota
+   del Cap.1, que SÍ se estaba recuperando, y no vio moverse nada. Es la misma queja de la ronda 1 sobre la
+   integridad de casco, en el indicador de al lado. Pasa a media ponderada por tamaño, reusando el peso por
+   área y el `breachedSectionWeightMultiplier` de la ronda 1, y el umbral de "venteada" es el del hazard de
+   vacío — una sección pesa extra exactamente cuando es letal para quien entre, un número con un solo
+   significado. **El término de gas tóxico se queda con peor-sección-gana**, y es deliberado: un tóxico se
+   difunde por los conductos al resto de la nave, el vacío no. Dos fenómenos con física distinta no pueden
+   agregarse igual.
+
+5. **Sin tripulación viva, fin de misión** (decisión del operador). Con el permadeath implementado, morir del
+   todo dejaba la partida en un bloqueo silencioso: el Cap.1 no tiene temporizador, así que no había a quién
+   dar órdenes ni camino a la pantalla de resultado. `CrisisRuntime` fuerza `resolved-failure` una sola vez por
+   el mismo evento `crisis-resolved` que el resto de desenlaces, así que `/game` no cambió.
+
+AUTO-REVISIÓN (no salió de los reportes): la baja definitiva puede dejar una campaña con `activeCrewIds` vacío,
+o sea entrando a un mapa jugable donde no se puede hacer nada. Mitigado —la misión termina en fallo y va a la
+pantalla de resultado— y registrado como #46, porque cerrarlo de verdad pide meta-juego que no existe
+(reemplazo de tripulación o un estado explícito de partida perdida).
+
+ARCHIVOS: `engine/src/crew/crew-actor.types.ts`, `engine/src/tasks/task-scheduler.ts`,
+`engine/src/mission/mutable-crew-state.ts`, `engine/src/mission/crisis-runtime.ts`,
+`engine/src/mission/section-breach-pressure-sink.ts`, `engine/src/integrity/section-integrity-parameters.ts`,
+`engine/src/ship-status/ship-status-aggregation.ts` + `-runtime.ts`, `engine/src/save/crew-write-back.ts`
+(nuevo), `game/src/mission/mission-runtime.ts`, `game/src/mission/mission-interaction-controller.ts`,
+`game/src/scenes/floorplan-scene.ts`, `game/src/ui/widgets/crew-strip.ts`, i18n es/en.
+
+SUITE: `/engine` 936 → 955 tests, `/game` 68 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos
+workspaces, `vite build` limpio.

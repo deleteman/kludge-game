@@ -87,6 +87,24 @@ export const SECTION_INTEGRITY_PARAMETERS = {
      */
     drainRateKpaPerSecond: 12,
     /**
+     * Recuperación de presión una vez SELLADA la brecha, en kPa/s (ronda 2 de
+     * playtest de 13f).
+     *
+     * 13f decidió a propósito que sellar solo detuviera la fuga, y que la
+     * sección "se volviera a presurizar por los medios que ya existan". El
+     * playtest destapó que no existe ninguno: `diffuse()` reparte fracciones de
+     * gas pero nunca toca `pressureKpa`, y el sumidero es el único mecanismo
+     * que lo mueve. O sea que la sala quedaba a 0 kPa —y letal— para siempre
+     * aunque el jugador hiciera todo bien. Eso no es una consecuencia
+     * permanente, es un callejón sin salida.
+     *
+     * Más lenta que el drenaje (12 kPa/s) a propósito: reventar es instantáneo,
+     * recuperarse cuesta. Desde el vacío hasta la atmósfera estándar son ~50 s.
+     * La cicatriz permanente sigue estando donde ocurrió el daño: la vida de la
+     * sección no se recupera nunca y un impacto más vuelve a abrir el agujero.
+     */
+    recoveryRateKpaPerSecond: 2,
+    /**
      * Piso de presión de una sección brechada: **vacío real**. El piso global
      * de 40 kPa (`PRESSURE_SINK_FLOOR_KPA`) sigue valiendo para el resto de la
      * nave — lo que distingue a una sección colapsada es justamente que se

@@ -97,10 +97,17 @@ export class TaskScheduler implements Tickable {
     this.isSectionUnpowered = options.isSectionUnpowered;
   }
 
-  /** Registra (o actualiza) un actor, sembrando su ubicación lógica inicial. */
+  /**
+   * Registra (o actualiza) un actor, sembrando su ubicación lógica inicial.
+   *
+   * `dead` es TERMINAL: re-registrar a un actor dado de baja no lo resucita
+   * (13f ronda 2). Sin este guard, cualquier re-registro posterior lo devolvía
+   * a `idle` — que es exactamente la clase de bug que motivó este estado.
+   */
   registerActor(actor: CrewActor): void {
+    const wasDead = this.actors.get(actor.id)?.status === "dead";
     this.actors.set(actor.id, {
-      status: actor.status,
+      status: wasDead ? "dead" : actor.status,
       currentSectionId: actor.currentSectionId,
     });
   }
@@ -111,6 +118,13 @@ export class TaskScheduler implements Tickable {
    * lanza `TaskDependencyError` si es inválida — la tarea no se añade.
    */
   enqueue(task: CrewTask): void {
+    // Defensa en profundidad (13f ronda 2): un actor dado de baja no acepta
+    // trabajo. No debería llegar acá —la UI no deja seleccionar a un muerto— y
+    // por eso se descarta en silencio en vez de lanzar: hacer reventar una
+    // escena por un camino que ya está cerrado es peor que no encolar.
+    if (this.isDead(task.actorId)) {
+      return;
+    }
     const issues = validateTaskDependencies(task, this.tasksById);
     if (issues.length > 0) {
       throw new TaskDependencyError(issues);
@@ -186,9 +200,37 @@ export class TaskScheduler implements Tickable {
     this.cascadeDependents(taskId, "dependency-cancelled", tick);
   }
 
+  /**
+   * Da de baja a un actor: lo marca `dead` y cancela todo lo que tenía
+   * encolado (ronda 2 de playtest de 13f — permadeath, GDD 6.1).
+   *
+   * Reusa `cancel()` pieza por pieza en vez de vaciar la cola a mano: eso ya
+   * emite `task-cancelled` y ya cascadea `dependency-cancelled` a los
+   * dependientes, que es exactamente lo que tiene que pasar cuando el que iba a
+   * hacer el paso 2 se murió — el jugador tiene que enterarse de que la cadena
+   * quedó rota, no descubrirlo cuando nada avanza.
+   *
+   * El orden importa: primero se cancela (con el actor todavía vivo, para que
+   * `refreshActorStatus` funcione normal) y al final se marca `dead`, que es
+   * terminal.
+   */
+  standDown(actorId: CrewActorId, tick: TickContext): void {
+    const record = this.actorRecord(actorId);
+    if (record.status === "dead") {
+      return;
+    }
+    for (const task of this.queueFor(actorId)) {
+      this.cancel(task.id, tick);
+    }
+    record.status = "dead";
+  }
+
   tick(ctx: TickContext): void {
     // Fase A — avanzar las tareas en curso; completar las que alcanzan su duración.
     for (const actorId of this.queuesByActor.keys()) {
+      if (this.isDead(actorId)) {
+        continue;
+      }
       const task = this.activeTaskOf(actorId);
       if (task && task.state === "in-progress") {
         task.elapsedSeconds += ctx.dtSeconds;
@@ -202,6 +244,9 @@ export class TaskScheduler implements Tickable {
     // la Fase A para que una dependencia completada en este mismo tick libere a
     // su dependiente en el mismo tick (determinista, sin orden entre actores).
     for (const actorId of this.queuesByActor.keys()) {
+      if (this.isDead(actorId)) {
+        continue;
+      }
       const task = this.activeTaskOf(actorId);
       if (!task || task.state === "in-progress") {
         continue;
@@ -216,6 +261,11 @@ export class TaskScheduler implements Tickable {
 
   getTask(id: CrewTaskId): CrewTask | undefined {
     return this.tasksById.get(id);
+  }
+
+  /** `false` para un actor dado de baja: no tiene sentido encolarle nada (13f ronda 2). */
+  canAcceptTasks(id: CrewActorId): boolean {
+    return !this.isDead(id);
   }
 
   getActor(id: CrewActorId): SchedulerActorSnapshot | undefined {
@@ -407,8 +457,16 @@ export class TaskScheduler implements Tickable {
     }
   }
 
+  /** `dead` es terminal: ni el tick ni `refreshActorStatus` pueden sacar de ahí. */
+  private isDead(actorId: CrewActorId): boolean {
+    return this.actors.get(actorId)?.status === "dead";
+  }
+
   private refreshActorStatus(actorId: CrewActorId): void {
     const record = this.actorRecord(actorId);
+    if (record.status === "dead") {
+      return;
+    }
     const active = this.activeTaskOf(actorId);
     if (!active) {
       record.status = "idle";

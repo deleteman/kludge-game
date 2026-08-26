@@ -1164,6 +1164,20 @@ export class FloorplanScene extends Phaser.Scene {
     });
 
     this.updateHeader();
+
+    // Campaña sin nadie a quien desplegar (13f ronda 2). Con el permadeath, un
+    // save donde murió toda la tripulación entra a la misión con `activeCrewIds`
+    // vacío: un mapa jugable en el que no se puede hacer absolutamente nada.
+    // Terminar en fallo lo convierte en un desenlace visible en vez de un
+    // bloqueo silencioso. El sistema de reemplazo de tripulación —lo que de
+    // verdad cierra este agujero— es meta-juego y no existe todavía
+    // (PENDIENTES_OBSERVACIONES.md #46).
+    if (this.mission.activeCrew.length === 0) {
+      this.notifications?.push({ title: t("ui.floorplan.notification.no-crew-left"), type: "error" });
+      this.goToCrisisResult("resolved-failure");
+      return;
+    }
+
     this.showBriefingIfAny();
   }
 
@@ -4382,6 +4396,46 @@ export class FloorplanScene extends Phaser.Scene {
     // el redibujo va a destruir a continuación.
     this.reactCrewPortrait(event);
     this.barkForActor(event.actorId, event.kind === "crew-death" ? "crew-death" : "severe-injury");
+    if (event.kind === "crew-death") {
+      this.retireCrewToken(event.actorId);
+    }
+  }
+
+  /**
+   * Retira del plano el token de un tripulante muerto (13f ronda 2, cierra el
+   * pendiente #42).
+   *
+   * Hasta ahora un muerto seguía dibujado entero sobre el mapa, indistinguible
+   * de uno vivo — los enemigos sí lo resolvían (`destroyEnemyToken`). El
+   * `MissionRuntime` ya dio la baja en el motor cuando llega acá; esto es solo
+   * la mitad visual. Si además era el seleccionado, se deselecciona: dejar
+   * seleccionado a alguien que ya no puede recibir órdenes es la peor versión
+   * de un control que no hace nada.
+   */
+  private retireCrewToken(actorId: CrewActorId): void {
+    const token = this.crewTokens.get(actorId);
+    if (token) {
+      this.tweens.killTweensOf(token.dot);
+      token.dot.destroy();
+      token.label.destroy();
+      token.workingRing.destroy();
+      token.selectionRing.destroy();
+      this.crewTokens.delete(actorId);
+    }
+    if (this.interaction.selectedActorId === actorId) {
+      this.interaction.clearSelectedActor();
+    }
+    this.notifications?.push({
+      title: t("ui.floorplan.notification.crew-dead").replace(
+        "{name}",
+        this.mission.crewState.get(actorId)?.name ?? "",
+      ),
+      lines: [t("ui.floorplan.notification.crew-dead-detail")],
+      type: "error",
+    });
+    this.updateSelectedActorHighlight();
+    this.redrawCrewStrip();
+    this.redrawQueuePanel();
   }
 
   /**

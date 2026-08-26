@@ -44,6 +44,7 @@ import {
   registerKineticDamage,
   sectionBreachPressureSink,
   isBreachSealed,
+  writeBackCrew,
   TransientLeakPressureSink,
   dismantleHazardKinds,
   isElectricSource,
@@ -709,6 +710,13 @@ export class MissionRuntime {
       crew: this.crewState,
       crewEmitter: this.crewEvents,
     });
+    // Permadeath con consecuencia real (GDD 6.1; ronda 2 de playtest de 13f).
+    // Un único punto de baja para TODAS las fuentes de muerte —vacío, tóxico,
+    // combustión, impacto, enemigo, consecuencia de crisis— porque todas
+    // terminan emitiendo `crew-death` por este mismo bus. Antes el evento solo
+    // disparaba partículas y un bark: el tripulante seguía trabajando.
+    this.crewEvents.on("crew-death", (event) => this.standDownActor(event.actorId));
+
     // Evaluación inicial síncrona, fuera del `CoreLoopModeMachine` (que arranca
     // en "planning" y no tickea nada): GDD §4 ordena "1. Crisis se dispara. 2.
     // Modo planificación…" — la crisis ya está disparada CUANDO arranca la
@@ -791,6 +799,16 @@ export class MissionRuntime {
       if (section) {
         const live = this.crewState.get(actor.id);
         if (live) this.crewState.set({ ...live, currentCell: sectionCentroidCell(section) });
+      }
+    }
+
+    // Bajas heredadas de un save anterior (13f ronda 2). Va DESPUÉS de
+    // `registerActor` a propósito: registrar siembra el `status` del save, así
+    // que darlos de baja antes quedaría pisado. El `hp <= 0` cubre los saves
+    // escritos antes de que existiera el estado `dead`.
+    for (const actor of this.crewState.all()) {
+      if (actor.status === "dead" || actor.hp <= 0) {
+        this.standDownActor(actor.id);
       }
     }
   }
@@ -886,6 +904,25 @@ export class MissionRuntime {
       return base;
     }
     return base * durationMultiplierFor(action, actor.specialty, actor.tier);
+  }
+
+  /**
+   * Baja definitiva de un tripulante (GDD 6.1). Toca los dos ejes de estado a
+   * la vez y en un solo sitio: el scheduler (cancela su cola, avisa a los
+   * dependientes y deja de darle trabajo) y `crewState` (marca `dead`, que es
+   * lo que viaja al save).
+   */
+  private standDownActor(actorId: CrewActorId): void {
+    this.crewState.markDead(actorId);
+    this.scheduler.standDown(actorId, {
+      dtSeconds: 0,
+      elapsedSeconds: this.lastElapsedSeconds,
+    });
+  }
+
+  /** `false` si este tripulante está dado de baja: la UI no debe poder darle órdenes. */
+  isActorAlive(actorId: CrewActorId): boolean {
+    return this.crewState.isAlive(actorId);
   }
 
   private queueGoTo(actorId: CrewActorId, targetSectionId: SectionId): void {
@@ -2010,29 +2047,19 @@ export class MissionRuntime {
    * refresca desde el scheduler. `activeCrewIds` y el resto del roster quedan
    * intactos. Es el ÚNICO punto de write-back del estado de misión al save.
    *
-   * El HP del tripulante no lo modela el scheduler (`SchedulerActorSnapshot` no
-   * lo lleva): el HP vivo (herido por la consecuencia `crew-damage` del cap. 2)
-   * vive en `crewState`, de donde se lee aquí. El status/sección sí salen del
-   * scheduler. Solo se refresca la tripulación ACTIVA; el resto del roster y
-   * `activeCrewIds` quedan intactos.
+   * El volcado de la tripulación (HP vivo + status/sección del scheduler + la
+   * baja definitiva de los muertos) vive en `writeBackCrew`, en `/engine`: es
+   * lógica de forma del save, no de Phaser, y ahí sí se puede testear sin
+   * levantar una misión entera.
    */
   toUpdatedSave(base: CampaignSaveState): CampaignSaveState {
-    const updatedCrew = base.crew.map((actor) => {
-      const live = this.scheduler.getActor(actor.id);
-      const damaged = this.crewState.get(actor.id);
-      if (!live && !damaged) {
-        return actor;
-      }
-      return {
-        ...actor,
-        hp: damaged?.hp ?? actor.hp,
-        status: live?.status ?? actor.status,
-        currentSectionId: live?.currentSectionId ?? actor.currentSectionId,
-        currentCell: damaged?.currentCell ?? actor.currentCell,
-      };
-    });
+    const { crew: updatedCrew, activeCrewIds } = writeBackCrew(base, (actorId) => ({
+      damaged: this.crewState.get(actorId),
+      scheduled: this.scheduler.getActor(actorId),
+    }));
     return {
       ...base,
+      activeCrewIds,
       shipState: {
         ...this.blueprint,
         sectionAtmospheres: this.atmosphereRuntime.toSnapshots(),

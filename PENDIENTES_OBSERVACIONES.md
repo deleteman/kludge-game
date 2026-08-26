@@ -767,3 +767,19 @@ dónde, y qué costaría arreglarlo.
     descarga, lo que hacía que el castigo PARECIERA seguir; ahora el juego es honesto y el castigo se vuelve
     invisible tras el primer golpe. La deuda es de DISEÑO del capítulo: un castigo periódico que no escala
     necesita otro efecto (rotar de víctima, degradar una tarea, subir la severidad), no un evento cosmético.
+
+46. **Una campaña puede quedarse sin tripulación desplegable, y no hay forma de reponerla** (introducido y
+    mitigado en la ronda 2 de playtest de 13f, 2026-08-25). Con el permadeath ya implementado, perder a toda la
+    tripulación saca a todos de `activeCrewIds` y la campaña queda sin nadie a quien desplegar. Está mitigado
+    —la misión termina en fallo y va a la pantalla de resultado en vez de dejar un mapa vacío e injugable— pero
+    NO resuelto: el jugador puede seguir pulsando "Continuar" y volver a caer en el mismo fallo. Cerrarlo de
+    verdad pide meta-juego que todavía no existe: reclutar/reemplazar tripulación entre capítulos, o un estado
+    explícito de "partida perdida". Es la contrapartida directa de la decisión de baja completa; antes de 13f
+    el problema no existía porque los muertos volvían enteros a la misión siguiente.
+
+47. **`aggregateLifeSupport` sigue con peor-sección-gana sin ponderar** (relevado al ponderar la atmósfera en la
+    ronda 2 de 13f, 2026-08-25). Es coherente con el criterio que se fijó —el O2 se difunde por los conductos,
+    así que una sala sin oxígeno sí es un problema de toda la nave, a diferencia del vacío— pero conviene
+    revisarlo cuando exista contenido que apague el soporte vital de una sección concreta: si esa fila resulta
+    tan ruidosa como lo era la de atmósfera, la palanca ya está construida (`WeightedSectionAtmosphere`, que la
+    función ya recibe y hoy ignora).

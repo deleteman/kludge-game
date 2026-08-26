@@ -235,7 +235,19 @@ export class MissionInteractionController {
   }
 
   selectActor(actorId: CrewActorId): void {
+    // Un tripulante dado de baja no se selecciona (13f ronda 2). El guard vive
+    // acá y no solo en la tira de tripulación porque este es el único punto por
+    // el que pasa toda selección, venga de donde venga.
+    if (!this.mission.isActorAlive(actorId)) {
+      return;
+    }
     this.selectedActorIdValue = actorId;
+    this.redrawActionPanel();
+  }
+
+  /** Deselecciona al tripulante activo (se usa al morir el seleccionado). */
+  clearSelectedActor(): void {
+    this.selectedActorIdValue = undefined;
     this.redrawActionPanel();
   }
 
