@@ -67,6 +67,19 @@ export type SectionPressureFloorSource = (sectionId: SectionId) => number;
 export class MissionAtmosphereRuntime implements Tickable {
   private readonly sectionsById: Map<SectionId, SectionRuntime>;
   private readonly connections: ReadonlyArray<VentilationConnection>;
+  /**
+   * Tasas del sumidero aplicadas en el ÚLTIMO tick. Estado de tick, no de
+   * dominio: no se persiste ni se restaura, se recalcula entero cada vez.
+   *
+   * Se guarda porque el signo es lo único que distingue "esta sala se está
+   * vaciando" de "esta sala se está volviendo a llenar", y hasta 13f ronda 4
+   * se consumía y se tiraba en el mismo bucle. Sin él, el jugador que tapa una
+   * brecha ve la sala seguir a 0 kPa y mordiendo a su gente durante los ~10 s
+   * que tarda en cruzar el umbral de vacío, sin ninguna forma de saber que ya
+   * está subiendo — reportado como bug en el playtest, y era física correcta
+   * mal comunicada.
+   */
+  private lastSinkRates: ReadonlyMap<SectionId, number> = new Map();
 
   constructor(
     shipFloorplan: ShipFloorplan,
@@ -100,6 +113,19 @@ export class MissionAtmosphereRuntime implements Tickable {
     return this.sectionsById.get(sectionId)?.atmosphere;
   }
 
+  /**
+   * Tasa neta del sumidero sobre una sección en el último tick, en kPa/s con
+   * el MISMO signo que usa `SectionPressureSinkSource`: **positivo = drena**,
+   * negativo = recupera, `0` = ni una cosa ni la otra (sin fuga, o sección
+   * desconocida).
+   *
+   * Es lectura de diagnóstico para la UI (13f ronda 4): "perdiendo presión" vs.
+   * "represurizando". No la usa ninguna regla del motor.
+   */
+  netPressureRateOf(sectionId: SectionId): number {
+    return this.lastSinkRates.get(sectionId) ?? 0;
+  }
+
   tick(ctx: TickContext): void {
     // Las inyecciones se aplican ANTES de difundir, para que el gas recién
     // vertido se reparta por los conductos en el mismo tick en vez de esperar
@@ -110,13 +136,17 @@ export class MissionAtmosphereRuntime implements Tickable {
     if (!this.sinkSource) {
       return;
     }
+    // Se guarda el mapa del tick ANTES de recorrerlo: es la misma lectura que
+    // luego expone `netPressureRateOf`, así que la UI y la física no pueden
+    // discrepar sobre si una sección está drenando o recuperando.
+    this.lastSinkRates = this.sinkSource();
     // Sumidero/recuperación de presión (Subfase 11h): a diferencia de
     // `diffuse()` (mueve fracciones de gas entre secciones, nunca toca
     // `pressureKpa`), esto suma/resta presión directamente de una sección —
     // es el único mecanismo hoy que puede mover `pressureKpa` de forma
     // sostenida. Clamp de DOS lados: el piso evita vacío total mientras drena,
     // el techo evita que la recuperación se pase de la atmósfera estándar.
-    for (const [sectionId, rateKpaPerSecond] of this.sinkSource()) {
+    for (const [sectionId, rateKpaPerSecond] of this.lastSinkRates) {
       const runtime = this.sectionsById.get(sectionId);
       if (!runtime || rateKpaPerSecond === 0) {
         continue;

@@ -4972,3 +4972,47 @@ i18n es/en.
 
 SUITE: `/engine` 955 → 959 tests (se borraron 3 de `findFittingInstallPlacement` y se sumaron 7), `/game` 68
 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos workspaces, `vite build` limpio.
+
+================================================================================
+2026-08-27 — Subfase 13f: fixes de playtest ronda 4
+================================================================================
+RAZÓN: tercera tanda de feedback sobre el flujo de instalación invertido en la ronda 3. Tres reportes, los
+tres verificados en el código antes de tocar nada.
+
+1. **El click de "Instalar" se escapaba al mapa** (el más grave: encolaba la pieza en el sitio equivocado,
+   justo lo que la ronda 3 vino a impedir). `createKenneyButton` dispara en `pointerdown` y Phaser despacha los
+   handlers de los GameObjects ANTES del `pointerdown` de la escena: el botón cerraba el modal, así que la
+   escena ya no lo veía abierto —y el modal flota sobre el mapa, fuera de `isOverFixedUi`—, armaba el arrastre,
+   y el `pointerup` del MISMO click se resolvía como click de mapa sobre la celda de debajo del botón.
+   Se traga la PULSACIÓN por su `downTime` (`swallowCurrentClick`) en vez de poner una bandera de "ignorá el
+   próximo click": así el fix no depende del orden de despacho, y un click posterior pasa normal aunque el de
+   armado nunca llegue a soltarse. Se aplicó a todas las capas con la misma forma (cancelar el selector,
+   briefing, panel de objetivos, modo de trasvase), donde el síntoma era más leve: seleccionar una celda sola.
+   Extra del mismo bloque: el fantasma del footprint aparece bajo el cursor desde el primer frame, sin esperar
+   a que el jugador mueva el ratón.
+
+2. **La celda vacía ya no abre panel.** Desde que la ronda 3 le quitó "Instalar aquí" no le quedaba ninguna
+   acción: solo repetía una pista de texto y tapaba el mapa. La variante `empty` de `ActionPanelContent` se
+   BORRA (no se oculta), con sus etiquetas y sus claves i18n. Clickear suelo vacío marca la celda y nada más.
+
+3. **La represurización se hace legible, no más rápida** (decisión explícita del operador). El reporte era
+   "tapé la brecha y aun así le hizo daño una vez": es física correcta —sellar cambia el signo del sumidero,
+   pero la sala sigue a ~0 kPa y recupera a 2 kPa/s, así que tarda ~10 s en cruzar el umbral de vacío (20) y el
+   mordisco cae cada 8—, mal comunicada. Cero cambios de balance:
+   - `MissionAtmosphereRuntime.netPressureRateOf(sectionId)`: el signo del sumidero, que hasta ahora se
+     consumía en el bucle del tick y se tiraba. Estado de tick, no de dominio.
+   - El tooltip de sección (que era SOLO el nombre) pasa a mostrar presión, tendencia y "Vacío: letal para la
+     tripulación". `vacuum` es un eje aparte de `trend` a propósito: una sala puede estar recuperando presión y
+     seguir matando, que es exactamente el caso del reporte.
+   - Las mismas líneas aparecen sobre una PIEZA cuando la sala es noticia: tras tapar la brecha el jugador mira
+     el parche, no el suelo de al lado (corolario del patrón 35: no basta con que el dato exista).
+   - La notificación de sellado gana el detalle que le faltaba: la sala tarda en llenarse, sacá a tu gente.
+   - `tooltipRedrawKey` + refresco desde `update()`: con estado vivo dentro, reconstruir solo al cambiar de
+     celda habría congelado la presión en el valor del primer frame — justo mientras el jugador la mira subir.
+
+ARCHIVOS: `engine/src/mission/mission-atmosphere-runtime.ts` (+ test), `game/src/scenes/floorplan-scene.ts`,
+`game/src/mission/mission-interaction-controller.ts` + `mission-runtime.ts`,
+`game/src/ui/widgets/mission-tooltip.ts` + `mission-action-panel.ts`, i18n es/en.
+
+SUITE: `/engine` 959 → 963 tests, `/game` 68 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos
+workspaces, `vite build` limpio.

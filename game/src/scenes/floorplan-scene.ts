@@ -575,6 +575,25 @@ export class FloorplanScene extends Phaser.Scene {
 
   private dragOrigin?: { readonly x: number; readonly y: number; readonly scrollX: number; readonly scrollY: number };
   private dragDistance = 0;
+  /**
+   * `downTime` de la pulsación que armó un modo de selección de destino
+   * (colocación de pieza o trasvase). El `pointerup` de ESA misma pulsación se
+   * descarta como click de mapa (13f ronda 4).
+   *
+   * El bug: `createKenneyButton` dispara en `pointerdown`, y Phaser despacha
+   * los handlers de los GameObjects ANTES del `pointerdown` de la escena. Al
+   * confirmar la pieza en el modal, el botón lo cerraba primero, así que el
+   * `pointerdown` de la escena ya no veía modal abierto (y el modal flota sobre
+   * el mapa, fuera de `isOverFixedUi`): armaba `dragOrigin` y el `pointerup`
+   * del mismo click encolaba la instalación en la celda que había debajo del
+   * botón — justo lo que la ronda 3 vino a impedir.
+   *
+   * Se identifica la PULSACIÓN concreta en vez de poner una bandera de "ignorá
+   * el próximo click": así el fix no depende del orden de despacho, y un click
+   * posterior (otro `downTime`) pasa normal aunque el de armado nunca llegue a
+   * soltarse.
+   */
+  private targetPickArmedDownTime?: number;
 
   /** Zoom mínimo (encajar todo el plano en el viewport), calculado en `create()` según el tamaño de la nave. */
   private minZoom = 1;
@@ -593,6 +612,13 @@ export class FloorplanScene extends Phaser.Scene {
   private tooltip?: Phaser.GameObjects.Container;
   /** Celda cuyo contenido ya está pintado en `tooltip` — evita redibujar en cada `pointermove` dentro de la misma celda. */
   private tooltipCell?: GridPosition;
+  /**
+   * Firma del contenido VIVO ya pintado en el tooltip (13f ronda 4). La celda
+   * sola dejó de bastar como clave desde que el tooltip de una sección muestra
+   * su presión: sin esto se congelaba en el valor del primer frame justo
+   * mientras la sala se represuriza.
+   */
+  private tooltipRedrawKey?: string;
   /** Anillos que marcan los nodos clickeables (y el origen elegido) mientras el modo cableado está activo (playtest #15). */
   private wireNodeHighlights: Phaser.GameObjects.Arc[] = [];
 
@@ -691,6 +717,7 @@ export class FloorplanScene extends Phaser.Scene {
       },
       {
         setStatus: (text) => this.setStatus(text),
+        swallowCurrentClick: () => this.swallowCurrentClick(),
         onTaskQueued: () => this.redrawQueuePanel(),
         onWireModeChanged: () => {
           this.updateWireModeButton();
@@ -922,16 +949,18 @@ export class FloorplanScene extends Phaser.Scene {
       // porque corre fuera del dispatch de un objeto interactivo.
       if (this.handleCrewStripClick(pointer)) return;
       if (this.handleQueueCancelClick(pointer)) return;
+      // El click que armó un modo de selección de destino no vale además como
+      // click de mapa (13f ronda 4) — ver `targetPickArmedDownTime`.
+      if (this.targetPickArmedDownTime === pointer.downTime) {
+        this.targetPickArmedDownTime = undefined;
+        this.dragOrigin = undefined;
+        return;
+      }
       if (!this.dragOrigin) return;
       const wasClick = this.dragDistance < DRAG_THRESHOLD_PX;
       this.dragOrigin = undefined;
       if (!wasClick) return;
-      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      const position: GridPosition = {
-        x: Math.floor(worldPoint.x / CELL),
-        y: Math.floor(worldPoint.y / CELL),
-      };
-      this.interaction.handleMapClick(position);
+      this.interaction.handleMapClick(this.pointerCell(pointer));
     });
 
     // Zoom con la rueda sobre la zona de mapa (playtest #13), anclado al cursor.
@@ -1363,6 +1392,14 @@ export class FloorplanScene extends Phaser.Scene {
     // el jugador panea/hace zoom del mapa (`cameras.main`).
     this.redrawShipStatusHud();
     this.updateActionPanelAnchor();
+    // El tooltip de una sección muestra estado VIVO (presión, tendencia) desde
+    // 13f ronda 4, así que se refresca mientras está a la vista y no solo al
+    // mover el ratón — mirar fijo una sala represurizándose tiene que mostrar
+    // el número subiendo. `updateTooltip` se auto-throttlea por
+    // `tooltipRedrawKey`, así que esto no reconstruye nada por frame.
+    if (this.tooltip?.visible) {
+      this.updateTooltip(this.input.activePointer);
+    }
   }
 
   /**
@@ -1642,8 +1679,7 @@ export class FloorplanScene extends Phaser.Scene {
       this.hoverCell = undefined;
       return;
     }
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const cell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    const cell = this.pointerCell(pointer);
     if (this.hoverCell && this.hoverCell.x === cell.x && this.hoverCell.y === cell.y) return;
     this.hoverCell = cell;
     // Con una pieza pendiente de colocar, el fantasma del footprint reemplaza
@@ -1666,8 +1702,36 @@ export class FloorplanScene extends Phaser.Scene {
    * `updateTransferMode`, del que copia el molde.
    */
   private updateInstallPlacementMode(): void {
+    if (this.interaction.installPlacementMode) {
+      this.swallowCurrentClick();
+      // El fantasma tiene que estar bajo el cursor YA, no al primer
+      // `pointermove`: mientras el modal estaba abierto `updateHoverHighlight`
+      // dejaba `hoverCell` en `undefined`, así que sin esto el jugador confirma
+      // la pieza y no ve nada hasta mover el ratón.
+      this.hoverCell = this.pointerCell(this.input.activePointer);
+    }
     this.updateInstallButton();
     this.updateSelectedHighlight();
+  }
+
+  /**
+   * Marca la pulsación EN CURSO para que su `pointerup` no cuente además como
+   * click de mapa. La llama todo lo que abre o cierra una capa de UI sobre el
+   * mapa desde un `pointerdown`. Ver `targetPickArmedDownTime` (13f ronda 4).
+   */
+  swallowCurrentClick(): void {
+    // Solo si hay una pulsación EN CURSO que tragar: si no, guardaríamos el
+    // `downTime` de un click ya resuelto y el próximo `pointerup` legítimo que
+    // coincidiera (p. ej. cerrar por ESC mientras el jugador mantiene el botón
+    // sobre el mapa) se perdería sin motivo.
+    if (!this.input.activePointer.isDown) return;
+    this.targetPickArmedDownTime = this.input.activePointer.downTime;
+  }
+
+  /** Celda de mundo bajo un puntero de pantalla. Mismo cálculo que el click de mapa y el hover. */
+  private pointerCell(pointer: Phaser.Input.Pointer): GridPosition {
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    return { x: Math.floor(world.x / CELL), y: Math.floor(world.y / CELL) };
   }
 
   /**
@@ -1745,14 +1809,28 @@ export class FloorplanScene extends Phaser.Scene {
       this.hideTooltip();
       return;
     }
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const cell: GridPosition = { x: Math.floor(worldPoint.x / CELL), y: Math.floor(worldPoint.y / CELL) };
+    const cell = this.pointerCell(pointer);
     const content = this.interaction.tooltipContentAt(cell);
     if (!content) {
       this.hideTooltip();
       return;
     }
-    if (!this.tooltip || this.tooltipCell?.x !== cell.x || this.tooltipCell?.y !== cell.y) {
+    // Clave de redibujo (13f ronda 4): hasta ahora el tooltip solo se
+    // reconstruía al CAMBIAR de celda, y con la presión de la sección adentro
+    // eso lo habría dejado congelado en el valor del primer frame — justo
+    // mientras la sala se represuriza, que es cuando el jugador lo mira. Mismo
+    // criterio de `shipStatusRedrawKey`: se reconstruye cuando el TEXTO
+    // cambiaría, no cada frame.
+    const redrawKey =
+      content.kind === "section"
+        ? `${content.atmosphere ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}` : ""}|${content.breach?.sealed ?? ""}`
+        : "";
+    if (
+      !this.tooltip ||
+      this.tooltipCell?.x !== cell.x ||
+      this.tooltipCell?.y !== cell.y ||
+      this.tooltipRedrawKey !== redrawKey
+    ) {
       this.tooltip?.destroy(true);
       this.tooltip = renderMissionTooltip(this.rex, content, {
         functionalDescription: (tag) => t(`component.functional.${tag}`),
@@ -1760,9 +1838,16 @@ export class FloorplanScene extends Phaser.Scene {
         wearTag: (wear) => t(`component.wear.${wear}`),
         structuralFailure: t("component.material.re.fallo"),
         compositionTitle: t("ui.floorplan.mission.composition-title"),
+        sectionPressure: (kpa) =>
+          t("ui.floorplan.mission.tooltip.pressure").replace("{kpa}", String(Math.round(kpa))),
+        sectionPressureTrend: (trend) => t(`ui.floorplan.mission.tooltip.pressure-${trend}`),
+        sectionVacuum: t("ui.floorplan.mission.tooltip.vacuum"),
+        sectionBreach: (sealed) =>
+          t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
       }).setDepth(RENDER_DEPTH.hudContent);
       this.markAsHudObject(this.tooltip);
       this.tooltipCell = cell;
+      this.tooltipRedrawKey = redrawKey;
     }
     this.tooltip.setVisible(true);
     const bounds = this.tooltip.getBounds();
@@ -1860,6 +1945,10 @@ export class FloorplanScene extends Phaser.Scene {
         this.briefingContainer?.destroy(true);
         this.briefingContainer = undefined;
         this.briefingOpen = false;
+        // El mismo click que cierra el modal no vale además como click de mapa
+        // (13f ronda 4): el botón dispara en `pointerdown` y para cuando corre
+        // el `pointerdown` de la escena el modal ya no está.
+        this.swallowCurrentClick();
         // Al cerrar el briefing: barks de `crisis-start` (para que no queden
         // detrás del modal).
         this.fireCrisisStartBark();
@@ -2166,6 +2255,11 @@ export class FloorplanScene extends Phaser.Scene {
    * overlays de un solo estado (`updateWireHighlights`).
    */
   private updateTransferMode(): void {
+    // Mismo guard que la colocación de pieza (13f ronda 4): el botón que entra
+    // al modo vive en el panel de acciones, que hoy se salva solo porque
+    // `actionPanelBounds` lo cubre por casualidad geométrica — si el panel se
+    // mueve o se rediseña, el click volvería a colarse al mapa.
+    if (this.interaction.transferMode) this.swallowCurrentClick();
     this.updateWireModeButton();
     this.updateTransferModeButton();
 
@@ -2678,6 +2772,7 @@ export class FloorplanScene extends Phaser.Scene {
       this.objectivesPanel.destroy(true);
       this.objectivesPanel = undefined;
       this.objectivesOpen = false;
+      this.swallowCurrentClick();
       return;
     }
     this.renderObjectivesPanel();
@@ -4139,7 +4234,15 @@ export class FloorplanScene extends Phaser.Scene {
     if (!breach) return;
     this.notifications?.push(
       breach.sealed
-        ? { title: t("ui.floorplan.notification.breach-sealed"), type: "success" }
+        ? {
+            title: t("ui.floorplan.notification.breach-sealed"),
+            // 13f ronda 4: el aviso decía "la fuga se detuvo" y nada más, así
+            // que el mordisco que todavía cae mientras la sala se llena se leía
+            // como que el parche no había servido. La sala sigue siendo vacío
+            // hasta que entra aire; eso hay que DECIRLO, no arreglarlo.
+            lines: [t("ui.floorplan.notification.breach-sealed-detail")],
+            type: "success",
+          }
         : {
             title: t("ui.floorplan.notification.breach-patch-failed"),
             lines: [t("ui.floorplan.notification.breach-patch-failed-detail")],

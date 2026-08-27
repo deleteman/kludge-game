@@ -2,7 +2,13 @@ import type Phaser from "phaser";
 import type { ComponentCondition, ComponentWear, FunctionalProperty, MaterialProperties } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
-import { COMPONENT_CONDITION_TINT, COMPONENT_WEAR_CSS, CRISIS_FATAL_CSS } from "../../render/palette.js";
+import {
+  COMPONENT_CONDITION_TINT,
+  COMPONENT_WEAR_CSS,
+  CRISIS_FATAL_CSS,
+  CRISIS_WARNING_CSS,
+  LABEL_COLOR,
+} from "../../render/palette.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
@@ -25,8 +31,37 @@ export type TooltipContent =
       readonly effectiveResistance?: "A" | "M" | "B" | "fallo";
       /** Solo para compuestos: desglose de sus piezas atómicas. */
       readonly composition?: ReadonlyArray<CompositionIngredient>;
+      /**
+       * Estado de la sala donde está la pieza, solo cuando es NOTICIA (13f
+       * ronda 4). Después de tapar una brecha el jugador mira el parche, no el
+       * suelo de al lado: si el estado de la sección solo se leyera sobre suelo
+       * vacío, la pregunta que este bloque vino a responder se quedaría sin
+       * responder justo en la celda donde se la hace.
+       */
+      readonly atmosphere?: SectionAtmosphereTooltip;
+      /** Brecha de casco bajo esta pieza: dice si lo instalado la está tapando de verdad. */
+      readonly breach?: { readonly sealed: boolean };
     }
-  | { readonly kind: "section"; readonly name: string };
+  | {
+      readonly kind: "section";
+      readonly name: string;
+      /**
+       * Atmósfera viva de la sección (13f ronda 4). El hover sobre suelo vacío
+       * era hasta ahora solo el nombre de la sala; ahora es el único sitio
+       * donde se lee la presión, y el que explica por qué una sección recién
+       * parchada sigue mordiendo: el parche detiene la fuga, el aire tarda.
+       */
+      readonly atmosphere?: SectionAtmosphereTooltip;
+      /** Brecha de casco EN ESTA CELDA. Heredado del panel de celda vacía, que dejó de existir en la ronda 4. */
+      readonly breach?: { readonly sealed: boolean };
+    };
+
+export interface SectionAtmosphereTooltip {
+  readonly pressureKpa: number;
+  readonly trend: "draining" | "recovering" | "stable";
+  /** La sala mata por vacío AHORA MISMO. Es un eje distinto de `trend`: se puede estar recuperando y seguir siendo letal. */
+  readonly vacuum: boolean;
+}
 
 export interface MissionTooltipLabels {
   readonly functionalDescription: (tag: FunctionalProperty["tag"]) => string;
@@ -36,6 +71,14 @@ export interface MissionTooltipLabels {
   /** "Resistencia estructural: FALLO" cuando el desgaste consumió todos los escalones. */
   readonly structuralFailure: string;
   readonly compositionTitle: string;
+  /** "Presión: 12 kPa" (13f ronda 4). */
+  readonly sectionPressure: (kpa: number) => string;
+  /** "Perdiendo presión" / "Represurizando"; `stable` no imprime línea. */
+  readonly sectionPressureTrend: (trend: SectionAtmosphereTooltip["trend"]) => string;
+  /** "Vacío: letal para la tripulación". */
+  readonly sectionVacuum: string;
+  /** Brecha de casco en la celda bajo el cursor. */
+  readonly sectionBreach: (sealed: boolean) => string;
 }
 
 const TOOLTIP_WIDTH = 260;
@@ -151,6 +194,55 @@ export function renderMissionTooltip(
       );
       container.add(compositionContainer);
       y = bottomY;
+    }
+  }
+
+  {
+    // Estado de la sala bajo el cursor (13f ronda 4), para los DOS tipos de
+    // contenido. Es la respuesta a "tapé la brecha, ¿por qué sigue muriéndose
+    // mi gente?": la presión dice cuánto falta, la tendencia hacia dónde va, el
+    // vacío si mata ahora mismo, y la brecha si el agujero sigue abierto. Un
+    // fenómeno, una lectura (principio 6).
+    const lines: Array<{ readonly text: string; readonly color: string }> = [];
+    if (content.atmosphere) {
+      lines.push({
+        text: `• ${labels.sectionPressure(content.atmosphere.pressureKpa)}`,
+        color: LABEL_COLOR,
+      });
+      if (content.atmosphere.trend !== "stable") {
+        lines.push({
+          text: `• ${labels.sectionPressureTrend(content.atmosphere.trend)}`,
+          // Rojo = se está vaciando (Eje A, crítico); ámbar = se está
+          // recuperando, que es buena noticia pero todavía no es "listo".
+          // Mismo contrato de color de 12e, sin inventar tonos nuevos.
+          color: content.atmosphere.trend === "draining" ? CRISIS_FATAL_CSS : CRISIS_WARNING_CSS,
+        });
+      }
+      // Eje aparte de la tendencia a propósito: una sala puede estar
+      // recuperando presión y seguir matando. Es LA línea que responde el
+      // reporte del playtest ("tapé la brecha y todavía le hizo daño"), así que
+      // dice el hecho crudo en vez de mezclarlo con el texto de tendencia.
+      if (content.atmosphere.vacuum) {
+        lines.push({ text: `☠ ${labels.sectionVacuum}`, color: CRISIS_FATAL_CSS });
+      }
+    }
+    if (content.breach) {
+      lines.push({
+        text: `${content.breach.sealed ? "✔" : "⚠"} ${labels.sectionBreach(content.breach.sealed)}`,
+        color: content.breach.sealed ? LABEL_COLOR : CRISIS_FATAL_CSS,
+      });
+    }
+    for (const { text, color } of lines) {
+      const line = scene.add
+        .text(PADDING, y, text, {
+          fontFamily: "sans-serif",
+          fontSize: "11px",
+          color,
+          wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
+        })
+        .setOrigin(0, 0);
+      container.add(line);
+      y += line.height + 4;
     }
   }
 

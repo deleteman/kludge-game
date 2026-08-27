@@ -783,3 +783,11 @@ dónde, y qué costaría arreglarlo.
     revisarlo cuando exista contenido que apague el soporte vital de una sección concreta: si esa fila resulta
     tan ruidosa como lo era la de atmósfera, la palanca ya está construida (`WeightedSectionAtmosphere`, que la
     función ya recibe y hoy ignora).
+
+48. **Ningún sitio del juego enseña ya el flujo de instalación ni el click derecho para mover** (introducido en
+    la ronda 4 de playtest de 13f, 2026-08-27). La pista que lo explicaba vivía en el panel de la celda vacía,
+    que se borró por pedido del operador ("no cumple objetivo ninguno") — y tenía razón: un panel flotante que
+    tapa el mapa no es sitio para un tutorial. Pero el hueco queda: el botón "Instalar" de la barra se
+    autodescribe, y "click derecho = mover a esta celda" no se descubre solo. Es deuda de ONBOARDING, no de
+    esta subfase: el sitio natural es el briefing del Cap.1 o una capa de ayuda de controles (que no existe),
+    junto con el resto de atajos que hoy tampoco se enseñan (ESC, rueda para zoom, arrastre para panear).

@@ -135,9 +135,6 @@ export const EN: Readonly<Record<string, string>> = {
     "Hull breach: the section is venting to vacuum. Only a STRUCTURAL part of medium resistance or better seals it — a gasket or a hose will not hold.",
   "ui.floorplan.mission.inspector.breach-sealed": "Breach sealed: the leak has stopped (the hull is still damaged).",
   "ui.floorplan.mission.inspector.close": "Close",
-  "ui.floorplan.mission.inspector.empty-title": "Empty cell",
-  "ui.floorplan.mission.inspector.empty-hint":
-    "To install something here, use \"Install\" in the top bar: pick the part first, then mark the spot. Right-click moves the selected crew member to this cell.",
   "ui.floorplan.mission.inspector.install-picker-title": "Choose a component to install",
   "ui.floorplan.mission.inspector.idle-title": "Nothing selected",
   "ui.floorplan.mission.inspector.idle-message": "Select a component on the floorplan to see its available actions.",
@@ -182,6 +179,14 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.crew-dead": "{name} is dead",
   "ui.floorplan.notification.crew-dead-detail": "Their queued tasks were cancelled.",
   "ui.floorplan.notification.breach-sealed": "Breach sealed: the leak has stopped",
+  "ui.floorplan.notification.breach-sealed-detail":
+    "The section is still a vacuum and takes a while to fill back up. Pull your people out until the pressure rises (hover the room to watch it).",
+  "ui.floorplan.mission.tooltip.pressure": "Pressure: {kpa} kPa",
+  "ui.floorplan.mission.tooltip.pressure-draining": "Losing pressure",
+  "ui.floorplan.mission.tooltip.pressure-recovering": "Repressurising: air coming back",
+  "ui.floorplan.mission.tooltip.vacuum": "Vacuum: lethal to crew",
+  "ui.floorplan.mission.tooltip.breach-open": "Open hull breach",
+  "ui.floorplan.mission.tooltip.breach-sealed": "Breach patched",
   "ui.floorplan.notification.breach-patch-failed": "That part does not seal the breach",
   "ui.floorplan.notification.breach-patch-failed-detail":
     "You need a STRUCTURAL part of medium resistance or better. Try dismantling something that yields a metal plate.",

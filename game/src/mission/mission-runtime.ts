@@ -8,7 +8,9 @@ import {
   EnemyThreatRuntime,
   EventEmitter,
   LooseFerromagneticPromoter,
+  HAZARD_PARAMETERS,
   MissionAtmosphereRuntime,
+  PRESSURE_RECOVERY_CEILING_KPA,
   MissionProjectileWorld,
   MissionOverloadRuntime,
   MissionPowerRuntime,
@@ -1028,6 +1030,42 @@ export class MissionRuntime {
     return {
       cell: breach.cell,
       sealed: isBreachSealed(this.shipState.get(), breach, this.componentRegistry),
+    };
+  }
+
+  /**
+   * Lectura de la atmósfera de una sección para el tooltip (13f ronda 4):
+   * presión actual y hacia dónde va.
+   *
+   * `trend` traduce el signo del sumidero a la única distinción que el jugador
+   * necesita: la sala se está vaciando, se está volviendo a llenar, o está
+   * quieta. Existe porque tapar una brecha NO devuelve el aire de golpe —la
+   * sección recupera a 2 kPa/s y tarda ~10 s en cruzar el umbral de vacío—, y
+   * sin esta lectura el mordisco que cae en el medio se lee como que el parche
+   * no funcionó.
+   */
+  sectionAtmosphereInfo(sectionId: SectionId):
+    | {
+        readonly pressureKpa: number;
+        readonly trend: "draining" | "recovering" | "stable";
+        /** `true` mientras la sala mata por vacío — el MISMO umbral que usa `MissionHazardRuntime`, no un número aparte. */
+        readonly vacuum: boolean;
+      }
+    | undefined {
+    const atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId);
+    if (!atmosphere) {
+      return undefined;
+    }
+    const rate = this.atmosphereRuntime.netPressureRateOf(sectionId);
+    // Una brecha sellada mantiene la tasa negativa PARA SIEMPRE (el sumidero no
+    // se apaga, solo se topa contra el techo del clamp), así que sin este corte
+    // una sala ya llena seguiría diciendo "represurizando" el resto de la
+    // partida — un aviso que nunca se apaga deja de leerse.
+    const recovering = rate < 0 && atmosphere.pressureKpa < PRESSURE_RECOVERY_CEILING_KPA;
+    return {
+      pressureKpa: atmosphere.pressureKpa,
+      trend: rate > 0 ? "draining" : recovering ? "recovering" : "stable",
+      vacuum: atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa,
     };
   }
 

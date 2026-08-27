@@ -39,7 +39,7 @@ import {
 } from "../ui/widgets/mission-action-panel.js";
 import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
-import type { TooltipContent } from "../ui/widgets/mission-tooltip.js";
+import type { SectionAtmosphereTooltip, TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 import type { MissionRuntime } from "./mission-runtime.js";
 import { AUDIO_KEYS } from "../audio/audio-asset-registry.js";
@@ -70,6 +70,14 @@ export const STRUCTURAL_RESISTANCE_LEVEL_KEY: Readonly<Record<"A" | "M" | "B", s
 
 export interface MissionInteractionCallbacks {
   readonly setStatus: (text: string) => void;
+  /**
+   * "El click que se está procesando ahora ya se consumió acá" (13f ronda 4).
+   * Los botones de UI disparan en `pointerdown` y Phaser los despacha ANTES
+   * del handler de la escena, así que cerrar un modal desde un botón deja al
+   * mapa recibiendo ese mismo click sobre la celda que había debajo. La escena
+   * es la dueña del input, así que el guard vive ahí; el controller solo avisa.
+   */
+  readonly swallowCurrentClick: () => void;
   /** Se llama tras encolar/cancelar una tarea — el llamador redibuja el panel de cola. */
   readonly onTaskQueued: () => void;
   /** Se llama al entrar/salir de modo cableado — el llamador reetiqueta su propio botón y redibuja los highlights de nodos. */
@@ -514,10 +522,42 @@ export class MissionInteractionController {
             instance.structuralResistanceOverride,
           ) ?? undefined,
         composition: definition ? this.buildComposition(definition) : undefined,
+        // Solo si la sala es NOTICIA (13f ronda 4): una pieza en una sección
+        // sana no arrastra tres líneas de atmósfera que no le importan a nadie.
+        // Sobre el parche recién puesto, en cambio, es exactamente lo que el
+        // jugador está mirando cuando pregunta por qué su gente sigue cayendo.
+        atmosphere: this.noteworthySectionAtmosphere(position),
+        breach: this.mission.breachCovering(occupiedCells(instance.placement)),
       };
     }
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    return section ? { kind: "section", name: t(section.nameKey) } : undefined;
+    if (!section) {
+      return undefined;
+    }
+    // 13f ronda 4: el hover sobre suelo vacío pasó a ser la ÚNICA lectura del
+    // estado de la sala, porque el panel de celda vacía dejó de abrirse. Todo
+    // derivado del mundo vivo en el momento del hover, como el resto del
+    // tooltip — nada horneado al seleccionar.
+    return {
+      kind: "section",
+      name: t(section.nameKey),
+      atmosphere: this.mission.sectionAtmosphereInfo(section.id),
+      breach: this.mission.breachCovering([position]),
+    };
+  }
+
+  /**
+   * Atmósfera de la sección de esta celda, pero solo cuando hay algo que
+   * contar: vacío o presión moviéndose. En una sala estable devuelve
+   * `undefined` para no añadir ruido a la ficha de cada pieza.
+   */
+  private noteworthySectionAtmosphere(position: GridPosition): SectionAtmosphereTooltip | undefined {
+    const section = sectionContainingCell(this.mission.shipFloorplan, position);
+    const atmosphere = section && this.mission.sectionAtmosphereInfo(section.id);
+    if (!atmosphere || (!atmosphere.vacuum && atmosphere.trend === "stable")) {
+      return undefined;
+    }
+    return atmosphere;
   }
 
   /** Click sobre una celda del plano, ya resuelta en coordenadas de mundo por `FloorplanScene`. */
@@ -564,7 +604,12 @@ export class MissionInteractionController {
         // energía apaga el badge en el acto, sin reabrir el panel.
       });
     } else {
-      this.setActionPanelContent({ kind: "empty", position });
+      // Celda vacía: se marca y nada más (13f ronda 4). Ya no queda ninguna
+      // acción sobre ella desde que instalar empieza por el botón de la barra,
+      // y abrir un panel flotante que tapa el mapa para mostrar una pista de
+      // texto no le sirve a nadie — el operador lo reportó tal cual. Lo
+      // informativo (sección, presión, brecha) se lee pasando el ratón.
+      this.setActionPanelContent({ kind: "idle" });
     }
   }
 
@@ -877,9 +922,7 @@ export class MissionInteractionController {
             // aviso sin cerrar y reabrir el panel.
             breach: this.breachInfoFor(this.actionPanelContent.instanceId),
           }
-        : this.actionPanelContent.kind === "empty"
-          ? { ...this.actionPanelContent, breach: this.mission.breachCovering([this.actionPanelContent.position]) }
-          : this.actionPanelContent;
+        : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,
@@ -891,8 +934,6 @@ export class MissionInteractionController {
         idleTitle: t("ui.floorplan.mission.inspector.idle-title"),
         idleMessage: t("ui.floorplan.mission.inspector.idle-message"),
         instanceTitle: (name, condition) => `${name} — ${condition}`,
-        emptyTitle: t("ui.floorplan.mission.inspector.empty-title"),
-        emptyHint: t("ui.floorplan.mission.inspector.empty-hint"),
         dismantle: t("ui.floorplan.mission.inspector.dismantle"),
         hazardWarning: (kind) => t(`ui.floorplan.mission.inspector.hazard.${kind}`),
         breachWarning: (sealed) =>
@@ -1177,6 +1218,10 @@ export class MissionInteractionController {
     this.installPickerList = undefined;
     this.installPickerScrollT = 0;
     this.installPickerState = undefined;
+    // Cubre los DOS cierres: confirmar la pieza y cancelar. El primero encolaba
+    // la instalación sola en la celda de debajo del botón (el reporte), el
+    // segundo seleccionaba esa celda sin que nadie la clickeara.
+    this.callbacks.swallowCurrentClick();
     this.callbacks.onSelectionChanged();
   }
 }

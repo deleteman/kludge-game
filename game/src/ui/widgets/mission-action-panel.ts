@@ -7,7 +7,6 @@ import type {
   FabricatorDomain,
   Footprint,
   FunctionalProperty,
-  GridPosition,
   MaterialProperties,
   PlacedComponentInstanceId,
 } from "engine";
@@ -85,7 +84,11 @@ export type ActionPanelContent =
       /** Ver `BreachPanelInfo` — la pieza está tapando (o no) una brecha de casco. */
       readonly breach?: BreachPanelInfo;
     }
-  | { readonly kind: "empty"; readonly position: GridPosition; readonly breach?: BreachPanelInfo }
+  // Sin variante para la celda VACÍA (13f ronda 4): desde que la ronda 3 le
+  // quitó "Instalar aquí" no le quedaba ninguna acción, y un panel flotante que
+  // tapa el mapa a cambio de una pista de texto no se gana el sitio. Clickear
+  // una celda vacía la marca y nada más; lo informativo (sección, presión,
+  // brecha) vive en el tooltip de hover.
   | {
       readonly kind: "substance";
       readonly substanceId: ChemicalSubstanceId;
@@ -173,8 +176,6 @@ export interface ActionPanelLabels {
   readonly idleTitle: string;
   readonly idleMessage: string;
   readonly instanceTitle: (name: string, condition: ComponentCondition) => string;
-  readonly emptyTitle: string;
-  readonly emptyHint: string;
   readonly dismantle: string;
   /** Aviso de riesgo al desmontar (13d), una línea por hazard vivo. */
   readonly hazardWarning: (kind: DismantleHazardKind) => string;
@@ -304,13 +305,11 @@ export function renderMissionActionPanel(
   const title =
     content.kind === "instance"
       ? labels.instanceTitle(content.name, content.condition)
-      : content.kind === "empty"
-        ? labels.emptyTitle
-        : content.kind === "substance"
-          ? content.name
-          : content.kind === "substances-list"
-            ? labels.substancesTitle
-            : labels.idleTitle;
+      : content.kind === "substance"
+        ? content.name
+        : content.kind === "substances-list"
+          ? labels.substancesTitle
+          : labels.idleTitle;
 
   const hasClose = content.kind !== "idle";
   const contentTop = hasClose ? 16 : 0;
@@ -405,11 +404,12 @@ export function renderMissionActionPanel(
     claim(flowY);
   }
 
-  // Brecha de casco sobre esta celda (13f ronda 1). Va ANTES del bloque por
-  // tipo de contenido a propósito: aplica igual a la celda vacía (todavía sin
-  // parche) que a la que ya tiene una pieza encima (que puede no servir), y en
-  // los dos casos es lo primero que el jugador necesita saber.
-  const breach = content.kind === "instance" || content.kind === "empty" ? content.breach : undefined;
+  // Brecha de casco bajo la pieza seleccionada (13f ronda 1): si el jugador
+  // instaló algo que no sirve de parche, el panel tiene que decirlo. Va ANTES
+  // del bloque por tipo de contenido porque es lo primero que necesita saber.
+  // Solo aplica a `instance` desde la ronda 4: la celda vacía ya no abre panel,
+  // su brecha se lee en el marcador del mapa y en el tooltip de hover.
+  const breach = content.kind === "instance" ? content.breach : undefined;
   if (breach) {
     const breachText = scene.add
       .text(width / 2, flowY, `${breach.sealed ? "✔" : "⚠"} ${labels.breachWarning(breach.sealed)}`, {
@@ -605,22 +605,6 @@ export function renderMissionActionPanel(
       cursorY += hint.height + 6;
       claim(cursorY);
     }
-  } else if (content.kind === "empty") {
-    // Sin botón "Instalar aquí" desde 13f ronda 3: instalar empieza por el
-    // botón de la barra (elegir la pieza) y termina marcando el sitio en el
-    // mapa con el footprint a la vista. El panel de una celda vacía queda como
-    // ficha informativa — sigue siendo donde se avisa de una brecha abierta.
-    const hint = scene.add
-      .text(width / 2, flowY, labels.emptyHint, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "10px",
-        color: LABEL_COLOR,
-        align: "center",
-        wordWrap: { width: width - 20, useAdvancedWrap: true },
-      })
-      .setOrigin(0.5, 0);
-    container.add(hint);
-    claim(flowY + hint.height);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá
     // los valores exactos de riesgo (radio de combustión, segundos por nivel

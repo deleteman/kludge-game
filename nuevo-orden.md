@@ -758,6 +758,28 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
     apuntaba a una sección, así que mandar a alguien a un punto concreto no tenía forma de expresarse.
     `CrewTask` gana `targetCell`.
 
+* **Ronda 4 de playtest (2026-08-27).** Tres reportes sobre el flujo que la ronda 3 acababa de invertir.
+  - *"Clickear Instalar tras elegir la pieza a veces pasa el click al mapa y el tripulante instala solo."*
+    Cierto, y el más grave: encolaba la pieza en el sitio equivocado, justo lo que la ronda 3 vino a impedir.
+    `createKenneyButton` dispara en **`pointerdown`** y Phaser despacha los handlers de los GameObjects ANTES
+    del `pointerdown` de la escena: el botón cerraba el modal, así que la escena ya no lo veía abierto (y el
+    modal flota sobre el mapa, fuera de `isOverFixedUi`), armaba el arrastre y el `pointerup` del MISMO click
+    encolaba la instalación en la celda de debajo del botón. Se traga la pulsación por su `downTime`
+    (`swallowCurrentClick`), no con una bandera de "ignorá el próximo click": así el fix no depende del orden
+    de despacho. Aplicado también al cerrar el selector por Cancelar, al briefing, al panel de objetivos y al
+    modo de trasvase — todos tenían la misma forma, con síntoma más leve (seleccionar una celda sola).
+  - *"El pop-up de la celda vacía no cumple objetivo ninguno."* Cierto: desde que la ronda 3 le quitó "Instalar
+    aquí" no le quedaba ninguna acción. La variante `empty` del panel se **borra** (no se oculta); clickear
+    suelo vacío marca la celda y nada más.
+  - *"Tapar la brecha detuvo el daño, pero le hizo daño una vez más después de instalar."* Física correcta mal
+    comunicada: sellar cambia el signo del sumidero, pero la sala sigue a ~0 kPa y recupera a 2 kPa/s, así que
+    tarda ~10 s en cruzar el umbral de vacío (20) y el mordisco cae cada 8. **Decisión del operador: no se toca
+    el balance**, se hace legible. El tooltip de sección (que era solo el nombre) pasa a mostrar presión,
+    tendencia —`netPressureRateOf`, lectura nueva del signo del sumidero, que hasta ahora se consumía y se
+    tiraba— y "Vacío: letal", y la notificación de sellado dice que la sala tarda en llenarse. El estado de la
+    sala aparece también en la ficha de una PIEZA cuando es noticia: tras tapar la brecha el jugador mira el
+    parche, no el suelo de al lado.
+
 #### Subfase 13h: Puertas y Compartimentación
 
 > **Orden de ejecución: 13f → 13h → 13g.** Se documenta acá, entre 13f y 13g, pero conserva la letra `h` para no

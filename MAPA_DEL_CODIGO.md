@@ -1313,3 +1313,29 @@
   y DÓNDE en el mapa, con `installPlacementPreviewAt` devolviendo el footprint anclado exacto bajo el cursor y si ahí
   entra. El selector ya no recibe una celda y "Instalar aquí" desapareció del panel de celda vacía — el flujo empieza en
   el botón de la barra (`updateInstallButton`, `floorplan-scene.ts`).
+
+## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, 13f ronda 4)
+- `netPressureRateOf(sectionId)` — tasa neta del sumidero aplicada en el último tick, con el mismo signo que
+  `SectionPressureSinkSource` (positivo = drena). Estado de tick, no de dominio: no se persiste. El `tick` guarda el mapa
+  que ya recorría, así que UI y física no pueden discrepar sobre si una sección se vacía o se llena. Ninguna regla del
+  motor lo consume: existe para que la UI pueda decir "represurizando" y explicar por qué una sala parchada sigue matando.
+
+## `game/src/ui/widgets/mission-tooltip.ts` (modificado, 13f ronda 4)
+- La variante `section` deja de ser solo el nombre: presión, tendencia, "Vacío: letal" y la brecha de esa celda. Es la
+  única lectura del estado de una sala desde que el panel de celda vacía dejó de existir. Las mismas líneas se pintan
+  sobre una PIEZA cuando la sala es noticia (`noteworthySectionAtmosphere`), porque tras tapar la brecha el jugador mira
+  el parche, no el suelo de al lado.
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13f ronda 4)
+- **Borrada la variante `empty`.** Desde que la ronda 3 le quitó "Instalar aquí" no le quedaba ninguna acción, y un panel
+  flotante que tapa el mapa a cambio de una pista de texto no se gana el sitio. El aviso de brecha sobrevive solo en la
+  variante `instance`, donde SÍ es accionable ("lo que instalaste no sirve de parche").
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, 13f ronda 4)
+- `swallowCurrentClick()` + `targetPickArmedDownTime`: la pulsación que abre/cierra una capa de UI sobre el mapa no vale
+  además como click de mapa. Se identifica por `pointer.downTime` (la pulsación concreta) y no con una bandera de "ignorá
+  el próximo click", para que el fix no dependa del orden en que Phaser despacha GameObjects vs. escena. Lo llaman el
+  cierre del selector de instalación (vía callback del controller), el briefing, el panel de objetivos y los dos modos de
+  selección de destino.
+- `tooltipRedrawKey`: el tooltip se reconstruye cuando cambiaría su TEXTO, no solo al cambiar de celda, y se refresca
+  desde `update()` mientras está a la vista — si no, la presión de una sala represurizándose quedaba congelada.

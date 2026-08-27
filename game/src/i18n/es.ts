@@ -135,9 +135,6 @@ export const ES: Readonly<Record<string, string>> = {
     "Brecha en el casco: la sección se vacía al vacío. Solo la sella una pieza ESTRUCTURAL de resistencia media o superior — una junta o una manguera no aguantan el agujero.",
   "ui.floorplan.mission.inspector.breach-sealed": "Brecha sellada: la fuga está detenida (el casco sigue dañado).",
   "ui.floorplan.mission.inspector.close": "Cerrar",
-  "ui.floorplan.mission.inspector.empty-title": "Celda vacía",
-  "ui.floorplan.mission.inspector.empty-hint":
-    "Para instalar algo acá, usá \"Instalar\" en la barra de arriba: elegís la pieza y después marcás el sitio. Con click derecho movés al tripulante seleccionado a esta celda.",
   "ui.floorplan.mission.inspector.install-picker-title": "Elegir componente a instalar",
   "ui.floorplan.mission.inspector.idle-title": "Sin selección",
   "ui.floorplan.mission.inspector.idle-message": "Seleccioná un componente en el plano para ver sus acciones disponibles.",
@@ -182,6 +179,14 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.notification.crew-dead": "{name} ha muerto",
   "ui.floorplan.notification.crew-dead-detail": "Sus tareas encoladas quedaron canceladas.",
   "ui.floorplan.notification.breach-sealed": "Brecha sellada: la fuga se detuvo",
+  "ui.floorplan.notification.breach-sealed-detail":
+    "La sección sigue al vacío y tarda en volver a llenarse. Sacá a tu gente hasta que la presión suba (mirá la sala con el ratón para verla).",
+  "ui.floorplan.mission.tooltip.pressure": "Presión: {kpa} kPa",
+  "ui.floorplan.mission.tooltip.pressure-draining": "Perdiendo presión",
+  "ui.floorplan.mission.tooltip.pressure-recovering": "Represurizando: entra aire",
+  "ui.floorplan.mission.tooltip.vacuum": "Vacío: letal para la tripulación",
+  "ui.floorplan.mission.tooltip.breach-open": "Brecha abierta en el casco",
+  "ui.floorplan.mission.tooltip.breach-sealed": "Brecha tapada",
   "ui.floorplan.notification.breach-patch-failed": "Esa pieza no sella la brecha",
   "ui.floorplan.notification.breach-patch-failed-detail":
     "Hace falta una pieza ESTRUCTURAL de resistencia media o superior. Probá desarmar algo que tenga una plancha metálica.",

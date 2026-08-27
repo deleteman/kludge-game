@@ -81,4 +81,51 @@ describe("MissionAtmosphereRuntime (Fase 11b, atmósfera viva en misión)", () =
     const snapshots = runtime.toSnapshots();
     expect(snapshots.map((s) => s.sectionId).sort()).toEqual([BODEGA, CABINA].sort());
   });
+
+  // 13f ronda 4: el signo del sumidero es lo único que distingue "se está
+  // vaciando" de "se está volviendo a llenar", y la UI lo necesita para
+  // explicar por qué una sala recién parchada sigue siendo letal un rato.
+  describe("netPressureRateOf (diagnóstico de presión para la UI)", () => {
+    it("expone la tasa de drenaje del último tick con el signo del sumidero", () => {
+      const runtime = new MissionAtmosphereRuntime(
+        twoSectionFloorplan(),
+        [],
+        () => new Map([[CABINA, 12]]),
+      );
+      runtime.tick(tickOf(0, 1));
+      expect(runtime.netPressureRateOf(CABINA)).toBe(12);
+    });
+
+    it("devuelve tasa NEGATIVA cuando la sección está recuperando presión", () => {
+      let sealed = false;
+      const runtime = new MissionAtmosphereRuntime(
+        twoSectionFloorplan(),
+        [],
+        () => new Map([[CABINA, sealed ? -2 : 12]]),
+      );
+      runtime.tick(tickOf(0, 1));
+      expect(runtime.netPressureRateOf(CABINA)).toBeGreaterThan(0);
+
+      sealed = true;
+      runtime.tick(tickOf(1, 1));
+      expect(runtime.netPressureRateOf(CABINA)).toBeLessThan(0);
+    });
+
+    it("devuelve 0 para una sección sin sumidero y para un id desconocido", () => {
+      const runtime = new MissionAtmosphereRuntime(
+        twoSectionFloorplan(),
+        [],
+        () => new Map([[CABINA, 12]]),
+      );
+      runtime.tick(tickOf(0, 1));
+      expect(runtime.netPressureRateOf(BODEGA)).toBe(0);
+      expect(runtime.netPressureRateOf("no-existe" as SectionId)).toBe(0);
+    });
+
+    it("devuelve 0 sin fuente de sumidero, sin romper el camino previo a 11h", () => {
+      const runtime = new MissionAtmosphereRuntime(twoSectionFloorplan(), []);
+      runtime.tick(tickOf(0, 1));
+      expect(runtime.netPressureRateOf(CABINA)).toBe(0);
+    });
+  });
 });
