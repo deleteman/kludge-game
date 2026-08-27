@@ -1339,3 +1339,6 @@
   selección de destino.
 - `tooltipRedrawKey`: el tooltip se reconstruye cuando cambiaría su TEXTO, no solo al cambiar de celda, y se refresca
   desde `update()` mientras está a la vista — si no, la presión de una sala represurizándose quedaba congelada.
+- `devTargetMode` (13f ronda 4b): las teclas de dev F y H arman una herramienta y el siguiente click de mapa elige
+  la celda, en vez de leer `interaction.selectedCell`. Se rompieron cuando el panel de celda vacía desapareció —
+  una herramienta de dev no debe depender de un estado de juego para funcionar.

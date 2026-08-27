@@ -205,7 +205,9 @@ export const ES: Readonly<Record<string, string>> = {
 
   // Tecla de dev (F) del plano de misión — solo desarrollo, no se muestra al jugador
   // en una partida normal (12d.6).
-  "ui.floorplan.dev.no-cell": "Dev: seleccioná una celda primero",
+  "ui.floorplan.dev.no-section": "Dev: sin sección en esa celda",
+  "ui.floorplan.dev.armed.event-sample": "Dev (F): hacé click en una celda para disparar el efecto. ESC o F para cancelar.",
+  "ui.floorplan.dev.armed.section-damage": "Dev (H): hacé click en una celda para explotar su sección. ESC o H para cancelar.",
   "ui.floorplan.dev.fired": "Dev",
   "ui.floorplan.notification.objective-done": "Objetivo completado",
   "ui.floorplan.notification.crisis-escalation": "La crisis escala",

@@ -205,7 +205,9 @@ export const EN: Readonly<Record<string, string>> = {
 
   // Dev hotkey (F) on the mission floorplan — development only, never shown to a
   // player in a normal run (12d.6).
-  "ui.floorplan.dev.no-cell": "Dev: select a cell first",
+  "ui.floorplan.dev.no-section": "Dev: no section in that cell",
+  "ui.floorplan.dev.armed.event-sample": "Dev (F): click a cell to fire the effect. ESC or F to cancel.",
+  "ui.floorplan.dev.armed.section-damage": "Dev (H): click a cell to blow up its section. ESC or H to cancel.",
   "ui.floorplan.dev.fired": "Dev",
   "ui.floorplan.notification.objective-done": "Objective complete",
   "ui.floorplan.notification.crisis-escalation": "Crisis escalating",

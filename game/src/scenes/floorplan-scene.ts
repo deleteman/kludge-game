@@ -960,7 +960,11 @@ export class FloorplanScene extends Phaser.Scene {
       const wasClick = this.dragDistance < DRAG_THRESHOLD_PX;
       this.dragOrigin = undefined;
       if (!wasClick) return;
-      this.interaction.handleMapClick(this.pointerCell(pointer));
+      const cell = this.pointerCell(pointer);
+      // Las herramientas de dev se sirven ANTES que la interacción de juego: la
+      // tecla ya armó la intención, el click solo elige dónde.
+      if (this.handleDevTargetClick(cell)) return;
+      this.interaction.handleMapClick(cell);
     });
 
     // Zoom con la rueda sobre la zona de mapa (playtest #13), anclado al cursor.
@@ -990,11 +994,16 @@ export class FloorplanScene extends Phaser.Scene {
     );
 
     this.input.keyboard?.on("keydown-G", () => this.scene.start("particle-gallery"));
-    this.input.keyboard?.on("keydown-F", () => this.fireDevEventSample());
-    this.input.keyboard?.on("keydown-H", () => this.fireDevSectionDamage());
+    this.input.keyboard?.on("keydown-F", () => this.toggleDevTargetMode("event-sample"));
+    this.input.keyboard?.on("keydown-H", () => this.toggleDevTargetMode("section-damage"));
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
+      if (this.devTargetMode) {
+        this.devTargetMode = undefined;
+        this.setStatus("");
+        return;
+      }
       if (this.interaction.installPlacementMode) {
         this.interaction.cancelInstallPlacement();
         return;
@@ -3331,12 +3340,36 @@ export class FloorplanScene extends Phaser.Scene {
   /** Puntero del ciclo de la tecla F sobre `DEV_EVENT_SAMPLES`. */
   private devEventSampleIndex = 0;
 
-  private fireDevEventSample(): void {
-    const cell = this.interaction.selectedCell;
-    if (!cell) {
-      this.notifications?.push({ title: t("ui.floorplan.dev.no-cell"), type: "warning" });
-      return;
-    }
+  /**
+   * Herramienta de dev ARMADA, esperando la celda sobre la que disparar.
+   *
+   * Las teclas F y H leían `interaction.selectedCell`, o sea que dependían de
+   * un estado de JUEGO para hacer algo que no es del juego. Se rompieron solas
+   * en 13f ronda 4, cuando quitar el panel de la celda vacía hizo que
+   * seleccionar suelo dejara de marcar nada. Ahora son autónomas: la tecla arma,
+   * el click elige el sitio (pedido del operador). Molde de los otros modos de
+   * selección de destino del mapa, ESC incluido.
+   */
+  private devTargetMode?: "event-sample" | "section-damage";
+
+  /** Arma una herramienta de dev, o la desarma si ya lo estaba (misma tecla). */
+  private toggleDevTargetMode(mode: "event-sample" | "section-damage"): void {
+    this.devTargetMode = this.devTargetMode === mode ? undefined : mode;
+    this.setStatus(this.devTargetMode ? t(`ui.floorplan.dev.armed.${this.devTargetMode}`) : "");
+  }
+
+  /** Click de mapa con una herramienta de dev armada. Devuelve `true` si consumió el click. */
+  private handleDevTargetClick(cell: GridPosition): boolean {
+    const mode = this.devTargetMode;
+    if (!mode) return false;
+    this.devTargetMode = undefined;
+    this.setStatus("");
+    if (mode === "event-sample") this.fireDevEventSample(cell);
+    else this.fireDevSectionDamage(cell);
+    return true;
+  }
+
+  private fireDevEventSample(cell: GridPosition): void {
     const sample = DEV_EVENT_SAMPLES[this.devEventSampleIndex % DEV_EVENT_SAMPLES.length]!;
     this.devEventSampleIndex += 1;
 
@@ -3368,11 +3401,10 @@ export class FloorplanScene extends Phaser.Scene {
    * lado. Sin esta tecla, los pasos de prueba manual de esta subfase serían
    * instrucciones imposibles de ejecutar.
    */
-  private fireDevSectionDamage(): void {
-    const cell = this.interaction.selectedCell;
-    const section = cell && this.mission.sectionAt(cell);
+  private fireDevSectionDamage(cell: GridPosition): void {
+    const section = this.mission.sectionAt(cell);
     if (!section) {
-      this.notifications?.push({ title: t("ui.floorplan.dev.no-cell"), type: "warning" });
+      this.notifications?.push({ title: t("ui.floorplan.dev.no-section"), type: "warning" });
       return;
     }
     this.mission.reactionEvents.emit({

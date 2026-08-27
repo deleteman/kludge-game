@@ -779,6 +779,11 @@ Surgida del playtest de 13c: el operador reportó que instalar un `tubo-flexible
     tiraba— y "Vacío: letal", y la notificación de sellado dice que la sala tarda en llenarse. El estado de la
     sala aparece también en la ficha de una PIEZA cuando es noticia: tras tapar la brecha el jugador mira el
     parche, no el suelo de al lado.
+  - *Corrección inmediata (ronda 4b):* quitar el panel dejó la celda vacía en `idle`, y `idle` desmarca la
+    celda — así que F y H, que leían `selectedCell`, se quedaron sin fuente. Pasan a **armar y clickear** (la
+    tecla arma, el click elige la celda, ESC o la misma tecla desarman): una herramienta de dev no debe
+    depender de un estado de juego. Y clickear suelo vacío vuelve a marcar la celda, que es lo único que queda
+    de ese click.
 
 #### Subfase 13h: Puertas y Compartimentación
 

@@ -5016,3 +5016,26 @@ ARCHIVOS: `engine/src/mission/mission-atmosphere-runtime.ts` (+ test), `game/src
 
 SUITE: `/engine` 959 → 963 tests, `/game` 68 sin cambios. `tsc --noEmit` y `eslint` limpios en ambos
 workspaces, `vite build` limpio.
+
+--------------------------------------------------------------------------------
+2026-08-27 — Subfase 13f ronda 4b: las teclas de dev dejan de depender de la selección
+--------------------------------------------------------------------------------
+RAZÓN: reporte inmediato del operador — "ahora no puedo usar la H porque no puedo seleccionar una celda".
+Cierto y es consecuencia directa del punto 2 de la ronda 4: `setActionPanelContent({kind:"idle"})` desmarca la
+celda seleccionada (comportamiento correcto al volver a idle tras desmontar/instalar), así que al dejar la
+celda vacía en `idle` clickear suelo dejó de marcar nada — y F y H leían `interaction.selectedCell`.
+
+Dos cambios:
+1. **F y H pasan a ser "armar y clickear"** (diseño propuesto por el operador): la tecla arma la herramienta y
+   muestra la instrucción en la barra de estado; el siguiente click de mapa elige la celda y dispara. Volver a
+   pulsar la misma tecla, o ESC, desarma. Molde de los otros modos de selección de destino del mapa. Es lo que
+   corresponde a una herramienta de DEV: no debe depender de un estado de JUEGO para funcionar, que es
+   exactamente lo que la rompió.
+2. **Clickear una celda vacía vuelve a marcarla.** El resaltado es lo único que queda de ese click ahora que no
+   hay panel, y el operador ya había dado por buena esa parte ("la selecciona, pero no debería mostrar el
+   pop-up"). `setSelectedCell` va DESPUÉS del `idle`, que desmarca por su cuenta.
+
+ARCHIVOS: `game/src/scenes/floorplan-scene.ts`, `game/src/mission/mission-interaction-controller.ts`, i18n
+es/en (`dev.no-cell` → `dev.no-section` + `dev.armed.*`).
+
+SUITE: sin cambios (963 / 68). `tsc --noEmit`, `eslint` y `vite build` limpios.

@@ -610,6 +610,10 @@ export class MissionInteractionController {
       // texto no le sirve a nadie — el operador lo reportó tal cual. Lo
       // informativo (sección, presión, brecha) se lee pasando el ratón.
       this.setActionPanelContent({ kind: "idle" });
+      // DESPUÉS del `idle`, que desmarca la celda por su cuenta (volver a idle
+      // tras desmontar/instalar sí debe desmarcar). Acá el jugador acaba de
+      // elegir esta celda: el resaltado es lo único que queda de ese click.
+      this.setSelectedCell(position);
     }
   }
 
