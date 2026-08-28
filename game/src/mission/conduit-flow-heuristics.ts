@@ -15,6 +15,12 @@ export interface ConduitFlowIntensity {
   readonly active: boolean;
   /** [0,1]. 0 = sin flujo visible. */
   readonly intensity: number;
+  /**
+   * Sentido del flujo (Subfase 13h). `"forward"` = de `a` hacia `b`. Ausente =
+   * simétrico, que es lo correcto donde no hay un "hacia dónde" que mostrar
+   * (`electrico`, `senal`).
+   */
+  readonly direction?: "forward" | "backward" | "both";
 }
 
 const VENTILATION_PRESSURE_EPSILON_KPA = 0.5;
@@ -88,14 +94,29 @@ function fluidIntensity(conduit: ConduitConnection, mission: MissionRuntime): Co
   };
 }
 
-/** Válvula sellada de fábrica (`initialAperture === 0`) fuerza flujo apagado, sin importar presión. */
+/**
+ * Válvula cerrada fuerza flujo apagado, sin importar la presión.
+ *
+ * Subfase 13h: lee la apertura VIVA (`ValveRuntime`) y no `initialAperture` —
+ * ese era el dato correcto mientras la apertura era estática, pero desde que el
+ * jugador puede mandar a cerrar una válvula, el conducto seguiría animando
+ * partículas por un ducto que él acaba de sellar.
+ *
+ * Y devuelve el SENTIDO, no solo la magnitud: el aire va de la sala con más
+ * presión a la que tiene menos, y con la nave compartimentada eso es justo lo
+ * que el jugador necesita ver para saber por dónde se está desangrando.
+ */
 function ventilationIntensity(conduit: ConduitConnection, mission: MissionRuntime): ConduitFlowIntensity {
-  if (conduit.initialAperture === 0) return { active: false, intensity: 0 };
+  if (mission.valveRuntime.apertureFor(conduit.id) <= 0) return { active: false, intensity: 0 };
   const pressureA = mission.atmosphereRuntime.atmosphereOf(conduit.a)?.pressureKpa ?? 0;
   const pressureB = mission.atmosphereRuntime.atmosphereOf(conduit.b)?.pressureKpa ?? 0;
   const delta = Math.abs(pressureA - pressureB);
   if (delta <= VENTILATION_PRESSURE_EPSILON_KPA) return { active: false, intensity: 0 };
-  return { active: true, intensity: Math.min(1, delta / VENTILATION_PRESSURE_RANGE_KPA) };
+  return {
+    active: true,
+    intensity: Math.min(1, delta / VENTILATION_PRESSURE_RANGE_KPA),
+    direction: pressureA > pressureB ? "forward" : "backward",
+  };
 }
 
 function poweredIntensity(

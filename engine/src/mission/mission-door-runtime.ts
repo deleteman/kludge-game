@@ -401,6 +401,16 @@ export class MissionDoorRuntime implements Tickable {
     );
   }
 
+  /**
+   * Segundos que tarda la hoja en completar su recorrido. Lo consume la capa
+   * visual para interpolar la barra de la puerta con el MISMO número que usa la
+   * simulación — si la UI usara una constante propia, la animación y la
+   * apertura atmosférica se desincronizarían.
+   */
+  transitionSecondsOf(doorId: DoorId): number {
+    return this.transitionSecondsFor(doorId);
+  }
+
   /** `ACT.power` de la puerta — lo consume el cálculo de severidad del aplastamiento. */
   motorPowerOf(doorId: DoorId): number {
     return this.motorPowerById.get(doorId) ?? 0;

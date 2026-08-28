@@ -1400,3 +1400,45 @@
 ## `engine/src/mission/loose-ferromagnetic-promoter.ts` (modificado, 13h)
 - Excluye puertas: una compuerta ferromagnética dañada saldría del blueprint para siempre, llevándose la
   compartimentación de esa sección sin que el jugador hiciera nada.
+
+# Subfase 13h — ronda B (UI y visual)
+
+## `game/src/mission/mission-runtime.ts` (modificado, 13h)
+- `doorRuntime`/`valveRuntime` construidos ANTES de la atmósfera (son sus productores de apertura); sus `queries` son
+  closures, así que no dependen del orden de construcción. El tickable de puertas va entre energía y atmósfera.
+- `projectileWorld` pasa a ser campo: el trabado magnético usa las MISMAS bobinas activas que aceleran proyectiles.
+- Resincronización de puertas construidas comparando la REFERENCIA de `placedComponents` (`Blueprint` es inmutable, el
+  `!==` es exacto y O(1)). Sin esto una compuerta instalada a mitad de misión no era puerta.
+- `queueSetValve`/`queueForceDoor`/`queueRepairDoor`. `durationScaleFor` aplica solo el multiplicador de afinidad, para
+  que `force-door` escale con `ACT.power` de la hoja concreta y no con la tabla base.
+
+## `game/src/render/walkable-grid.ts` (modificado, 13h)
+- `withDoorState(grid, isDoorBlocked)`: decora, no copia. La escena mantiene `navigationGrid` (decorada, para pathfinding
+  y bloqueo) separada de `walkableGrid` (cruda, para el ruteo estático de conductos y cables).
+
+## `game/src/render/floorplan-renderer.ts` (modificado, 13h)
+- `FloorplanLayerId` gana `"puertas"` y `"presion"`.
+- `drawDoorLayer`: una barra por hoja que se acorta con el avance de la transición — es donde se ve que la puerta tarda
+  `ACT.cadence`. También marca las válvulas cerradas EN VIVO, porque `drawConduitMarker` se dibuja una sola vez desde
+  `initialAperture` y se quedaría mostrando la apertura de fábrica.
+- `drawPressureLayer`: molde exacto de `drawEnergyLayer`; alpha escalado por distancia a lo nominal. Una sala a presión
+  nominal no se dibuja (principio 6).
+
+## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13h)
+- Variantes `conduit` (válvula: apertura, delta de presión con flecha, abrir/cerrar) y `door` (autorada). `DoorPanelInfo`
+  + `renderDoorBlock` compartido con la variante `instance`, porque una puerta construida se desmonta y se repara como
+  cualquier pieza. `overrideSource` llega hasta el panel para que el botón gris diga POR QUÉ.
+
+## `game/src/mission/mission-interaction-controller.ts` (modificado, 13h)
+- `doorInfoForInstance`/`doorInfoById`/`conduitLiveState`: el panel abierto se re-deriva del mundo vivo en cada dibujo,
+  igual que los hazards de 13d — el estado de una puerta cambia solo.
+- `conduitAtCell` redondea la posición del marcador (se autora en coordenadas fraccionales sobre la arista): sin eso un
+  conducto en (11.5, 11) no sería clickeable desde ninguna celda.
+
+## `game/src/particles/effects/conduit-flow-effect.ts` + `conduit-flow-heuristics.ts` (modificados, 13h)
+- `direction` en el estado: se apaga el SPAWN del sentido contrario, no el stream — los tokens en viaje terminan su
+  recorrido. `ventilationIntensity` lee la apertura VIVA y devuelve el sentido (de mayor a menor presión).
+
+## `engine/src/mission/coil-field-source.ts` (nuevo, 13h)
+- `coilFieldIntensityAt`: compone las funciones puras de `kinetics/` en la pregunta que faltaba — "cuánto campo hay en
+  esta celda". Las bobinas contiguas cuentan como un solo electroimán; se toma el máximo entre grupos, no la suma.

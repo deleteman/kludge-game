@@ -30,7 +30,12 @@ export type AffinityAction =
   // criterio que `analyze-substance`, GDD línea 242).
   | "transfer-substance"
   | "apply-substance"
-  | "extract-elements";
+  | "extract-elements"
+  // Subfase 13h — operar una válvula, forzar o reparar una puerta es trabajo
+  // manual del Ingeniero sobre la instalación, misma clase que las de 13d.
+  | "set-valve"
+  | "force-door"
+  | "repair-door";
 
 /** Especialidad afín a cada acción (GDD 6.6, columna "Afinidad"). */
 export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = {
@@ -53,6 +58,9 @@ export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = 
   "transfer-substance": "ingeniero",
   "apply-substance": "ingeniero",
   "extract-elements": "medico",
+  "set-valve": "ingeniero",
+  "force-door": "ingeniero",
+  "repair-door": "ingeniero",
 };
 
 /**
@@ -81,6 +89,10 @@ export const AFFINITY_DURATION_MULTIPLIER: Record<AffinityAction, Record<CrewTie
   "apply-substance": { novato: 0.9, veterano: 0.75, experto: 0.6 },
   // Fila del Médico, igual que `analyze-substance`/`stabilize`.
   "extract-elements": { novato: 0.85, veterano: 0.65, experto: 0.45 },
+  // Subfase 13h: mismos valores que el resto del trabajo manual de Ingeniero.
+  "set-valve": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "force-door": { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  "repair-door": { novato: 0.9, veterano: 0.75, experto: 0.6 },
 };
 
 /** Regla general fuera de afinidad (GDD 6.6): +20% de tiempo, sin importar el tier. */

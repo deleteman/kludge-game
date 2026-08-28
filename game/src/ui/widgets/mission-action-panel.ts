@@ -9,6 +9,11 @@ import type {
   FunctionalProperty,
   MaterialProperties,
   PlacedComponentInstanceId,
+  ConduitId,
+  DoorId,
+  DoorMode,
+  DoorOverrideSource,
+  DoorState,
 } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { LABEL_COLOR, HEADER_COLOR, CRISIS_WARNING_CSS } from "../../render/palette.js";
@@ -47,6 +52,24 @@ export interface CompositionIngredient {
   readonly hasStock?: boolean;
 }
 
+/**
+ * Estado de una puerta tal como lo necesita el panel (Subfase 13h), ya resuelto
+ * por el llamador contra el motor. El panel solo pinta: no conoce
+ * `MissionDoorRuntime` ni las reglas de gobierno, mismo criterio que con los
+ * hazards de 13d y el reservorio de 13e.
+ *
+ * `overrideSource` es el MOTIVO por el que no responde y viaja hasta acá
+ * precisamente para que el botón gris se explique en vez de solo no funcionar.
+ */
+export interface DoorPanelInfo {
+  readonly doorId: DoorId;
+  readonly state: DoorState;
+  readonly mode: DoorMode;
+  readonly overrideSource?: DoorOverrideSource;
+  /** Fracción de vida restante [0,1] — el jugador no ve el número, igual que con el casco. */
+  readonly integrity: number;
+}
+
 export type ActionPanelContent =
   | { readonly kind: "idle" }
   | {
@@ -83,6 +106,39 @@ export type ActionPanelContent =
       readonly fabricatorBlocked?: "execution";
       /** Ver `BreachPanelInfo` — la pieza está tapando (o no) una brecha de casco. */
       readonly breach?: BreachPanelInfo;
+      /**
+       * La pieza ES una puerta (Subfase 13h): un `ACT`+`EST` instalado sobre un
+       * umbral. El bloque de puerta se pinta dentro de la variante `instance`
+       * porque desmontarla, cortarle la energía o repararla son acciones sobre
+       * la misma pieza — no un panel aparte.
+       */
+      readonly door?: DoorPanelInfo;
+    }
+  /**
+   * Un CONDUCTO de ventilación seleccionado (Subfase 13h). Variante propia y no
+   * un caso de `instance` porque un conducto no es una pieza instalada: no se
+   * desmonta, no se repara, no tiene condición. Lo único que se hace con él es
+   * abrir o cerrar su válvula.
+   */
+  | {
+      readonly kind: "conduit";
+      readonly conduitId: ConduitId;
+      readonly name: string;
+      /** Apertura viva en [0,1]. */
+      readonly aperture: number;
+      /** Presión de cada lado, ya resuelta por el llamador — es lo que dice hacia dónde va el aire. */
+      readonly pressureA: number;
+      readonly pressureB: number;
+    }
+  /**
+   * Una puerta AUTORADA en el plano (Subfase 13h): parte del casco, sin
+   * instancia de catálogo detrás. Comparte el bloque de acciones con la
+   * variante `instance` vía `DoorPanelInfo`, pero no ofrece desmontar.
+   */
+  | {
+      readonly kind: "door";
+      readonly name: string;
+      readonly door: DoorPanelInfo;
     }
   // Sin variante para la celda VACÍA (13f ronda 4): desde que la ronda 3 le
   // quitó "Instalar aquí" no le quedaba ninguna acción, y un panel flotante que
@@ -215,6 +271,17 @@ export interface ActionPanelLabels {
   readonly openFabricator: (domain: FabricatorDomain) => string;
   /** Mismo botón, deshabilitado por estar en ejecución (13e ronda 2): la mesa exige pausa. */
   readonly openFabricatorBlocked: (domain: FabricatorDomain) => string;
+  /** Subfase 13h — puertas y válvulas. */
+  readonly doorState: (state: DoorState) => string;
+  /** Motivo por el que la puerta no responde, para que el botón gris lo diga. */
+  readonly doorBlocked: (source: DoorOverrideSource) => string;
+  readonly forceDoor: string;
+  readonly repairDoor: string;
+  /** Estado de la válvula y su acción, con el verbo que corresponde a lo que va a pasar. */
+  readonly valveState: (aperture: number) => string;
+  readonly setValve: (opening: boolean) => string;
+  /** Diferencia de presión entre los dos lados — es lo que dice si vale la pena cerrar. */
+  readonly conduitPressure: (a: number, b: number) => string;
   /** "Cerrar" (deselección manual, fix de playtest 11e — ver doc de la función). */
   readonly close: string;
 }
@@ -246,6 +313,10 @@ export interface ActionPanelCallbacks {
    * decide si esa posición sobrevive a un rebuild o se resetea.
    */
   readonly onPanelDragged?: (x: number, y: number) => void;
+  /** Subfase 13h — encolan las tres tareas nuevas sobre la puerta/conducto seleccionado. */
+  readonly onForceDoor: (doorId: DoorId) => void;
+  readonly onRepairDoor: (doorId: DoorId) => void;
+  readonly onSetValve: (conduitId: ConduitId, targetAperture: number) => void;
 }
 
 /**
@@ -262,6 +333,83 @@ export interface ActionPanelCallbacks {
  * estado — vuelve el panel a `idle` (que ahora significa "sin panel
  * montado", ver el controller).
  */
+/**
+ * Bloque de acciones de una puerta (Subfase 13h). Compartido entre la variante
+ * `instance` (puerta construida por el jugador) y `door` (autorada en el
+ * plano): las dos ofrecen lo mismo — decir en qué estado está, por qué no
+ * responde si no responde, forzarla y repararla.
+ *
+ * Devuelve el nuevo cursor vertical, mismo contrato que el resto del flujo
+ * apilado del panel (13d ronda 2: se mide la altura REAL, no se suman
+ * constantes, porque el alto de un texto envuelto depende del idioma).
+ */
+function renderDoorBlock(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  door: DoorPanelInfo,
+  layout: { readonly width: number; readonly cursorY: number; readonly hasSelectedActor: boolean },
+  labels: ActionPanelLabels,
+  callbacks: ActionPanelCallbacks,
+): number {
+  const { width, hasSelectedActor } = layout;
+  let cursorY = layout.cursorY;
+  const broken = door.state === "destroyed";
+  const stuck = door.state === "jammed" || door.overrideSource === "unpowered";
+
+  const stateText = scene.add
+    .text(width / 2, cursorY, labels.doorState(door.state), {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "11px",
+      color: broken || stuck ? CRISIS_WARNING_CSS : LABEL_COLOR,
+      align: "center",
+      wordWrap: { width: width - 20, useAdvancedWrap: true },
+    })
+    .setOrigin(0.5, 0);
+  container.add(stateText);
+  cursorY += stateText.height + 4;
+
+  // El MOTIVO, no solo el hecho. Una puerta que no responde y no dice por qué
+  // se lee como un bug; con el motivo se lee como un problema que el jugador
+  // puede ir a resolver (devolverle la energía, apagar el electroimán).
+  if (door.mode === "override" && door.overrideSource) {
+    const reasonText = scene.add
+      .text(width / 2, cursorY, `⚠ ${labels.doorBlocked(door.overrideSource)}`, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: CRISIS_WARNING_CSS,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(reasonText);
+    cursorY += reasonText.height + 6;
+  }
+
+  const stack = (label: string, enabled: boolean, onClick: () => void): void => {
+    container.add(
+      createKenneyButton(scene, width / 2, cursorY + 15, label, {
+        width: width - 40,
+        height: 30,
+        fontSize: "11px",
+        enabled,
+        onClick,
+      }),
+    );
+    cursorY += 36;
+  };
+
+  // Forzar solo tiene sentido con la hoja quieta y entera: una puerta rota ya
+  // está abierta de par en par, y una que funciona se abre sola al acercarse.
+  stack(labels.forceDoor, hasSelectedActor && stuck && !broken, () => callbacks.onForceDoor(door.doorId));
+  stack(
+    labels.repairDoor,
+    hasSelectedActor && (broken || door.integrity < 1),
+    () => callbacks.onRepairDoor(door.doorId),
+  );
+
+  return cursorY;
+}
+
 /** Clave de `container.getData()` con el alto realmente ocupado por el panel. */
 export const ACTION_PANEL_HEIGHT_KEY = "panelHeight";
 
@@ -305,7 +453,8 @@ export function renderMissionActionPanel(
   const title =
     content.kind === "instance"
       ? labels.instanceTitle(content.name, content.condition)
-      : content.kind === "substance"
+      : // Subfase 13h: conducto y puerta autorada ya traen su nombre resuelto.
+        content.kind === "conduit" || content.kind === "door" || content.kind === "substance"
         ? content.name
         : content.kind === "substances-list"
           ? labels.substancesTitle
@@ -605,6 +754,75 @@ export function renderMissionActionPanel(
       cursorY += hint.height + 6;
       claim(cursorY);
     }
+
+    // Subfase 13h — la pieza es una puerta (un `ACT`+`EST` sobre un umbral).
+    // Va al final del bloque de instancia: primero lo que se hace con la pieza
+    // como pieza, después lo que se hace con ella como puerta.
+    if (content.door) {
+      cursorY = renderDoorBlock(
+        scene,
+        container,
+        content.door,
+        { width, cursorY, hasSelectedActor },
+        labels,
+        callbacks,
+      );
+      claim(cursorY);
+    }
+  } else if (content.kind === "door") {
+    // Puerta AUTORADA: parte del casco, sin pieza detrás. Mismo bloque de
+    // acciones, sin desmontar ni purgar — no hay nada que canibalizar.
+    flowY = renderDoorBlock(
+      scene,
+      container,
+      content.door,
+      { width, cursorY: flowY, hasSelectedActor },
+      labels,
+      callbacks,
+    );
+    claim(flowY);
+  } else if (content.kind === "conduit") {
+    const conduit = content;
+    const openness = conduit.aperture;
+    const stateText = scene.add
+      .text(width / 2, flowY, labels.valveState(openness), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "11px",
+        color: openness <= 0 ? CRISIS_WARNING_CSS : LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(stateText);
+    flowY += stateText.height + 4;
+
+    // El delta de presión es lo que dice si vale la pena cerrar: sin él, el
+    // jugador tiene que ir sala por sala con el tooltip para descubrir por
+    // dónde se le está yendo el aire.
+    const pressureText = scene.add
+      .text(width / 2, flowY, labels.conduitPressure(conduit.pressureA, conduit.pressureB), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(pressureText);
+    flowY += pressureText.height + 8;
+
+    const opening = openness <= 0;
+    container.add(
+      createKenneyButton(scene, width / 2, flowY + 15, labels.setValve(opening), {
+        width: width - 40,
+        height: 30,
+        fontSize: "11px",
+        enabled: hasSelectedActor,
+        onClick: () => callbacks.onSetValve(conduit.conduitId, opening ? 1 : 0),
+      }),
+    );
+    flowY += 36;
+    claim(flowY);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá
     // los valores exactos de riesgo (radio de combustión, segundos por nivel

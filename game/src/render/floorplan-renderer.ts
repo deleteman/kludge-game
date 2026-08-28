@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { CONDUIT_KINDS, GRID_CELL_SIZE_PX } from "engine";
 import type {
+  DoorRuntime,
   ConduitConnection,
   ConduitKind,
   FloorplanSection,
@@ -26,6 +27,10 @@ import {
   STRUCTURAL_LAYER_ALPHA,
   STRUCTURAL_LAYER_COLOR,
   WALL_COLOR,
+  DOOR_STATE_COLOR,
+  DOOR_LAYER_ALPHA,
+  PRESSURE_LAYER_COLOR,
+  PRESSURE_LAYER_ALPHA,
 } from "./palette.js";
 
 /**
@@ -34,8 +39,15 @@ import {
  * agregado, `drawStructuralLayer`) + `"energia"` (Fase 13b, heatmap de
  * demanda vs. suministro del presupuesto de energía, `drawEnergyLayer`).
  */
-export type FloorplanLayerId = ConduitKind | "estructural" | "energia";
-export const FLOORPLAN_LAYER_IDS: readonly FloorplanLayerId[] = [...CONDUIT_KINDS, "estructural", "energia"];
+export type FloorplanLayerId = ConduitKind | "estructural" | "energia" | "puertas" | "presion";
+export const FLOORPLAN_LAYER_IDS: readonly FloorplanLayerId[] = [
+  ...CONDUIT_KINDS,
+  "estructural",
+  "energia",
+  // Subfase 13h: estado de las puertas y heatmap de presión por sección.
+  "puertas",
+  "presion",
+];
 
 /**
  * Render del plano físico: tile layers reales (Fase 8, `tile-layers.ts`)
@@ -262,6 +274,131 @@ export function drawEnergyLayer(
     }
   }
 }
+
+/**
+ * Capa "puertas" del HUD del plano (Subfase 13h): una barra por puerta,
+ * coloreada por el estado de la hoja y orientada según el eje que bloquea.
+ *
+ * Se redibuja por tick como `drawStructuralLayer`/`drawEnergyLayer` y no una
+ * sola vez en `renderFloorplan`: el estado de una puerta cambia varias veces
+ * por minuto, a diferencia de los conductos, que son estáticos.
+ *
+ * Durante `opening`/`closing` la barra se ACORTA proporcionalmente al avance de
+ * la transición: es lo que hace visible que la hoja tarda `ACT.cadence` en
+ * moverse, en vez de que ese tiempo solo exista en la simulación.
+ */
+export function drawDoorLayer(
+  graphics: Phaser.GameObjects.Graphics,
+  doors: readonly DoorRuntime[],
+  transitionSecondsOf: (door: DoorRuntime) => number,
+  /**
+   * Conductos de ventilación con la válvula CERRADA ahora mismo. Van en esta
+   * capa y no junto a la línea estática del conducto porque la apertura dejó de
+   * ser un dato del plano: el marcador de `drawConduitMarker` se dibuja una
+   * sola vez desde `initialAperture` y se quedaría mostrando la apertura de
+   * fábrica después de que el jugador mande a cerrar la válvula.
+   */
+  closedValves: readonly ConduitConnection[] = [],
+): void {
+  graphics.clear();
+  for (const door of doors) {
+    const color = doorLayerColor(door);
+    // Una puerta abierta ocupa menos hoja que una cerrada: el ancho de la barra
+    // ES la lectura de cuánto tapa.
+    const openness = doorOpenness(door, transitionSecondsOf(door));
+    graphics.fillStyle(color, DOOR_LAYER_ALPHA);
+    for (const cell of door.cells) {
+      const thickness = Math.max(2, CELL * 0.28 * (1 - openness));
+      if (thickness <= 2 && openness > 0.95) {
+        // Del todo abierta: solo los dos jambajes, para que el umbral siga
+        // siendo legible como puerta y no desaparezca del plano.
+        graphics.fillRect(cell.x * CELL, cell.y * CELL, 3, CELL);
+        graphics.fillRect((cell.x + 1) * CELL - 3, cell.y * CELL, 3, CELL);
+        continue;
+      }
+      graphics.fillRect(
+        cell.x * CELL,
+        cell.y * CELL + (CELL - thickness) / 2,
+        CELL,
+        thickness,
+      );
+    }
+  }
+
+  // Válvula cerrada: misma cruz que `drawConduitMarker` usa para la sellada de
+  // fábrica — es el mismo hecho, así que se lee igual (principio 6 al revés:
+  // dos fenómenos IGUALES no deben verse distinto).
+  for (const conduit of closedValves) {
+    const px = conduit.position.x * CELL;
+    const py = conduit.position.y * CELL;
+    graphics.lineStyle(2, DOOR_STATE_COLOR.closed, DOOR_LAYER_ALPHA);
+    graphics.strokeCircle(px, py, 7);
+    graphics.lineBetween(px - 5, py - 5, px + 5, py + 5);
+    graphics.lineBetween(px - 5, py + 5, px + 5, py - 5);
+  }
+}
+
+function doorLayerColor(door: DoorRuntime): number {
+  if (door.state === "destroyed") return DOOR_STATE_COLOR.destroyed;
+  if (door.overrideSource === "unpowered") return DOOR_STATE_COLOR.unpowered;
+  if (door.state === "jammed") return DOOR_STATE_COLOR.jammed;
+  return door.state === "open" ? DOOR_STATE_COLOR.open : DOOR_STATE_COLOR.closed;
+}
+
+/** 0 = hoja completamente cerrada, 1 = del todo abierta. Interpola en la transición. */
+function doorOpenness(door: DoorRuntime, transitionSeconds: number): number {
+  const progress =
+    transitionSeconds > 0
+      ? Math.max(0, Math.min(1, door.transitionElapsedSeconds / transitionSeconds))
+      : 1;
+  switch (door.state) {
+    case "open":
+    case "destroyed":
+      return 1;
+    case "closed":
+    case "jammed":
+      return 0;
+    case "opening":
+      return progress;
+    case "closing":
+      return 1 - progress;
+  }
+}
+
+/**
+ * Capa "presion" del HUD del plano (Subfase 13h): heatmap de presión por
+ * sección. Molde exacto de `drawEnergyLayer` — una sala a presión nominal no
+ * se dibuja (principio 6: lo nominal no compite visualmente).
+ *
+ * Existe porque hasta 13h la presión de una sala solo se leía en el tooltip, de
+ * a una por vez: con la nave compartimentada, "qué sala se está vaciando" es
+ * justo la pregunta que el jugador necesita responder de un vistazo.
+ */
+export function drawPressureLayer(
+  graphics: Phaser.GameObjects.Graphics,
+  floorplan: ShipFloorplan,
+  pressureKpaOf: (sectionId: SectionId) => number | undefined,
+): void {
+  graphics.clear();
+  for (const section of floorplan.sections) {
+    const pressure = pressureKpaOf(section.id);
+    if (pressure === undefined || pressure >= PRESSURE_LAYER_NOMINAL_KPA) continue;
+    const color =
+      pressure <= PRESSURE_LAYER_VACUUM_KPA ? PRESSURE_LAYER_COLOR.vacuum : PRESSURE_LAYER_COLOR.low;
+    // El alpha escala con lo lejos que está de lo nominal: una sala que acaba de
+    // empezar a perder se distingue de una ya casi vacía.
+    const severity = 1 - pressure / PRESSURE_LAYER_NOMINAL_KPA;
+    graphics.fillStyle(color, PRESSURE_LAYER_ALPHA * Math.max(0.35, severity));
+    for (const cell of section.cells) {
+      graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
+    }
+  }
+}
+
+/** Presión (kPa) a partir de la cual una sala se considera nominal y no se pinta. */
+const PRESSURE_LAYER_NOMINAL_KPA = 95;
+/** Por debajo de esto la sala se lee como vacío letal, no como "perdiendo presión". */
+const PRESSURE_LAYER_VACUUM_KPA = 30;
 
 /** Centro en celdas del bounding box de una sección (Fase 11b: posición de partículas state-driven por sección). */
 export function sectionCentroidCell(section: FloorplanSection): GridPosition {

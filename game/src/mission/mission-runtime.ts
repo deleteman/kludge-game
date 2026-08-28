@@ -59,6 +59,10 @@ import {
   consumeElements,
   contentOf,
   createShipTaskEffect,
+  coilFieldIntensityAt,
+  composeApertureSources,
+  MissionDoorRuntime,
+  ValveRuntime,
   DEFAULT_WEAR,
   elementsPerUnit,
   extractionBlockedReason,
@@ -85,6 +89,7 @@ import {
   MapEntityRegistry,
   GAS,
 } from "engine";
+import type { ConduitId, DoorDomainEvent, DoorId, DoorRuntime, PlacedComponentInstance } from "engine";
 import type {
   ComponentWear,
   CellBlockedQuery,
@@ -180,7 +185,11 @@ type ModulatedTaskType =
   // Subfase 13e — ciclo de vida de una sustancia.
   | "transfer-substance"
   | "apply-substance"
-  | "extract-elements";
+  | "extract-elements"
+  // Subfase 13h — operar la nave como compartimentos.
+  | "set-valve"
+  | "force-door"
+  | "repair-door";
 
 /**
  * Orquestador de una misión en curso (Fase 10d) — el equivalente en `/game` de
@@ -240,6 +249,12 @@ export class MissionRuntime {
   /** Proyectiles ferromagnéticos sueltos sobre el plano (Fase 11a). */
   readonly projectiles: ProjectileSimulation;
   /**
+   * Adaptador del mundo para la cinética. Guardado como campo desde 13h: la
+   * regla de trabado magnético de puertas necesita las MISMAS bobinas activas
+   * que aceleran proyectiles, no una segunda lectura que podría discrepar.
+   */
+  private readonly projectileWorld: MissionProjectileWorld;
+  /**
    * Promueve piezas ferromagnéticas SUELTAS (instaladas con el flujo normal
    * de siempre) a proyectil en cuanto no son ellas mismas un electroimán
    * activo (Fase 11a.3, ASA 3 — efecto emergente, no un verbo nuevo de
@@ -260,6 +275,18 @@ export class MissionRuntime {
   readonly sectionIntegrityRuntime: MissionSectionIntegrityRuntime;
   /** Peligro atmosférico sobre la tripulación (Subfase 13f, deuda #16) — primer llamador de `HazardAccumulator`. */
   readonly hazardRuntime: MissionHazardRuntime;
+  /** Puertas vivas (Subfase 13h) — la nave está compartimentada por defecto. */
+  readonly doorRuntime: MissionDoorRuntime;
+  /** Última lista de instalaciones con la que se sincronizaron las puertas (13h) — ver el tickable del core loop. */
+  private lastSyncedPlacedComponents?: ReadonlyArray<PlacedComponentInstance>;
+  /** Cadencia de la hoja, para que la barra de la capa visual interpole con el mismo número que la simulación. */
+  doorTransitionSeconds(door: DoorRuntime): number {
+    return this.doorRuntime.transitionSecondsOf(door.id);
+  }
+  /** Apertura viva de las válvulas de ventilación (Subfase 13h). */
+  readonly valveRuntime: ValveRuntime;
+  /** Eventos de puerta (Subfase 13h) — `/game` los pinta y los suena. */
+  readonly doorEvents = new EventEmitter<DoorDomainEvent>();
   /** Estado agregado a nivel de nave (Subfase 11g) — consultado por el HUD permanente de `/game`. */
   private readonly shipStatusQuery: ShipStatusQuery;
   /** Eventos de fallo estructural (degradado/fallo, Fase 11b) — `/game` los pinta. */
@@ -437,8 +464,11 @@ export class MissionRuntime {
     this.chemicalRegistry = chemicalCatalog.registry;
     this.chemicalFactory = chemicalCatalog.factory;
     this.reactionResolver = new ReactionResolver({ namedRecipeIndex: chemicalCatalog.namedRecipeIndex });
-    this.projectiles = new ProjectileSimulation(
-      new MissionProjectileWorld(this.shipState, this.signalRuntime, this.componentRegistry, {
+    this.projectileWorld = new MissionProjectileWorld(
+      this.shipState,
+      this.signalRuntime,
+      this.componentRegistry,
+      {
         crew: this.crewState,
         enemies: this.enemyState,
         // Subfase 13f: el proyectil frena contra las paredes del tilemap y
@@ -447,9 +477,9 @@ export class MissionRuntime {
         // `setMotionBlockedQuery` posterior de la escena también lo alcance.
         blocked: { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
         gridSize: this.shipFloorplan.gridSize,
-      }),
-      this.kineticEvents,
+      },
     );
+    this.projectiles = new ProjectileSimulation(this.projectileWorld, this.kineticEvents);
     this.enemyThreatRuntime = new EnemyThreatRuntime({
       enemies: this.enemyState,
       // Un enemigo sembrado sin ruta registrada en `enemyRoutes` simplemente no
@@ -460,12 +490,62 @@ export class MissionRuntime {
       componentRegistry: this.componentRegistry,
       enemyEmitter: this.enemyEvents,
       crewEmitter: this.crewEvents,
+      // Subfase 13h: una puerta cerrada frena al intruso y él la golpea hasta
+      // romperla. La consulta es la MISMA que usan paso y proyectiles.
+      doorBlocking: (cell) => this.doorRuntime.doorAt(cell)?.id,
+      damageDoor: (doorId, amount, elapsedSeconds) =>
+        this.doorRuntime.applyDamage(doorId, amount, elapsedSeconds),
     });
     this.loosePromoter = new LooseFerromagneticPromoter(
       this.shipState,
       this.projectiles,
       this.componentRegistry,
     );
+    // Subfase 13h: puertas y válvulas. Van ANTES de la atmósfera porque son sus
+    // dos productores de apertura, y sus `queries` son closures — así que pueden
+    // preguntar por runtimes que se construyen más abajo sin depender del orden.
+    this.valveRuntime = new ValveRuntime(this.shipFloorplan, save.shipState.valveApertures);
+    this.doorRuntime = new MissionDoorRuntime({
+      floorplan: this.shipFloorplan,
+      snapshots: save.shipState.doorStates,
+      emitter: (event) => this.doorEvents.emit(event),
+      resolveDefinition: (id) => this.componentRegistry.get(id),
+      queries: {
+        // Tripulación Y enemigos: la puerta no distingue quién se acerca, y por
+        // eso trabarla es una decisión táctica en vez de un detalle.
+        occupiedCells: () => [
+          ...this.crewState.all().flatMap((actor) => (actor.currentCell ? [actor.currentCell] : [])),
+          ...this.enemyState.all().flatMap((enemy) => (enemy.status === "defeated" ? [] : [enemy.cell])),
+        ],
+        crewAt: (cell) =>
+          this.crewState
+            .all()
+            .find((actor) => actor.currentCell?.x === cell.x && actor.currentCell?.y === cell.y)?.id,
+        // Una puerta construida es cableable porque su `ACT` deriva un nodo
+        // receptor (13h). Las autoradas en Tiled no tienen instancia detrás y
+        // devuelven `undefined` = sin cable, que NO es lo mismo que `false`.
+        signalOutput: (door) => {
+          if (!door.instanceId) {
+            return undefined;
+          }
+          const node = this.blueprint.signalGraph.nodes.find(
+            (candidate) => candidate.ownerRef === door.instanceId && candidate.role === "receptor",
+          );
+          if (!node) {
+            return undefined;
+          }
+          const wired = this.blueprint.signalGraph.edges.some((edge) => edge.to === node.id);
+          return wired ? this.signalRuntime.outputOf(node.id) : undefined;
+        },
+        // UNIÓN de la cicatriz permanente y el déficit vivo del tick (13b). No
+        // `isInstancePowered`, que da `true` para todo mientras nadie declare
+        // `powerDraw` — ver `instance-energized.ts`.
+        powered: (sectionId) =>
+          !this.powerRuntime.unpoweredSections().has(sectionId) &&
+          !this.powerRuntime.sectionHasNoPowerGranted(sectionId),
+        magneticFieldAt: (cell) => coilFieldIntensityAt(this.projectileWorld.activeCoils(), cell),
+      },
+    });
     this.atmosphereRuntime = new MissionAtmosphereRuntime(
       this.shipFloorplan,
       save.shipState.sectionAtmospheres,
@@ -502,6 +582,13 @@ export class MissionRuntime {
       // Subfase 13f: una sección brechada llega al VACÍO; el resto conserva el
       // piso de 40 kPa de 11h.
       (sectionId) => this.sectionIntegrityRuntime.pressureFloorFor(sectionId),
+      // Subfase 13h: válvulas + puertas. Se COMPONEN (no se pisan) porque son
+      // caminos distintos para el aire entre el mismo par de secciones —
+      // cerrar la puerta no cierra el ducto.
+      composeApertureSources(
+        () => this.valveRuntime.effectiveConnections(),
+        this.doorRuntime.apertureSource(),
+      ),
     );
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
@@ -603,6 +690,13 @@ export class MissionRuntime {
           // Función y no objeto: se consulta en CADA ejecución de tarea, para
           // que analizar una sustancia a mitad de misión cuente de inmediato.
           composition: () => this.substanceCompositionContext(),
+        },
+        // Subfase 13h: `set-valve`/`force-door`/`repair-door` escriben en los
+        // runtimes vivos, no en el blueprint — al blueprint bajan al guardar.
+        {
+          valves: this.valveRuntime,
+          doors: this.doorRuntime,
+          elapsedSecondsOf: () => this.lastElapsedSeconds,
         },
       ),
     });
@@ -731,6 +825,12 @@ export class MissionRuntime {
     // esperar al primer tick de ejecución (que en pausa no llega nunca).
     this.powerRuntime.recalculate();
 
+    // Subfase 13h: alta inicial de las puertas CONSTRUIDAS (una `ACT`+`EST`
+    // sembrada sobre un umbral ya es una puerta antes del primer tick), mismo
+    // criterio de pasada síncrona que las dos de arriba.
+    this.lastSyncedPlacedComponents = this.blueprint.placedComponents;
+    this.doorRuntime.syncInstalledDoors(this.lastSyncedPlacedComponents);
+
     // Pasada síncrona (Fase 11a.3), mismo criterio que `crisisRuntime.tick`
     // arriba: promueve piezas ferromagnéticas sueltas que ya vinieran en el
     // `Blueprint` inicial de la nave/capítulo, sin esperar al primer tick de
@@ -747,6 +847,17 @@ export class MissionRuntime {
       tick: (ctx) => {
         this.lastElapsedSeconds = ctx.elapsedSeconds;
         this.leakSink.advanceTo(ctx.elapsedSeconds);
+        // Subfase 13h: una compuerta instalada a mitad de misión tiene que
+        // pasar a ser puerta, y una desmontada dejar de serlo. Se compara la
+        // REFERENCIA del array: `Blueprint` es inmutable, así que cambia solo
+        // cuando alguien lo mutó de verdad. Redescubrir umbrales cada tick
+        // sería recorrer instalaciones × secciones × celdas sobre datos que
+        // casi nunca cambian.
+        const placed = this.shipState.get().placedComponents;
+        if (placed !== this.lastSyncedPlacedComponents) {
+          this.lastSyncedPlacedComponents = placed;
+          this.doorRuntime.syncInstalledDoors(placed);
+        }
       },
     });
     this.coreLoop.registerTickable(this.scheduler);
@@ -760,6 +871,11 @@ export class MissionRuntime {
     // señales lean `unpoweredSections()`/`isInstancePowered()` este mismo
     // tick — mismo criterio que atmósfera→estructura más abajo.
     this.coreLoop.registerTickable(this.powerRuntime);
+    // Subfase 13h: las puertas se gobiernan DESPUÉS de la energía (leen si su
+    // sección tiene suministro este tick) y ANTES de la atmósfera, para que la
+    // apertura que la difusión consume sea la de este tick y no la del
+    // anterior. Es el mismo criterio de orden que energía→señales.
+    this.coreLoop.registerTickable(this.doorRuntime);
     // Fase 11a: señales vivas + promoción de piezas sueltas + proyectiles. El
     // orden importa — las señales se evalúan ANTES que los proyectiles para
     // que una bobina que se energiza en este tick ya pulse en este tick, y no
@@ -906,6 +1022,23 @@ export class MissionRuntime {
       return base;
     }
     return base * durationMultiplierFor(action, actor.specialty, actor.tier);
+  }
+
+  /**
+   * Solo el MULTIPLICADOR de afinidad, sin la duración base (Subfase 13h).
+   *
+   * Existe porque `force-door` no saca su duración de la tabla base: la saca del
+   * motor, que la deriva de `ACT.power` de la hoja concreta. La afinidad del
+   * tripulante sigue aplicando igual, pero sobre ese número y no sobre el de la
+   * tabla — si no, un experto forzaría una compuerta blindada en el mismo
+   * tiempo que un panel liviano.
+   */
+  private durationScaleFor(action: ModulatedTaskType, actorId: CrewActorId): number {
+    const actor = this.activeCrew.find((entry) => entry.id === actorId);
+    if (!actor) {
+      return 1;
+    }
+    return durationMultiplierFor(action, actor.specialty, actor.tier);
   }
 
   /**
@@ -1094,6 +1227,79 @@ export class MissionRuntime {
         targetSectionId: sectionId,
         payload: { kind: "cut-power", sectionId },
         estimatedDurationSeconds: this.modulatedDuration("cut-power", actorId),
+      }),
+    );
+  }
+
+  /**
+   * "Operar válvula" (13h, GDD §5.5): abrir o cerrar la válvula de un conducto
+   * de ventilación para contener una fuga o drenar el O2 de una sección.
+   *
+   * El tripulante VA hasta el conducto: nada en este juego cambia el estado
+   * físico de la nave sin que alguien lo haga, y el tiempo que cuesta llegar es
+   * justo lo que convierte "contener la fuga" en una decisión.
+   */
+  queueSetValve(actorId: CrewActorId, conduitId: ConduitId, targetAperture: number): void {
+    const conduit = this.shipFloorplan.conduits.find((entry) => entry.id === conduitId);
+    if (!conduit) {
+      return;
+    }
+    // Se opera desde el lado del conducto donde ya esté (o pueda llegar) el
+    // tripulante; `a` es la sección de referencia, igual que en el resto de las
+    // tareas con dos lados.
+    this.ensureAt(actorId, conduit.a);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "set-valve",
+        targetSectionId: conduit.a,
+        payload: { kind: "set-valve", conduitId, targetAperture, sectionId: conduit.a },
+        estimatedDurationSeconds: this.modulatedDuration("set-valve", actorId),
+      }),
+    );
+  }
+
+  /**
+   * "Forzar puerta" (13h): abrir a mano una puerta sin motor. La duración sale
+   * de `MissionDoorRuntime.forceDurationSeconds` —escala con `ACT.power`— y no
+   * de la tabla base: forzar una compuerta blindada no cuesta lo mismo que
+   * forzar un panel liviano, y ese número lo sabe el motor.
+   */
+  queueForceDoor(actorId: CrewActorId, doorId: DoorId): void {
+    const door = this.doorRuntime.doorById(doorId);
+    if (!door) {
+      return;
+    }
+    this.ensureAt(actorId, door.a);
+    const base = this.doorRuntime.forceDurationSeconds(doorId);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "force-door",
+        targetSectionId: door.a,
+        payload: { kind: "force-door", doorId, sectionId: door.a },
+        estimatedDurationSeconds: base * this.durationScaleFor("force-door", actorId),
+      }),
+    );
+  }
+
+  /** "Reparar puerta" (13h): devuelve al servicio una hoja rota o trabada por daño. */
+  queueRepairDoor(actorId: CrewActorId, doorId: DoorId): void {
+    const door = this.doorRuntime.doorById(doorId);
+    if (!door) {
+      return;
+    }
+    this.ensureAt(actorId, door.a);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "repair-door",
+        targetSectionId: door.a,
+        payload: { kind: "repair-door", doorId, sectionId: door.a },
+        estimatedDurationSeconds: this.modulatedDuration("repair-door", actorId),
       }),
     );
   }
@@ -2119,6 +2325,11 @@ export class MissionRuntime {
         // Subfase 13f: la cicatriz estructural viaja con el guardado, igual
         // que la atmósfera. Sin esto, cargar la partida "reparaba" la nave.
         sectionIntegrity: this.sectionIntegrityRuntime.toSnapshots(),
+        // Subfase 13h: una puerta que el jugador dejó cerrada (o que un intruso
+        // rompió) sigue así al recargar; sin esto el aislamiento deliberado se
+        // deshacía solo.
+        doorStates: this.doorRuntime.toSnapshots(),
+        valveApertures: this.valveRuntime.toSnapshots(),
       },
       crew: updatedCrew,
       atomicStock: this.atomicStock.get(),

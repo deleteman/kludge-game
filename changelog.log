@@ -5099,3 +5099,55 @@ SUITE: 963 → 1000 en `/engine` (68 sin cambios en `/game`). `tsc --noEmit` y `
 
 PENDIENTE (Ronda B, tras playtest): capa visual `puertas`, panel de acciones de conducto/puerta, encolado de
 las tres tareas desde `/game`, flujo direccional de partículas y overlay de presión por sección.
+
+================================================================================
+2026-08-28 — SUBFASE 13h RONDA B: Puertas y compartimentación (UI y visual)
+================================================================================
+QUÉ: la compartimentación de la ronda A se vuelve jugable — se ve, se opera y se guarda.
+
+RAZÓN: la ronda A dejó el motor completo pero nada de eso era verificable con las manos: las puertas
+bloqueaban y compartimentaban sin dibujarse, y las tres tareas nuevas no tenían forma de encolarse.
+
+CAMBIOS:
+* **Cableado del motor en `/game`.** `MissionDoorRuntime` + `ValveRuntime` se construyen ANTES de la
+  atmósfera (son sus dos productores de apertura) y sus `queries` son closures, así que preguntan por
+  runtimes que se construyen más abajo sin depender del orden. El tickable de puertas va DESPUÉS de energía
+  (lee si su sección tiene suministro este tick) y ANTES de atmósfera (para que la difusión consuma la
+  apertura de este tick y no la del anterior).
+* **`MissionProjectileWorld` pasa a ser campo.** La regla de trabado magnético necesita las MISMAS bobinas
+  activas que aceleran proyectiles; una segunda lectura podría discrepar. `coilFieldIntensityAt` (nuevo en
+  `/engine`) compone las funciones puras de `kinetics/` en la pregunta que faltaba: "cuánto campo hay AQUÍ".
+* **Grid de NAVEGACIÓN aparte del de render.** `withDoorState` decora (no copia) el snapshot inmutable del
+  tilemap. Es un grid distinto de `walkableGrid` a propósito: ese lo consume el ruteo estático de conductos
+  y cables, y un conducto no debería redibujarse porque alguien cerró una puerta. Pathfinding, línea de
+  visión y proyectiles leen los tres el mismo grid decorado.
+* **Resincronización de puertas construidas por REFERENCIA de `placedComponents`.** `Blueprint` es inmutable,
+  así que el `!==` es exacto y O(1); redescubrir umbrales cada tick sería recorrer instalaciones × secciones
+  × celdas sobre datos que casi nunca cambian. Sin esto, una compuerta instalada a mitad de misión no era
+  puerta.
+* **Capas `puertas` y `presion`.** La de puertas dibuja una barra por hoja que se ACORTA con el avance de la
+  transición — es donde se ve que la puerta tarda `ACT.cadence`, en vez de que ese tiempo solo exista en la
+  simulación. También marca las válvulas cerradas EN VIVO: el marcador de `drawConduitMarker` se dibuja una
+  sola vez desde `initialAperture` y se quedaría mostrando la apertura de fábrica. La de presión es el molde
+  exacto del heatmap de energía de 13b, con alpha escalado por lo lejos que está de lo nominal.
+* **Sprite de puerta.** El frame de catálogo es solo "cerrada": abrir se resuelve desvaneciendo el sprite con
+  la MISMA cadencia que usa la simulación. No se baja a alpha 0 — una puerta abierta tiene que seguir
+  leyéndose como puerta. El tinte por estado va en la capa y no en el sprite, para no pelear con
+  `applyLightShading` (12d).
+* **Panel de acciones: variantes `conduit` y `door`.** La puerta construida usa el bloque dentro de
+  `instance` (desmontarla y repararla son acciones sobre la misma pieza); la autorada tiene variante propia.
+  `DoorPanelInfo.overrideSource` lleva el MOTIVO: una puerta que no responde y no dice por qué se lee como
+  un bug. El conducto muestra el delta de presión con su flecha — sin eso el jugador tiene que ir sala por
+  sala con el tooltip para descubrir por dónde se le va el aire. Hit-test de conducto por celda REDONDEADA
+  (el marcador se autora en coordenadas fraccionales sobre la arista).
+* **Flujo direccional.** `ConduitPathFlowState.direction`: se apaga el SPAWN del sentido contrario, no el
+  stream — los tokens en viaje terminan su recorrido, mismo motivo por el que la velocidad se fija al spawn.
+  `ventilationIntensity` pasa a leer la apertura VIVA en vez de `initialAperture`.
+* **Tareas encolables** `queueSetValve`/`queueForceDoor`/`queueRepairDoor`, con afinidad de Ingeniero.
+  `force-door` NO saca su duración de la tabla base: la saca del motor (escala con `ACT.power` de esa hoja) y
+  la afinidad se aplica sobre ese número — si no, un experto forzaría una compuerta blindada en el mismo
+  tiempo que un panel liviano (`durationScaleFor`).
+* **i18n es/en**: 26 claves nuevas (capas, tareas, estados de puerta, motivos de override, válvula).
+
+SUITE: `/game` 68 → 71 (smoke de `withDoorState`, incluido el caso que importa: que lea el estado VIVO y no
+una copia). `/engine` 1000 sin cambios. `tsc`, `eslint` y `vite build` limpios.

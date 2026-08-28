@@ -26,6 +26,7 @@ import type {
 } from "engine";
 
 import { EXTRACTION_BATCH_UNITS } from "engine";
+import type { ConduitConnection, ConduitId, DoorId, DoorRuntime } from "engine";
 import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
@@ -33,6 +34,7 @@ import {
   ACTION_PANEL_HEIGHT_KEY,
   renderMissionActionPanel,
   type ActionPanelContent,
+  type DoorPanelInfo,
   type AvailableSubstanceEntry,
   type CompositionIngredient,
   type SubstanceDetailLine,
@@ -603,6 +605,24 @@ export class MissionInteractionController {
         // lo re-deriva contra el motor en cada dibujo, así que bajar el dial de
         // energía apaga el badge en el acto, sin reabrir el panel.
       });
+    } else if (this.doorAtCellWithoutInstance(position)) {
+      // Subfase 13h: puerta AUTORADA (parte del casco, sin pieza detrás). Va
+      // antes del caso "celda vacía" porque sí tiene acciones — forzarla y
+      // repararla — y esa celda seguiría leyéndose como suelo sin esto.
+      const door = this.doorAtCellWithoutInstance(position)!;
+      this.setActionPanelContent({
+        kind: "door",
+        name: t("ui.floorplan.mission.inspector.door-name"),
+        door: toDoorPanelInfo(door),
+      });
+    } else if (this.conduitAtCell(position)) {
+      const conduit = this.conduitAtCell(position)!;
+      this.setActionPanelContent({
+        kind: "conduit",
+        conduitId: conduit.id,
+        name: t("ui.floorplan.mission.inspector.conduit-name"),
+        ...this.conduitLiveState(conduit.id),
+      });
     } else {
       // Celda vacía: se marca y nada más (13f ronda 4). Ya no queda ninguna
       // acción sobre ella desde que instalar empieza por el botón de la barra,
@@ -892,6 +912,66 @@ export class MissionInteractionController {
     return instance ? this.mission.breachCovering(occupiedCells(instance.placement)) : undefined;
   }
 
+  /**
+   * Estado de puerta de una instancia instalada (Subfase 13h), o `undefined` si
+   * esa pieza no es una puerta. La resuelve el motor: el controller no sabe qué
+   * hace que un `ACT`+`EST` sobre un umbral cuente como puerta.
+   */
+  private doorInfoForInstance(instanceId: PlacedComponentInstanceId): DoorPanelInfo | undefined {
+    const door = this.mission.doorRuntime
+      .allDoors()
+      .find((candidate) => candidate.instanceId === instanceId);
+    return door ? toDoorPanelInfo(door) : undefined;
+  }
+
+  private doorInfoById(doorId: DoorId): DoorPanelInfo | undefined {
+    const door = this.mission.doorRuntime.doorById(doorId);
+    return door ? toDoorPanelInfo(door) : undefined;
+  }
+
+  /** Apertura y presiones vivas de un conducto, para que el panel abierto no muestre una foto vieja. */
+  private conduitLiveState(conduitId: ConduitId): {
+    readonly aperture: number;
+    readonly pressureA: number;
+    readonly pressureB: number;
+  } {
+    const conduit = this.mission.shipFloorplan.conduits.find((entry) => entry.id === conduitId);
+    return {
+      aperture: this.mission.valveRuntime.apertureFor(conduitId),
+      pressureA: conduit
+        ? (this.mission.atmosphereRuntime.atmosphereOf(conduit.a)?.pressureKpa ?? 0)
+        : 0,
+      pressureB: conduit
+        ? (this.mission.atmosphereRuntime.atmosphereOf(conduit.b)?.pressureKpa ?? 0)
+        : 0,
+    };
+  }
+
+  /** Puerta autorada en esta celda (sin instancia detrás — esas se resuelven como `instance`). */
+  private doorAtCellWithoutInstance(position: GridPosition): DoorRuntime | undefined {
+    const door = this.mission.doorRuntime.doorAt(position);
+    return door && door.instanceId === undefined ? door : undefined;
+  }
+
+  /**
+   * Conducto de ventilación cuyo marcador cae sobre esta celda (Subfase 13h).
+   *
+   * El marcador se autora en coordenadas FRACCIONALES (cae sobre la arista
+   * entre dos celdas), así que se redondea a la celda que lo contiene en vez de
+   * comparar por igualdad — si no, un conducto en (11.5, 11) no sería
+   * clickeable desde ninguna celda.
+   *
+   * Solo ventilación: es el único tipo de conducto con válvula operable.
+   */
+  private conduitAtCell(position: GridPosition): ConduitConnection | undefined {
+    return this.mission.shipFloorplan.conduits.find(
+      (conduit) =>
+        conduit.kind === "ventilacion" &&
+        Math.floor(conduit.position.x) === position.x &&
+        Math.floor(conduit.position.y) === position.y,
+    );
+  }
+
   private redrawActionPanel(): void {
     this.actionPanelContainer?.destroy(true);
     this.actionPanelContainer = undefined;
@@ -925,8 +1005,17 @@ export class MissionInteractionController {
             // mundo vivo como el resto, para que instalar la plancha apague el
             // aviso sin cerrar y reabrir el panel.
             breach: this.breachInfoFor(this.actionPanelContent.instanceId),
+            // Subfase 13h: si la pieza es una puerta, su estado cambia solo
+            // (alguien se acerca, se corta la energía, un intruso la golpea) —
+            // se deriva del mundo vivo como todo lo demás de este bloque, para
+            // que el panel abierto no muestre una foto vieja.
+            door: this.doorInfoForInstance(this.actionPanelContent.instanceId),
           }
-        : this.actionPanelContent;
+        : this.actionPanelContent.kind === "door"
+          ? { ...this.actionPanelContent, door: this.doorInfoById(this.actionPanelContent.door.doorId) ?? this.actionPanelContent.door }
+          : this.actionPanelContent.kind === "conduit"
+            ? { ...this.actionPanelContent, ...this.conduitLiveState(this.actionPanelContent.conduitId) }
+            : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,
@@ -982,9 +1071,44 @@ export class MissionInteractionController {
         openFabricator: (domain) => t(`ui.floorplan.mission.inspector.fabricate.${domain}`),
         openFabricatorBlocked: (domain) =>
           t(`ui.floorplan.mission.inspector.fabricate-blocked.${domain}`),
+        // Subfase 13h — puertas y válvulas.
+        doorState: (state) => t(`ui.floorplan.mission.inspector.door-state.${state}`),
+        doorBlocked: (source) => t(`ui.floorplan.mission.inspector.door-blocked.${source}`),
+        forceDoor: t("ui.floorplan.mission.inspector.force-door"),
+        repairDoor: t("ui.floorplan.mission.inspector.repair-door"),
+        valveState: (aperture) =>
+          aperture <= 0
+            ? t("ui.floorplan.mission.inspector.valve-closed")
+            : aperture >= 1
+              ? t("ui.floorplan.mission.inspector.valve-open")
+              : t("ui.floorplan.mission.inspector.valve-partial"),
+        setValve: (opening) =>
+          opening
+            ? t("ui.floorplan.mission.inspector.open-valve")
+            : t("ui.floorplan.mission.inspector.close-valve"),
+        conduitPressure: (a, b) =>
+          `${Math.round(a)} kPa ${a > b ? "→" : a < b ? "←" : "="} ${Math.round(b)} kPa`,
         close: t("ui.floorplan.mission.inspector.close"),
       },
       {
+        // Subfase 13h: las tres tareas nuevas. El panel se mantiene abierto —
+        // el jugador suele encadenar (cerrar la válvula Y la puerta), y cerrarlo
+        // en cada acción lo obligaría a volver a seleccionar.
+        onForceDoor: (doorId) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queueForceDoor(this.selectedActorIdValue, doorId);
+          this.callbacks.onTaskQueued();
+        },
+        onRepairDoor: (doorId) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queueRepairDoor(this.selectedActorIdValue, doorId);
+          this.callbacks.onTaskQueued();
+        },
+        onSetValve: (conduitId, targetAperture) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queueSetValve(this.selectedActorIdValue, conduitId, targetAperture);
+          this.callbacks.onTaskQueued();
+        },
         onDismantle: (instanceId) => {
           if (!this.selectedActorIdValue) return;
           this.mission.queueDismantle(this.selectedActorIdValue, instanceId);
@@ -1228,4 +1352,20 @@ export class MissionInteractionController {
     this.callbacks.swallowCurrentClick();
     this.callbacks.onSelectionChanged();
   }
+}
+
+/**
+ * Traduce el estado vivo de una puerta a lo que el panel necesita (Subfase
+ * 13h). La fracción de vida se calcula acá y no en el panel por la misma razón
+ * que con el casco: el jugador nunca ve el número de HP, solo si la hoja está
+ * entera.
+ */
+function toDoorPanelInfo(door: DoorRuntime): DoorPanelInfo {
+  return {
+    doorId: door.id,
+    state: door.state,
+    mode: door.mode,
+    ...(door.overrideSource ? { overrideSource: door.overrideSource } : {}),
+    integrity: door.maxHp > 0 ? Math.max(0, Math.min(1, door.hp / door.maxHp)) : 1,
+  };
 }

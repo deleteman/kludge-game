@@ -510,6 +510,39 @@ export const ENERGY_LAYER_COLOR: Readonly<Partial<Record<"dark" | "deficit", num
 export const ENERGY_LAYER_ALPHA = 0.35;
 
 /**
+ * Capa "puertas" del HUD del plano (Subfase 13h). Estado de la hoja, no
+ * identidad de recurso: deriva del Eje A como `STRUCTURAL_LAYER_COLOR` y
+ * `ENERGY_LAYER_COLOR`, y NO reusa `CONDUIT_COLORS.ventilacion`.
+ *
+ * Cinco estados con cinco lecturas distintas (principio 6 de CLAUDE.md — dos
+ * fenómenos distintos nunca deben verse igual): abierta (verde tenue, se
+ * puede pasar), cerrada (el color base de casco, compartimentando), trabada
+ * (ámbar del contrato de 12e: no responde y el jugador tiene que saber por
+ * qué), sin energía (gris apagado, misma familia que la zona oscura de 13b) y
+ * destruida (rojo fatal — hueco permanente).
+ */
+export const DOOR_STATE_COLOR = {
+  open: 0x4fd08a,
+  closed: 0x8fa3b8,
+  jammed: CRISIS_WARNING_COLOR,
+  unpowered: 0x5a6570,
+  destroyed: CRISIS_FATAL_COLOR,
+} as const;
+export const DOOR_LAYER_ALPHA = 0.9;
+
+/**
+ * Capa "presion" del HUD del plano (Subfase 13h): heatmap de presión por
+ * sección, para ver de un vistazo qué sala se está vaciando. Molde exacto de
+ * `ENERGY_LAYER_COLOR` — una sección a presión nominal no se dibuja
+ * (principio 6), solo las que están por debajo.
+ */
+export const PRESSURE_LAYER_COLOR: Readonly<Record<"low" | "vacuum", number>> = {
+  low: CRISIS_WARNING_COLOR,
+  vacuum: CRISIS_FATAL_COLOR,
+};
+export const PRESSURE_LAYER_ALPHA = 0.35;
+
+/**
  * Overlay de alerta de pantalla completa (Fase 12a): crisis crítica en curso
  * (dominio del HUD de estado de nave en `"critical"`, o un evento violento de
  * `overload`/`combustion`/fuga). Fase 12e: variante OSCURA de `CRISIS_FATAL`

@@ -7,7 +7,8 @@ import {
   resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
-import type { SignalEdgeId } from "engine";
+import type {
+  DoorRuntime, SignalEdgeId } from "engine";
 import type {
   BarkEventType,
   ChemicalSubstanceId,
@@ -31,7 +32,9 @@ import type {
 
 import { t } from "../i18n/i18n.js";
 import {
+  drawDoorLayer,
   drawEnergyLayer,
+  drawPressureLayer,
   drawStructuralLayer,
   FLOORPLAN_LAYER_IDS,
   renderFloorplan,
@@ -148,7 +151,7 @@ import {
 import { cadenceForCrewHp } from "../crew/crew-hp-to-cadence.js";
 import { BarkController } from "../crew/bark-controller.js";
 import { findPath } from "../crew/floorplan-pathfinding.js";
-import { extractWalkableGrid, type WalkableGrid } from "../render/walkable-grid.js";
+import { extractWalkableGrid, withDoorState, type WalkableGrid } from "../render/walkable-grid.js";
 import { extractOccluderGrid } from "../render/shadows/occluder-edges.js";
 import { DynamicShadowLayer, DYNAMIC_SHADOW_DARKNESS_ALPHA, DYNAMIC_SHADOW_COLOR } from "../render/shadows/dynamic-shadows.js";
 import { loadAuthoredLights } from "../render/shadows/authored-lights.js";
@@ -315,6 +318,12 @@ export class FloorplanScene extends Phaser.Scene {
   private nameByComponentId = new Map<string, string>();
   /** Grilla transitable para pathing de tripulación; `undefined` si la nave no tiene tile layers todavía (GDD §17). */
   private walkableGrid?: WalkableGrid;
+  /**
+   * `walkableGrid` decorada con el estado vivo de las puertas (13h). La usan el
+   * pathfinding de tripulación y el `CellBlockedQuery` de línea de visión y
+   * proyectiles — los tres tienen que leer lo mismo.
+   */
+  private navigationGrid?: WalkableGrid;
   /**
    * `cameras.main` (creada automáticamente, siempre pintada PRIMERO) es la
    * cámara de MUNDO — recortada al área de mapa vía `setViewport()`, en vez
@@ -748,7 +757,18 @@ export class FloorplanScene extends Phaser.Scene {
     // real contra paredes — sin este grid disponible (nave sin tile art), el
     // motor se queda en el fallback "nada bloqueado" ya seteado por defecto.
     if (this.walkableGrid) {
-      const grid = this.walkableGrid;
+      // Subfase 13h: la grilla de NAVEGACIÓN se decora con el estado vivo de las
+      // puertas. Decorar y no copiar porque el snapshot del tilemap es inmutable
+      // y una puerta cambia varias veces por minuto — no hay punto de
+      // invalidación que mantener.
+      //
+      // Es un grid APARTE de `walkableGrid` a propósito: ese lo consume el
+      // ruteo estático de conductos y cables al dibujar el plano, y un conducto
+      // no debería redibujarse porque alguien cerró una puerta.
+      this.navigationGrid = withDoorState(this.walkableGrid, (x, y) =>
+        this.mission.doorRuntime.blocksCell({ x, y }),
+      );
+      const grid = this.navigationGrid;
       this.mission.setMotionBlockedQuery({ isBlocked: (cell) => !grid.isWalkable(cell.x, cell.y) });
     }
     // El plano vuelve DOS objetos por profundidad: `base` (suelo/objetos/
@@ -1353,6 +1373,24 @@ export class FloorplanScene extends Phaser.Scene {
       (sectionId) => this.mission.blueprint.unpoweredSectionIds.includes(sectionId),
       (sectionId) => this.mission.sectionPowerDemand(sectionId) > this.mission.sectionPowerAllocation(sectionId),
     );
+    // Capas "puertas" y "presion" del HUD (Subfase 13h) — mismo criterio
+    // "baratas, se redibujan siempre" que las dos de arriba. La de puertas
+    // TIENE que redibujarse cada frame: durante la transición la barra se
+    // acorta progresivamente, y ahí es donde se ve que la hoja tarda.
+    drawDoorLayer(
+      this.floorplanRender.conduitLayers.puertas,
+      this.mission.doorRuntime.allDoors(),
+      (door) => this.mission.doorTransitionSeconds(door),
+      this.mission.shipFloorplan.conduits.filter(
+        (conduit) =>
+          conduit.kind === "ventilacion" && this.mission.valveRuntime.apertureFor(conduit.id) <= 0,
+      ),
+    );
+    drawPressureLayer(
+      this.floorplanRender.conduitLayers.presion,
+      this.mission.shipFloorplan,
+      (sectionId) => this.mission.atmosphereRuntime.atmosphereOf(sectionId)?.pressureKpa,
+    );
     // Overlay de alerta de pantalla completa (Fase 12a): dominio del HUD de
     // estado en crítico, un `overload` violento reciente, o el INICIO de la
     // crisis (corrección post-playtest: con el criterio original la alarma
@@ -1393,6 +1431,7 @@ export class FloorplanScene extends Phaser.Scene {
       this.updateConduitFlowEffects(delta / 1000);
       this.updateSignalWireFlowEffects(delta / 1000);
       this.updateLedIndicators();
+      this.updateDoorSprites();
       this.updateLcdDisplays(delta / 1000);
     }
     // HUD de estado permanente + panel de acciones flotante (Subfase 11g):
@@ -3522,9 +3561,16 @@ export class FloorplanScene extends Phaser.Scene {
     for (const path of this.floorplanRender.conduitPaths) {
       const effect = this.conduitFlowEffects.get(conduitFlowKey(path.conduit));
       if (!effect) continue;
-      const { active, intensity } = conduitFlowIntensity(path.conduit, this.mission, activeSignalSections);
+      const { active, intensity, direction } = conduitFlowIntensity(
+        path.conduit,
+        this.mission,
+        activeSignalSections,
+      );
       const visible = this.activeFloorplanLayers.has(path.conduit.kind);
-      effect.update({ active, intensity, kind: path.conduit.kind, visible }, deltaSeconds);
+      effect.update(
+        { active, intensity, kind: path.conduit.kind, visible, direction },
+        deltaSeconds,
+      );
     }
   }
 
@@ -3579,6 +3625,36 @@ export class FloorplanScene extends Phaser.Scene {
    * acumulador) porque, a diferencia del LCD, un tinte binario no necesita
    * throttle para leerse bien.
    */
+  /**
+   * Estado visual de las puertas CONSTRUIDAS (Subfase 13h): el sprite de la
+   * compuerta se desvanece a medida que la hoja se abre.
+   *
+   * El sprite de catálogo es un único frame de puerta cerrada, así que abrir se
+   * resuelve por código sobre él en vez de con un segundo frame. Se interpola
+   * con la MISMA cadencia que usa la simulación (`doorTransitionSeconds`): si
+   * la animación tuviera su propio número, la hoja terminaría de desaparecer
+   * antes o después de que el paso se libere de verdad.
+   *
+   * El tinte por estado (trabada/sin energía/rota) se pinta en la capa
+   * `puertas`, no acá: `setTint` sobre el sprite pelearía con
+   * `applyLightShading`, que ya gobierna el tinte de todos los sprites del
+   * plano en función de la iluminación (12d).
+   */
+  private updateDoorSprites(): void {
+    if (this.componentSprites.size === 0) return;
+    for (const door of this.mission.doorRuntime.allDoors()) {
+      if (!door.instanceId) continue;
+      const sprites = this.componentSprites.get(door.instanceId);
+      if (!sprites) continue;
+      const openness = doorSpriteOpenness(door, this.mission.doorTransitionSeconds(door));
+      // No se baja a 0: una puerta abierta del todo tiene que seguir siendo
+      // visible como puerta — si desapareciera, el jugador no sabría que hay
+      // algo ahí que se puede volver a cerrar.
+      const alpha = 1 - openness * 0.8;
+      for (const sprite of sprites) sprite.setAlpha(alpha);
+    }
+  }
+
   private updateLedIndicators(): void {
     if (this.ledIndicators.size === 0) return;
     const nodeByOwner = new Map(
@@ -4038,7 +4114,7 @@ export class FloorplanScene extends Phaser.Scene {
     if (!this.walkableGrid) return this.straightLineWaypoints(from, target);
     const start = { x: Math.floor(from.x / CELL), y: Math.floor(from.y / CELL) };
     const goal = { x: Math.floor(target.x / CELL), y: Math.floor(target.y / CELL) };
-    const path = findPath(this.walkableGrid, start, goal);
+    const path = findPath(this.navigationGrid ?? this.walkableGrid, start, goal);
     if (!path || path.length === 0) return undefined;
     const points = path.map((cell) => ({ x: (cell.x + 0.5) * CELL, y: (cell.y + 0.5) * CELL }));
     // Que aterrice EXACTAMENTE en la celda pedida (no en el centro de su celda por redondeo).
@@ -4997,4 +5073,24 @@ function sectionFlickerSeed(sectionId: SectionId): number {
     hash = (hash * 31 + sectionId.charCodeAt(i)) % 1000;
   }
   return hash;
+}
+
+/** 0 = hoja cerrada, 1 = del todo abierta. Interpola durante `opening`/`closing`. */
+function doorSpriteOpenness(door: DoorRuntime, transitionSeconds: number): number {
+  const progress =
+    transitionSeconds > 0
+      ? Math.max(0, Math.min(1, door.transitionElapsedSeconds / transitionSeconds))
+      : 1;
+  switch (door.state) {
+    case "open":
+    case "destroyed":
+      return 1;
+    case "closed":
+    case "jammed":
+      return 0;
+    case "opening":
+      return progress;
+    case "closing":
+      return 1 - progress;
+  }
 }

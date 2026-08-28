@@ -108,6 +108,17 @@ export interface ConduitPathFlowState {
    * esté en curso, no arranque de cero.
    */
   readonly visible: boolean;
+  /**
+   * Sentido REAL del flujo (Subfase 13h). `"both"` conserva el comportamiento
+   * simétrico de 11f.5 y sigue siendo lo correcto para `electrico`/`senal`,
+   * donde no hay un "hacia dónde" que mostrar.
+   *
+   * En ventilación sí lo hay: con la nave compartimentada, ver que el aire va
+   * DE la sala presurizada HACIA la brechada es la mitad de la información —
+   * la intensidad sola dice que algo pasa, no en qué dirección se está
+   * desangrando la nave. `"forward"` es el sentido `a → b` del conducto.
+   */
+  readonly direction?: "forward" | "backward" | "both";
 }
 
 /** Tope de tokens viajeros concurrentes por SENTIDO — acota el conteo de `Image` en pantalla a intensidad máxima. */
@@ -179,8 +190,27 @@ export function createConduitPathFlowEffect(
     update(state: ConduitPathFlowState, deltaSeconds: number): void {
       if (!scene || !forward || !backward) return;
       const spawnEnabled = state.active && state.intensity > 0;
-      updateStream(scene, forward, state, spawnEnabled, deltaSeconds, onTokenCreated);
-      updateStream(scene, backward, state, spawnEnabled, deltaSeconds, onTokenCreated);
+      // Subfase 13h: se apaga el SPAWN del sentido contrario, no el stream. Los
+      // tokens que ya iban en viaje terminan su recorrido — congelarlos dejaría
+      // fantasmas inmóviles en el mapa, el mismo motivo por el que la velocidad
+      // se fija al spawn y no se lee en vivo.
+      const direction = state.direction ?? "both";
+      updateStream(
+        scene,
+        forward,
+        state,
+        spawnEnabled && direction !== "backward",
+        deltaSeconds,
+        onTokenCreated,
+      );
+      updateStream(
+        scene,
+        backward,
+        state,
+        spawnEnabled && direction !== "forward",
+        deltaSeconds,
+        onTokenCreated,
+      );
     },
     stop(): void {
       forward?.tokens.forEach(destroyToken);
