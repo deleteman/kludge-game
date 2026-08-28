@@ -824,3 +824,20 @@ cadencia que usa la simulación), y la lectura fuerte del estado la lleva la bar
 Funciona, pero una hoja que se desvanece no es lo mismo que una hoja que se corre. Si aparece un segundo
 frame (o una tira de 3-4), el punto de cambio es `updateDoorSprites` en `floorplan-scene.ts` y nada más.
 Procurement del operador, no código.
+
+## Deuda #37 — Las semillas de Tiled no derivan nodos de señal (Subfase 13h, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Registrada 2026-08-28.
+
+`instantiateComponentSeeds` crea la instancia pero **no llama a `deriveSignalNodes`**, así que un componente
+sembrado desde la capa Tiled `semillas` con `EM`/`REC`/`ACT`/`COND` nace sin nodos y no se puede cablear.
+Solo funcionan los nodos autorados a mano en TS (`chapter-01-primer-aviso.ts`) y los que crea
+`installInstance` cuando el jugador instala algo.
+
+Es exactamente el bug que el playtest de 13h reportó para las puertas (reporte #5). Ahí se cerró **acotado**:
+`instantiate-door-seeds.ts` deriva sus propios nodos. No se generalizó porque hacerlo en
+`instantiateComponentSeeds` **duplicaría** los nodos del Cap.1, que ya vienen autorados a mano por otra vía.
+
+Cerrarlo bien exige decidir primero cuál es la fuente de verdad de los nodos del Cap.1: o se borran los
+autorados a mano y se derivan todos, o `mergeInstalledSignalGraph` deduplica por `ownerRef` + rol. Hasta
+entonces, cualquier semilla nueva de Tiled con propiedades de señal va a parecer rota sin decir por qué.
