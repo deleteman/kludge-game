@@ -930,6 +930,12 @@ export type { DoorWorldQueries, MissionDoorRuntimeOptions } from "./mission/miss
 export { ValveRuntime } from "./valves/valve-runtime.js";
 export type { ValveSnapshot } from "./valves/valve.types.js";
 export { composeApertureSources } from "./mission/composite-aperture-source.js";
+export {
+  instantiateDoorSeeds,
+  DoorSeedError,
+  AUTHORED_DOOR_COMPONENT_ID,
+} from "./floorplan/instantiate-door-seeds.js";
+export { blocksPathing } from "./doors/door.types.js";
 export { coilFieldIntensityAt } from "./mission/coil-field-source.js";
 export type { SectionApertureSource } from "./mission/mission-atmosphere-runtime.js";
 export type { CompartmentDeps } from "./mission/ship-task-effect.js";

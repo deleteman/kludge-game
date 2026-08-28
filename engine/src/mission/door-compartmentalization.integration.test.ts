@@ -3,6 +3,8 @@ import {
   GAS,
   MissionAtmosphereRuntime,
   MissionDoorRuntime,
+  buildComponentCatalog,
+  instantiateDoorSeeds,
   ValveRuntime,
   composeApertureSources,
   type ConduitId,
@@ -24,8 +26,9 @@ import type { SectionId } from "../atmosphere/section.types.js";
 const ROTA = "seccion-rota" as SectionId;
 const VECINA = "seccion-vecina" as SectionId;
 const THRESHOLD: GridPosition = { x: 1, y: 0 };
-const DOOR = "authored:rota-vecina" as DoorId;
+const DOOR = "instance:puerta-rota-vecina" as DoorId;
 const VALVE = "ventilacion:seccion-rota:seccion-vecina:0" as ConduitId;
+const REGISTRY = buildComponentCatalog().registry;
 
 function floorplan(withConduit: boolean): ShipFloorplan {
   return {
@@ -67,7 +70,11 @@ function mount(withConduit: boolean) {
   const doors = new MissionDoorRuntime({
     floorplan: plan,
     queries: { occupiedCells: () => occupied },
+    resolveDefinition: (id) => REGISTRY.get(id),
   });
+  // Ronda 1 de playtest de 13h: la puerta del casco es una INSTANCIA real, y el
+  // runtime la recoge por el mismo camino que una instalada por el jugador.
+  doors.syncInstalledDoors(instantiateDoorSeeds(plan.doors, REGISTRY).components);
   const valves = new ValveRuntime(plan);
   const atmosphere = new MissionAtmosphereRuntime(
     plan,
@@ -161,5 +168,41 @@ describe("13h — compartimentación por defecto (integración)", () => {
       atmosphere.tick({ dtSeconds: 0.5, elapsedSeconds: (step + 1) * 0.5 });
     }
     expect(atmosphere.atmosphereOf(VECINA)?.gases.get(GAS.OXYGEN)).toBeLessThan(0.21);
+  });
+
+  // Ronda 1 de playtest, reporte #4: "al provocar una brecha en una zona
+  // cerrada y abrir sus puertas, la presión no baja en la zona conectada".
+  // Tenía razón y la causa era de fondo — `diffuse()` movía fracciones de gas
+  // pero nunca tocaba `pressureKpa`.
+  it("la PRESIÓN se propaga por la puerta abierta, no solo el gas", () => {
+    const { run, doors, occupied, atmosphere } = mount(false);
+    const vecinaAlInicio = atmosphere.atmosphereOf(VECINA)?.pressureKpa ?? 0;
+
+    run(20);
+    // Con la puerta cerrada la vecina conserva su presión intacta.
+    expect(atmosphere.atmosphereOf(VECINA)?.pressureKpa).toBeCloseTo(vecinaAlInicio);
+
+    occupied.push({ x: 2, y: 0 });
+    run(60, 20);
+
+    expect(doors.doorById(DOOR)?.state).toBe("open");
+    expect(atmosphere.atmosphereOf(VECINA)?.pressureKpa).toBeLessThan(vecinaAlInicio);
+  });
+
+  it("la presión NO se propaga por una puerta cerrada aunque el gas ya se haya mezclado antes", () => {
+    const { run, occupied, atmosphere } = mount(false);
+    occupied.push({ x: 2, y: 0 });
+    run(30);
+    const conPuertaAbierta = atmosphere.atmosphereOf(VECINA)?.pressureKpa ?? 0;
+
+    // Se va el tripulante: la puerta se cierra sola y la caída se detiene
+    // donde estaba. Es lo que hace que cerrar sea una decisión con efecto.
+    occupied.length = 0;
+    run(10, 30);
+    const trasCerrar = atmosphere.atmosphereOf(VECINA)?.pressureKpa ?? 0;
+    run(60, 40);
+
+    expect(atmosphere.atmosphereOf(VECINA)?.pressureKpa).toBeCloseTo(trasCerrar, 1);
+    expect(trasCerrar).toBeLessThan(conPuertaAbierta);
   });
 });

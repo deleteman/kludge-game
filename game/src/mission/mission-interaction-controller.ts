@@ -26,7 +26,7 @@ import type {
 } from "engine";
 
 import { EXTRACTION_BATCH_UNITS } from "engine";
-import type { ConduitConnection, ConduitId, DoorId, DoorRuntime } from "engine";
+import type { ConduitConnection, ConduitId, DoorRuntime } from "engine";
 import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
@@ -605,16 +605,6 @@ export class MissionInteractionController {
         // lo re-deriva contra el motor en cada dibujo, así que bajar el dial de
         // energía apaga el badge en el acto, sin reabrir el panel.
       });
-    } else if (this.doorAtCellWithoutInstance(position)) {
-      // Subfase 13h: puerta AUTORADA (parte del casco, sin pieza detrás). Va
-      // antes del caso "celda vacía" porque sí tiene acciones — forzarla y
-      // repararla — y esa celda seguiría leyéndose como suelo sin esto.
-      const door = this.doorAtCellWithoutInstance(position)!;
-      this.setActionPanelContent({
-        kind: "door",
-        name: t("ui.floorplan.mission.inspector.door-name"),
-        door: toDoorPanelInfo(door),
-      });
     } else if (this.conduitAtCell(position)) {
       const conduit = this.conduitAtCell(position)!;
       this.setActionPanelContent({
@@ -924,11 +914,6 @@ export class MissionInteractionController {
     return door ? toDoorPanelInfo(door) : undefined;
   }
 
-  private doorInfoById(doorId: DoorId): DoorPanelInfo | undefined {
-    const door = this.mission.doorRuntime.doorById(doorId);
-    return door ? toDoorPanelInfo(door) : undefined;
-  }
-
   /** Apertura y presiones vivas de un conducto, para que el panel abierto no muestre una foto vieja. */
   private conduitLiveState(conduitId: ConduitId): {
     readonly aperture: number;
@@ -945,12 +930,6 @@ export class MissionInteractionController {
         ? (this.mission.atmosphereRuntime.atmosphereOf(conduit.b)?.pressureKpa ?? 0)
         : 0,
     };
-  }
-
-  /** Puerta autorada en esta celda (sin instancia detrás — esas se resuelven como `instance`). */
-  private doorAtCellWithoutInstance(position: GridPosition): DoorRuntime | undefined {
-    const door = this.mission.doorRuntime.doorAt(position);
-    return door && door.instanceId === undefined ? door : undefined;
   }
 
   /**
@@ -1011,11 +990,9 @@ export class MissionInteractionController {
             // que el panel abierto no muestre una foto vieja.
             door: this.doorInfoForInstance(this.actionPanelContent.instanceId),
           }
-        : this.actionPanelContent.kind === "door"
-          ? { ...this.actionPanelContent, door: this.doorInfoById(this.actionPanelContent.door.doorId) ?? this.actionPanelContent.door }
-          : this.actionPanelContent.kind === "conduit"
-            ? { ...this.actionPanelContent, ...this.conduitLiveState(this.actionPanelContent.conduitId) }
-            : this.actionPanelContent;
+        : this.actionPanelContent.kind === "conduit"
+          ? { ...this.actionPanelContent, ...this.conduitLiveState(this.actionPanelContent.conduitId) }
+          : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,

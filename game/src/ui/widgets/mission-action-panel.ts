@@ -130,21 +130,6 @@ export type ActionPanelContent =
       readonly pressureA: number;
       readonly pressureB: number;
     }
-  /**
-   * Una puerta AUTORADA en el plano (Subfase 13h): parte del casco, sin
-   * instancia de catálogo detrás. Comparte el bloque de acciones con la
-   * variante `instance` vía `DoorPanelInfo`, pero no ofrece desmontar.
-   */
-  | {
-      readonly kind: "door";
-      readonly name: string;
-      readonly door: DoorPanelInfo;
-    }
-  // Sin variante para la celda VACÍA (13f ronda 4): desde que la ronda 3 le
-  // quitó "Instalar aquí" no le quedaba ninguna acción, y un panel flotante que
-  // tapa el mapa a cambio de una pista de texto no se gana el sitio. Clickear
-  // una celda vacía la marca y nada más; lo informativo (sección, presión,
-  // brecha) vive en el tooltip de hover.
   | {
       readonly kind: "substance";
       readonly substanceId: ChemicalSubstanceId;
@@ -454,7 +439,7 @@ export function renderMissionActionPanel(
     content.kind === "instance"
       ? labels.instanceTitle(content.name, content.condition)
       : // Subfase 13h: conducto y puerta autorada ya traen su nombre resuelto.
-        content.kind === "conduit" || content.kind === "door" || content.kind === "substance"
+        content.kind === "conduit" || content.kind === "substance"
         ? content.name
         : content.kind === "substances-list"
           ? labels.substancesTitle
@@ -769,18 +754,6 @@ export function renderMissionActionPanel(
       );
       claim(cursorY);
     }
-  } else if (content.kind === "door") {
-    // Puerta AUTORADA: parte del casco, sin pieza detrás. Mismo bloque de
-    // acciones, sin desmontar ni purgar — no hay nada que canibalizar.
-    flowY = renderDoorBlock(
-      scene,
-      container,
-      content.door,
-      { width, cursorY: flowY, hasSelectedActor },
-      labels,
-      callbacks,
-    );
-    claim(flowY);
   } else if (content.kind === "conduit") {
     const conduit = content;
     const openness = conduit.aperture;

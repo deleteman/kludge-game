@@ -1442,3 +1442,34 @@
 ## `engine/src/mission/coil-field-source.ts` (nuevo, 13h)
 - `coilFieldIntensityAt`: compone las funciones puras de `kinetics/` en la pregunta que faltaba — "cuánto campo hay en
   esta celda". Las bobinas contiguas cuentan como un solo electroimán; se toma el máximo entre grupos, no la suma.
+
+# Subfase 13h — ronda 1 de playtest
+
+## `engine/src/floorplan/instantiate-door-seeds.ts` (nuevo)
+- `instantiateDoorSeeds`: la capa Tiled `puertas` materializa INSTANCIAS reales de `compuerta-blindada` + su nodo
+  receptor derivado del `ACT`. Elimina la dualidad autorada/construida que dejaba a las puertas del casco sin sprite
+  y sin poder cablearse. Un vano de dos celdas es una instancia 2×1, no dos piezas: dos aportarían dos aristas de
+  difusión.
+
+## `engine/src/doors/door.types.ts` (modificado, ronda 1)
+- `blocksPathing(door)` junto a `blocksPassage(door)`. Son preguntas distintas y colapsarlas dejó la nave entera
+  inalcanzable: una puerta en `auto` con energía tapa la celda (pared para un proyectil) pero NO es obstáculo para
+  planificar una ruta — se abre sola al llegar. `instanceId` deja de ser opcional.
+
+## `engine/src/atmosphere/diffusion.ts` (modificado, ronda 1)
+- `diffuse()` equilibra `pressureKpa` además de las fracciones de gas, con la misma apertura y el mismo paso. Hasta
+  acá la presión NUNCA se propagó por una conexión: solo la movía el sumidero de 13f sobre una sección. Es lo que
+  hace que una brecha se desangre por cada puerta abierta.
+
+## `engine/src/mission/mission-door-runtime.ts` (modificado, ronda 1)
+- Sin `seedAuthoredDoors`: `syncInstalledDoors` es el único camino de alta. Los snapshots quedan PENDIENTES hasta que
+  su puerta se da de alta (al construir el runtime ya no existe ninguna). `blocksPathingAt(cell)` nuevo.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 1)
+- `navigationGrid` se decora con `blocksPathingAt`; `setMotionBlockedQuery` conserva `blocksCell`.
+- `chainHops` difiere el salto que entra en una celda de puerta hasta que esté abierta (`isDoorwayHeldClosed`,
+  reintento cada `DOOR_WAIT_RETRY_MS`): sin eso el tiempo de la hoja no le costaba nada al jugador.
+
+## `game/src/render/floorplan-renderer.ts` (modificado, ronda 1)
+- `drawDoorLayer` pasa de barra a CONTORNO por celda: independiente de la orientación (el bug de la barra siempre
+  horizontal desaparece por construcción) y no tapa el sprite.

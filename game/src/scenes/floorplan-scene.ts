@@ -179,6 +179,14 @@ import { renderShipStatusHud } from "../ui/widgets/ship-status-hud.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
 const CELL = GRID_CELL_SIZE_PX;
+
+/**
+ * Cada cuánto reintenta un tripulante entrar en una puerta que todavía se está
+ * abriendo (Subfase 13h, ronda 1 de playtest). Corto a propósito: es una espera
+ * activa, no una animación — lo que se ve es al actor quieto frente a la hoja
+ * hasta que termina, y un reintento lento se leería como que se quedó colgado.
+ */
+const DOOR_WAIT_RETRY_MS = 100;
 const HEADER_HEIGHT = 40;
 // Separados con margen explícito (bug corregido: antes se derivaban de la
 // misma constante y terminaban superpuestos, "cableado" tapando a "ejecutar").
@@ -765,11 +773,23 @@ export class FloorplanScene extends Phaser.Scene {
       // Es un grid APARTE de `walkableGrid` a propósito: ese lo consume el
       // ruteo estático de conductos y cables al dibujar el plano, y un conducto
       // no debería redibujarse porque alguien cerró una puerta.
+      //
+      // Ronda 1 de playtest: usa `blocksPathingAt` y NO `blocksCell`. Colapsar
+      // las dos preguntas dejó la nave entera inalcanzable — como las puertas
+      // arrancan cerradas, tratar "cerrada" como "pared" hacía que ningún
+      // `go-to` encontrara ruta. Una puerta que se abre sola al llegar es una
+      // demora, no un muro; solo bloquea la que NO puede abrirse.
       this.navigationGrid = withDoorState(this.walkableGrid, (x, y) =>
-        this.mission.doorRuntime.blocksCell({ x, y }),
+        this.mission.doorRuntime.blocksPathingAt({ x, y }),
       );
-      const grid = this.navigationGrid;
-      this.mission.setMotionBlockedQuery({ isBlocked: (cell) => !grid.isWalkable(cell.x, cell.y) });
+      // La línea de visión y los proyectiles (13f) siguen usando el estado
+      // FÍSICO: para una bala, una puerta cerrada aunque sea funcional sí es
+      // una pared.
+      const grid = this.walkableGrid;
+      this.mission.setMotionBlockedQuery({
+        isBlocked: (cell) =>
+          !grid.isWalkable(cell.x, cell.y) || this.mission.doorRuntime.blocksCell(cell),
+      });
     }
     // El plano vuelve DOS objetos por profundidad: `base` (suelo/objetos/
     // etiquetas, debajo de tripulación y componentes) y `walls` (paredes, por
@@ -4202,6 +4222,21 @@ export class FloorplanScene extends Phaser.Scene {
   ): void {
     if (index >= waypoints.length) return;
     const next = waypoints[index]!;
+    // Subfase 13h (ronda 1 de playtest): si el próximo salto ENTRA en la celda
+    // de una puerta que todavía no terminó de abrirse, el actor espera frente a
+    // la hoja y reintenta en el siguiente frame.
+    //
+    // Sin esto, los 3 s de `ACT.cadence` no le costaban nada al jugador: el
+    // token cruzaba una hoja a medio abrir porque la animación va más rápido
+    // que la transición. La proximidad ya disparó la apertura — `update()`
+    // sincroniza `currentCell` desde la posición visual del token —, así que
+    // esperar es solo dejar que la puerta termine su trabajo.
+    if (this.isDoorwayHeldClosed(next)) {
+      this.time.delayedCall(DOOR_WAIT_RETRY_MS, () =>
+        this.chainHops(token, waypoints, perHopMs, cadence, index, signature),
+      );
+      return;
+    }
     // Paso sobre piso metálico (playtest): solo tripulación, no enemigos —
     // `signature` distingue por identidad de referencia (`CREW_SIGNATURE` es
     // el único singleton usado para tokens de tripulación, ver `enemyJumpSignature`
@@ -4222,6 +4257,18 @@ export class FloorplanScene extends Phaser.Scene {
     );
     this.trackHopTween(tween);
     tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
+  }
+
+  /**
+   * `true` si esa posición en píxeles cae sobre una puerta que no está abierta
+   * (Subfase 13h). Una puerta destruida es un hueco: no frena a nadie.
+   */
+  private isDoorwayHeldClosed(pointPx: { readonly x: number; readonly y: number }): boolean {
+    const door = this.mission.doorRuntime.doorAt({
+      x: Math.floor(pointPx.x / CELL),
+      y: Math.floor(pointPx.y / CELL),
+    });
+    return door !== undefined && door.state !== "open" && door.state !== "destroyed";
   }
 
   /**

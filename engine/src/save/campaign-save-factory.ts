@@ -8,7 +8,11 @@ import {
   CHAPTER_01_INITIAL_ATOMIC_STOCK,
   CHAPTER_01_INITIAL_ELEMENT_STOCK,
 } from "../crisis/campaign/chapter-01-primer-aviso.js";
-import { BASE_COMPONENT_SEEDS_BY_ARCHETYPE, CHAPTER_SEED_BY_ID } from "./chapter-progression.js";
+import {
+  BASE_COMPONENT_SEEDS_BY_ARCHETYPE,
+  BASE_DOOR_SEEDS_BY_ARCHETYPE,
+  CHAPTER_SEED_BY_ID,
+} from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
 import { emptyPowerState } from "../power/power.types.js";
 import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
@@ -53,6 +57,9 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // objetos compuestos desarmables presentes desde el arranque, algunos
     // resuelven crisis futuras, otros son solo exploración libre.
     ...BASE_COMPONENT_SEEDS_BY_ARCHETYPE[input.archetype],
+    // Puertas del casco (13h, ronda 1 de playtest): instancias reales, no una
+    // entidad aparte — de ahí salen su sprite y su nodo de señal.
+    ...BASE_DOOR_SEEDS_BY_ARCHETYPE[input.archetype].components,
     // Válvula atascada + sensor + panel de compuerta (dueños de los nodos del 2º paso).
     ...(chapter01Seed?.components ?? []),
   ];
@@ -73,7 +80,13 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // sacar materia prima en partida real.
     reservoirContents: deriveInitialReservoirContents(placedComponents, FACTORY_RESERVOIR_CONTENTS),
     // Nodos emisor/receptor SIN cable — el jugador los conecta con el modo cableado.
-    signalGraph: { nodes: [...(chapter01Seed?.signalNodes ?? [])], edges: [] },
+    signalGraph: {
+      nodes: [
+        ...BASE_DOOR_SEEDS_BY_ARCHETYPE[input.archetype].signalNodes,
+        ...(chapter01Seed?.signalNodes ?? []),
+      ],
+      edges: [],
+    },
     // Sin snapshot todavía: `MissionAtmosphereRuntime` siembra aire estándar por
     // sección al no encontrar una entrada (Fase 11b).
     sectionAtmospheres: [],

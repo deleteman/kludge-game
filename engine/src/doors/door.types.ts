@@ -65,12 +65,13 @@ export interface DoorRuntime {
   /** Celdas del umbral que la puerta bloquea cuando no está atravesable. */
   readonly cells: readonly GridPosition[];
   /**
-   * Instancia que ES esta puerta, si nació de un componente instalado. Ausente
-   * en las puertas autoradas en la capa Tiled `puertas`, que no son piezas del
-   * catálogo. Cuando está presente, `ACT.cadence`/`ACT.power` se leen de su
-   * definición — no se duplican acá (una sola fuente de verdad).
+   * Instancia que ES esta puerta. Obligatoria desde la ronda 1 de playtest de
+   * 13h: las puertas del casco también son instancias reales de catálogo
+   * (`instantiate-door-seeds.ts`), y esa unificación es lo que les da sprite y
+   * nodo de señal. `ACT.cadence`/`ACT.power` se leen de su definición — no se
+   * duplican acá (una sola fuente de verdad).
    */
-  readonly instanceId?: PlacedComponentInstanceId;
+  readonly instanceId: PlacedComponentInstanceId;
   mode: DoorMode;
   state: DoorState;
   overrideSource?: DoorOverrideSource;
@@ -102,6 +103,33 @@ export function toDoorSnapshot(door: DoorRuntime): DoorSnapshot {
 /** `true` si la puerta no deja pasar actores ni proyectiles en este instante. */
 export function blocksPassage(door: DoorRuntime): boolean {
   return door.state !== "open" && door.state !== "destroyed";
+}
+
+/**
+ * `true` si la puerta NO PUEDE abrirse — la pregunta del pathfinding, distinta
+ * de `blocksPassage` (ronda 1 de playtest de 13h).
+ *
+ * Colapsar las dos fue el bug que dejó la nave entera inalcanzable: como las
+ * puertas arrancan cerradas, tratar "cerrada" como "pared" hacía que `findPath`
+ * no encontrara ruta a ninguna parte y todo `go-to` muriera en "Sin ruta al
+ * destino".
+ *
+ * Una puerta cerrada en `auto` con energía no es un obstáculo: es una DEMORA —
+ * se abre sola cuando el tripulante llega. Solo bloquea de verdad la que está
+ * trabada, sin energía, o cerrada por un override de señal o de tarea, y para
+ * esas el aviso de "sin ruta" vuelve a ser información honesta.
+ *
+ * Los proyectiles y la línea de visión siguen usando `blocksPassage`: para una
+ * bala, una puerta cerrada aunque sea funcional sí es una pared.
+ */
+export function blocksPathing(door: DoorRuntime): boolean {
+  if (door.state === "destroyed") {
+    return false;
+  }
+  if (door.state === "jammed") {
+    return true;
+  }
+  return door.mode === "override";
 }
 
 /** `true` si la puerta ya no compartimenta nada y no puede volver a hacerlo sin reparación. */

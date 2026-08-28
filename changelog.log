@@ -5151,3 +5151,55 @@ CAMBIOS:
 
 SUITE: `/game` 68 → 71 (smoke de `withDoorState`, incluido el caso que importa: que lea el estado VIVO y no
 una copia). `/engine` 1000 sin cambios. `tsc`, `eslint` y `vite build` limpios.
+
+================================================================================
+2026-08-28 — SUBFASE 13h RONDA 1 DE PLAYTEST: cinco reportes del operador
+================================================================================
+Tres eran bugs de la implementación; DOS eran huecos de modelado que 13h volvió visibles por primera vez.
+
+* **#1 y #5 — el sprite no se dibujaba y la puerta no aparecía en modo cableado. Misma causa: las puertas
+  autoradas no eran instancias de componente.** Las traté como una entidad de segunda —casco sin instancia,
+  con estado propio dentro de `MissionDoorRuntime`— y eso las dejó fuera de los dos sistemas que resuelven
+  esas dos cosas: solo las instancias reciben sprite (`mission-overlay-renderer.ts`) y solo las instancias
+  derivan nodos de señal (`derive-signal-nodes.ts`).
+  FIX (decisión del operador): la capa Tiled `puertas` materializa INSTANCIAS reales de `compuerta-blindada`
+  (`instantiate-door-seeds.ts`, molde de `instantiate-component-seeds.ts`), con su nodo receptor derivado del
+  `ACT`. `MissionDoorRuntime` pierde `seedAuthoredDoors` y toda la rama `authored:`; `syncInstalledDoors` es
+  el único camino de alta y `DoorRuntime.instanceId` deja de ser opcional. Sprite, nodo, `powerDraw`,
+  desgaste, tinte por condición y desmontaje caen gratis. La variante `door` del panel de acciones se BORRA:
+  todo pasa por `instance`, que ya tenía el bloque de puerta.
+  Consecuencia asumida: una puerta del casco se puede desmontar, y esa frontera deja de compartimentar.
+  Los snapshots pasan a aplicarse al DAR DE ALTA la puerta y no en el constructor — al construir el runtime
+  ya no existe ninguna.
+
+* **#2 y #3 — ningún tripulante podía ir a ningún lado ("Sin ruta al destino").** Decoré el grid de
+  navegación tratando toda puerta cerrada como pared, y arrancan todas cerradas: `findPath` no encontraba
+  ruta a nada. El operador lo diagnosticó exacto ("las puertas no se abren... eso afecta el pathfinding").
+  FIX: dos preguntas distintas donde había una. `blocksCell` = estado FÍSICO ahora (lo siguen usando línea de
+  visión y proyectiles: para una bala una puerta cerrada sí es pared). `blocksPathing`/`blocksPathingAt` =
+  ¿es un obstáculo para PLANIFICAR? — `false` para una puerta en `auto` con energía, porque se abre sola al
+  llegar: es una demora, no un muro. Solo bloquean la trabada, la sin energía y la cerrada por override.
+  Además el token FRENA ante la hoja: `chainHops` difiere el salto que entra en una celda de puerta hasta
+  que la puerta esté `open` (reintento cada 100 ms). Sin eso los 3 s de `ACT.cadence` no costaban nada — la
+  animación iba más rápido que la transición y se cruzaba una hoja a medio abrir.
+
+* **#4 — abrir la puerta de una zona brechada no bajaba la presión de la vecina.** HUECO DE MODELADO, no un
+  bug de puertas: `diffuse()` movía fracciones de gas pero **nunca tocó `pressureKpa`** desde que existe. La
+  presión solo la movía el sumidero de 13f, y siempre sobre una sola sección. Ninguna conexión abierta la
+  propagó jamás; 13h fue lo primero que lo hizo visible.
+  FIX (decisión del operador): `diffuse()` equilibra `pressureKpa` con la MISMA apertura y el MISMO paso
+  ponderado por volumen que las fracciones — mismo fenómeno por la misma conexión. Consecuencia buscada: una
+  brecha se desangra por cada puerta o válvula abierta hasta el último rincón de la nave, y cerrarlas es lo
+  único que lo detiene. Nota: el piso de 40 kPa de 11h se aplica solo en el bucle del sumidero, así que una
+  sala conectada a una brechada SÍ puede bajar de 40 por difusión. Es intencional.
+  Cero regresiones en la suite: ningún test existente dependía de que la presión no se propagara.
+
+* **#1 (segunda mitad) — "la barra se ve poco y a veces mal posicionada".** Cierto: la dibujaba siempre
+  horizontal, sin mirar si el umbral era vertical. Pasa a ser un CONTORNO por celda, coloreado por estado y
+  con grosor proporcional a lo cerrada que está. Un contorno es independiente de la orientación, así que el
+  bug desaparece por construcción en vez de arreglarse — y deja ver el sprite en lugar de taparlo.
+
+TESTS: 1000 → 1013 en `/engine`. Nuevos: `blocksPathing` vs `blocksPassage` (6 casos, el corazón de #2),
+propagación de presión por puerta abierta y su detención al cerrarla, y `instantiate-door-seeds` (footprint
+2×1 de los vanos de dos celdas, nodo receptor por puerta, posición del nodo dentro de la propia puerta).
+`/game` 71 sin cambios. `tsc`, `eslint` y `vite build` limpios.

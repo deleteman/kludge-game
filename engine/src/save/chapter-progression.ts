@@ -10,6 +10,7 @@ import {
   componentSeedsForChapter,
   instantiateComponentSeeds,
 } from "../floorplan/instantiate-component-seeds.js";
+import { instantiateDoorSeeds } from "../floorplan/instantiate-door-seeds.js";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import type { CrisisDefinitionId } from "../crisis/crisis-definition.types.js";
 import { nextChapterAfter } from "../crisis/campaign/chapter-sequence.js";
@@ -82,6 +83,24 @@ export const BASE_COMPONENT_SEEDS_BY_ARCHETYPE: Record<ShipArchetype, ReadonlyAr
   Object.fromEntries(
     SHIP_ARCHETYPES.map((archetype) => [archetype, buildBaseComponentSeeds(archetype)]),
   ) as Record<ShipArchetype, ReadonlyArray<PlacedComponentInstance>>;
+
+/**
+ * Puertas del casco de cada nave (ronda 1 de playtest de 13h): instancias
+ * reales de `compuerta-blindada` materializadas desde la capa Tiled `puertas`,
+ * con su nodo receptor ya derivado del `ACT`.
+ *
+ * Van junto al attrezzo ambiental y no como capítulo: una puerta no la siembra
+ * una crisis, está en la nave desde que existe.
+ */
+export const BASE_DOOR_SEEDS_BY_ARCHETYPE: Record<
+  ShipArchetype,
+  ReturnType<typeof instantiateDoorSeeds>
+> = Object.fromEntries(
+  SHIP_ARCHETYPES.map((archetype) => [
+    archetype,
+    instantiateDoorSeeds(CANONICAL_SHIP_FLOORPLANS[archetype].doors, COMPONENT_REGISTRY),
+  ]),
+) as Record<ShipArchetype, ReturnType<typeof instantiateDoorSeeds>>;
 
 /**
  * Tabla data-driven capítulo→seed, compartida por `campaign-save-factory.ts`

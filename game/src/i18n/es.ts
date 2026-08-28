@@ -133,7 +133,6 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.valve-closed": "Válvula cerrada",
   "ui.floorplan.mission.inspector.valve-partial": "Válvula entreabierta",
   "ui.floorplan.mission.inspector.conduit-name": "Conducto de ventilación",
-  "ui.floorplan.mission.inspector.door-name": "Puerta",
   "ui.floorplan.mission.inspector.purge-reservoir": "Purgar (se pierde el contenido)",
   "ui.floorplan.mission.inspector.discharge-source": "Descargar fuente",
   "ui.floorplan.mission.inspector.reservoir-empty": "Reservorio vacío",

@@ -276,16 +276,18 @@ export function drawEnergyLayer(
 }
 
 /**
- * Capa "puertas" del HUD del plano (Subfase 13h): una barra por puerta,
- * coloreada por el estado de la hoja y orientada según el eje que bloquea.
+ * Capa "puertas" del HUD del plano (Subfase 13h): un CONTORNO por celda de
+ * puerta, coloreado por estado.
  *
- * Se redibuja por tick como `drawStructuralLayer`/`drawEnergyLayer` y no una
- * sola vez en `renderFloorplan`: el estado de una puerta cambia varias veces
- * por minuto, a diferencia de los conductos, que son estáticos.
+ * Ronda 1 de playtest: era una barra, y el operador reportó que se veía poco y
+ * a veces mal orientada. Era cierto — la dibujaba siempre horizontal, sin mirar
+ * si el umbral era vertical. Un contorno alrededor de la celda es independiente
+ * de la orientación, así que el bug desaparece por construcción en vez de
+ * arreglarse, y además deja ver el sprite de la compuerta en lugar de taparlo.
  *
- * Durante `opening`/`closing` la barra se ACORTA proporcionalmente al avance de
- * la transición: es lo que hace visible que la hoja tarda `ACT.cadence` en
- * moverse, en vez de que ese tiempo solo exista en la simulación.
+ * Se redibuja por frame como `drawStructuralLayer`/`drawEnergyLayer`. El grosor
+ * pulsa durante `opening`/`closing` para que la transición siga siendo legible:
+ * es lo que hace visible que la hoja tarda `ACT.cadence` en moverse.
  */
 export function drawDoorLayer(
   graphics: Phaser.GameObjects.Graphics,
@@ -303,25 +305,14 @@ export function drawDoorLayer(
   graphics.clear();
   for (const door of doors) {
     const color = doorLayerColor(door);
-    // Una puerta abierta ocupa menos hoja que una cerrada: el ancho de la barra
-    // ES la lectura de cuánto tapa.
     const openness = doorOpenness(door, transitionSecondsOf(door));
-    graphics.fillStyle(color, DOOR_LAYER_ALPHA);
+    // Cerrada = trazo grueso; abierta = un hilo que solo marca dónde está el
+    // umbral. Sin ese hilo, una puerta abierta desaparecería del plano y el
+    // jugador no sabría que hay algo ahí que puede volver a cerrar.
+    const thickness = 1 + (1 - openness) * 3;
+    graphics.lineStyle(thickness, color, DOOR_LAYER_ALPHA);
     for (const cell of door.cells) {
-      const thickness = Math.max(2, CELL * 0.28 * (1 - openness));
-      if (thickness <= 2 && openness > 0.95) {
-        // Del todo abierta: solo los dos jambajes, para que el umbral siga
-        // siendo legible como puerta y no desaparezca del plano.
-        graphics.fillRect(cell.x * CELL, cell.y * CELL, 3, CELL);
-        graphics.fillRect((cell.x + 1) * CELL - 3, cell.y * CELL, 3, CELL);
-        continue;
-      }
-      graphics.fillRect(
-        cell.x * CELL,
-        cell.y * CELL + (CELL - thickness) / 2,
-        CELL,
-        thickness,
-      );
+      graphics.strokeRect(cell.x * CELL + 1, cell.y * CELL + 1, CELL - 2, CELL - 2);
     }
   }
 

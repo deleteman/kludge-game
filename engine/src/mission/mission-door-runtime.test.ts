@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   MissionDoorRuntime,
+  buildComponentCatalog,
+  instantiateDoorSeeds,
   ValveRuntime,
   composeApertureSources,
   doorAperture,
@@ -8,12 +10,14 @@ import {
   type DoorDomainEvent,
   type DoorId,
   type DoorSeedId,
+  type MissionDoorRuntimeOptions,
   type ShipFloorplan,
 } from "../index.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { ConduitId } from "../floorplan/floorplan.types.js";
 import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
+import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 
 const PASILLO = "pasillo" as SectionId;
 const BODEGA = "bodega" as SectionId;
@@ -56,7 +60,26 @@ function floorplan(): ShipFloorplan {
   };
 }
 
-const DOOR = "authored:pasillo-bodega" as DoorId;
+const REGISTRY = buildComponentCatalog().registry;
+
+/**
+ * Puerta del casco como INSTANCIA real (ronda 1 de playtest de 13h): la capa
+ * `puertas` materializa `compuerta-blindada`, y el runtime la recoge por el
+ * mismo camino que una instalada por el jugador.
+ */
+function mountDoors(options: Omit<MissionDoorRuntimeOptions, "floorplan" | "resolveDefinition"> = {}) {
+  const plan = floorplan();
+  const seeded = instantiateDoorSeeds(plan.doors, REGISTRY);
+  const runtime = new MissionDoorRuntime({
+    ...options,
+    floorplan: plan,
+    resolveDefinition: (id) => REGISTRY.get(id),
+  });
+  runtime.syncInstalledDoors(seeded.components);
+  return { runtime, plan, seeded };
+}
+
+const DOOR = "instance:puerta-pasillo-bodega" as DoorId;
 
 function tick(seconds: number, elapsed: number): TickContext {
   return { dtSeconds: seconds, elapsedSeconds: elapsed };
@@ -74,17 +97,14 @@ function run(runtime: MissionDoorRuntime, seconds: number, from = 0): number {
 
 describe("MissionDoorRuntime (13h)", () => {
   it("siembra las puertas autoradas CERRADAS: la nave arranca compartimentada", () => {
-    const runtime = new MissionDoorRuntime({ floorplan: floorplan() });
+    const { runtime } = mountDoors();
     expect(runtime.doorById(DOOR)?.state).toBe("closed");
     expect(runtime.blocksCell(THRESHOLD)).toBe(true);
   });
 
   it("se abre al acercarse un actor y se cierra sola cuando se va", () => {
     let occupied: { x: number; y: number }[] = [];
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
-      queries: { occupiedCells: () => occupied },
-    });
+    const { runtime } = mountDoors({ queries: { occupiedCells: () => occupied } });
 
     occupied = [{ x: 0, y: 0 }];
     const elapsed = run(runtime, 4);
@@ -98,10 +118,7 @@ describe("MissionDoorRuntime (13h)", () => {
   });
 
   it("la transición tarda `cadence` y la apertura atmosférica INTERPOLA durante ese tramo", () => {
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
-      queries: { occupiedCells: () => [{ x: 0, y: 0 }] },
-    });
+    const { runtime } = mountDoors({ queries: { occupiedCells: () => [{ x: 0, y: 0 }] } });
     const aperture = runtime.apertureSource();
 
     // A mitad del ciclo de 3 s la hoja va por la mitad: ni sellada ni abierta.
@@ -120,8 +137,7 @@ describe("MissionDoorRuntime (13h)", () => {
 
   it("sin energía se CONGELA donde está, no se cierra", () => {
     let powered = true;
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
+    const { runtime } = mountDoors({
       queries: { occupiedCells: () => [{ x: 0, y: 0 }], powered: () => powered },
     });
     const elapsed = run(runtime, 4);
@@ -135,10 +151,7 @@ describe("MissionDoorRuntime (13h)", () => {
   });
 
   it("force-door abre a mano una puerta sin motor, y su coste escala con la fuerza del actuador", () => {
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
-      queries: { powered: () => false },
-    });
+    const { runtime } = mountDoors({ queries: { powered: () => false } });
     run(runtime, 2);
     expect(runtime.doorById(DOOR)?.state).toBe("closed");
 
@@ -151,10 +164,7 @@ describe("MissionDoorRuntime (13h)", () => {
 
   it("el daño la rompe: hueco permanente que ya no compartimenta ni bloquea", () => {
     const events: DoorDomainEvent[] = [];
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
-      emitter: (event) => events.push(event),
-    });
+    const { runtime } = mountDoors({ emitter: (event) => events.push(event) });
 
     runtime.applyDamage(DOOR, 100, 1);
     expect(events.at(-1)).toMatchObject({ kind: "door-damaged", remainingHp: 200 });
@@ -167,7 +177,7 @@ describe("MissionDoorRuntime (13h)", () => {
   });
 
   it("repair-door devuelve una puerta rota al servicio", () => {
-    const runtime = new MissionDoorRuntime({ floorplan: floorplan() });
+    const { runtime } = mountDoors();
     runtime.applyDamage(DOOR, 1000, 1);
     expect(runtime.doorById(DOOR)?.state).toBe("destroyed");
 
@@ -181,8 +191,7 @@ describe("MissionDoorRuntime (13h)", () => {
   it("aplasta al tripulante que quede en el umbral al cerrarse", () => {
     const events: DoorDomainEvent[] = [];
     let occupied = [{ x: 0, y: 0 }];
-    const runtime = new MissionDoorRuntime({
-      floorplan: floorplan(),
+    const { runtime } = mountDoors({
       queries: {
         occupiedCells: () => occupied,
         crewAt: (cell) => (cell.x === THRESHOLD.x ? ("victima" as CrewActorId) : undefined),
@@ -198,8 +207,7 @@ describe("MissionDoorRuntime (13h)", () => {
   });
 
   it("una puerta cerrada NO aporta difusión, pero el conducto sigue abierto (la puerta no cierra el ducto)", () => {
-    const plan = floorplan();
-    const runtime = new MissionDoorRuntime({ floorplan: plan });
+    const { runtime, plan } = mountDoors();
     const valves = new ValveRuntime(plan);
     const combined = composeApertureSources(
       () => valves.effectiveConnections(),
@@ -219,11 +227,11 @@ describe("MissionDoorRuntime (13h)", () => {
   });
 
   it("persiste y restaura el estado de la puerta", () => {
-    const runtime = new MissionDoorRuntime({ floorplan: floorplan() });
+    const { runtime } = mountDoors();
     runtime.applyDamage(DOOR, 120, 1);
     const snapshots = runtime.toSnapshots();
 
-    const reloaded = new MissionDoorRuntime({ floorplan: floorplan(), snapshots });
+    const { runtime: reloaded } = mountDoors({ snapshots });
     expect(reloaded.doorById(DOOR)?.hp).toBe(180);
   });
 });
@@ -232,6 +240,7 @@ describe("doorAperture", () => {
   it("un hueco permanente difunde como una puerta abierta", () => {
     const door = {
       id: DOOR,
+      instanceId: "puerta-x" as PlacedComponentInstanceId,
       a: PASILLO,
       b: BODEGA,
       cells: [THRESHOLD],

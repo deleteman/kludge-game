@@ -133,7 +133,6 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.valve-closed": "Valve closed",
   "ui.floorplan.mission.inspector.valve-partial": "Valve half-open",
   "ui.floorplan.mission.inspector.conduit-name": "Ventilation conduit",
-  "ui.floorplan.mission.inspector.door-name": "Door",
   "ui.floorplan.mission.inspector.purge-reservoir": "Purge (contents are lost)",
   "ui.floorplan.mission.inspector.discharge-source": "Discharge source",
   "ui.floorplan.mission.inspector.reservoir-empty": "Empty reservoir",

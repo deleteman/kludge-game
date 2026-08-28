@@ -4,6 +4,7 @@ import {
   activeCoilFieldIntensity,
   buildComponentCatalog,
   intensityAtDistance,
+  instantiateDoorSeeds,
   MissionDoorRuntime,
   MutableCrewState,
   MutableEnemyState,
@@ -26,7 +27,7 @@ const ARMERIA = "armeria" as SectionId;
 const PASILLO = "pasillo" as SectionId;
 /** Umbral entre las dos secciones: la puerta que el electroimán tiene que trabar. */
 const THRESHOLD = { x: 1, y: 0 };
-const DOOR = "authored:armeria-pasillo" as DoorId;
+const DOOR = "instance:puerta-armeria-pasillo" as DoorId;
 const INTRUSO = "intruso" as EnemyActorId;
 
 function floorplan(): ShipFloorplan {
@@ -114,16 +115,19 @@ describe("case 9 — El Electroimán de Emergencia", () => {
         Math.abs(cell.x - coilCell.x) + Math.abs(cell.y - coilCell.y),
       );
 
+    const { registry } = buildComponentCatalog();
+    const plan = floorplan();
     const doors = new MissionDoorRuntime({
-      floorplan: floorplan(),
+      floorplan: plan,
       // El intruso está justo al lado del umbral: en `auto` puro la puerta se
       // le abriría sola, que es exactamente el problema que el electroimán
       // resuelve.
       queries: { occupiedCells: () => [{ x: 2, y: 0 }], magneticFieldAt: fieldAt },
+      resolveDefinition: (id) => registry.get(id),
     });
+    doors.syncInstalledDoors(instantiateDoorSeeds(plan.doors, registry).components);
 
     const enemies = new MutableEnemyState([intruder()]);
-    const { registry } = buildComponentCatalog();
     const threat = new EnemyThreatRuntime({
       enemies,
       routes: new Map([[INTRUSO, route()]]),
@@ -152,9 +156,14 @@ describe("case 9 — El Electroimán de Emergencia", () => {
     // Misma escena SIN electroimán y con la puerta simplemente cerrada: el
     // intruso la golpea hasta romperla. Es lo que evita que una puerta trabada
     // deje el nivel muerto con un enemigo atascado para siempre.
-    const doors = new MissionDoorRuntime({ floorplan: floorplan() });
-    const enemies = new MutableEnemyState([intruder()]);
     const { registry } = buildComponentCatalog();
+    const plan = floorplan();
+    const doors = new MissionDoorRuntime({
+      floorplan: plan,
+      resolveDefinition: (id) => registry.get(id),
+    });
+    doors.syncInstalledDoors(instantiateDoorSeeds(plan.doors, registry).components);
+    const enemies = new MutableEnemyState([intruder()]);
     const threat = new EnemyThreatRuntime({
       enemies,
       routes: new Map([[INTRUSO, route()]]),

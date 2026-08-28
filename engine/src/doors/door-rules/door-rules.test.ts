@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  blocksPassage,
+  blocksPathing,
   createDefaultDoorRuleRegistry,
   resolveDoorGovernance,
   type DoorGovernanceContext,
   type DoorRuntime,
   type DoorId,
+  type PlacedComponentInstanceId,
 } from "../../index.js";
 import type { SectionId } from "../../atmosphere/section.types.js";
 
@@ -13,6 +16,7 @@ const RULES = createDefaultDoorRuleRegistry();
 function door(overrides: Partial<DoorRuntime> = {}): DoorRuntime {
   return {
     id: "door-1" as DoorId,
+    instanceId: "puerta-1" as PlacedComponentInstanceId,
     a: "pasillo" as SectionId,
     b: "bodega" as SectionId,
     cells: [{ x: 4, y: 2 }],
@@ -146,6 +150,47 @@ describe("reglas de gobierno de puertas (13h)", () => {
       const outcome = resolveDoorGovernance(RULES, ctx({ door: door({ hp: 50, state: "open" }) }));
       expect(outcome).toMatchObject({ targetOpen: true, overrideSource: "jammed-damage" });
       expect(outcome.forcedState).toBeUndefined();
+    });
+  });
+
+  // Ronda 1 de playtest: el bug que dejó la nave entera inalcanzable fue
+  // colapsar "está tapando la celda ahora" con "es un obstáculo para llegar".
+  describe("blocksPathing vs blocksPassage — obstáculo vs. demora", () => {
+    it("una puerta cerrada en auto tapa la celda pero NO bloquea el pathfinding", () => {
+      const cerrada = door({ state: "closed", mode: "auto" });
+      // Para un proyectil sigue siendo pared...
+      expect(blocksPassage(cerrada)).toBe(true);
+      // ...pero para planificar una ruta es una demora: se abre sola al llegar.
+      expect(blocksPathing(cerrada)).toBe(false);
+    });
+
+    it("trabada bloquea las dos cosas", () => {
+      const trabada = door({ state: "jammed", mode: "override", overrideSource: "magnetic-lock" });
+      expect(blocksPassage(trabada)).toBe(true);
+      expect(blocksPathing(trabada)).toBe(true);
+    });
+
+    it("sin energía bloquea el pathfinding aunque la pillara abierta", () => {
+      // La hoja congelada abierta deja pasar, pero no se puede CONTAR con ella:
+      // sigue en override y no responde. `blocksPassage` dice la verdad física.
+      const congelada = door({ state: "closed", mode: "override", overrideSource: "unpowered" });
+      expect(blocksPathing(congelada)).toBe(true);
+    });
+
+    it("cerrada por señal bloquea el pathfinding: no se va a abrir sola", () => {
+      expect(blocksPathing(door({ state: "closed", mode: "override", overrideSource: "signal" }))).toBe(true);
+    });
+
+    it("destruida no bloquea nada: es un hueco", () => {
+      const rota = door({ state: "destroyed" });
+      expect(blocksPassage(rota)).toBe(false);
+      expect(blocksPathing(rota)).toBe(false);
+    });
+
+    it("abierta no bloquea nada", () => {
+      const abierta = door({ state: "open", mode: "auto" });
+      expect(blocksPassage(abierta)).toBe(false);
+      expect(blocksPathing(abierta)).toBe(false);
     });
   });
 });

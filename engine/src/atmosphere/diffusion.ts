@@ -25,6 +25,8 @@ function clamp01(value: number): number {
  *  - Válvula cerrada (apertura 0) ⇒ step 0 ⇒ secciones aisladas.
  *  - NO hay regeneración pasiva de gas (Espec. §4): la difusión solo mueve el
  *    gas existente, nunca lo crea.
+ *  - La PRESIÓN se equilibra por la misma conexión y con el mismo paso (ronda 1
+ *    de playtest de 13h) — ver el comentario en el cuerpo.
  */
 export function diffuse(
   sectionsById: ReadonlyMap<SectionId, SectionRuntime>,
@@ -49,6 +51,27 @@ export function diffuse(
     const totalVolume = volA + volB;
     if (totalVolume <= 0) {
       continue;
+    }
+
+    // Presión (ronda 1 de playtest de 13h). Hasta acá `diffuse()` movía
+    // fracciones de gas pero NUNCA tocaba `pressureKpa`: la presión solo la
+    // movía el sumidero de 13f, y siempre sobre una sola sección. La
+    // consecuencia era que abrir la puerta de una sala brechada no le hacía
+    // nada a la sala de al lado — reportado en el playtest, y era un hueco de
+    // modelado, no un bug de las puertas.
+    //
+    // Se equilibra con la MISMA apertura y el MISMO paso ponderado por volumen
+    // que las fracciones: es el mismo fenómeno por la misma conexión, así que
+    // no merece una segunda función ni un segundo recorrido. Consecuencia
+    // buscada (decisión del operador): una brecha se desangra por cada puerta o
+    // válvula abierta hasta el último rincón de la nave, y cerrarlas es lo
+    // único que lo detiene.
+    const pA = a.atmosphere.pressureKpa;
+    const pB = b.atmosphere.pressureKpa;
+    if (pA !== pB) {
+      const equilibrium = (pA * volA + pB * volB) / totalVolume;
+      a.atmosphere.pressureKpa = pA + (equilibrium - pA) * step;
+      b.atmosphere.pressureKpa = pB + (equilibrium - pB) * step;
     }
 
     const gasKeys = new Set<GasKey>([...a.atmosphere.gases.keys(), ...b.atmosphere.gases.keys()]);

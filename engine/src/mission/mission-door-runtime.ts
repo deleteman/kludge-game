@@ -8,8 +8,9 @@ import type { MagneticFieldIntensity } from "../kinetics/magnetic-field.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
-import type { DoorSeedPoint, ShipFloorplan } from "../floorplan/floorplan.types.js";
+import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
+import { occupiedCells } from "../workbench/workbench-state.types.js";
 import { DOOR_PARAMETERS } from "../doors/door-parameters.js";
 import { doorAperture } from "../doors/door-aperture.js";
 import {
@@ -22,7 +23,7 @@ import { resolveDoorGovernance } from "../doors/door-governance.js";
 import type { DoorGovernanceContext, DoorGovernanceRule } from "../doors/door-governance.js";
 import { createDefaultDoorRuleRegistry } from "../doors/door-rules/door-rule-registry.js";
 import type { DoorDomainEvent } from "../doors/door-events.types.js";
-import { blocksPassage, toDoorSnapshot } from "../doors/door.types.js";
+import { blocksPassage, blocksPathing, toDoorSnapshot } from "../doors/door.types.js";
 import type { DoorId, DoorRuntime, DoorSnapshot, DoorState } from "../doors/door.types.js";
 import type { SectionApertureSource } from "./mission-atmosphere-runtime.js";
 
@@ -81,44 +82,31 @@ export class MissionDoorRuntime implements Tickable {
   private readonly rules: readonly DoorGovernanceRule[];
   private readonly taskOverrides = new Map<DoorId, boolean>();
   private readonly blockedCellKeys = new Set<string>();
+  /** Estado guardado todavía sin puerta a la que aplicárselo — ver el constructor. */
+  private readonly pendingSnapshots = new Map<DoorId, DoorSnapshot>();
 
   constructor(private readonly options: MissionDoorRuntimeOptions) {
     this.rules = options.rules ?? createDefaultDoorRuleRegistry();
-    this.seedAuthoredDoors();
-    this.restoreSnapshots(options.snapshots ?? []);
+    // Los snapshots quedan PENDIENTES hasta que `syncInstalledDoors` dé de alta
+    // la puerta correspondiente: desde la ronda 1 de playtest de 13h no hay
+    // ninguna puerta al construir el runtime (todas nacen de instancias), así
+    // que restaurar acá no encontraría a quién aplicarle nada.
+    for (const snapshot of options.snapshots ?? []) {
+      this.pendingSnapshots.set(snapshot.doorId, snapshot);
+    }
     this.recomputeBlockedCells();
   }
 
   /**
-   * Da de alta las puertas autoradas en la capa Tiled `puertas`. Son parte del
-   * casco, no piezas del catálogo: sin `ACT` detrás usan los defaults de
-   * parámetros y RE-A (una puerta de nave es blindada por defecto).
-   */
-  private seedAuthoredDoors(): void {
-    for (const seed of this.options.floorplan.doors) {
-      const id = `authored:${seed.id}` as DoorId;
-      const maxHp = DOOR_PARAMETERS.maxHpByResistance.A;
-      this.doorsById.set(id, {
-        id,
-        a: seed.a,
-        b: seed.b,
-        cells: seedCells(seed),
-        mode: "auto",
-        state: seed.initialOpen ? "open" : "closed",
-        transitionElapsedSeconds: 0,
-        hp: maxHp,
-        maxHp,
-      });
-      this.transitionSecondsById.set(id, DOOR_PARAMETERS.defaultTransitionSeconds);
-      this.motorPowerById.set(id, DOOR_PARAMETERS.crushMediumPowerThreshold);
-      this.resistanceById.set(id, "A");
-    }
-  }
-
-  /**
-   * Sincroniza las puertas CONSTRUIDAS con el blueprint vivo: toda instancia
-   * `ACT` + `EST` sobre una celda de umbral es una puerta, y deja de serlo al
-   * desmontarse.
+   * Sincroniza las puertas con el blueprint vivo: toda instancia `ACT` + `EST`
+   * sobre una celda de umbral es una puerta, y deja de serlo al desmontarse.
+   *
+   * Es el ÚNICO camino de alta desde la ronda 1 de playtest de 13h. Antes había
+   * dos —las autoradas en Tiled vivían acá adentro sin instancia detrás— y esa
+   * dualidad era la causa de que no se les dibujara sprite ni se pudieran
+   * cablear. Ahora la capa `puertas` materializa instancias reales
+   * (`instantiate-door-seeds.ts`) y este método las recoge como a cualquier
+   * otra.
    *
    * Se llama cuando cambia el blueprint (instalar/desmontar) y no por tick:
    * recorrer todas las instalaciones cada tick para redescubrir umbrales sería
@@ -155,25 +143,27 @@ export class MissionDoorRuntime implements Tickable {
 
       if (!this.doorsById.has(id)) {
         const maxHp = DOOR_PARAMETERS.maxHpByResistance[level];
+        const snapshot = this.pendingSnapshots.get(id);
         this.doorsById.set(id, {
           id,
           a: threshold[0].id,
           b: threshold[1].id,
-          cells: [instance.placement.position],
+          cells: occupiedCells(instance.placement),
           instanceId: instance.instanceId,
-          mode: "auto",
-          state: "closed",
+          mode: snapshot?.mode ?? "auto",
+          state: snapshot?.state ?? "closed",
           transitionElapsedSeconds: 0,
-          hp: maxHp,
+          hp: snapshot?.hp ?? maxHp,
           maxHp,
         });
+        this.pendingSnapshots.delete(id);
       }
     }
 
-    // Baja de las que ya no están instaladas. Las autoradas nunca se dan de
-    // baja: son casco.
-    for (const [id, door] of this.doorsById) {
-      if (door.instanceId !== undefined && !seen.has(id)) {
+    // Baja de las que ya no están instaladas: desmontar una puerta —incluida
+    // una del casco— quita esa frontera de la compartimentación.
+    for (const [id] of this.doorsById) {
+      if (!seen.has(id)) {
         this.doorsById.delete(id);
         this.transitionSecondsById.delete(id);
         this.motorPowerById.delete(id);
@@ -434,11 +424,22 @@ export class MissionDoorRuntime implements Tickable {
   }
 
   /**
-   * ÚNICA fuente de verdad del bloqueo de paso. La consumen el pathfinding de
-   * tripulación, la línea de visión del sensor óptico y los proyectiles de 13f.
+   * Estado FÍSICO ahora mismo: ¿esta celda está tapada por una hoja? La
+   * consumen la línea de visión del sensor óptico y los proyectiles de 13f —
+   * para una bala, una puerta cerrada aunque sea funcional es una pared.
    */
   blocksCell(cell: GridPosition): boolean {
     return this.blockedCellKeys.has(`${cell.x},${cell.y}`);
+  }
+
+  /**
+   * ¿Esta celda es un obstáculo para PLANIFICAR una ruta? Distinta pregunta que
+   * `blocksCell` (ver `blocksPathing` en `door.types.ts`): una puerta que se va
+   * a abrir sola cuando el tripulante llegue es una demora, no un muro.
+   */
+  blocksPathingAt(cell: GridPosition): boolean {
+    const door = this.doorAt(cell);
+    return door !== undefined && blocksPathing(door);
   }
 
   /**
@@ -459,19 +460,6 @@ export class MissionDoorRuntime implements Tickable {
 
   toSnapshots(): readonly DoorSnapshot[] {
     return [...this.doorsById.values()].map(toDoorSnapshot);
-  }
-
-  private restoreSnapshots(snapshots: readonly DoorSnapshot[]): void {
-    for (const snapshot of snapshots) {
-      const door = this.doorsById.get(snapshot.doorId);
-      if (!door) {
-        continue;
-      }
-      door.state = snapshot.state;
-      door.mode = snapshot.mode;
-      door.hp = snapshot.hp;
-      door.transitionElapsedSeconds = 0;
-    }
   }
 
   private recomputeBlockedCells(): void {
@@ -523,20 +511,4 @@ export class MissionDoorRuntime implements Tickable {
   private emit(event: DoorDomainEvent): void {
     this.options.emitter?.(event);
   }
-}
-
-/**
- * Celdas que ocupa un umbral autorado. Un vano de dos celdas es UNA puerta con
- * dos celdas, no dos puertas: cada puerta aporta su propia arista de difusión,
- * así que partirlo en dos duplicaría el caudal de aire de ese vano.
- */
-function seedCells(seed: DoorSeedPoint): readonly GridPosition[] {
-  const cells: GridPosition[] = [];
-  for (let offset = 0; offset < seed.span; offset += 1) {
-    cells.push({
-      x: seed.position.x + (seed.axis === "x" ? offset : 0),
-      y: seed.position.y + (seed.axis === "y" ? offset : 0),
-    });
-  }
-  return cells;
 }
