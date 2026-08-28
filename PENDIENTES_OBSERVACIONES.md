@@ -791,3 +791,36 @@ dónde, y qué costaría arreglarlo.
     autodescribe, y "click derecho = mover a esta celda" no se descubre solo. Es deuda de ONBOARDING, no de
     esta subfase: el sitio natural es el briefing del Cap.1 o una capa de ayuda de controles (que no existe),
     junto con el resto de atajos que hoy tampoco se enseñan (ESC, rueda para zoom, arrastre para panear).
+
+---
+
+## Deuda #35 — Capa `puertas` sin autorar en 3 de los 4 arquetipos (Subfase 13h)
+
+**Estado:** ABIERTA. Registrada al cerrar 13h (2026-08-28).
+
+La capa Tiled `puertas` solo está autorada en `nave-exploracion` (10 puertas, una por frontera ventilada,
+derivadas de los vanos REALES del tilemap y no del rectángulo de sección). `nave-guerra`,
+`nave-investigacion` y `nave-medica` parsean `doors: []` — la capa es opcional, así que cargan sin error,
+pero **esas naves no están compartimentadas**: una brecha desangra la nave entera como antes de 13h.
+
+Es la misma clase de deuda de contenido que #13/#14 (conductos `senal`/`fluido` sin autorar en los otros
+arquetipos) y se cierra en el mismo momento: cuando los capítulos se extiendan más allá de Exploración.
+
+Receta para autorarlas: los vanos se encuentran buscando las celdas con suelo transitable a ambos lados de
+cada frontera de ventilación (`background` con tile y `walls` sin tile). Los vanos de dos celdas van como
+UNA puerta con `span: 2`, nunca como dos puertas — cada puerta aporta su propia arista de difusión, así que
+partirla duplicaría el caudal de aire de ese vano. El test
+`canonical-ships.test.ts > exploracion: hay una puerta por cada frontera de ventilación` es el molde de la
+comprobación de cobertura; conviene extenderlo a los otros arquetipos al autorarlos.
+
+## Deuda #36 — Frame de sprite de puerta abierta (Subfase 13h)
+
+**Estado:** ABIERTA. Registrada al cerrar 13h (2026-08-28).
+
+`game/assets/sprites/components/compuerta-blindada.png` es un único frame de puerta CERRADA. El estado
+abierto se resuelve por código desvaneciendo el sprite (`updateDoorSprites`, alpha interpolado con la misma
+cadencia que usa la simulación), y la lectura fuerte del estado la lleva la barra de la capa `puertas`.
+
+Funciona, pero una hoja que se desvanece no es lo mismo que una hoja que se corre. Si aparece un segundo
+frame (o una tira de 3-4), el punto de cambio es `updateDoorSprites` en `floorplan-scene.ts` y nada más.
+Procurement del operador, no código.
