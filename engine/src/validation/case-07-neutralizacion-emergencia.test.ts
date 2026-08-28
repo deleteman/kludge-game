@@ -51,6 +51,7 @@ function bahiaCargaFloorplan(): ShipFloorplan {
     conduits: [],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 
@@ -87,6 +88,8 @@ function blueprintWithHullPanel(): Blueprint {
     ],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

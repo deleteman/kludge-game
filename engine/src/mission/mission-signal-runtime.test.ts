@@ -37,6 +37,8 @@ function blueprintWith(graph: SignalGraph<PlacedComponentInstanceId>): Blueprint
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -134,6 +136,7 @@ describe("mission: MissionSignalRuntime", () => {
       conduits: [],
       anchors: [],
     componentSeeds: [],
+    doors: [],
     };
     const runtime = new MissionSignalRuntime(ship, allEmittersActive(ship), undefined, {
       shipFloorplan,
@@ -163,6 +166,7 @@ describe("mission: MissionSignalRuntime", () => {
       conduits: [],
       anchors: [],
     componentSeeds: [],
+    doors: [],
     };
     const runtime = new MissionSignalRuntime(ship, allEmittersActive(ship), undefined, {
       shipFloorplan,
@@ -186,6 +190,7 @@ describe("mission: MissionSignalRuntime", () => {
       conduits: [],
       anchors: [],
       componentSeeds: [],
+    doors: [],
     };
     const runtime = new MissionSignalRuntime(
       ship,

@@ -34,6 +34,14 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   "transfer-substance": 10,
   "apply-substance": 8,
   "extract-elements": 14,
+  // Subfase 13h. Operar una válvula es fontanería barata: lo caro es llegar
+  // hasta ella mientras la sala se vacía. Forzar y reparar son lo contrario —
+  // trabajo pesado sobre una hoja blindada; la duración real de `force-door`
+  // además escala con la fuerza del motor que hay que vencer
+  // (`MissionDoorRuntime.forceDurationSeconds`), esta es solo su base.
+  "set-valve": 6,
+  "force-door": 10,
+  "repair-door": 20,
 };
 
 /** Duración base de un tipo de tarea (segundos). Punto único de lectura de la tabla. */

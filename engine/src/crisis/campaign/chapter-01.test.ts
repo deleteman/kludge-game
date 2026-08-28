@@ -65,6 +65,8 @@ function shipWithActuator(condition: "ok" | "jammed", definitionId: ComponentId)
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

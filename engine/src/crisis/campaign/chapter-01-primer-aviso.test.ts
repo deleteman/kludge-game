@@ -89,6 +89,8 @@ describe("capítulo 1 — variantes por arquetipo", () => {
         sectionAtmospheres: [],
         sectionIntegrity: [],
         unpoweredSectionIds: [],
+        doorStates: [],
+        valveApertures: [],
         overloadedRefs: [],
         powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
       };
@@ -155,6 +157,8 @@ describe("capítulo 1 — variantes por arquetipo", () => {
       sectionAtmospheres: [],
       sectionIntegrity: [],
       unpoweredSectionIds: [],
+      doorStates: [],
+      valveApertures: [],
       overloadedRefs: [],
       powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     };

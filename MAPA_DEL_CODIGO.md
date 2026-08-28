@@ -1342,3 +1342,61 @@
 - `devTargetMode` (13f ronda 4b): las teclas de dev F y H arman una herramienta y el siguiente click de mapa elige
   la celda, en vez de leer `interaction.selectedCell`. Se rompieron cuando el panel de celda vacía desapareció —
   una herramienta de dev no debe depender de un estado de juego para funcionar.
+
+# Subfase 13h — Puertas y compartimentación (ronda A: motor)
+
+## `engine/src/doors/` (dominio nuevo, Subfase 13h)
+- `door.types.ts` — `DoorId`/`DoorMode`/`DoorState`/`DoorOverrideSource`/`DoorRuntime`/`DoorSnapshot`. `DoorState` incluye
+  `opening`/`closing`: la transición dura `ACT.cadence` y no es un escalón. `overrideSource` lleva el MOTIVO para que la UI
+  pueda decir por qué la puerta no responde.
+- `door-parameters.ts` — todo el balance de la subfase (vida por `RE`, radio de auto-apertura, umbral de trabado magnético,
+  coste de forzar). Ninguna regla tiene literales propios.
+- `door-aperture.ts` — apertura [0,1] de una puerta; `opening`/`closing` INTERPOLAN, si no la cadencia sería cosmética.
+- `door-identity.ts` — `isDoorCapable` (`ACT`+`EST`), `doorActuator`, `doorTransitionSeconds`, `thresholdSectionsAt`.
+  La identidad es por propiedades y la de umbral por geometría; ninguna lista de ids de catálogo.
+- `door-governance.ts` + `door-rules/` — Strategy con prioridad ORDENADA (destruida > trabada > sin energía > señal >
+  tarea > auto). El orden vive en `door-rule-registry.ts` y ES la semántica; `AutoProximityRule` va siempre última porque
+  es la única que aplica incondicionalmente.
+- `door-events.types.ts` — `door-transition`/`settled`/`override-changed`/`damaged`/`destroyed`/`repaired`/`crushed-actor`.
+
+## `engine/src/valves/` (dominio nuevo, Subfase 13h)
+- `valve.types.ts` / `valve-runtime.ts` — apertura viva por `ConduitId`, sembrada de `initialAperture` y pisada por el save.
+  Existe porque la puerta NO cierra el ducto: contener una fuga exige cerrar también la válvula.
+
+## `engine/src/mission/mission-door-runtime.ts` (nuevo, Subfase 13h)
+- Dueño del estado vivo. Produce las dos cosas que consume el resto: `apertureSource()` (aristas atmosféricas de las
+  puertas, que se SUMAN a las de conductos) y `blocksCell()` — única fuente de verdad del bloqueo, compartida por
+  pathfinding, línea de visión y proyectiles de 13f para que no diverjan.
+- `DoorWorldQueries`: interfaz angosta y opcional (ocupación, señal, energía, campo magnético). Sin queries las puertas
+  corren en `auto` puro.
+- `syncInstalledDoors()` promueve instalaciones `ACT`+`EST` sobre umbral a puertas; se llama al cambiar el blueprint, no
+  por tick.
+
+## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, 13h)
+- `SectionApertureSource` opcional, molde de `SectionPressureSinkSource`. Devuelve la lista COMPLETA de conexiones
+  efectivas del tick, no un delta: resuelve válvulas (misma arista, otra apertura) y puertas (aristas adicionales) con la
+  misma forma. `diffuse()` no cambió.
+
+## `engine/src/mission/composite-aperture-source.ts` (nuevo, 13h)
+- Molde de `composePressureSinks`, pero CONCATENA en vez de sumar por clave: entre dos secciones puede haber a la vez un
+  ducto abierto y una puerta cerrada, y son dos caminos distintos para el aire.
+
+## `engine/src/floorplan/` (modificado, 13h)
+- `ConduitId` derivado en `parseConduits` (`${kind}:${a}:${b}:${índice}`) — los conductos no tenían identidad y `/game`
+  improvisaba claves; el índice hace falta porque hay pares repetidos reales en `nave-exploracion`.
+- `DoorSeedPoint` + capa Tiled `puertas` OPCIONAL con `span`/`axis`: un vano de dos celdas es UNA puerta con dos celdas,
+  porque partirlo duplicaría su caudal de aire. Integridad: `door-self-reference`/`unknown-section`/`not-adjacent`/
+  `outside-section`/`duplicate-id`.
+
+## `engine/src/workbench/derive-signal-nodes.ts` (modificado, 13h)
+- `ACT` pasa a derivar un nodo `receptor`. Un actuador gobernado por señal ES un receptor; sin esto el panel de compuerta
+  del Cap.1 era un nodo huérfano y una puerta instalada no se podía cablear. Vale para todo `ACT`, no solo puertas.
+
+## `engine/src/mission/enemy-threat-runtime.ts` (modificado, 13h)
+- `doorBlocking`/`damageDoor`: el enemigo se frena ante una puerta cerrada con su reloj de ruta pausado (`routeHoldSeconds`,
+  necesario porque `cellAtElapsedSeconds` es función del tiempo absoluto) y la golpea hasta romperla. Trabar una puerta
+  compra tiempo, no inmunidad.
+
+## `engine/src/mission/loose-ferromagnetic-promoter.ts` (modificado, 13h)
+- Excluye puertas: una compuerta ferromagnética dañada saldría del blueprint para siempre, llevándose la
+  compartimentación de esa sección sin que el jugador hiciera nada.

@@ -320,6 +320,9 @@ export type {
   ComponentSeedId,
   ComponentSeedPoint,
   ConduitConnection,
+  ConduitId,
+  DoorSeedId,
+  DoorSeedPoint,
   ConduitKind,
   FloorplanSection,
   ShipArchetype,
@@ -883,6 +886,52 @@ import type { EnemyDomainEvent } from "./enemies/enemy-events.types.js";
 import type { PowerDomainEvent } from "./power/power-events.types.js";
 import type { SalvageDomainEvent } from "./salvage/salvage-hazard.types.js";
 import type { IntegrityDomainEvent } from "./integrity/integrity-events.types.js";
+import type { DoorDomainEvent } from "./doors/door-events.types.js";
+
+// ---------------------------------------------------------------------------
+// Subfase 13h — Puertas y compartimentación (dominios nuevos `doors/` y `valves/`).
+// ---------------------------------------------------------------------------
+export type {
+  DoorId,
+  DoorMode,
+  DoorState,
+  DoorOverrideSource,
+  DoorRuntime,
+  DoorSnapshot,
+} from "./doors/door.types.js";
+export { blocksPassage, isDoorDestroyed, toDoorSnapshot } from "./doors/door.types.js";
+export { doorAperture } from "./doors/door-aperture.js";
+export { DOOR_PARAMETERS } from "./doors/door-parameters.js";
+export {
+  doorActuator,
+  doorTransitionSeconds,
+  isDoorCapable,
+  thresholdSectionsAt,
+} from "./doors/door-identity.js";
+export { resolveDoorGovernance } from "./doors/door-governance.js";
+export type {
+  DoorGovernanceContext,
+  DoorGovernanceOutcome,
+  DoorGovernanceRule,
+} from "./doors/door-governance.js";
+export { createDefaultDoorRuleRegistry } from "./doors/door-rules/door-rule-registry.js";
+export type {
+  DoorDomainEvent,
+  DoorTransitionEvent,
+  DoorSettledEvent,
+  DoorOverrideChangedEvent,
+  DoorDamagedEvent,
+  DoorDestroyedEvent,
+  DoorRepairedEvent,
+  DoorCrushedActorEvent,
+} from "./doors/door-events.types.js";
+export { MissionDoorRuntime } from "./mission/mission-door-runtime.js";
+export type { DoorWorldQueries, MissionDoorRuntimeOptions } from "./mission/mission-door-runtime.js";
+export { ValveRuntime } from "./valves/valve-runtime.js";
+export type { ValveSnapshot } from "./valves/valve.types.js";
+export { composeApertureSources } from "./mission/composite-aperture-source.js";
+export type { SectionApertureSource } from "./mission/mission-atmosphere-runtime.js";
+export type { CompartmentDeps } from "./mission/ship-task-effect.js";
 
 /**
  * Unión agregada de todos los eventos de dominio del motor (Observer). `/game`
@@ -901,4 +950,5 @@ export type DomainEvent =
   | EnemyDomainEvent
   | PowerDomainEvent
   | SalvageDomainEvent
-  | IntegrityDomainEvent;
+  | IntegrityDomainEvent
+  | DoorDomainEvent;

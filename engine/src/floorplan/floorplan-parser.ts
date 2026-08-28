@@ -9,7 +9,10 @@ import type {
   ComponentSeedId,
   ComponentSeedPoint,
   ConduitConnection,
+  ConduitId,
   ConduitKind,
+  DoorSeedId,
+  DoorSeedPoint,
   FloorplanSection,
   ShipArchetype,
   ShipFloorplan,
@@ -20,7 +23,8 @@ import type { TiledLayer, TiledMap, TiledObject, TiledProperty } from "./tiled.t
  * Parser del JSON de Tiled a `ShipFloorplan` (GDD 15.1). Guards escritos a
  * mano, mismo criterio que `blueprint-serializer.ts`: `/engine` sin
  * dependencias runtime (no zod/ajv). Capas consumidas: `secciones` (rects),
- * `conductos` (puntos), `anclajes` (puntos); cualquier otra capa se ignora —
+ * `conductos` (puntos), `anclajes` (puntos), y las opcionales `semillas` y
+ * `puertas` (puntos); cualquier otra capa se ignora —
  * los mapas pueden ganar tile layers visuales sin tocar este código.
  */
 export class FloorplanParseError extends Error {}
@@ -44,6 +48,7 @@ export function parseShipFloorplan(json: unknown): ShipFloorplan {
   const conduits = parseConduits(requireObjectLayer(map, "conductos"));
   const anchors = parseAnchors(requireObjectLayer(map, "anclajes"), sections);
   const componentSeeds = parseComponentSeeds(findOptionalObjectLayer(map, "semillas"), sections);
+  const doors = parseDoors(findOptionalObjectLayer(map, "puertas"), sections);
 
   const floorplan: ShipFloorplan = {
     id: shipId,
@@ -54,6 +59,7 @@ export function parseShipFloorplan(json: unknown): ShipFloorplan {
     conduits,
     anchors,
     componentSeeds,
+    doors,
   };
 
   try {
@@ -241,19 +247,79 @@ function parseSections(objects: readonly TiledObject[]): FloorplanSection[] {
 }
 
 function parseConduits(objects: readonly TiledObject[]): ConduitConnection[] {
-  return objects.map((object) => {
+  return objects.map((object, index) => {
     const properties = propertyBag(object.properties, `conduit object #${object.id}`);
     const kind = properties.string("kind");
     if (!isConduitKind(kind)) {
       throw new FloorplanParseError(`Unknown conduit kind: ${kind}`);
     }
+    const a = properties.string("a");
+    const b = properties.string("b");
     return {
-      a: properties.string("a") as SectionId,
-      b: properties.string("b") as SectionId,
+      // Subfase 13h: identidad derivada, no autorada. Lleva el índice porque los
+      // mapas reales SÍ tienen pares repetidos (`nave-exploracion` autora dos
+      // conductos `senal` entre pasillo y soporte-vital), así que `kind:a:b` solo
+      // no distingue — y dos válvulas distintas con el mismo id serían una sola
+      // válvula para el jugador.
+      id: `${kind}:${a}:${b}:${index}` as ConduitId,
+      a: a as SectionId,
+      b: b as SectionId,
       kind,
       // El marcador cae sobre una arista entre celdas: posición fraccional permitida.
       position: { x: object.x / GRID_CELL_SIZE_PX, y: object.y / GRID_CELL_SIZE_PX },
       initialAperture: properties.numberOr("initialAperture", 1),
+    };
+  });
+}
+
+/**
+ * Capa `puertas` (Subfase 13h). Molde exacto de `parseConduits` —Points con
+ * `a`/`b`— porque una puerta es, atmosféricamente, otra arista entre dos
+ * secciones. La diferencia con un conducto es que su apertura la decide el
+ * runtime y que además bloquea el PASO, no solo la difusión.
+ *
+ * Capa OPCIONAL: los arquetipos que todavía no tienen puertas autoradas parsean
+ * `[]` y siguen cargando (mismo criterio que `semillas`).
+ *
+ * La celda se resuelve con floor-división como los anclajes, no fraccional como
+ * los conductos: una puerta OCUPA una celda concreta del umbral (hay que poder
+ * preguntar "¿esta celda está bloqueada?"), mientras que el marcador de un
+ * conducto solo se dibuja sobre la arista.
+ */
+function parseDoors(
+  objects: readonly TiledObject[],
+  sections: readonly FloorplanSection[],
+): DoorSeedPoint[] {
+  const sectionByCell = new Map<string, SectionId>();
+  for (const section of sections) {
+    for (const cell of section.cells) {
+      sectionByCell.set(`${cell.x},${cell.y}`, section.id);
+    }
+  }
+
+  return objects.map((object, index) => {
+    const properties = propertyBag(object.properties, `door object #${object.id}`);
+    const a = properties.string("a");
+    const b = properties.string("b");
+    const cell: GridPosition = {
+      x: Math.floor(object.x / GRID_CELL_SIZE_PX),
+      y: Math.floor(object.y / GRID_CELL_SIZE_PX),
+    };
+    if (!sectionByCell.has(`${cell.x},${cell.y}`)) {
+      throw new FloorplanParseError(
+        `Door '${a}-${b}' at cell (${cell.x}, ${cell.y}) falls outside every section`,
+      );
+    }
+    return {
+      id: (properties.stringOrUndefined("id") ?? `${a}:${b}:${index}`) as DoorSeedId,
+      a: a as SectionId,
+      b: b as SectionId,
+      position: cell,
+      span: Math.max(1, properties.numberOr("span", 1)),
+      axis: properties.stringOrUndefined("axis") === "y" ? "y" : "x",
+      // Por defecto CERRADA: la nave arranca compartimentada, que es la
+      // propiedad que esta subfase existe para producir.
+      initialOpen: properties.numberOr("initialOpen", 0) === 1,
     };
   });
 }

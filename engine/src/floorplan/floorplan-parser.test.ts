@@ -109,6 +109,8 @@ describe("parseShipFloorplan", () => {
 
     expect(floorplan.conduits).toHaveLength(1);
     expect(floorplan.conduits[0]).toEqual({
+      // Subfase 13h: id derivado del parseo, no autorado en el JSON de Tiled.
+      id: "ventilacion:alfa:beta:0",
       a: "alfa",
       b: "beta",
       kind: "ventilacion",

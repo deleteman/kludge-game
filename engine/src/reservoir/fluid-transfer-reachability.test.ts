@@ -40,6 +40,7 @@ function floorplanWith(
     })) as unknown as ShipFloorplan["conduits"],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 

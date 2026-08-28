@@ -53,6 +53,8 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     unpoweredSectionIds,
     overloadedRefs,
     powerState,
+    doorStates,
+    valveApertures,
   } = value;
 
   if (!isPlainObject(metadata)) {
@@ -250,6 +252,48 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
       dischargedSourceIds.some((entry) => typeof entry !== "string")
     ) {
       throw new BlueprintParseError("Blueprint.powerState.dischargedSourceIds must be an array of strings");
+    }
+  }
+
+  // schemaVersion < 10 no tenía puertas (Subfase 13h) — ausente = ninguna
+  // puerta tocada todavía. El runtime siembra el estado inicial desde la capa
+  // Tiled `puertas` y desde las instalaciones `ACT`+`EST` sobre umbral, así que
+  // un save viejo carga con la nave compartimentada por defecto.
+  if (doorStates === undefined) {
+    (value as { doorStates: unknown }).doorStates = [];
+  } else if (!Array.isArray(doorStates)) {
+    throw new BlueprintParseError("Blueprint.doorStates must be an array");
+  } else {
+    for (const entry of doorStates) {
+      if (
+        !isPlainObject(entry) ||
+        typeof entry.doorId !== "string" ||
+        typeof entry.state !== "string" ||
+        typeof entry.mode !== "string" ||
+        typeof entry.hp !== "number" ||
+        typeof entry.maxHp !== "number"
+      ) {
+        throw new BlueprintParseError("Invalid entry in Blueprint.doorStates");
+      }
+    }
+  }
+
+  // Ídem válvulas: ausente = vale la apertura autorada en el plano, que es
+  // donde vive por ejemplo la sala de aislamiento sellada de fábrica de la
+  // nave médica.
+  if (valveApertures === undefined) {
+    (value as { valveApertures: unknown }).valveApertures = [];
+  } else if (!Array.isArray(valveApertures)) {
+    throw new BlueprintParseError("Blueprint.valveApertures must be an array");
+  } else {
+    for (const entry of valveApertures) {
+      if (
+        !isPlainObject(entry) ||
+        typeof entry.conduitId !== "string" ||
+        typeof entry.aperture !== "number"
+      ) {
+        throw new BlueprintParseError("Invalid entry in Blueprint.valveApertures");
+      }
     }
   }
 }

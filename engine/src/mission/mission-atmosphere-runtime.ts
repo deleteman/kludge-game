@@ -64,6 +64,27 @@ export const PRESSURE_RECOVERY_CEILING_KPA = standardSectionAtmosphere().pressur
  */
 export type SectionPressureFloorSource = (sectionId: SectionId) => number;
 
+/**
+ * De dónde salen las conexiones de difusión EFECTIVAS de este tick (Subfase
+ * 13h). Interfaz angosta y opcional, mismo criterio que
+ * `SectionPressureSinkSource` y `SectionPressureFloorSource`: sin fuente, el
+ * runtime usa las conexiones derivadas del plano y el comportamiento es
+ * idéntico al anterior a 13h.
+ *
+ * Existe porque hasta acá la apertura era ESTÁTICA: `valveAperture` se copiaba
+ * una vez desde `conduit.initialAperture` y nada en todo el motor la mutaba,
+ * así que el "aislamiento deliberado" del GDD §5.5 —cerrar una válvula o sellar
+ * una puerta para contener una fuga— no tenía forma de existir. El caso de
+ * validación 3 lo delataba: para simular un sellado tenía que fabricarse una
+ * conexión a mano.
+ *
+ * Devuelve la lista COMPLETA y no un delta, porque resuelve dos cosas de una
+ * sola vez y con la misma forma: las válvulas de conducto (misma arista, otra
+ * apertura) y las puertas (aristas ADICIONALES entre las mismas secciones, que
+ * es lo que hace que cerrar una puerta no cierre el ducto).
+ */
+export type SectionApertureSource = () => ReadonlyArray<VentilationConnection>;
+
 export class MissionAtmosphereRuntime implements Tickable {
   private readonly sectionsById: Map<SectionId, SectionRuntime>;
   private readonly connections: ReadonlyArray<VentilationConnection>;
@@ -94,6 +115,11 @@ export class MissionAtmosphereRuntime implements Tickable {
     private readonly gasInjectionSource?: SectionGasInjectionSource,
     /** Piso de presión por sección (Subfase 13f). Sin fuente: `PRESSURE_SINK_FLOOR_KPA` para todas. */
     private readonly pressureFloorSource?: SectionPressureFloorSource,
+    /**
+     * Aperturas vivas de válvulas y puertas (Subfase 13h). Sin fuente, se
+     * difunde por las conexiones estáticas del plano.
+     */
+    private readonly apertureSource?: SectionApertureSource,
   ) {
     const model = deriveAtmosphereModel(shipFloorplan);
     const snapshotBySection = new Map(initialSnapshots.map((snapshot) => [snapshot.sectionId, snapshot]));
@@ -132,7 +158,12 @@ export class MissionAtmosphereRuntime implements Tickable {
     // al siguiente — verter algo y no ver nada moverse hasta un tick después
     // se leería como que la acción no hizo nada.
     this.applyGasInjections();
-    diffuse(this.sectionsById, this.connections, ctx);
+    // Subfase 13h: la apertura dejó de ser un dato del plano y pasó a ser
+    // estado vivo. `diffuse()` no cambió — ya iteraba un array de conexiones y
+    // ya salteaba las de apertura 0, así que una puerta abierta es simplemente
+    // otra conexión más y una válvula cerrada, la misma conexión con otro
+    // número.
+    diffuse(this.sectionsById, this.apertureSource?.() ?? this.connections, ctx);
     if (!this.sinkSource) {
       return;
     }

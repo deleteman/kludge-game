@@ -5,6 +5,7 @@ import type { ProjectileSimulation } from "../kinetics/projectile-simulation.js"
 import type { Tickable } from "../tasks/core-loop-mode.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
 import { isLooseFerromagneticCandidate } from "./mission-projectile-world.js";
+import { isDoorCapable } from "../doors/door-identity.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
 /**
@@ -67,6 +68,14 @@ export class LooseFerromagneticPromoter implements Tickable {
       }
       const definition = this.registry.get(placed.componentDefinitionId);
       if (!definition || !isLooseFerromagneticCandidate(definition.data)) {
+        return true;
+      }
+      // Subfase 13h: una puerta NO es una pieza suelta. Sin esta guarda, una
+      // compuerta ferromagnética instalada sobre un umbral saldría del blueprint
+      // para siempre en cuanto pasara cerca un campo — y con ella la
+      // compartimentación de esa sección, sin que el jugador hiciera nada.
+      // "Suelto" es justamente lo que una puerta atornillada a un marco no es.
+      if (isDoorCapable(definition)) {
         return true;
       }
       // Fase 13c: la masa virtual del impacto usa la RE EFECTIVA — una pieza

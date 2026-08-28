@@ -30,6 +30,26 @@ const ELECTROMAGNET: PhysicalComponentDefinition = {
   },
 };
 
+/**
+ * Puerta ferromagnética (Subfase 13h): `ACT` + `EST` + `MAG`. Sin la guarda de
+ * 13h calificaría como "suelta" y saldría del blueprint para siempre en cuanto
+ * pasara un campo cerca — llevándose con ella la compartimentación de esa
+ * sección sin que el jugador hiciera nada.
+ */
+const ARMORED_DOOR: PhysicalComponentDefinition = {
+  id: componentId("compuerta"),
+  name: "Compuerta",
+  level: "atomic",
+  data: {
+    footprint: { width: 1, height: 1 },
+    functional: [
+      { tag: "ACT", power: 70, cadence: 3, directional: false },
+      { tag: "EST", damageResistance: 80 },
+    ],
+    material: { MAG: true, RE: "A" },
+  },
+};
+
 /** Pieza sin MAG en absoluto: nunca candidata. */
 const PLAIN_PANEL: PhysicalComponentDefinition = {
   id: componentId("panel"),
@@ -72,6 +92,8 @@ function blueprintOf(placedComponents: PlacedComponentInstance[]): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -100,6 +122,17 @@ describe("mission: LooseFerromagneticPromoter (Fase 11a.3, ASA 3 — el efecto e
     const state = projectiles.stateOf("hierro-1");
     expect(state?.position).toEqual({ x: 5, y: 5 });
     expect(state?.velocity).toBe("N");
+  });
+
+  it("NUNCA promueve una PUERTA (13h): atornillada a un marco no es una pieza suelta", () => {
+    const ship = new MutableShipState(blueprintOf([placed("puerta-1", "compuerta", 1, 0)]));
+    const projectiles = new ProjectileSimulation(new NoopWorld());
+    const promoter = new LooseFerromagneticPromoter(ship, projectiles, registryOf(ARMORED_DOOR));
+
+    promoter.promote();
+
+    expect(ship.get().placedComponents).toHaveLength(1);
+    expect(projectiles.all).toHaveLength(0);
   });
 
   it("NUNCA promueve una bobina (MAG + COND): es la fuente, no el proyectil", () => {

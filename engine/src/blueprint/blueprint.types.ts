@@ -9,6 +9,11 @@ import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapsho
 import type { SectionIntegritySnapshot } from "../integrity/section-integrity.types.js";
 import type { PowerState } from "../power/power.types.js";
 import type { ComponentWear } from "../wear/wear.types.js";
+// Ciclo de tipos con `doors/door.types.ts` (que importa `PlacedComponentInstanceId`
+// de acá): es `import type` puro en los dos sentidos, así que se borra al
+// compilar y no genera ciclo de módulos en runtime.
+import type { DoorSnapshot } from "../doors/door.types.js";
+import type { ValveSnapshot } from "../valves/valve.types.js";
 
 /**
  * Blueprint schema — PRIMER INTENTO, PROVISIONAL (GDD sección 17: "formato
@@ -104,6 +109,14 @@ import type { ComponentWear } from "../wear/wear.types.js";
  * casco); ahora las secciones tienen vida propia, dañada por impacto,
  * explosión, corrosión y descompresión. Una sección colapsada queda brechada
  * para siempre: sellarla detiene la fuga, no le devuelve la vida.
+ *
+ * Subfase 13h: `schemaVersion` 9→10 — se añaden `Blueprint.doorStates` y
+ * `Blueprint.valveApertures`. Es el mismo argumento que justificó
+ * `dischargedSourceIds` en 13d: son los dos únicos estados de esta subfase que
+ * NO se pueden derivar del mundo. Que una puerta esté cerrada o que una válvula
+ * esté sellada es una decisión que tomó el jugador (o un daño que recibió la
+ * hoja), y sin persistirla el aislamiento deliberado se deshacía solo al
+ * recargar la partida.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -188,4 +201,15 @@ export interface Blueprint {
   readonly overloadedRefs: ReadonlyArray<PlacedComponentInstanceId>;
   /** Presupuesto de energía y prioridades del jugador (Fase 13b), ver `power/power.types.ts`. */
   readonly powerState: PowerState;
+  /**
+   * Estado de las puertas (Subfase 13h): abierta/cerrada/trabada/rota y su
+   * vida. No derivable del mundo — es decisión del jugador o cicatriz de daño.
+   */
+  readonly doorStates: ReadonlyArray<DoorSnapshot>;
+  /**
+   * Apertura viva de las válvulas de ventilación (Subfase 13h). El plano guarda
+   * la apertura AUTORADA (`initialAperture`); esto guarda la que dejó el
+   * jugador, que gana sobre ella al cargar.
+   */
+  readonly valveApertures: ReadonlyArray<ValveSnapshot>;
 }

@@ -74,6 +74,7 @@ function fixtureFloorplan(): ShipFloorplan {
     conduits: [],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 
@@ -118,6 +119,8 @@ function fixtureShip(): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [{ sectionId: SECTION, units: 1 }],

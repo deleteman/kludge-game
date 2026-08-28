@@ -52,6 +52,8 @@ function blueprintWith(signalGraph: SignalGraph<PlacedComponentInstanceId>): Blu
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -192,6 +194,7 @@ describe("workbench: port wiring", () => {
 
 describe("assertSignalWiringReachable (Fase 11f: cableado restringido por conducto)", () => {
   const conduit = (a: string, b: string, kind: ConduitKind): ConduitConnection => ({
+    id: `${kind}:${a}:${b}` as ConduitConnection["id"],
     a: a as SectionId,
     b: b as SectionId,
     kind,
@@ -212,6 +215,7 @@ describe("assertSignalWiringReachable (Fase 11f: cableado restringido por conduc
     conduits,
     anchors: [],
     componentSeeds: [],
+    doors: [],
   });
 
   const graph: SignalGraph<PlacedComponentInstanceId> = {

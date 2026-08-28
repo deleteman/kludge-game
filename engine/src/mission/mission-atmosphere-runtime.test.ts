@@ -25,6 +25,7 @@ function twoSectionFloorplan(): ShipFloorplan {
     ],
     conduits: [
       {
+        id: "ventilacion:cabina:bodega:0" as ShipFloorplan["conduits"][number]["id"],
         a: CABINA,
         b: BODEGA,
         kind: "ventilacion",
@@ -34,6 +35,7 @@ function twoSectionFloorplan(): ShipFloorplan {
     ],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 

@@ -33,10 +33,9 @@ describe("deriveSignalNodes", () => {
     expect(cond[0]?.role).toBe("conductor");
   });
 
-  it("ignores ACT/RES/EST — they are physical properties, not graph roles", () => {
+  it("ignores RES/EST — they are physical properties, not graph roles", () => {
     const nodes = deriveSignalNodes(
       [
-        { tag: "ACT", power: 20, cadence: 10, directional: true },
         { tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 5 },
         { tag: "EST", damageResistance: 50 },
       ],
@@ -44,6 +43,20 @@ describe("deriveSignalNodes", () => {
       AT_6_4,
     );
     expect(nodes).toEqual([]);
+  });
+
+  // Subfase 13h: un actuador gobernado por una señal ES un receptor de señales.
+  // Antes `ACT` no generaba nodo y por eso una compuerta instalada por el
+  // jugador no se podía cablear a nada.
+  it("derives a receptor node from ACT so any actuator can be wired", () => {
+    const nodes = deriveSignalNodes(
+      [{ tag: "ACT", power: 20, cadence: 10, directional: true }],
+      OWNER,
+      AT_6_4,
+    );
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.role).toBe("receptor");
+    expect(nodes[0]?.ownerRef).toBe(OWNER);
   });
 
   it("spreads multiple signal roles over distinct cells so wire-mode find-by-position never collides", () => {

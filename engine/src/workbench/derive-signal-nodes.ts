@@ -13,12 +13,24 @@ import { occupiedCells } from "./workbench-state.types.js";
  * nodos ya autorados a mano en la mesa); ambos alimentan
  * `mergeInstalledSignalGraph`.
  *
- * `ACT`/`RES`/`EST` no generan nodos: no son roles del grafo de señales, solo
+ * `RES`/`EST` no generan nodos: no son roles del grafo de señales, solo
  * propiedades del componente físico (ver `signals/signal-node.types.ts`).
+ *
+ * `ACT` SÍ genera un receptor desde la Subfase 13h. Antes no, con el argumento
+ * de que un actuador "no es un rol del grafo" — pero un actuador gobernado por
+ * una señal es exactamente un receptor de señales, y sin nodo no había forma de
+ * cablearlo. Es lo que dejaba al "panel de compuerta" del Cap.1 siendo un nodo
+ * huérfano sin compuerta que gobernar, y lo que habría impedido que una puerta
+ * instalada por el jugador se pudiera cablear a nada.
+ *
+ * Vale para TODO `ACT`, no solo para puertas (principio 1): una torreta
+ * instalada de catálogo queda cableable a cualquier sensor por el mismo
+ * mecanismo, que es literalmente el caso de validación 1.
  */
 const FUNCTIONAL_TAG_TO_ROLE: Partial<Record<FunctionalProperty["tag"], SignalNodeRole>> = {
   EM: "emitter",
   REC: "receptor",
+  ACT: "receptor",
   COND: "conductor",
 };
 

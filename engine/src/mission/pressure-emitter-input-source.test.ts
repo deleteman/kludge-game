@@ -47,6 +47,8 @@ function buildFixtureBlueprint(): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -62,6 +64,7 @@ function buildFixtureFloorplan(): ShipFloorplan {
     conduits: [],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 

@@ -28,6 +28,7 @@ function floorplan(): ShipFloorplan {
     conduits: [],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 
@@ -98,6 +99,8 @@ function baseBlueprint(overrides: Partial<Blueprint> = {}): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     ...overrides,

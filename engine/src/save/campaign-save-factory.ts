@@ -59,7 +59,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 9,
+      schemaVersion: 10,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -90,6 +90,12 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     unpoweredSectionIds: [],
     overloadedRefs: [],
     powerState: emptyPowerState(),
+    // Subfase 13h: mismo criterio que la atmósfera y la integridad de sección —
+    // sin snapshot, `MissionDoorRuntime`/`ValveRuntime` siembran el estado
+    // inicial desde la capa Tiled `puertas` y desde `initialAperture`. Una
+    // partida nueva arranca con la nave compartimentada.
+    doorStates: [],
+    valveApertures: [],
   };
 
   return {

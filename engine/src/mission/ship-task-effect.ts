@@ -27,6 +27,8 @@ import {
   handleDismantleHazards,
 } from "../salvage/dismantle-hazard-handler.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
+import type { ValveRuntime } from "../valves/valve-runtime.js";
+import type { MissionDoorRuntime } from "./mission-door-runtime.js";
 import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
 import { creditElementList } from "../inventory/element-ledger.js";
@@ -109,6 +111,23 @@ export interface DismantleWearDeps {
   readonly actorOf?: (actorId: CrewActorId) => CrewActor | undefined;
 }
 
+/**
+ * Dependencias opcionales de 13h (puertas y compartimentación). Mismo criterio
+ * que `SalvageHazardDeps` y `SubstanceFlowDeps`: sin ellas las tres tareas
+ * nuevas son un no-op y nada del comportamiento anterior cambia.
+ *
+ * Se inyectan los runtimes y no el `Blueprint` porque la apertura de una
+ * válvula y el estado de una puerta son estado VIVO de misión, no dato del
+ * blueprint: al blueprint solo bajan al guardar (`toSnapshots`). Escribirlos
+ * vía `shipState.set()` crearía una segunda fuente de verdad que se
+ * desincronizaría con el runtime a mitad de tick.
+ */
+export interface CompartmentDeps {
+  readonly valves?: ValveRuntime;
+  readonly doors?: MissionDoorRuntime;
+  readonly elapsedSecondsOf?: () => number;
+}
+
 export function createShipTaskEffect(
   shipState: MutableShipState,
   componentRegistry: ComponentRegistry,
@@ -123,6 +142,7 @@ export function createShipTaskEffect(
   wearDeps: DismantleWearDeps = {},
   salvageDeps: SalvageHazardDeps = {},
   substanceDeps: SubstanceFlowDeps = {},
+  compartmentDeps: CompartmentDeps = {},
 ): TaskEffect {
   return (task: CrewTask): TaskEffectResult | void => {
     const payload = task.payload;
@@ -414,6 +434,22 @@ export function createShipTaskEffect(
         );
         return { obtainedElements };
       }
+      case "set-valve":
+        // Aislamiento deliberado (13h, GDD §5.5). Escribe en el runtime de
+        // válvulas, que es de donde `SectionApertureSource` lee cada tick: la
+        // sala deja de intercambiar aire por ese ducto desde el tick siguiente,
+        // sin ningún paso intermedio.
+        compartmentDeps.valves?.setAperture(payload.conduitId, payload.targetAperture);
+        return;
+      case "force-door":
+        // Abrir a mano una puerta sin motor. El override queda puesto: la hoja
+        // se quedó físicamente en esa posición, así que devolverle la energía
+        // no la cierra sola.
+        compartmentDeps.doors?.forceOpen(payload.doorId, compartmentDeps.elapsedSecondsOf?.() ?? 0);
+        return;
+      case "repair-door":
+        compartmentDeps.doors?.repair(payload.doorId, compartmentDeps.elapsedSecondsOf?.() ?? 0);
+        return;
     }
   };
 }

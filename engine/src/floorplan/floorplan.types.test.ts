@@ -30,6 +30,7 @@ const floorplan = {
   conduits: [],
   anchors: [],
   componentSeeds: [],
+    doors: [],
 };
 
 describe("sectionContainingCell", () => {

@@ -6,6 +6,7 @@ import { findConduitRoute, sectionsConnectedByConduit } from "./conduit-connecti
 
 function conduit(a: string, b: string, kind: ConduitKind): ConduitConnection {
   return {
+    id: `${kind}:${a}:${b}` as ConduitConnection["id"],
     a: a as SectionId,
     b: b as SectionId,
     kind,
@@ -28,6 +29,7 @@ const floorplan: ShipFloorplan = {
   ],
   anchors: [],
   componentSeeds: [],
+    doors: [],
 };
 
 describe("sectionsConnectedByConduit", () => {

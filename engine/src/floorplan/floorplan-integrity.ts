@@ -17,7 +17,12 @@ export interface FloorplanIntegrityIssue {
     | "anchor-outside-section"
     | "duplicate-anchor-id"
     | "component-seed-outside-section"
-    | "duplicate-component-seed-id";
+    | "duplicate-component-seed-id"
+    | "door-self-reference"
+    | "door-unknown-section"
+    | "door-sections-not-adjacent"
+    | "door-outside-section"
+    | "duplicate-door-id";
   readonly detail: string;
 }
 
@@ -130,6 +135,48 @@ export function validateFloorplanIntegrity(floorplan: ShipFloorplan): FloorplanI
       issues.push({
         kind: "component-seed-outside-section",
         detail: `Component seed '${seed.id}' at (${seed.position.x}, ${seed.position.y}) is not inside section '${seed.sectionId}'`,
+      });
+    }
+  }
+
+  // Puertas autoradas (Subfase 13h). Mismos invariantes que un conducto —une
+  // dos secciones distintas, existentes y físicamente adyacentes— más uno
+  // propio: la celda tiene que estar DENTRO de alguna sección, porque a
+  // diferencia del marcador fraccional de un conducto, una puerta ocupa una
+  // celda concreta y hay que poder preguntar si bloquea el paso.
+  const seenDoorIds = new Set<string>();
+  for (const door of floorplan.doors) {
+    if (seenDoorIds.has(door.id)) {
+      issues.push({ kind: "duplicate-door-id", detail: `Duplicate door id: ${door.id}` });
+    }
+    seenDoorIds.add(door.id);
+
+    if (door.a === door.b) {
+      issues.push({
+        kind: "door-self-reference",
+        detail: `Door '${door.id}' connects section '${door.a}' to itself`,
+      });
+      continue;
+    }
+    const a = sectionsById.get(door.a);
+    const b = sectionsById.get(door.b);
+    if (!a || !b) {
+      issues.push({
+        kind: "door-unknown-section",
+        detail: `Door '${door.id}' references missing section: ${!a ? door.a : door.b}`,
+      });
+      continue;
+    }
+    if (!areSectionsAdjacent(a, b)) {
+      issues.push({
+        kind: "door-sections-not-adjacent",
+        detail: `Door '${door.id}' connects '${door.a}' and '${door.b}', which share no edge`,
+      });
+    }
+    if (!cellSet(a).has(cellKey(door.position)) && !cellSet(b).has(cellKey(door.position))) {
+      issues.push({
+        kind: "door-outside-section",
+        detail: `Door '${door.id}' at (${door.position.x}, ${door.position.y}) is in neither '${door.a}' nor '${door.b}'`,
       });
     }
   }

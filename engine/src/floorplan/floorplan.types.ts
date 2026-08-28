@@ -29,7 +29,20 @@ export interface FloorplanSection {
   readonly cells: readonly GridPosition[];
 }
 
+/**
+ * Identidad estable de un conducto (Subfase 13h). Hasta acá un
+ * `ConduitConnection` no tenía id y `/game` improvisaba claves compuestas
+ * `${a}-${b}-${kind}` para indexar sus efectos de flujo — suficiente mientras
+ * nadie pudiera OPERAR un conducto, insuficiente desde que el jugador puede
+ * mandar a un tripulante a cerrar una válvula concreta.
+ *
+ * Se deriva determinísticamente al parsear (no vive en los JSON de Tiled), así
+ * que es estable entre cargas sin tocar los mapas ya autorados.
+ */
+export type ConduitId = Brand<string, "ConduitId">;
+
 export interface ConduitConnection {
+  readonly id: ConduitId;
   readonly a: SectionId;
   readonly b: SectionId;
   readonly kind: ConduitKind;
@@ -81,6 +94,40 @@ export interface ComponentSeedPoint {
   readonly chapterId?: string;
 }
 
+export type DoorSeedId = Brand<string, "DoorSeedId">;
+
+/**
+ * Puerta autorada en Tiled, capa `puertas` (Subfase 13h). Points con
+ * propiedades `a`/`b`, molde exacto de la capa `conductos`.
+ *
+ * Una puerta autorada NO es una pieza del catálogo: es parte del casco, como
+ * una pared. Las puertas CONSTRUIBLES son otra cosa —cualquier componente con
+ * `ACT` + `EST` que el jugador instale sobre un umbral— y se resuelven en
+ * runtime por propiedades, no acá.
+ *
+ * `a`/`b` son las secciones que el umbral separa; la posición da la celda que
+ * bloquea cuando está cerrada.
+ */
+export interface DoorSeedPoint {
+  readonly id: DoorSeedId;
+  readonly a: SectionId;
+  readonly b: SectionId;
+  readonly position: GridPosition;
+  /**
+   * Celdas que ocupa el umbral, contadas desde `position` a lo largo de `axis`.
+   *
+   * Existe porque los vanos reales del mapa no son todos de una celda: en
+   * `nave-exploracion`, sala-hibernacion↔pasillo y bodega↔pasillo tienen vanos
+   * de dos. Modelarlos como DOS puertas sería peor que un detalle cosmético —
+   * cada puerta aporta su propia arista de difusión, así que un vano de dos
+   * celdas intercambiaría aire al doble de velocidad que uno de una.
+   */
+  readonly span: number;
+  readonly axis: "x" | "y";
+  /** Apertura inicial. Por defecto cerrada: la nave arranca compartimentada. */
+  readonly initialOpen: boolean;
+}
+
 export interface ShipFloorplan {
   readonly id: string;
   readonly archetype: ShipArchetype;
@@ -93,6 +140,8 @@ export interface ShipFloorplan {
   readonly anchors: readonly AnchorPoint[];
   /** Objetos compuestos sembrados vía la capa Tiled `semillas`. Capa opcional: mapas sin ella parsean `[]`. */
   readonly componentSeeds: readonly ComponentSeedPoint[];
+  /** Puertas autoradas vía la capa Tiled `puertas` (13h). Capa opcional: mapas sin ella parsean `[]`. */
+  readonly doors: readonly DoorSeedPoint[];
 }
 
 /** Área de una sección en celdas — es también su volumen atmosférico (ver `atmosphere-projection.ts`). */

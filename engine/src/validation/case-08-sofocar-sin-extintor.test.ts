@@ -122,6 +122,7 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
       conduits: [],
       anchors: [],
       componentSeeds: [],
+    doors: [],
     };
     const ship: Blueprint = {
       metadata: {
@@ -146,6 +147,8 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
       sectionAtmospheres: [],
       sectionIntegrity: [],
       unpoweredSectionIds: [],
+      doorStates: [],
+      valveApertures: [],
       overloadedRefs: [],
       powerState: {
         sectionAllocations: [{ sectionId: SALA, units: 1 }],

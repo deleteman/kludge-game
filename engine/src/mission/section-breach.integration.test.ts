@@ -95,6 +95,8 @@ function blueprintWith(placedComponents: PlacedComponentInstance[]): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],
@@ -122,6 +124,7 @@ function fixtureFloorplan(): ShipFloorplan {
     conduits: [],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 

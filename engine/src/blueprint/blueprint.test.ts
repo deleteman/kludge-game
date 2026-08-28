@@ -11,6 +11,8 @@ import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
+import type { DoorId } from "../doors/door.types.js";
+import type { ConduitId } from "../floorplan/floorplan.types.js";
 
 const INSTANCE_A = "instance-a" as PlacedComponentInstanceId;
 const INSTANCE_B = "instance-b" as PlacedComponentInstanceId;
@@ -94,6 +96,16 @@ function buildFixtureBlueprint(): Blueprint {
       permanentlyDisconnectedSectionIds: ["taller" as SectionId],
       dischargedSourceIds: [],
     },
+    doorStates: [
+      {
+        doorId: "authored:puente-pasillo" as DoorId,
+        state: "closed",
+        mode: "auto",
+        hp: 300,
+        maxHp: 300,
+      },
+    ],
+    valveApertures: [{ conduitId: "ventilacion:puente:pasillo-central:0" as ConduitId, aperture: 0 }],
   };
 }
 

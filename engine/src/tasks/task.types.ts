@@ -8,6 +8,8 @@ import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { ComponentWear } from "../wear/wear.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import type { ConduitId } from "../floorplan/floorplan.types.js";
+import type { DoorId } from "../doors/door.types.js";
 
 export type CrewTaskId = Brand<string, "CrewTaskId">;
 
@@ -39,7 +41,12 @@ export type TaskType =
   // almacenar → transportar → aplicar.
   | "transfer-substance"
   | "apply-substance"
-  | "extract-elements";
+  | "extract-elements"
+  // Subfase 13h — aislamiento deliberado (GDD §5.5): operar la nave como
+  // compartimentos en vez de como una sola burbuja de aire.
+  | "set-valve"
+  | "force-door"
+  | "repair-door";
 
 /**
  * Máquina de estados explícita de una tarea (CLAUDE.md: "State machine
@@ -218,6 +225,44 @@ export interface ExtractElementsTaskPayload {
   readonly amount: number;
 }
 
+/**
+ * "Operar válvula" (Subfase 13h, GDD §5.5): abrir o cerrar la válvula de un
+ * conducto de ventilación para contener una fuga o drenar el O2 de una sección.
+ *
+ * Es tarea de tripulante y no un toggle de UI a propósito: nada en este juego
+ * cambia el estado físico de la nave sin que alguien vaya y lo haga, y el
+ * tiempo que cuesta llegar hasta la válvula es justamente lo que convierte
+ * "contener la fuga" en una decisión y no en un reflejo.
+ */
+export interface SetValveTaskPayload {
+  readonly kind: "set-valve";
+  readonly conduitId: ConduitId;
+  /** Apertura destino en [0,1]. */
+  readonly targetAperture: number;
+  readonly sectionId: SectionId;
+}
+
+/**
+ * "Forzar puerta" (Subfase 13h): abrir a mano una puerta que se quedó sin
+ * motor. Lenta y modulada por la fuerza del actuador que hay que vencer.
+ *
+ * Le da a `cut-power` (13d) una consecuencia que hasta ahora no tenía: cortar
+ * la energía de una sección para desmontar sin chispas también decide si esa
+ * sección queda sellada o abierta de par en par.
+ */
+export interface ForceDoorTaskPayload {
+  readonly kind: "force-door";
+  readonly doorId: DoorId;
+  readonly sectionId: SectionId;
+}
+
+/** "Reparar puerta" (Subfase 13h): devuelve al servicio una hoja rota o trabada por daño. */
+export interface RepairDoorTaskPayload {
+  readonly kind: "repair-door";
+  readonly doorId: DoorId;
+  readonly sectionId: SectionId;
+}
+
 export type TaskPayload =
   | DismantleTaskPayload
   | InstallTaskPayload
@@ -228,7 +273,10 @@ export type TaskPayload =
   | DischargeSourceTaskPayload
   | TransferSubstanceTaskPayload
   | ApplySubstanceTaskPayload
-  | ExtractElementsTaskPayload;
+  | ExtractElementsTaskPayload
+  | SetValveTaskPayload
+  | ForceDoorTaskPayload
+  | RepairDoorTaskPayload;
 
 export interface CrewTask {
   readonly id: CrewTaskId;

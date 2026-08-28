@@ -85,6 +85,7 @@ function floorplan(conduitKinds: ReadonlyArray<ConduitKind> = []): ShipFloorplan
     })) as unknown as ShipFloorplan["conduits"],
     anchors: [],
     componentSeeds: [],
+    doors: [],
   };
 }
 
@@ -120,6 +121,8 @@ function ship(): Blueprint {
     sectionAtmospheres: [],
     sectionIntegrity: [],
     unpoweredSectionIds: [],
+    doorStates: [],
+    valveApertures: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

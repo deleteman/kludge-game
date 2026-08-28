@@ -22,6 +22,7 @@ function section(id: string, cells: [number, number][]): FloorplanSection {
 
 function ventConduit(a: string, b: string, aperture = 1): ConduitConnection {
   return {
+    id: `ventilacion:${a}:${b}` as ConduitConnection["id"],
     a: a as SectionId,
     b: b as SectionId,
     kind: "ventilacion",
@@ -57,6 +58,7 @@ function floorplan(overrides: Partial<ShipFloorplan> = {}): ShipFloorplan {
     conduits: [ventConduit("alfa", "beta")],
     anchors: [anchor("alfa-a1", "alfa", 0, 0)],
     componentSeeds: [],
+    doors: [],
     ...overrides,
   };
 }

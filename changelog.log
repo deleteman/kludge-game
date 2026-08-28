@@ -5039,3 +5039,63 @@ ARCHIVOS: `game/src/scenes/floorplan-scene.ts`, `game/src/mission/mission-intera
 es/en (`dev.no-cell` → `dev.no-section` + `dev.armed.*`).
 
 SUITE: sin cambios (963 / 68). `tsc --noEmit`, `eslint` y `vite build` limpios.
+
+================================================================================
+2026-08-28 — SUBFASE 13h RONDA A: Puertas y compartimentación (motor)
+================================================================================
+QUÉ: dominios nuevos `engine/src/doors/` y `engine/src/valves/`. La nave pasa a estar COMPARTIMENTADA POR
+DEFECTO: las puertas se abren al acercarse un actor y se cierran solas el resto del tiempo, y por eso una
+brecha de 13f deja de desangrar al resto de la nave sin que el jugador haga nada.
+
+RAZÓN: el GDD §5.5 define el "aislamiento deliberado" (sellar una puerta o cerrar una válvula para contener
+una fuga) y era letra muerta: `VentilationConnection.valveAperture` se fijaba al construir la misión y NADA
+lo mutaba en runtime. El caso de validación 3 lo delataba — para simular un sellado tenía que fabricarse
+una conexión a mano. Además había tres cosas ya construidas esperando esto: `compuerta-blindada` sin usar,
+el "panel de compuerta" del Cap.1 como nodo receptor sin nada que gobernar, y el caso 9 verificando solo
+que se PODÍA ensamblar el MAG porque no había puerta que trabar.
+
+DECISIONES DEL OPERADOR (ciclo de preguntas 2026-08-27/28):
+1. La puerta es una arista atmosférica INDEPENDIENTE del conducto — cerrarla no cierra el ducto. De ahí que
+   el control de válvulas en runtime entrara al alcance: contener una fuga exige las dos cosas.
+2. Puertas con HP. Rota = hueco permanente reparable con tarea.
+3. Auto-apertura por proximidad para CUALQUIER actor, tripulante o enemigo.
+4. Válvulas operadas por tarea de tripulante, no por toggle de UI.
+5. Solo se autoran puertas en `nave-exploracion`.
+6. La puerta es un ACTUADOR de verdad: `ACT.cadence` = tiempo de transición de la hoja, `ACT.power` = fuerza
+   (resiste el forzado, aplasta al que quede en el umbral). Y toda puerta es cableable.
+
+CAMBIOS PRINCIPALES:
+* `doors/`: `DoorRuntime` (con `opening`/`closing` reales), Strategy de gobierno con prioridad ORDENADA
+  destruida > trabada > sin energía > señal > tarea > auto, una regla por archivo, eventos de dominio, y
+  `door-identity.ts` con la identidad POR PROPIEDADES (`ACT`+`EST` sobre umbral, nunca por id de catálogo).
+* `MissionAtmosphereRuntime` gana `SectionApertureSource` opcional (molde exacto de `SectionPressureSinkSource`):
+  sin fuente, difusión idéntica a antes de 13h. `diffuse()` NO se tocó — una puerta abierta es otra conexión.
+* `valves/ValveRuntime` + `ConduitId` derivado en el parser (los conductos no tenían identidad; `/game`
+  improvisaba claves `${a}-${b}-${kind}`). El id lleva índice porque hay pares repetidos reales en el mapa.
+* Capa Tiled `puertas` OPCIONAL (molde de `semillas`) con `span`/`axis`: los vanos reales de
+  `nave-exploracion` no son todos de una celda, y partir uno de dos en dos puertas duplicaría el caudal de
+  aire de ese vano. 10 puertas autoradas, una por frontera ventilada.
+* `ACT` pasa a derivar un nodo receptor (`derive-signal-nodes.ts`). Era el hueco que dejaba al panel de
+  compuerta del Cap.1 huérfano y habría impedido cablear una puerta instalada por el jugador. Vale para todo
+  `ACT`, no solo puertas.
+* Enemigos: se frenan ante una puerta cerrada con su reloj de ruta PAUSADO (offset por enemigo — sin él
+  reaparecerían más adelante al abrirse), y la golpean hasta romperla. Trabar una puerta compra tiempo, no
+  inmunidad.
+* `LooseFerromagneticPromoter` excluye puertas: sin la guarda, una compuerta ferromagnética dañada saldría
+  del blueprint para siempre y con ella la compartimentación de esa sección.
+* Tareas `set-valve` / `force-door` / `repair-door` con su payload, duración y efecto físico.
+* Persistencia `schemaVersion` 9→10: `doorStates` + `valveApertures`, tolerantes campo a campo (molde de
+  `sectionIntegrity`). Un save viejo carga con la nave compartimentada.
+* Catálogo: `compuerta-blindada` gana `footprint` (sin él no se podía colocar) y `powerDraw`.
+* Sprite: `compuerta-blindada.jpeg` → `.png` con fondo transparente por flood-fill desde los bordes (el
+  glob del registry es `*.png` y JPEG no tiene alfa; sin esto no se habría cargado nunca).
+
+CASOS DE VALIDACIÓN:
+* Caso 3: el sellado usa la válvula REAL en vez de fabricar una conexión con apertura 0.
+* Caso 9: completo por primera vez — el electroimán ensamblado traba una puerta real y el intruso no pasa; y
+  su contraparte, que sin electroimán la rompe y sigue su ruta.
+
+SUITE: 963 → 1000 en `/engine` (68 sin cambios en `/game`). `tsc --noEmit` y `eslint` limpios en ambos.
+
+PENDIENTE (Ronda B, tras playtest): capa visual `puertas`, panel de acciones de conducto/puerta, encolado de
+las tres tareas desde `/game`, flujo direccional de partículas y overlay de presión por sección.

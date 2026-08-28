@@ -93,6 +93,48 @@ describe("CANONICAL_SHIP_FLOORPLANS", () => {
     expect(conduits[0]?.initialAperture).toBe(0);
   });
 
+  // Subfase 13h — capa `puertas`. Solo `nave-exploracion` está autorada; los
+  // otros 3 arquetipos parsean `[]` (capa opcional) y quedan como deuda de
+  // contenido, junto a sus conductos `senal`/`fluido`.
+  it("exploracion: hay una puerta por cada frontera de ventilación", () => {
+    const exploracion = CANONICAL_SHIP_FLOORPLANS.exploracion;
+    const boundary = (a: string, b: string) => [a, b].sort().join("|");
+    const vented = new Set(
+      exploracion.conduits
+        .filter((conduit) => conduit.kind === "ventilacion")
+        .map((conduit) => boundary(conduit.a, conduit.b)),
+    );
+    const withDoor = new Set(exploracion.doors.map((door) => boundary(door.a, door.b)));
+
+    // Si una frontera ventilada no tuviera puerta, esa sala quedaría fuera de
+    // la compartimentación y una brecha vecina la desangraría igual que antes
+    // de 13h — el agujero es silencioso, por eso se comprueba la cobertura
+    // entera y no un caso suelto.
+    expect([...vented].sort()).toEqual([...withDoor].sort());
+  });
+
+  it("exploracion: las puertas caen en celdas de alguna de las dos secciones que separan", () => {
+    const exploracion = CANONICAL_SHIP_FLOORPLANS.exploracion;
+    for (const door of exploracion.doors) {
+      const sides = exploracion.sections.filter(
+        (section) => section.id === door.a || section.id === door.b,
+      );
+      expect(sides).toHaveLength(2);
+      const covered = sides.some((section) =>
+        section.cells.some(
+          (cell) => cell.x === door.position.x && cell.y === door.position.y,
+        ),
+      );
+      expect(covered, `puerta '${door.id}' fuera de sección`).toBe(true);
+    }
+  });
+
+  it("los arquetipos sin capa `puertas` siguen cargando con lista vacía", () => {
+    for (const archetype of ["guerra", "investigacion", "medica"] as const) {
+      expect(CANONICAL_SHIP_FLOORPLANS[archetype].doors).toEqual([]);
+    }
+  });
+
   it("exploracion: la bodega de carga es la sección más grande de todas las naves", () => {
     const allSections = SHIP_ARCHETYPES.flatMap(
       (archetype) => CANONICAL_SHIP_FLOORPLANS[archetype].sections,

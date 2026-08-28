@@ -100,10 +100,20 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     name: "Compuerta blindada",
     data: {
       functional: [
-        { tag: "ACT", power: 70, cadence: 3, directional: false },
+        // Subfase 13h: `ACT` deja de ser decorativo en esta pieza. `cadence` (3 s)
+        // es lo que tarda la hoja en abrirse o cerrarse, y `power` (70) la fuerza
+        // del motor — resiste el forzado manual y aplasta al que quede en el
+        // umbral. `powerDraw` la vuelve consumidora real del reparto de 13b: sin
+        // energía se congela donde está. Migrará a dato de componente cuando 13g
+        // suba `powerDraw` fuera de `ACT`.
+        { tag: "ACT", power: 70, cadence: 3, directional: false, powerDraw: 2 },
         { tag: "EST", damageResistance: 80, articulatedRange: undefined },
       ],
       material: { RE: "A" },
+      // Necesario para poder sembrarla en la capa Tiled `semillas` o instalarla
+      // desde el kit inicial (`composite-component-spec.types.ts`): sin
+      // footprint, un compuesto no se puede colocar en el plano.
+      footprint: { width: 1, height: 1 },
     },
     recipe: {
       ingredients: [
