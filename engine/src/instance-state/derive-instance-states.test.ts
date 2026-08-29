@@ -16,20 +16,18 @@ function instance(): PlacedComponentInstance {
   };
 }
 
-// Fixture ATÓMICO a propósito: `componentPowerDraw` solo lee `data.functional`,
-// así que un compuesto obligaría a inventarle una receta falsa que no aporta
-// nada a lo que este test comprueba.
+// Fixture ATÓMICO a propósito: `componentPowerDraw` solo lee `data`, así que un
+// compuesto obligaría a inventarle una receta falsa que no aporta nada a lo que
+// este test comprueba.
 function definition(powerDraw?: number): PhysicalComponentDefinition {
   return {
     id: "compuerta-blindada" as ComponentId,
     name: "Compuerta",
     level: "atomic",
     data: {
-      functional:
-        powerDraw === undefined
-          ? [{ tag: "EST", damageResistance: 80, articulatedRange: undefined }]
-          : [{ tag: "ACT", power: 70, cadence: 1.5, directional: false, powerDraw }],
+      functional: [{ tag: "ACT", power: 70, cadence: 1.5, directional: false }],
       footprint: { width: 1, height: 1 },
+      powerDraw,
     },
   };
 }

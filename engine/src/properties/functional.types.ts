@@ -26,12 +26,13 @@ export interface ActuatorProperty {
   readonly cadence: number;
   readonly directional: boolean;
   /**
-   * Costo eléctrico en unidades de presupuesto de energía (Fase 13b,
-   * `engine/src/power/`), distinto de `power` (intensidad mecánica de la
-   * actuación) — ambos coexisten. Ausente o `0` = no consume del presupuesto,
-   * siempre alimentado (retrocompatible con todo el catálogo anterior a 13b).
+   * NO hay `powerDraw` acá: la Subfase 13g lo subió a
+   * `PhysicalComponentDefinition.data.powerDraw`. Mientras vivió en este tag,
+   * una pieza que no es actuador (un chip, un sensor, una mesa `FAB`) no tenía
+   * dónde declarar consumo, y el reparto de 13b no podía gatear a nadie más
+   * que a los actuadores. `power` —intensidad mecánica de la actuación— se
+   * queda: es otra magnitud, no el costo eléctrico.
    */
-  readonly powerDraw?: number;
 }
 
 /**

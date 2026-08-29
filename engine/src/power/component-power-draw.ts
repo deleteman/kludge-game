@@ -11,12 +11,12 @@ import type { PhysicalComponentDefinition } from "../components/physical-compone
  * copia. Si las tres divergieran, el plano diría que una sección tiene déficit
  * y el reparto alimentaría la pieza igual, o al revés.
  *
- * `powerDraw` vive hoy dentro del tag `ACT`, así que una pieza que no es
- * actuador no tiene dónde declarar consumo: la Subfase 13g lo sube a dato de
- * componente. Cuando eso pase, **este es el único lugar que hay que tocar** —
- * que es precisamente la razón de centralizarlo antes.
+ * Subfase 13g: `powerDraw` dejó de vivir dentro del tag `ACT` y pasó a dato de
+ * componente (`data.powerDraw`), poblado al construir el catálogo desde
+ * `power-parameters.ts`. Centralizar esta lectura antes de la migración es lo
+ * que hizo que el cambio entrara en un solo lugar y que los tres consumidores
+ * —reparto, heatmap y derivación de estado— no pudieran divergir.
  */
 export function componentPowerDraw(definition: PhysicalComponentDefinition | undefined): number {
-  const actuator = definition?.data.functional?.find((property) => property.tag === "ACT");
-  return actuator && actuator.tag === "ACT" ? (actuator.powerDraw ?? 0) : 0;
+  return definition?.data.powerDraw ?? 0;
 }

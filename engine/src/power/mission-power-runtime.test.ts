@@ -49,7 +49,8 @@ function registry(): MapEntityRegistry<ComponentId, PhysicalComponentDefinition>
     name: "Torreta (fixture)",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false, powerDraw: 2 }],
+      functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false }],
+      powerDraw: 2,
     },
   });
   reg.register("sensor" as ComponentId, {
@@ -58,7 +59,8 @@ function registry(): MapEntityRegistry<ComponentId, PhysicalComponentDefinition>
     name: "Sensor (fixture)",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false, powerDraw: 2 }],
+      functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false }],
+      powerDraw: 2,
     },
   });
   return reg;

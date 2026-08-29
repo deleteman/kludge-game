@@ -29,7 +29,8 @@ function registryWithDraw(entries: ReadonlyArray<[string, number | undefined]>) 
       name: `${id} (fixture)`,
       data: {
         footprint: { width: 1, height: 1 },
-        functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false, powerDraw }],
+        functional: [{ tag: "ACT", power: 1, cadence: 1, directional: false }],
+        powerDraw,
       },
     });
   }

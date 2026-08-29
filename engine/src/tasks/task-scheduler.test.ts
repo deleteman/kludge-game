@@ -459,6 +459,167 @@ describe("task-scheduler: power gating (rondas 10-11 de fixes de playtest 13e)",
 });
 
 /**
+ * Subfase 13g. Hasta acá la Fase A del tick no miraba el mundo: una tarea ya
+ * arrancada llegaba a completarse pasara lo que pasara con la energía, porque
+ * `resolveBlockingReason` solo corría para las que aún no habían empezado. Y
+ * `failed`/`task-failed` estaban declarados desde la Fase 6 sin ningún escritor.
+ */
+describe("task-scheduler: fallo por falta de energía a mitad de la tarea (13g)", () => {
+  const SECTION = "bodega" as SectionId;
+  const MESA = "starter-estacion-quimica" as PlacedComponentInstanceId;
+
+  it("una tarea EN CURSO falla si su sección pierde la energía", () => {
+    let unpowered = false;
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => unpowered });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "combine",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
+        estimatedDurationSeconds: 10,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+
+    unpowered = true;
+    scheduler.tick(tickOf(2));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("failed");
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("idle");
+  });
+
+  it("emite `task-failed` con el motivo, para que el aviso pueda nombrarlo", () => {
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((e) => events.push(e));
+    let unpowered = false;
+    const scheduler = new TaskScheduler({ emitter, isSectionUnpowered: () => unpowered });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "combine",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
+        estimatedDurationSeconds: 10,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    unpowered = true;
+    scheduler.tick(tickOf(2));
+
+    expect(events.find((e) => e.kind === "task-failed")).toMatchObject({
+      reason: "no-power",
+      actorId: ENGINEER,
+    });
+  });
+
+  it("gatea por INSTANCIA aunque la sección tenga energía (triaje de prioridad)", () => {
+    // El caso que `powerSectionIds` sola no cubre: la sala tiene unidades pero
+    // el reparto no le alcanza a la mesa.
+    const scheduler = new TaskScheduler({
+      isSectionUnpowered: () => false,
+      isInstanceUnpowered: (instanceId) => instanceId === MESA,
+    });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "combine",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
+        powerInstanceIds: [MESA],
+        estimatedDurationSeconds: 5,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("blocked");
+  });
+
+  it("el fallo cascadea `dependency-failed` a lo que dependía de la tarea", () => {
+    let unpowered = false;
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => unpowered });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("sintesis"),
+        actorId: ENGINEER,
+        type: "combine",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
+        estimatedDurationSeconds: 10,
+      }),
+    );
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("instalar"),
+        actorId: MEDIC,
+        type: "install",
+        dependsOn: [id("sintesis")],
+        estimatedDurationSeconds: 2,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    unpowered = true;
+    scheduler.tick(tickOf(2));
+
+    expect(scheduler.getTask(id("sintesis"))?.state).toBe("failed");
+    expect(scheduler.getTask(id("instalar"))?.state).toBe("blocked");
+  });
+
+  it("un fallo es terminal: devolverle la energía NO la reanuda", () => {
+    // A diferencia del bloqueo, que sí es reversible sin tocar la tarea. Es la
+    // consecuencia permanente del principio 5: el trabajo se echó a perder.
+    let unpowered = false;
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => unpowered });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "combine",
+        targetSectionId: SECTION,
+        powerSectionIds: [SECTION],
+        estimatedDurationSeconds: 10,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    unpowered = true;
+    scheduler.tick(tickOf(2));
+    unpowered = false;
+    scheduler.tick(tickOf(3));
+    scheduler.tick(tickOf(4));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("failed");
+  });
+
+  it("no toca una tarea en curso que no declara gating por energía", () => {
+    const scheduler = new TaskScheduler({ isSectionUnpowered: () => true });
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("t"),
+        actorId: ENGINEER,
+        type: "dismantle",
+        targetSectionId: SECTION,
+        estimatedDurationSeconds: 10,
+      }),
+    );
+
+    scheduler.tick(tickOf(1));
+    scheduler.tick(tickOf(2));
+
+    expect(scheduler.getTask(id("t"))?.state).toBe("in-progress");
+  });
+});
+
+/**
  * Permadeath (GDD 6.1) — ronda 2 de playtest de 13f. El operador reportó "el
  * tripulante no muere al llegar a 0 vida, sigo usándolo para todo sin
  * problema": `crew-death` existía desde la Fase 9 pero solo disparaba

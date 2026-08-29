@@ -103,15 +103,17 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
         // Subfase 13h: `ACT` deja de ser decorativo en esta pieza. `cadence`
         // (1.5 s) es lo que tarda la hoja en abrirse o cerrarse, y `power` (70)
         // la fuerza del motor — resiste el forzado manual y aplasta al que quede
-        // en el umbral. `powerDraw` la vuelve consumidora real del reparto de
-        // 13b: sin energía se congela donde está. Migrará a dato de componente
-        // cuando 13g suba `powerDraw` fuera de `ACT`.
+        // en el umbral. Su consumo (`powerDraw: 2`) la vuelve consumidora real
+        // del reparto de 13b —sin energía se congela donde está— y desde 13g
+        // vive en `power/power-parameters.ts`, no acá: ya no es un campo de
+        // `ACT` sino dato de componente, para que un chip o una mesa también
+        // puedan declararlo.
         //
         // Ronda 2 de playtest: 3 s → 1.5 s. Es el número que comparten la
         // simulación y la animación de la hoja (`easedDoorOpenness`), así que
         // cambiarlo acá cambia las dos cosas a la vez, que es exactamente la
         // invariante que `transitionSecondsOf` existe para sostener.
-        { tag: "ACT", power: 70, cadence: 1.5, directional: false, powerDraw: 2 },
+        { tag: "ACT", power: 70, cadence: 1.5, directional: false },
         { tag: "EST", damageResistance: 80, articulatedRange: undefined },
       ],
       material: { RE: "A" },

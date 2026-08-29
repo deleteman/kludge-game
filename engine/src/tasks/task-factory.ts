@@ -1,6 +1,7 @@
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { GridPosition } from "../geometry/grid-position.types.js";
+import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { CrewTask, CrewTaskId, TaskPayload, TaskType } from "./task.types.js";
 import { baseDurationFor } from "./task-parameters.js";
 
@@ -19,6 +20,12 @@ export interface CreateCrewTaskInput {
    * sigue existiendo para la ubicación del actor y no implica gating.
    */
   readonly powerSectionIds?: ReadonlyArray<SectionId>;
+  /**
+   * Instancias que deben tener su demanda satisfecha (Subfase 13g) — ver
+   * `CrewTask.powerInstanceIds`. Lo declaran las tareas que se hacen CON una
+   * máquina; el trabajo manual del tripulante no.
+   */
+  readonly powerInstanceIds?: ReadonlyArray<PlacedComponentInstanceId>;
   readonly payload?: TaskPayload;
   readonly dependsOn?: ReadonlyArray<CrewTaskId>;
   /**
@@ -49,6 +56,7 @@ export function createCrewTask(input: CreateCrewTaskInput): CrewTask {
     targetSectionId: input.targetSectionId,
     targetCell: input.targetCell,
     powerSectionIds: input.powerSectionIds,
+    powerInstanceIds: input.powerInstanceIds,
     payload: input.payload,
     estimatedDurationSeconds: duration,
     dependsOn: input.dependsOn ? [...input.dependsOn] : [],

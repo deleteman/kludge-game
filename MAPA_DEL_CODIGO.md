@@ -1536,3 +1536,52 @@
 
 ## `game/src/ui/widgets/mission-tooltip.ts` y `mission-action-panel.ts` (modificados, ronda 3)
 - Líneas de estado con ícono, texto y color ya resueltos por el llamador desde la misma tabla.
+
+---
+
+# Subfase 13g — Consumo Eléctrico Real
+
+## `engine/src/power/power-parameters.ts` (nuevo)
+- `POWER_DRAW_BY_COMPONENT` + `declaredPowerDraw`: la ÚNICA tabla de consumos del catálogo. Criterio
+  documentado (señal pura 1 · `ACT` 2 · pesado/`FAB` 3) y por qué conductores y fuentes no consumen.
+
+## `engine/src/power/default-allocation.ts` (nuevo)
+- `defaultSectionAllocations`: reparto inicial por demanda declarada de cada sección, mayor primero, hasta
+  agotar presupuesto. Existe porque `emptyPowerState()` deja toda sección en 0 y con demanda declarada eso
+  significa una partida nueva sin señales, sin mesas y sin puertas.
+
+## `engine/src/components/physical-component.types.ts` y `catalog/build-component-catalog.ts` (modificados)
+- `data.powerDraw` como dato de componente, hermano de `footprint`; `withPowerDraw` lo inyecta al construir
+  desde la tabla. Los specs de catálogo no lo autoran.
+
+## `engine/src/power/component-power-draw.ts` (modificado)
+- Pasa a leer `definition.data.powerDraw`. Sigue siendo el único lector — por eso la migración entró en un
+  solo lugar y reparto, heatmap y derivación de estado no pudieron divergir.
+
+## `engine/src/properties/functional.types.ts` (modificado)
+- `ActuatorProperty` pierde `powerDraw` (queda `power`, que es otra magnitud). Comentario de por qué no vuelve.
+
+## `engine/src/power/mission-power-runtime.ts` (modificado)
+- Docblocks nuevos en `isInstancePowered` (el predicado de gating vigente) y `unpoweredSections` (cicatriz sin
+  escritor autorado todavía, honesto). El fail-open de instancias sin sección se conserva con razón nueva.
+
+## `engine/src/tasks/` (modificado)
+- `task.types.ts`/`task-factory.ts`: `powerInstanceIds`, hermano por instancia de `powerSectionIds` — y único
+  sitio donde una tarea `combine` conserva de qué mesa habla.
+- `task-scheduler.ts`: `isInstanceUnpowered` inyectable, `fail(taskId, reason, tick)` (primer escritor real de
+  `failed`, hermano de `cancel()`, borra el avance por objetivo) y re-chequeo de energía en la Fase A del tick,
+  que hasta ahora no miraba el mundo.
+- `task-events.types.ts`: `TaskFailedEvent.reason`, para que el aviso nombre la causa.
+
+## `engine/src/floorplan/initial-ship-state.ts` y `save/campaign-save-factory.ts` (modificados)
+- Oferta de exploración 10 → 38 (deuda #39) y siembra del reparto inicial (deuda del patrón 42). El reparto se
+  siembra en el SAVE y no en el runtime: el runtime no distingue "nunca se asignó" de "el jugador puso 0".
+
+## `game/src/mission/mission-runtime.ts` (modificado)
+- `fabricatorBlockedReason`: punto único que comparten el guard de `openWorkbench` y el label del botón.
+- `powerInstanceIds` poblado en las cuatro tareas de máquina; limpieza de `pendingFabrications`/
+  `pendingSynthesis` al fallar o cancelar (el material se pierde, principio 5, pero los maps se vacían).
+
+## `game/src/render/component-sprite-registry.ts` y `mission-overlay-renderer.ts` (modificados, deuda #38)
+- `ensureComponentPlaceholderTexture` + placeholder como `Image` por celda: las piezas sin arte recorren el
+  mismo camino de tinte y sombreado que un sprite real, en vez de vivir en el `Graphics` batcheado.

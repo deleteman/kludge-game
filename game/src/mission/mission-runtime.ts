@@ -111,6 +111,10 @@ import type {
 } from "engine";
 import { listCustomCreations, loadCustomCreation } from "../meta/save-adapter.js";
 import { sectionCentroidCell } from "../render/floorplan-renderer.js";
+// Motivo de bloqueo de la mesa: vive con sus hermanos (`extractionBlocked`,
+// `transferBlocked`) en el contrato del panel de acciones, que es quien lo
+// convierte en texto. `import type` — se borra al compilar, sin dependencia real.
+import type { FabricatorBlockedReason } from "../ui/widgets/mission-action-panel.js";
 import type {
   Blueprint,
   ChemicalSubstanceDefinition,
@@ -667,9 +671,14 @@ export class MissionRuntime {
     this.scheduler = new TaskScheduler({
       emitter: this.coreLoopEvents,
       // Ronda 10 de fixes de playtest 13e: ninguna tarea gateable puede
-      // ejecutarse sin energía en su sección — ver `POWER_EXEMPT_TASK_TYPES`
-      // en `task-scheduler.ts`.
+      // ejecutarse sin energía en su sección. El gating es por dato de la
+      // tarea (`powerSectionIds`), no por una lista de tipos exentos.
       isSectionUnpowered: (sectionId) => this.powerRuntime.sectionHasNoPowerGranted(sectionId),
+      // Subfase 13g: y además por la MÁQUINA concreta (`powerInstanceIds`). Es
+      // `isInstancePowered` a propósito —"su demanda está satisfecha"— porque
+      // quien decide si la mesa arranca es el triaje de prioridad, no el hecho
+      // de que su sección tenga alguna unidad suelta.
+      isInstanceUnpowered: (instanceId) => !this.powerRuntime.isInstancePowered(instanceId),
       effect: createShipTaskEffect(
         this.shipState,
         this.componentRegistry,
@@ -749,6 +758,20 @@ export class MissionRuntime {
         this.materializedByTaskId.set(event.taskId, { kind: "substance", name });
       }
     });
+
+    // Subfase 13g: una `combine` que NO llega a completarse deja su creación
+    // pendiente colgada para siempre en estos maps. El material ya se descontó
+    // al encolar y se PIERDE (decisión del operador — principio 5: quedarse sin
+    // energía a mitad de una síntesis cuesta), pero los maps hay que vaciarlos
+    // igual: si no, la próxima tarea que reciclara ese id materializaría algo
+    // que el jugador nunca fabricó.
+    for (const kind of ["task-failed", "task-cancelled"] as const) {
+      this.coreLoopEvents.on(kind, (event) => {
+        this.pendingFabrications.delete(event.taskId);
+        this.pendingSynthesis.delete(event.taskId);
+        this.pendingSynthesisStation.delete(event.taskId);
+      });
+    }
 
     // Caudal de fluido (13e): la operación vive exactamente mientras la tarea
     // corre, así que se engancha a su ciclo de vida en vez de a un tick propio.
@@ -1453,6 +1476,30 @@ export class MissionRuntime {
   }
 
   /**
+   * Por qué la mesa de creación no se puede abrir ahora, o `undefined` si se
+   * puede (Subfase 13g).
+   *
+   * Punto ÚNICO de resolución a propósito: lo consumen el guard real de
+   * `FloorplanScene.openWorkbench` y el label del botón del panel de acciones.
+   * Dos evaluaciones paralelas serían exactamente el bug de "la UI dice que se
+   * puede y el clic rebota" — mismo criterio con el que 13d hizo compartir
+   * `assessDismantleHazards` entre el badge y el hazard del motor.
+   *
+   * El predicado de energía es `isInstancePowered` (por INSTANCIA), no
+   * `sectionHasNoPowerGranted` (por sección): quien decide si la máquina
+   * arranca es el triaje de prioridad del nivel 2 del reparto, así que una mesa
+   * puede quedarse sin energía aunque su sección tenga algo.
+   */
+  fabricatorBlockedReason(
+    instanceId: PlacedComponentInstanceId,
+  ): FabricatorBlockedReason | undefined {
+    if (this.coreLoop.mode !== "planning") {
+      return "execution";
+    }
+    return this.powerRuntime.isInstancePowered(instanceId) ? undefined : "unpowered";
+  }
+
+  /**
    * TODOS los reservorios de la nave (distintos del propio) a los que
    * `fromInstanceId` podría trasvasar, con el motivo de bloqueo si no sirve
    * ahora mismo — ronda 7 de fixes de playtest: antes (`transferTargetsFor`)
@@ -1634,6 +1681,8 @@ export class MissionRuntime {
         type: "extract-elements",
         targetSectionId,
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
+        // 13g: además del sector, el aparato del que se extrae.
+        powerInstanceIds: [instanceId],
         payload: { kind: "extract-elements", instanceId, amount },
         estimatedDurationSeconds: this.modulatedDuration("extract-elements", actorId),
       }),
@@ -1782,6 +1831,10 @@ export class MissionRuntime {
         // como una máquina real (confirmado con el operador), a diferencia de
         // instalar/conectar/ir a sección, que son trabajo manual.
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
+        // 13g: y por la MESA concreta. Es además el único sitio donde una
+        // tarea `combine` conserva de qué aparato habla — su `payload` sigue
+        // sin definirse y la instancia solo vivía en un map lateral de `/game`.
+        powerInstanceIds: stationInstanceId ? [stationInstanceId] : undefined,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );
@@ -1916,6 +1969,8 @@ export class MissionRuntime {
         type: "analyze-substance",
         targetSectionId,
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
+        // 13g: el análisis se hace en el reservorio donde vive la sustancia.
+        powerInstanceIds: location ? [location.instanceId] : undefined,
         payload: { kind: "analyze-substance", substanceId },
         estimatedDurationSeconds: this.modulatedDuration("analyze-substance", actorId),
       }),
@@ -1983,6 +2038,8 @@ export class MissionRuntime {
         targetSectionId,
         // Ronda 11: mismo criterio que `queueFabrication` — la estación gatea.
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
+        // 13g: y la estación química concreta, no solo su sección.
+        powerInstanceIds: stationInstanceId ? [stationInstanceId] : undefined,
         estimatedDurationSeconds: this.modulatedDuration("combine", actorId),
       }),
     );

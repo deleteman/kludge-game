@@ -306,6 +306,19 @@ export interface CrewTask {
    */
   readonly powerSectionIds?: ReadonlyArray<SectionId>;
   /**
+   * Instancias que deben tener su demanda satisfecha para que la tarea corra
+   * (Subfase 13g). Hermano de `powerSectionIds` un nivel más fino: la sección
+   * puede tener unidades y el triaje de prioridad dejar sin energía justo a la
+   * mesa con la que se trabaja. Lo declaran las tareas que se hacen CON una
+   * máquina (fabricar, sintetizar, analizar, extraer); el trabajo manual del
+   * tripulante no, y nunca se gatea.
+   *
+   * Es además el único sitio donde una tarea `combine` conserva de qué mesa
+   * habla: su `payload` sigue sin definirse y la instancia solo vivía en un map
+   * lateral de `/game`.
+   */
+  readonly powerInstanceIds?: ReadonlyArray<PlacedComponentInstanceId>;
+  /**
    * Datos del efecto físico (Fase 10b), consumidos por el `TaskEffect` real —
    * no por el scheduler, que sigue sin conocer la semántica de cada tipo.
    * Ausente en tareas sin efecto sobre el plano (`go-to`) o cuyo tipo todavía

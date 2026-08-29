@@ -56,6 +56,8 @@ Determinan qué "hace" un componente en el grafo de sistemas.
 
 **Sub-categoría conceptual — "aparato de fabricación" (`FAB`, Subfase 13e).** A diferencia del resto, `FAB` es una propiedad de HABILITACIÓN, no de trabajo: la pieza no produce ningún efecto físico por sí misma, solo declara que desde ella se puede abrir la mesa de creación. Por eso no se modela como `ACT` (que convierte energía en trabajo) — misma clase de aclaración semántica que se hizo en 11h con el Indicador LED y la Pantalla LCD dentro de `REC`.
 
+Precisión de la Subfase 13g: **no ser `ACT` no significa no necesitar alimentación**. Las dos mesas requieren energía para operar y no se abren si su sección no se la otorga. Eso es expresable porque en 13g el consumo (`powerDraw`) dejó de ser un campo del tag `ACT` y pasó a ser **dato de componente**, al lado del `footprint`: cualquier pieza —actuador o no— puede declarar demanda. Es la misma razón por la que un chip lógico o un sensor pueden quedarse sin energía y dejar de emitir, sin tener que fingir que son actuadores.
+
 Existe como propiedad y no como una lista de componentes concretos por el Pilar de emergencia: cualquier pieza que declare `FAB` habilita su mesa, sin que el motor conozca ningún id de catálogo. Las dos piezas que la declaran hoy son el **Banco de trabajo** (`FAB(física)`) y la **Estación química** (`FAB(química)`), sembradas en los 4 arquetipos — la mesa dejó de ser un botón siempre disponible y pasa a abrirse desde el aparato, con su menú contextual ("Fabricar" / "Fabricar sustancias" + "Desmontar").
 
 ### 5.2 Propiedades de material (capa física, ortogonal a la funcional)

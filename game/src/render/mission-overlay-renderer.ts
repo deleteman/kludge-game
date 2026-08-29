@@ -11,7 +11,11 @@ import type {
 } from "engine";
 
 import { RENDER_DEPTH } from "./render-depths.js";
-import { componentTextureKey, hasComponentSprite } from "./component-sprite-registry.js";
+import {
+  componentTextureKey,
+  ensureComponentPlaceholderTexture,
+  hasComponentSprite,
+} from "./component-sprite-registry.js";
 import { computeSignalWireRoute } from "./conduit-path.js";
 import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
@@ -49,8 +53,13 @@ export interface MissionOverlayRender {
    * Sprites reales por instancia (13e ronda 8, fix #2 de playtest: resaltar la
    * pieza misma en el modo de trasvase, no un círculo suelto). Un array porque
    * una creación con `layout` puede pintar varias partes, cada una con su
-   * propio sprite — vacío si la instancia cayó al rectángulo placeholder (sin
-   * arte real todavía), en cuyo caso el resaltado usa el contorno de footprint.
+   * propio sprite.
+   *
+   * Desde la Subfase 13g (deuda #38) incluye TAMBIÉN a las piezas sin arte: su
+   * placeholder dejó de ser un relleno del `Graphics` batcheado y pasó a ser un
+   * `Image` por celda sobre una textura blanca. Antes esas piezas no eran
+   * objetos, así que no podían recibir ni el tinte por estado ni el sombreado
+   * por luz — su estado solo se leía en el tooltip y el panel.
    */
   readonly componentSpritesByInstanceId: ReadonlyMap<PlacedComponentInstanceId, ReadonlyArray<Phaser.GameObjects.Image>>;
 }
@@ -142,10 +151,20 @@ export function renderMissionOverlay(
           .setDepth(RENDER_DEPTH.objects);
         if (tint !== undefined) sprite.setTint(tint);
         container.add(sprite);
+        componentSpritesByInstanceId.set(instance.instanceId, [sprite]);
       } else {
+        // Mismo placeholder tinteable que el resto (deuda #38): la LCD también
+        // declara consumo desde 13g, así que también puede quedarse a oscuras.
         const color = tint ?? SECTION_FILL_COLORS[index % SECTION_FILL_COLORS.length]!;
-        graphics.fillStyle(color, 0.85);
-        graphics.fillRect(originX, originY, width * CELL, height * CELL);
+        const placeholder = scene.add
+          .image(originX, originY, ensureComponentPlaceholderTexture(scene))
+          .setOrigin(0, 0)
+          .setDisplaySize(width * CELL, height * CELL)
+          .setAlpha(0.85)
+          .setTint(color)
+          .setDepth(RENDER_DEPTH.objects);
+        container.add(placeholder);
+        componentSpritesByInstanceId.set(instance.instanceId, [placeholder]);
       }
       graphics.lineStyle(2, tint ?? WALL_COLOR, 1);
       graphics.strokeRect(originX, originY, width * CELL, height * CELL);
@@ -179,11 +198,25 @@ export function renderMissionOverlay(
       const parts = drawCreationLayout(scene, container, graphics, originX, originY, layout, tint, index);
       if (parts.length > 0) componentSpritesByInstanceId.set(instance.instanceId, parts);
     } else {
+      // Deuda #38 (13g): el placeholder deja de ser un relleno del `Graphics`
+      // batcheado y pasa a ser un objeto POR INSTANCIA. Antes no era tinteable
+      // ni sombreable —no existía como objeto—, así que una pieza sin arte no
+      // podía mostrar su estado en el plano, solo en el tooltip y el panel. Y
+      // 13g es justo lo que deja sin energía a chips, sensores y mesas, que son
+      // en su mayoría piezas sin arte todavía.
       const color = tint ?? SECTION_FILL_COLORS[index % SECTION_FILL_COLORS.length]!;
-      graphics.fillStyle(color, 0.85);
-      for (const cell of occupiedCells(instance.placement)) {
-        graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
-      }
+      const texture = ensureComponentPlaceholderTexture(scene);
+      const parts = occupiedCells(instance.placement).map((cell) =>
+        scene.add
+          .image(cell.x * CELL, cell.y * CELL, texture)
+          .setOrigin(0, 0)
+          .setDisplaySize(CELL, CELL)
+          .setAlpha(0.85)
+          .setTint(color)
+          .setDepth(RENDER_DEPTH.objects),
+      );
+      for (const part of parts) container.add(part);
+      if (parts.length > 0) componentSpritesByInstanceId.set(instance.instanceId, parts);
     }
 
     graphics.lineStyle(2, tint ?? WALL_COLOR, 1);

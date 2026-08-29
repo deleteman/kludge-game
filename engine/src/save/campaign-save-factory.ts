@@ -15,6 +15,10 @@ import {
 } from "./chapter-progression.js";
 import type { CampaignSaveId, CampaignSaveState } from "./campaign-save.types.js";
 import { emptyPowerState } from "../power/power.types.js";
+import { defaultSectionAllocations } from "../power/default-allocation.js";
+import { totalPowerBudget } from "../power/power-source.js";
+import { CANONICAL_SHIP_FLOORPLANS } from "../floorplan/canonical-ships.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
 import { FACTORY_RESERVOIR_CONTENTS } from "../reservoir/factory-reservoir-contents.js";
 
@@ -64,6 +68,10 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     ...(chapter01Seed?.components ?? []),
   ];
 
+  // El catálogo se construye una sola vez acá: lo necesitan tanto el reparto
+  // inicial de energía como el presupuesto que lo acota (Subfase 13g).
+  const componentRegistry = buildComponentCatalog().registry;
+
   const shipState: Blueprint = {
     metadata: {
       schemaVersion: 10,
@@ -102,7 +110,25 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // no a través de este campo (ver `power-allocation.ts`).
     unpoweredSectionIds: [],
     overloadedRefs: [],
-    powerState: emptyPowerState(),
+    // Subfase 13g: la asignación inicial NO puede quedar vacía. `emptyPowerState`
+    // deja toda sección en 0 unidades otorgadas, lo cual era inocuo mientras
+    // nada declarara `powerDraw` y se volvió una trampa en cuanto la puerta fue
+    // el primer consumidor real (13h ronda 2: "no asignaste energía" se leía
+    // como "la nave es inalcanzable"). Con el catálogo declarando consumo, una
+    // partida nueva arrancaría sin señales, sin mesas y sin puertas. Se siembra
+    // aquí y no en `MissionPowerRuntime` a propósito: el runtime no puede
+    // distinguir "nunca se asignó" de "el jugador puso todo en 0" —
+    // `setSectionPowerUnits` borra la entrada al llegar a 0—, así que
+    // auto-rellenar ahí sería pelearse con una decisión del jugador.
+    powerState: {
+      ...emptyPowerState(),
+      sectionAllocations: defaultSectionAllocations(
+        placedComponents,
+        CANONICAL_SHIP_FLOORPLANS[input.archetype],
+        componentRegistry,
+        totalPowerBudget(placedComponents, componentRegistry),
+      ),
+    },
     // Subfase 13h: mismo criterio que la atmósfera y la integridad de sección —
     // sin snapshot, `MissionDoorRuntime`/`ValveRuntime` siembran el estado
     // inicial desde la capa Tiled `puertas` y desde `initialAperture`. Una

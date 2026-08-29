@@ -49,6 +49,45 @@ const EXPLORACION_POWER_SOURCE_CELLS = [
 ] as const;
 
 /**
+ * Fuentes pesadas añadidas en la Subfase 13g (deuda #39). Hasta acá la nave
+ * producía 10 unidades y nadie declaraba demanda, así que el número no tenía
+ * contra qué medirse. Con el catálogo declarando consumo, la demanda REAL de
+ * una partida nueva de exploración es **33**: 20 de las 10 puertas (una por
+ * sección, sembradas desde la capa `puertas` del mapa), 6 de las 2 mesas, 2 de
+ * la `valvula-simple` atascada del Cap.1, 2 del fotorreceptor y el chip de su
+ * segundo paso, y 3 del attrezzo ambiental (`herramientas-reparacion-externa`,
+ * `radio-largo-alcance`).
+ *
+ * El operador eligió subir la oferta en vez de dejar la escasez: 10 + 28 = **38
+ * unidades**, o sea margen para lo que el jugador instale de más. Perder un
+ * reactor entero (6) ya obliga a triaje, que es exactamente la tensión que 13b
+ * existe para producir. Los números finos son balanceo (Fase 23); acá lo que
+ * importa es que
+ * `initial-power-budget.test.ts` cruza oferta contra demanda con el mapa real y
+ * falla si alguien rompe la relación.
+ *
+ * Celdas: los 5 pares verticales están en `propulsion` —sala de máquinas, el
+ * sitio plausible para reactores— y salen del mismo procedimiento que las de
+ * arriba (decodificar `nave-exploracion.json` y descartar `walls`/`objects` más
+ * todos los objetos de `secciones`/`conductos`/`anclajes`/`semillas`/`luces`/
+ * `puertas`, las 5 células de arriba, las 2 mesas y el cable del demo de 12a).
+ * `ingenieria` quedó con 2 celdas sueltas y ningún par libre, por eso no crece.
+ * De los 6 pares disjuntos que quedaban en `propulsion` se usan 5: el sexto se
+ * deja libre a propósito para que el jugador pueda instalar ahí.
+ *
+ * `reactor-alto-amperaje` está autorado en el catálogo de guerra, pero el
+ * catálogo de compuestos es ÚNICO y compartido por los 4 arquetipos
+ * (`build-component-catalog.ts`): no es una pieza exclusiva de ese arquetipo.
+ */
+const EXPLORACION_HEAVY_SOURCES = [
+  { component: "reactor-alto-amperaje", position: { x: 34, y: 8 } },
+  { component: "reactor-alto-amperaje", position: { x: 37, y: 8 } },
+  { component: "reactor-alto-amperaje", position: { x: 33, y: 10 } },
+  { component: "reactor-alto-amperaje", position: { x: 35, y: 8 } },
+  { component: "bateria-gran-capacidad", position: { x: 38, y: 8 } },
+] as const;
+
+/**
  * Aparatos de fabricación (Subfase 13e). A diferencia de las fuentes de energía
  * de arriba, estos SÍ se siembran en los 4 arquetipos: sin ellos no hay forma
  * de abrir la mesa de creación, que dejó de ser un botón global y pasó a
@@ -119,6 +158,13 @@ function starterKit(archetype: ShipArchetype): ReadonlyArray<PlacedComponentInst
       placement: { position, footprint: { width: 1, height: 2 }, rotation: 0 },
       condition: "ok" as const,
       // Equipamiento de arranque: sale de fábrica, sin historia (13c).
+      wear: DEFAULT_WEAR,
+    })),
+    ...EXPLORACION_HEAVY_SOURCES.map((source, index): PlacedComponentInstance => ({
+      instanceId: `starter-fuente-pesada-${index + 1}` as PlacedComponentInstanceId,
+      componentDefinitionId: source.component as ComponentId,
+      placement: { position: source.position, footprint: { width: 1, height: 2 }, rotation: 0 },
+      condition: "ok" as const,
       wear: DEFAULT_WEAR,
     })),
   ];

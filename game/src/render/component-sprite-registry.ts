@@ -42,6 +42,34 @@ export function hasComponentSprite(scene: Phaser.Scene, id: string): boolean {
   return scene.textures.exists(componentTextureKey(id));
 }
 
+/** Textura blanca de 1×1 que sirve de lienzo para el placeholder tinteable. */
+export const COMPONENT_PLACEHOLDER_TEXTURE_KEY = "component:__placeholder";
+
+/**
+ * Garantiza la textura del placeholder (deuda #38, Subfase 13g).
+ *
+ * Por qué existe: las piezas sin arte se dibujaban en el `Graphics` batcheado
+ * del overlay, o sea que NO eran objetos por instancia y no podían recibir ni
+ * tinte vivo ni el sombreado por luz. Eso era invisible mientras el único
+ * estado era `unpowered` y el único consumidor de energía era la compuerta (que
+ * sí tiene sprite); 13g le da `powerDraw` a chips, sensores y mesas, o sea
+ * justo a las piezas sin arte. Con un `Image` sobre una textura blanca el
+ * placeholder recorre EL MISMO camino que un sprite real —`setBaseTint`,
+ * `applyLightShading`, `updateComponentStateTints`— en vez de tener el suyo.
+ */
+export function ensureComponentPlaceholderTexture(scene: Phaser.Scene): string {
+  if (!scene.textures.exists(COMPONENT_PLACEHOLDER_TEXTURE_KEY)) {
+    const canvas = scene.textures.createCanvas(COMPONENT_PLACEHOLDER_TEXTURE_KEY, 1, 1);
+    const ctx = canvas?.context;
+    if (ctx) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 1, 1);
+      canvas?.refresh();
+    }
+  }
+  return COMPONENT_PLACEHOLDER_TEXTURE_KEY;
+}
+
 function basename(path: string): string {
   const file = path.split("/").pop() ?? path;
   return file.replace(/\.png$/i, "");

@@ -5347,3 +5347,90 @@ impide marcar apagado todo el catálogo), `resolveComponentVisual` + no-colisió
 `power-predicates-disagreement` — el test que ANCLA que los dos predicados discrepan en esa franja, para que
 cualquier futuro "arreglo" de uno rompa ruidosamente en vez de en silencio. `tsc`, `eslint` y `vite build`
 limpios.
+
+================================================================================
+2026-08-29 — Subfase 13g: Consumo Eléctrico Real (que el reparto gatee algo)
+================================================================================
+RAZÓN: 13b construyó toda la maquinaria de reparto de energía —presupuesto, asignación por sección, triaje de
+prioridad por instancia, déficit— pero NADIE declaraba demanda. Con una sola pieza del catálogo (la compuerta
+de 13h) declarando `powerDraw`, `isInstancePowered` devolvía `true` para el 98% del catálogo y el nivel 2 del
+reparto era funcionalmente inerte: el dial movía agujas que no controlaban nada. Un chip en una sección a
+oscuras emitía normal, las mesas se abrían sin energía y ninguna tarea la consultaba.
+
+1. `powerDraw` SUBE A DATO DE COMPONENTE. Deja el tag `ACT` (donde una pieza que no es actuador no tenía dónde
+   declarar consumo) y pasa a `PhysicalComponentDefinition.data`, hermano de `footprint`. Los valores viven en
+   UNA tabla nueva (`power/power-parameters.ts`, molde de `salvage-parameters.ts`) que
+   `buildComponentCatalog` inyecta al construir: un número autorado, un campo, un lector. `componentPowerDraw`
+   —centralizado en 13h ronda 3 justamente para esto— fue el único sitio que hubo que tocar, así que reparto,
+   heatmap y derivación de estado migraron sin poder divergir.
+   Criterio: señal pura (`EM`/`REC` sin `ACT`) 1 · actuadores 2 · pesado (`ACT` power ≥ 80) y mesas `FAB` 3.
+   Conductores `COND(E)` y fuentes `RES(E)` NO consumen, con el porqué escrito en el docblock.
+
+2. OFERTA DIMENSIONADA CONTRA DEMANDA (deuda #39, cerrada). Con el catálogo declarando consumo, la demanda real
+   de una partida nueva de exploración resultó ser 33 (20 de las 10 puertas, 6 de las 2 mesas, 2 de la válvula
+   del Cap.1, 2 del fotorreceptor + chip de su 2º paso, 3 del attrezzo) contra una oferta de 10. Decisión del
+   operador: subir la oferta, no dejar la escasez. 10 → 38, con 4× `reactor-alto-amperaje` + 1×
+   `bateria-gran-capacidad` en `propulsion`, en 5 de los 6 pares 1×2 disjuntos que quedaban libres —
+   verificados decodificando `nave-exploracion.json` con el mismo procedimiento documentado en el archivo.
+   Perder un reactor (6) ya obliga a triaje.
+
+3. UNA PARTIDA NUEVA YA NO ARRANCA A OSCURAS (patrón 42, aplicado en planificación). Subir la oferta sola no
+   habría encendido nada: `emptyPowerState()` deja `sectionAllocations: []`, o sea 0 unidades otorgadas en
+   TODA sección — el caso por defecto y el que nadie prueba. `defaultSectionAllocations` (nuevo, puro) reparte
+   por demanda declarada, mayor sección primero, hasta agotar presupuesto, y se siembra en
+   `campaign-save-factory.ts`. NO en `MissionPowerRuntime` a propósito: el runtime no puede distinguir "nunca
+   se asignó" de "el jugador puso todo en 0", porque `setSectionPowerUnits` borra la entrada al llegar a 0 —
+   auto-rellenar ahí sería pelearse con una decisión del jugador (patrón 4).
+
+4. SEÑALES: el gating que `outputOf` ya implementaba empezó a funcionar solo, sin tocar una línea de la regla.
+   Lo que sí se tocó son los docblocks que mentían por omisión: `unpoweredSections()` queda documentada como
+   la cicatriz permanente que NINGÚN capítulo autorado escribe todavía (patrón 7, honesto — no es vía muerta,
+   es el canal del Cap.5), e `isInstancePowered` gana el suyo explicando que significa "su demanda está
+   satisfecha" y no "está energizada". El fail-open de instancias sin sección se conserva, pero con razón
+   nueva escrita: la vieja ("sin `powerDraw`, no gatear") caducó en esta subfase (patrón 18).
+   VERIFICADO además que los otros dos consumidores de `outputOf` que leen un nodo de su PROPIA instancia
+   (la bobina del electroimán y el LED) NO necesitan el trato de `doorSignalOutput`: ninguno lee `false` como
+   una orden, en los dos "sin energía" significa correctamente "apagado".
+
+5. MESAS: banco y estación declaran consumo 3. `fabricatorBlocked` pasa de `"execution"` a
+   `"execution" | "unpowered"` y el label recibe el MOTIVO (molde del hermano `extractionBlocked`), así que el
+   botón gris dice por qué. El guard de `openWorkbench` y el label del botón comparten UN punto de resolución
+   (`MissionRuntime.fabricatorBlockedReason`) — dos evaluaciones paralelas habrían sido el bug de "la UI dice
+   que se puede y el clic rebota" (patrón 1, misma lección que `assessDismantleHazards` en 13d). El predicado
+   es `isInstancePowered`, por INSTANCIA: quien decide si la máquina arranca es el triaje, no la sección.
+
+6. UNA TAREA EN CURSO AHORA PUEDE FALLAR. La Fase A del tick del scheduler no miraba el mundo: una tarea ya
+   arrancada llegaba a completarse pasara lo que pasara, porque `resolveBlockingReason` solo corría para las
+   que aún no habían empezado. Ahora se re-evalúa antes de avanzar el reloj y, si falta energía, la tarea
+   FALLA (decisión del operador; principio 5). `fail()` es el primer escritor real de `failed`/`task-failed`,
+   que llevaban declarados desde la Fase 6 sin ninguno (patrón 32: un evento sin consumidor mecánico es una
+   feature que no existe). El evento lleva `reason`, para que el aviso nombre la causa en vez de un "Tarea
+   fallida" a secas que se lee como bug (patrón 42b).
+   Gating también por INSTANCIA (`powerInstanceIds`, nuevo, hermano de `powerSectionIds`), poblado en las
+   cuatro tareas de máquina — y de paso es el único sitio donde una tarea `combine` conserva de qué mesa
+   habla, porque su `payload` sigue sin definirse. El material consumido SE PIERDE (se descuenta al encolar),
+   pero `pendingFabrications`/`pendingSynthesis`/`pendingSynthesisStation` se vacían al fallar o cancelar: si
+   no, un id reciclado habría materializado algo que el jugador nunca fabricó.
+
+7. DEUDA #38 CERRADA (legibilidad, principio 6). El sistema genérico de estado por componente ya existía desde
+   13h ronda 3, así que 13g no construyó nada nuevo ahí — lo que hizo falta fue que las piezas SIN ARTE
+   pudieran mostrarlo, que es justo el grupo al que esta subfase deja sin energía. El placeholder deja de ser
+   un relleno del `Graphics` batcheado y pasa a ser un `Image` por celda sobre una textura blanca de 1×1, así
+   que recorre el MISMO camino que un sprite real (`setBaseTint`, `updateComponentStateTints`,
+   `applyLightShading`). Se arregló el hermano con el mismo defecto (placeholder de la Pantalla LCD, patrón
+   31) y se copió la opacidad en `spriteCopyAboveDim`, que asume sprites a alpha 1.
+
+8. LIMPIEZA DE PASO: tres comentarios citaban `POWER_EXEMPT_TASK_TYPES`, que ya no existe desde la ronda 11 de
+   13e.
+
+GDD: §5.1 documenta que `FAB` sigue sin ser `ACT` (no hace trabajo físico sobre el mundo) pero SÍ requiere
+alimentación, y que `powerDraw` es dato de componente y no campo de un tag.
+
+TESTS: 1038 → 1059 en `/engine`, 86 sin cambios en `/game`. Nuevos: `power-parameters` contra el CATÁLOGO REAL
+(incluido el test que detecta un id mal escrito en la tabla, que sería un consumo que nunca se aplica),
+`initial-power-budget` (cruza oferta y demanda con el contenido autorado real — patrón 34 — y ancla que una
+partida nueva no arranca a oscuras), `signal-power-chain.integration` (la cadena fotorreceptor → cable → LED
+montando el `MissionPowerRuntime` DE VERDAD, no un `isInstancePowered` inyectado: un doble que implemente la
+semántica correcta habría estado en verde con el bug puesto — patrones 13 y 43), y 6 casos de fallo de tarea
+por energía. RECALIBRADO con el motivo escrito: `initial-ship-state.test.ts` anclaba 10 unidades y 18 celdas.
+`tsc`, `eslint` y `npm run build` limpios.

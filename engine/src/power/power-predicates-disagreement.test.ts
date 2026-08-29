@@ -33,7 +33,8 @@ const DEFINITION: PhysicalComponentDefinition = {
   name: "Compuerta blindada",
   level: "atomic",
   data: {
-    functional: [{ tag: "ACT", power: 70, cadence: 1.5, directional: false, powerDraw: 2 }],
+    functional: [{ tag: "ACT", power: 70, cadence: 1.5, directional: false }],
+    powerDraw: 2,
     material: { RE: "A" },
     footprint: { width: 1, height: 1 },
   },

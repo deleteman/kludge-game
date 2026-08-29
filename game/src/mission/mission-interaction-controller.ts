@@ -1013,11 +1013,13 @@ export class MissionInteractionController {
             fabricatorDomain: this.mission.fabricatorDomainOfInstance(
               this.actionPanelContent.instanceId,
             ),
-            // La mesa exige pausa (13e ronda 2). Se deriva acá, con el resto
-            // del estado vivo, para que el botón se re-habilite solo al pausar
-            // sin tener que cerrar y reabrir el panel.
-            fabricatorBlocked:
-              this.mission.coreLoop.mode === "planning" ? undefined : ("execution" as const),
+            // La mesa exige pausa (13e ronda 2) Y energía (13g). Se deriva acá,
+            // con el resto del estado vivo, para que el botón se re-habilite
+            // solo al pausar o al devolverle la energía a la sección, sin tener
+            // que cerrar y reabrir el panel.
+            fabricatorBlocked: this.mission.fabricatorBlockedReason(
+              this.actionPanelContent.instanceId,
+            ),
             // Brecha bajo la pieza (13f ronda 1): si el jugador instaló algo
             // que no sirve de parche, el panel tiene que decirlo. Derivado del
             // mundo vivo como el resto, para que instalar la plancha apague el
@@ -1089,8 +1091,8 @@ export class MissionInteractionController {
               )
             : t("ui.floorplan.mission.inspector.reservoir-hint-empty"),
         openFabricator: (domain) => t(`ui.floorplan.mission.inspector.fabricate.${domain}`),
-        openFabricatorBlocked: (domain) =>
-          t(`ui.floorplan.mission.inspector.fabricate-blocked.${domain}`),
+        openFabricatorBlocked: (domain, reason) =>
+          t(`ui.floorplan.mission.inspector.fabricate-blocked.${reason}.${domain}`),
         // Subfase 13h — puertas y válvulas.
         doorState: (state) => t(`ui.floorplan.mission.inspector.door-state.${state}`),
         doorBlocked: (source) => t(`ui.floorplan.mission.inspector.door-blocked.${source}`),

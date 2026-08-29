@@ -2475,6 +2475,9 @@ export class FloorplanScene extends Phaser.Scene {
       .image(sprite.x, sprite.y, sprite.texture.key)
       .setOrigin(sprite.originX, sprite.originY)
       .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+      // El placeholder tinteable de la deuda #38 (13g) va a 0.85: copiar la
+      // opacidad mantiene la copia idéntica a lo que hay debajo del oscurecido.
+      .setAlpha(sprite.alpha)
       .setDepth(RENDER_DEPTH.transferTargetHighlight);
     const base = this.baseTintOf(sprite);
     if (base !== NEUTRAL_TINT) copy.setTint(base);
@@ -2809,15 +2812,24 @@ export class FloorplanScene extends Phaser.Scene {
    * recién al completarse (materialización diferida, `MissionRuntime`).
    */
   private openWorkbench(stationInstanceId: PlacedComponentInstanceId): void {
-    // Los dos guards siguen siendo la defensa en profundidad; lo que cambió en
+    // Los guards siguen siendo la defensa en profundidad; lo que cambió en
     // 13e ronda 2 es CÓMO se comunica el rechazo. `setStatus` escribe una línea
     // discreta en el header que el jugador no mira al hacer clic en el plano,
-    // así que el clic parecía no hacer nada. Ahora el botón ya avisa que hay
-    // que pausar (`fabricatorBlocked`) y este camino, si se llega igual, lo
-    // dice con una notificación.
-    if (this.mission.coreLoop.mode !== "planning") {
+    // así que el clic parecía no hacer nada. Ahora el botón ya avisa el motivo
+    // (`fabricatorBlocked`) y este camino, si se llega igual, lo dice con una
+    // notificación.
+    //
+    // Pausa y energía comparten predicado con el botón vía
+    // `MissionRuntime.fabricatorBlockedReason`: una segunda evaluación acá sería
+    // el bug de "el botón dice que se puede y el clic rebota".
+    const blocked = this.mission.fabricatorBlockedReason(stationInstanceId);
+    if (blocked !== undefined) {
       this.notifications?.push({
-        title: t("ui.floorplan.mission.workbench-need-pause"),
+        title: t(
+          blocked === "execution"
+            ? "ui.floorplan.mission.workbench-need-pause"
+            : "ui.floorplan.mission.workbench-need-power",
+        ),
         type: "warning",
       });
       return;
@@ -4753,9 +4765,14 @@ export class FloorplanScene extends Phaser.Scene {
           // reasignando energía) y merece su propio texto en vez del genérico
           // — mismo criterio que la distinción "warning"/"error" por tipo de
           // evento, ahora también por motivo.
+          // Subfase 13g: el fallo también nombra su causa. Un "Tarea fallida" a
+          // secas, justo después de que el jugador redistribuyera energía,
+          // convierte una consecuencia diseñada en un bug aparente.
           const titleKey =
             event.kind === "task-failed"
-              ? "ui.floorplan.notification.task-failed"
+              ? event.reason === "no-power"
+                ? "ui.floorplan.notification.task-failed-no-power"
+                : "ui.floorplan.notification.task-failed"
               : event.kind === "task-blocked" && event.reason === "no-power"
                 ? "ui.floorplan.notification.task-blocked-no-power"
                 : "ui.floorplan.notification.task-blocked";

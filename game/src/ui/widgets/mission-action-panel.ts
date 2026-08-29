@@ -77,6 +77,13 @@ export interface ComponentStatePanelInfo {
   readonly color: string;
 }
 
+/**
+ * Motivo tipado por el que la mesa de creación no se abre. Mismo molde que
+ * `extractionBlocked`/`transferBlocked`: el label recibe el MOTIVO, no un
+ * booleano, para que el botón gris pueda nombrarlo.
+ */
+export type FabricatorBlockedReason = "execution" | "unpowered";
+
 export type ActionPanelContent =
   | { readonly kind: "idle" }
   | {
@@ -105,12 +112,18 @@ export type ActionPanelContent =
        */
       readonly fabricatorDomain?: FabricatorDomain;
       /**
-       * La mesa no se puede abrir en modo ejecución (13e ronda 2). El guard
-       * real vive en `FloorplanScene.openWorkbench`; esto es lo que hace que el
-       * botón lo DIGA en vez de aceptar el clic y rebotar con un texto discreto
-       * en el header que el jugador no ve.
+       * Por qué la mesa no se puede abrir. El guard real vive en
+       * `FloorplanScene.openWorkbench`; esto es lo que hace que el botón lo
+       * DIGA en vez de aceptar el clic y rebotar con un texto discreto en el
+       * header que el jugador no ve.
+       *
+       * - `"execution"` (13e ronda 2): la mesa exige pausa táctica.
+       * - `"unpowered"` (13g): la mesa declara `powerDraw` y su sección no le
+       *   otorga lo que pide. Nombra la causa a propósito (patrón 42): un botón
+       *   gris sin motivo convierte un problema de gestión de energía en un bug
+       *   aparente.
        */
-      readonly fabricatorBlocked?: "execution";
+      readonly fabricatorBlocked?: FabricatorBlockedReason;
       /** Ver `BreachPanelInfo` — la pieza está tapando (o no) una brecha de casco. */
       readonly breach?: BreachPanelInfo;
       /**
@@ -267,8 +280,12 @@ export interface ActionPanelLabels {
   readonly reservoirHint: (hasContents: boolean) => string;
   /** Abre la mesa desde el aparato: "Fabricar" (física) / "Fabricar sustancias" (química). */
   readonly openFabricator: (domain: FabricatorDomain) => string;
-  /** Mismo botón, deshabilitado por estar en ejecución (13e ronda 2): la mesa exige pausa. */
-  readonly openFabricatorBlocked: (domain: FabricatorDomain) => string;
+  /**
+   * Mismo botón, deshabilitado, nombrando POR QUÉ: pausa pendiente (13e ronda
+   * 2) o sección sin energía (13g). Recibe el motivo además del dominio,
+   * siguiendo el molde de `extractionBlocked`.
+   */
+  readonly openFabricatorBlocked: (domain: FabricatorDomain, reason: FabricatorBlockedReason) => string;
   /** Subfase 13h — puertas y válvulas. */
   readonly doorState: (state: DoorState) => string;
   /** Motivo por el que la puerta no responde, para que el botón gris lo diga. */
@@ -712,12 +729,12 @@ export function renderMissionActionPanel(
     // Subfase 13e — aparato de fabricación: la mesa se abre desde acá, no desde
     // un botón global del header.
     if (content.fabricatorDomain) {
-      const blocked = content.fabricatorBlocked === "execution";
+      const blocked = content.fabricatorBlocked;
       stackButtonEnabled(
         blocked
-          ? labels.openFabricatorBlocked(content.fabricatorDomain)
+          ? labels.openFabricatorBlocked(content.fabricatorDomain, blocked)
           : labels.openFabricator(content.fabricatorDomain),
-        hasSelectedActor && !blocked,
+        hasSelectedActor && blocked === undefined,
         () => callbacks.onOpenFabricator(content.instanceId),
       );
     }

@@ -111,9 +111,16 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
       }
     }
     // Una instancia sin sección resoluble (attrezzo fuera del plano, fixture de
-    // test sin `WalkableGrid`) no puede pasar por el triaje de prioridad — se
-    // considera siempre alimentada por defecto, mismo criterio de "sin dato,
-    // no gatear" que retrocompat con componentes sin `powerDraw`.
+    // test sin `WalkableGrid`) no puede pasar por el triaje de prioridad, así
+    // que se considera alimentada por defecto.
+    //
+    // Subfase 13g: la razón original de este fail-open era "sin `powerDraw`, no
+    // gatear", y esa razón CADUCÓ — ahora medio catálogo declara consumo. Se
+    // conserva igual, pero por otro motivo: una pieza fuera de toda sección no
+    // tiene de qué pool cobrar, y apagarla la volvería inerte para siempre sin
+    // que el jugador tenga ningún dial con el que arreglarlo. En una partida
+    // real toda pieza instalada cae dentro de una sección; esto cubre fixtures
+    // y attrezzo colocado fuera del plano.
     for (const instance of blueprint.placedComponents) {
       if (!sectionContainingCell(this.shipFloorplan, instance.placement.position)) {
         poweredInstanceIds.add(instance.instanceId);
@@ -154,10 +161,34 @@ export class MissionPowerRuntime implements Tickable, PowerScarSource, InstanceP
     }
   }
 
+  /**
+   * La CICATRIZ permanente, no el déficit de este tick: solo contiene lo que
+   * `powerState.permanentlyDisconnectedSectionIds` declare.
+   *
+   * Honestidad sobre su estado (Subfase 13g, patrón 7): hoy **ningún capítulo
+   * autorado escribe esa lista**, así que en partida real este set siempre
+   * viene vacío y el gating por sección de `MissionSignalRuntime.outputOf` no
+   * se dispara nunca. No es una vía muerta a borrar —es el canal del sacrificio
+   * del Cap.5 (Fase 18), y el gating que la consume ya está escrito y probado—
+   * pero el gating VIVO de 13g no pasa por acá: pasa por `isInstancePowered`,
+   * que es por instancia y sí tiene escritores reales.
+   */
   unpoweredSections(): ReadonlySet<SectionId> {
     return new Set(this.shipState.get().unpoweredSectionIds);
   }
 
+  /**
+   * "¿La demanda eléctrica de ESTA pieza está satisfecha?" — no "¿hay corriente
+   * en su sección?", que es `isInstanceEnergized` (13d). Los dos predicados son
+   * ciertos a la vez casi siempre y DISCREPAN en la franja
+   * `0 < otorgado < powerDraw`, anclada por `power-predicates-disagreement.test.ts`.
+   *
+   * Es el predicado de gating vigente desde 13g y el que generaliza todo lo que
+   * esta subfase apaga (señales, mesas, tareas): al declararse `powerDraw` en
+   * el catálogo dejó de devolver `true` para todo, que era lo que volvía inerte
+   * al nivel 2 del reparto de 13b. Una pieza que no declara consumo sigue
+   * siempre alimentada y sin restar del pool — ver `allocateComponentPower`.
+   */
   isInstancePowered(instanceId: PlacedComponentInstanceId): boolean {
     return this.poweredInstanceIds.has(instanceId);
   }

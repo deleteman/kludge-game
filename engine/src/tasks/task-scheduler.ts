@@ -1,10 +1,11 @@
 import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { CrewActor, CrewActorId, CrewActorStatus } from "../crew/crew-actor.types.js";
 import type { CrewTask, CrewTaskId, TaskEffect } from "./task.types.js";
 import { TERMINAL_TASK_STATES } from "./task.types.js";
-import type { CoreLoopDomainEvent, TaskBlockedEvent } from "./task-events.types.js";
+import type { CoreLoopDomainEvent, TaskBlockedEvent, TaskFailedEvent } from "./task-events.types.js";
 import type { Tickable } from "./core-loop-mode.js";
 import {
   graphHasCycle,
@@ -49,6 +50,15 @@ export interface TaskSchedulerOptions {
    * que no ejercitan el sistema de energía.
    */
   readonly isSectionUnpowered?: (sectionId: SectionId) => boolean;
+  /**
+   * Consulta si una INSTANCIA concreta no tiene su demanda satisfecha
+   * (Subfase 13g). Hermana de `isSectionUnpowered` pero un nivel más fino: la
+   * sección puede tener unidades y aun así el triaje de prioridad dejar sin
+   * energía a la máquina con la que se hace la tarea, que es exactamente para
+   * lo que existe el nivel 2 del reparto de 13b. Ausente = no se gatea por
+   * instancia (fixtures que no ejercitan energía).
+   */
+  readonly isInstanceUnpowered?: (instanceId: PlacedComponentInstanceId) => boolean;
 }
 
 interface ActorRecord {
@@ -98,11 +108,13 @@ export class TaskScheduler implements Tickable {
   private readonly emitter?: EventEmitter<CoreLoopDomainEvent>;
   private readonly effect: TaskEffect;
   private readonly isSectionUnpowered?: (sectionId: SectionId) => boolean;
+  private readonly isInstanceUnpowered?: (instanceId: PlacedComponentInstanceId) => boolean;
 
   constructor(options: TaskSchedulerOptions = {}) {
     this.emitter = options.emitter;
     this.effect = options.effect ?? (() => {});
     this.isSectionUnpowered = options.isSectionUnpowered;
+    this.isInstanceUnpowered = options.isInstanceUnpowered;
   }
 
   /**
@@ -209,6 +221,41 @@ export class TaskScheduler implements Tickable {
   }
 
   /**
+   * Hace FALLAR una tarea por una causa del mundo, no por decisión del jugador
+   * (Subfase 13g). Hermana de `cancel()`: mismo esqueleto, distinto significado
+   * — cancelar es del jugador, fallar le pasa a pesar del jugador, y por eso el
+   * aviso es de error y lleva el motivo.
+   *
+   * El estado `failed` y el evento `task-failed` existían desde la Fase 6 sin un
+   * solo escritor: "ya está implementado" significaba "ya se ve" (patrón 32).
+   * Este es su primer disparador real.
+   *
+   * A diferencia de cancelar, ESTO SÍ borra el avance por objetivo: el trabajo
+   * se echó a perder, no quedó a medias esperando un relevo (principio 5).
+   */
+  fail(taskId: CrewTaskId, reason: TaskFailedEvent["reason"], tick: TickContext): void {
+    const task = this.tasksById.get(taskId);
+    if (!task || TERMINAL_TASK_STATES.has(task.state)) {
+      return;
+    }
+    task.state = "failed";
+    this.lastBlockReason.delete(taskId);
+    const progressKey = taskProgressKey(task);
+    if (progressKey) {
+      this.progressByObjective.delete(progressKey);
+    }
+    this.emitter?.emit({
+      kind: "task-failed",
+      taskId: task.id,
+      actorId: task.actorId,
+      reason,
+      elapsedSeconds: tick.elapsedSeconds,
+    });
+    this.refreshActorStatus(task.actorId);
+    this.cascadeDependents(taskId, "dependency-failed", tick);
+  }
+
+  /**
    * Da de baja a un actor: lo marca `dead` y cancela todo lo que tenía
    * encolado (ronda 2 de playtest de 13f — permadeath, GDD 6.1).
    *
@@ -241,6 +288,16 @@ export class TaskScheduler implements Tickable {
       }
       const task = this.activeTaskOf(actorId);
       if (task && task.state === "in-progress") {
+        // Subfase 13g: hasta acá la Fase A no miraba el mundo — una tarea ya
+        // arrancada llegaba a completarse pasara lo que pasara con la energía,
+        // porque `resolveBlockingReason` solo corría en la Fase B, o sea solo
+        // para las que todavía no habían empezado. Quedarse sin energía a mitad
+        // de una síntesis ahora CUESTA (principio 5): la tarea falla, no se
+        // pausa esperando que vuelva la luz.
+        if (this.resolveBlockingReason(task)?.reason === "no-power") {
+          this.fail(task.id, "no-power", ctx);
+          continue;
+        }
         task.elapsedSeconds += ctx.dtSeconds;
         this.recordProgress(task);
         if (task.elapsedSeconds >= task.estimatedDurationSeconds) {
@@ -421,6 +478,15 @@ export class TaskScheduler implements Tickable {
     // Ausente/vacío = trabajo manual del tripulante, nunca se gatea.
     for (const sectionId of task.powerSectionIds ?? []) {
       if (this.isSectionUnpowered?.(sectionId)) {
+        return { reason: "no-power" };
+      }
+    }
+    // Subfase 13g: además de la sección, la MÁQUINA concreta. Una sección puede
+    // tener unidades y el triaje de prioridad dejar igual sin energía a la mesa
+    // con la que se hace la tarea — que es justamente para lo que existe el
+    // nivel 2 del reparto. Ausente/vacío = trabajo manual, nunca se gatea.
+    for (const instanceId of task.powerInstanceIds ?? []) {
+      if (this.isInstanceUnpowered?.(instanceId)) {
         return { reason: "no-power" };
       }
     }

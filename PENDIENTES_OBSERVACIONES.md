@@ -844,7 +844,7 @@ entonces, cualquier semilla nueva de Tiled con propiedades de señal va a parece
 
 ## Deuda #38 — Los componentes sin sprite propio no son tinteables por estado (Subfase 13h, ronda 3)
 
-**Estado:** ABIERTA. Registrada 2026-08-29.
+**Estado:** ✅ RESUELTO en la Subfase 13g (2026-08-29).
 
 El sistema de estado por componente (`component-state-visuals.ts` + `updateComponentStateTints`) tiñe
 `componentSpritesByInstanceId`, que solo se puebla cuando la pieza tiene sprite real
@@ -859,9 +859,16 @@ Dos salidas posibles: que el overlay cree un objeto por instancia también para 
 camino, cuesta objetos), o que el contorno del footprint se redibuje por frame con el color del estado (más
 barato, menos legible). Decidir al abrir 13g.
 
+**Resolución (13g):** el operador eligió la primera. `mission-overlay-renderer.ts` crea ahora un `Image` por
+celda ocupada sobre una textura blanca de 1×1 (`ensureComponentPlaceholderTexture`) en vez de rellenar el
+`Graphics` batcheado, y lo registra en `componentSpritesByInstanceId`. Con eso el placeholder recorre EL MISMO
+camino que un sprite real —`setBaseTint`, `updateComponentStateTints`, `applyLightShading`— sin bifurcación.
+Se arregló además el hermano con el mismo defecto (el placeholder de la Pantalla LCD, patrón 31) y se ajustó
+`spriteCopyAboveDim` para copiar también la opacidad, porque el placeholder va a 0.85 y los sprites a 1.
+
 ## Deuda #39 — La oferta de energía de la nave nunca se dimensionó contra su demanda (Subfase 13h, ronda 3)
 
-**Estado:** ABIERTA POR DECISIÓN. Registrada 2026-08-29.
+**Estado:** ✅ RESUELTO en la Subfase 13g (2026-08-29).
 
 `nave-exploracion` produce **10 unidades** (5 × `celula-fotovoltaica`) y sus 10 puertas piden **20**
 (`powerDraw: 2` cada una). Cada sección tiene exactamente una puerta, así que ninguna funciona con 1 unidad, y
@@ -871,3 +878,18 @@ El operador decidió explícitamente **dejar la escasez** y resolver la legibili
 Queda anotado acá porque el número correcto es trabajo de balanceo (Fase 23) y porque 13g va a EMPEORARLO: al
 declarar `powerDraw` en chips, sensores y mesas, la demanda sube sobre la misma oferta de 10. Al abrir 13g hay
 que decidir la oferta con la demanda total ya conocida, no pieza por pieza.
+
+**Resolución (13g):** con el catálogo declarando consumo, la demanda real de una partida nueva de exploración
+resultó ser **33** (20 de las 10 puertas, 6 de las 2 mesas, 2 de la válvula del Cap.1, 2 del fotorreceptor y
+el chip de su segundo paso, 3 del attrezzo). El operador eligió **subir la oferta**, no dejar la escasez:
+10 → **38 unidades**, sumando 4× `reactor-alto-amperaje` + 1× `bateria-gran-capacidad` en `propulsion`, en
+celdas verificadas libres decodificando el mapa. Perder un reactor entero (6) ya obliga a triaje.
+
+Salió además un segundo agujero que la deuda no nombraba y que habría hecho inútil subir la oferta:
+`emptyPowerState()` deja `sectionAllocations: []`, o sea que TODA sección de una campaña nueva arranca con 0
+unidades otorgadas (patrón 42). Se resolvió sembrando el reparto inicial en `campaign-save-factory.ts` con
+`defaultSectionAllocations`, y NO en `MissionPowerRuntime`: el runtime no puede distinguir "nunca se asignó"
+de "el jugador puso todo en 0", porque `setSectionPowerUnits` borra la entrada al llegar a 0.
+
+`power/initial-power-budget.test.ts` cruza oferta contra demanda con el contenido autorado real, así que un
+ajuste de balanceo futuro (Fase 23) no puede romper la relación en silencio.

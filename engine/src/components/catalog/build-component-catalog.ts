@@ -15,6 +15,19 @@ import { EXPLORACION_CATALOG } from "./composite/exploracion.js";
 import { MEDICA_CATALOG } from "./composite/medica.js";
 import { TALLER_CATALOG } from "./composite/taller.js";
 import type { CompositeComponentSpec } from "./composite/composite-component-spec.types.js";
+import { declaredPowerDraw } from "../../power/power-parameters.js";
+
+/**
+ * Inyecta la demanda eléctrica de `power-parameters.ts` en la definición
+ * (Subfase 13g). Se hace acá y no en los specs para que los consumos vivan en
+ * UNA tabla en vez de repartidos por los seis archivos de catálogo; `data` es
+ * el sitio del dato porque `powerDraw` no es un tag del GDD, igual que
+ * `footprint`. Las piezas sin entrada en la tabla quedan sin el campo (0).
+ */
+function withPowerDraw<T extends object>(id: ComponentId, data: T): T {
+  const powerDraw = declaredPowerDraw(id);
+  return powerDraw > 0 ? { ...data, powerDraw } : data;
+}
 
 /**
  * TODOS los specs de compuestos, en un solo array. Exportado porque hay
@@ -42,7 +55,7 @@ export function buildComponentCatalog(): {
     const atomic = factory.buildAtomic({
       id: atomicSpec.id,
       name: atomicSpec.name,
-      data: atomicSpec.data,
+      data: withPowerDraw(atomicSpec.id, atomicSpec.data),
     });
     registry.register(atomic.id, atomic);
   }
@@ -76,7 +89,7 @@ export function buildComponentCatalog(): {
     const composite = factory.buildComposite({
       id: compositeSpec.id,
       name: compositeSpec.name,
-      data: compositeSpec.data,
+      data: withPowerDraw(compositeSpec.id, compositeSpec.data),
       recipe: compositeSpec.recipe,
     });
     registry.register(composite.id, composite);
@@ -87,7 +100,7 @@ export function buildComponentCatalog(): {
     const composite = factory.buildComposite({
       id: compositeSpec.id,
       name: compositeSpec.name,
-      data: compositeSpec.data,
+      data: withPowerDraw(compositeSpec.id, compositeSpec.data),
       recipe: compositeSpec.recipe,
     });
     registry.register(composite.id, composite);

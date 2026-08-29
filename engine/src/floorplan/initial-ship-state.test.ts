@@ -12,18 +12,26 @@ const { registry: componentRegistry } = buildComponentCatalog();
 const FABRICATOR_IDS = new Set<string>(["banco-de-trabajo", "estacion-quimica"]);
 
 describe("INITIAL_SHIP_STATE_BY_ARCHETYPE (Fase 13b, ronda 3: presupuesto real de energía)", () => {
-  it("Exploración arranca con 10 unidades de presupuesto (5× celula-fotovoltaica)", () => {
+  /**
+   * Recalibrado en la Subfase 13g (deuda #39): 10 → 38 unidades. Las 5 células
+   * fotovoltaicas (10) se conservan y se suman 4× `reactor-alto-amperaje` (24)
+   * + 1× `bateria-gran-capacidad` (4) en `propulsion`. El número sale de cruzar
+   * la oferta contra la demanda REAL del catálogo, que hasta 13g era 0 porque
+   * nadie declaraba `powerDraw` — ver `power/initial-power-budget.test.ts`,
+   * que es donde vive esa relación (acá solo se ancla la oferta).
+   */
+  it("Exploración arranca con 38 unidades de presupuesto", () => {
     const sources = INITIAL_SHIP_STATE_BY_ARCHETYPE.exploracion.filter(
       (instance) => !FABRICATOR_IDS.has(instance.componentDefinitionId),
     );
-    expect(sources).toHaveLength(5);
-    expect(totalPowerBudget(sources, componentRegistry)).toBe(10);
+    expect(sources).toHaveLength(10);
+    expect(totalPowerBudget(sources, componentRegistry)).toBe(38);
   });
 
   it("los aparatos de fabricación no aportan presupuesto de energía", () => {
     // La estación química declara `RES` (su reservorio de salida, 13e) pero de
     // resourceType "L": no debe colarse en el presupuesto eléctrico de 13b.
-    expect(totalPowerBudget(INITIAL_SHIP_STATE_BY_ARCHETYPE.exploracion, componentRegistry)).toBe(10);
+    expect(totalPowerBudget(INITIAL_SHIP_STATE_BY_ARCHETYPE.exploracion, componentRegistry)).toBe(38);
   });
 
   it("nada sembrado se solapa entre sí", () => {
@@ -39,14 +47,14 @@ describe("INITIAL_SHIP_STATE_BY_ARCHETYPE (Fase 13b, ronda 3: presupuesto real d
     }
   });
 
-  it("Exploración: 5 fuentes 1×2 + 2 aparatos 2×2 = 18 celdas distintas", () => {
+  it("Exploración: 10 fuentes 1×2 + 2 aparatos 2×2 = 28 celdas distintas", () => {
     const seen = new Set<string>();
     for (const instance of INITIAL_SHIP_STATE_BY_ARCHETYPE.exploracion) {
       for (const cell of occupiedCells(instance.placement)) {
         seen.add(`${cell.x},${cell.y}`);
       }
     }
-    expect(seen.size).toBe(18);
+    expect(seen.size).toBe(28);
   });
 
   /**

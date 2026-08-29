@@ -56,8 +56,9 @@ export interface TaskCompletedEvent extends DomainEventBase {
 /**
  * Una tarea quedó bloqueada esperando dependencias, o porque su sección no
  * tiene energía asignada (ronda 10 de fixes de playtest 13e: ninguna tarea
- * que dependa de una máquina puede ejecutarse sin energía en su sección,
- * salvo las exentas — ver `POWER_EXEMPT_TASK_TYPES` en `task-scheduler.ts`).
+ * que dependa de una máquina puede ejecutarse sin energía). El gating es
+ * explícito por dato de la tarea —`powerSectionIds` y, desde 13g,
+ * `powerInstanceIds`— y no por una lista de tipos exentos.
  * `reason` distingue el bloqueo por dependencia aún en curso del bloqueo
  * porque una dependencia se canceló/falló (GDD §4: "si una tarea de la que
  * otra depende se cancela o falla, la dependiente debe marcarse como
@@ -78,10 +79,22 @@ export interface TaskCancelledEvent extends DomainEventBase {
   readonly actorId: CrewActorId;
 }
 
+/**
+ * Una tarea se echó a perder por una causa del mundo, no por decisión del
+ * jugador (para eso está `task-cancelled`). Estuvo declarado desde la Fase 6
+ * sin ningún escritor hasta la Subfase 13g, que le dio el primero: cortarle la
+ * energía a la máquina con la que se estaba trabajando.
+ *
+ * `reason` existe para que el aviso NOMBRE la causa: un "Tarea fallida" a secas
+ * convierte un problema de gestión de energía en un bug aparente. Opcional
+ * porque los fallos futuros (efecto que reporta error) todavía no tienen motivo
+ * tipado.
+ */
 export interface TaskFailedEvent extends DomainEventBase {
   readonly kind: "task-failed";
   readonly taskId: CrewTaskId;
   readonly actorId: CrewActorId;
+  readonly reason?: "no-power";
 }
 
 export type CoreLoopMode = "planning" | "execution";

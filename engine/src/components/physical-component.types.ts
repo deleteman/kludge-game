@@ -32,6 +32,8 @@ export interface AtomicComponentData {
   readonly footprint: Footprint;
   readonly functional?: FunctionalProperties;
   readonly material?: MaterialProperties;
+  /** Ver `CompositeComponentData.powerDraw` — mismo dato, misma semántica. */
+  readonly powerDraw?: number;
 }
 
 /** Nivel 1 (compuesto) y Nivel 2 (ensamblaje) del GDD 7.1 — mismo tipo, ver composition/. */
@@ -53,6 +55,23 @@ export interface CompositeComponentData {
    * (que caen al placeholder al dibujarse, como antes).
    */
   readonly layout?: ReadonlyArray<CreationPart>;
+  /**
+   * Unidades de energía que la pieza DEMANDA para operar (Subfase 13g).
+   *
+   * Es dato de componente y no un campo del tag `ACT`, que es donde vivía hasta
+   * 13g: una pieza que no es actuador —un chip lógico, un sensor, un indicador,
+   * una mesa `FAB`— no tenía dónde declarar consumo, así que `isInstancePowered`
+   * devolvía `true` para todo el catálogo y el reparto de 13b no gateaba nada.
+   * Hermano de `footprint`, que ya sienta el precedente de "dato de componente
+   * que no es un tag del GDD".
+   *
+   * No se autora en los specs de catálogo: lo inyecta `buildComponentCatalog`
+   * desde `power/power-parameters.ts`, para que exista UNA tabla de consumos y
+   * no números dispersos por los seis archivos de catálogo. Ausente o `0` = no
+   * consume, y `allocateComponentPower` lo deja siempre alimentado sin restar
+   * del pool de su sección.
+   */
+  readonly powerDraw?: number;
 }
 
 export type PhysicalComponentDefinition = ComposableEntity<

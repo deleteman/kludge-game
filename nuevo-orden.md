@@ -838,7 +838,7 @@ porque **no hay ninguna puerta que trabar**.
   completo** (el electroimán traba una puerta real y el intruso no pasa); y regresión de los casos 3, 6 y 10, que
   dependen de la difusión entre secciones.
 
-#### Subfase 13g: Consumo Eléctrico Real — que el reparto de energía gatee algo (2026-08-07)
+#### Subfase 13g: Consumo Eléctrico Real — que el reparto de energía gatee algo ✅ CERRADA (2026-08-29)
 
 Surgida del playtest de 13e ronda 2: el operador preguntó si las mesas de creación dejan de funcionar cuando su sección no tiene energía, y si pasa lo mismo con un chip lógico en soporte vital. **La respuesta es que no, y el hueco no son las mesas: 13b construyó toda la maquinaria de reparto — presupuesto, asignación por sección, triaje de prioridad por componente, déficit — pero nada declara DEMANDA, así que los dos predicados de gating que el motor expone están degenerados.**
 
@@ -888,6 +888,24 @@ Alcance de la subfase:
 * **GDD:** revisar §5.1 (la línea de `FAB` escrita en 13e dice que no se modela como `ACT` porque no convierte energía en trabajo). Sigue sin ser `ACT` — no hace trabajo físico sobre el mundo — pero sí **requiere alimentación para operar**. Documentar `powerDraw` como dato de componente y no como campo de `ACT`.
 
 * **Cierre:** un chip en una sección a 0 unidades no emite; las dos mesas no se abren y lo dicen; cortar la energía a mitad de una síntesis la hace fallar con aviso; y una pieza apagada se distingue a simple vista de una encendida. Tests unitarios de reparto con demanda real + integración "sección a oscuras ⇒ la señal no llega".
+
+**Cerrada el 2026-08-29.** Todo el alcance entregado. Decisiones del ciclo de preguntas: (a) subir la oferta
+(10 → 38) en vez de dejar la escasez, con la demanda real medida en 33; (b) la tarea en curso FALLA y el
+material se pierde (principio 5); (c) deuda #38 resuelta con objeto por instancia también para el placeholder;
+(d) `powerDraw` es campo de `data` poblado al construir el catálogo desde una tabla única.
+
+Lo que apareció y el texto de la subfase no anticipaba:
+* **Subir la oferta sola no encendía nada.** `emptyPowerState()` deja `sectionAllocations: []`: toda sección
+  de una campaña nueva arranca en 0 (patrón 42). Hizo falta `defaultSectionAllocations`, sembrado en el SAVE y
+  no en el runtime — el runtime no distingue "nunca se asignó" de "el jugador puso todo en 0".
+* **El gating de tareas tenía que ser por INSTANCIA, no solo por sección.** `powerInstanceIds` es además el
+  único sitio donde una tarea `combine` conserva de qué mesa habla.
+* **`failed`/`task-failed` llevaban desde la Fase 6 sin escritor** (patrón 32). 13g les dio el primero, y la
+  Fase A del tick del scheduler —que nunca había mirado el mundo— es donde vive.
+* Los otros dos lectores de `outputOf` sobre su propia instancia (bobina del electroimán, LED) NO necesitaban
+  el trato de `doorSignalOutput`: ninguno lee `false` como orden. Verificado, no asumido.
+
+Suite: `/engine` 1038 → **1059**, `/game` 86 sin cambios. `tsc`, `eslint` y `npm run build` limpios.
 
 
 
