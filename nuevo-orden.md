@@ -985,6 +985,17 @@ código durante el triaje, así que la subfase no arranca a ciegas.
   auditoría total sigue siendo la Fase 22c; acá entra solo el subconjunto que la demo expone (menú, pantallas
   de selección, HUD de misión), porque un idioma a medias se ve en los primeros 30 segundos.
 
+* **La hoja de la puerta se mueve a velocidad constante (playtest de 13h, 2026-08-29):** el operador reporta
+  que le falta aceleración. **Ojo antes de empezar: el easing YA EXISTE** — `easedDoorOpenness`
+  (`game/src/render/door-visuals.ts`, ronda 2 de playtest de 13h) aplica `Sine.InOut` sobre la apertura. O sea
+  que la tarea no es agregarlo sino **que se note**: con 1.5 s de recorrido y 0.9 celdas de desplazamiento, la
+  curva senoidal es demasiado suave para leerse como una puerta con motor. Probar una curva más marcada
+  (`Quad`/`Cubic.InOut`) y calibrar A OJO contra el movimiento real, que es como se detectó el problema.
+  Dos detalles que aparecen al tocarlo: (a) la curva **tiene que respetar los extremos** (0→0, 1→1) o la hoja
+  se verá abierta antes de que el paso se libere de verdad — hay un test que ancla justamente eso; (b) el
+  contorno de la capa `puertas` usa todavía `doorOpenness` LINEAL para su grosor, así que si la hoja acelera
+  y el contorno no, se van a contradecir.
+
 **Bloque 2 — Rediseños con decisión de diseño previa.** Abrir la subfase con **un único ciclo de preguntas**
 que cubra los cinco (CLAUDE.md, "minimizar assumptions"), no uno por ítem:
 
@@ -992,10 +1003,26 @@ que cubra los cinco (CLAUDE.md, "minimizar assumptions"), no uno por ítem:
   ("¿hay algún uso real para las capas? ¿qué gana el jugador con verlas?", confirmado por el operador en el
   triaje que se refiere a las capas del plano de misión) es la pregunta de fondo; Obs 15 propone la respuesta:
   iconos sobre el mapa al estilo Google Maps con tooltip, dentro de una tira de herramientas minimizable, en
-  vez de una fila de botones que ocupa espacio permanente. El fine-tunning pide además que arranquen en OFF y
-  que OFF signifique invisible. **Ojo:** "inactiva = atenuado, NUNCA oculto" está hoy documentado como
-  contrato explícito en `floorplan-layer-toggle-panel.ts` — cambiarlo es revertir una decisión de 11f, no un
-  fix; decidirlo en el ciclo de preguntas.
+  vez de una fila de botones que ocupa espacio permanente.
+
+  **DECIDIDO por el operador (2026-08-29), ya no hace falta preguntarlo:** las capas son **EXCLUSIVAS**. Todas
+  arrancan apagadas; al seleccionar una, el plano se **oscurece** y solo esa capa queda legible; solo puede
+  haber una activa a la vez, y volver a tocarla la apaga. El molde explícito es el **modo de trasvase de
+  reservorios** (13e ronda 7), que ya hace exactamente esto: atenúa el mundo entero y deja en claro solo lo
+  que importa para la decisión en curso — o sea que el patrón visual, el dim y el manejo de entrada ya existen
+  en `floorplan-scene.ts` y no hay que inventarlos.
+
+  Esto **revierte el contrato "inactiva = atenuado, NUNCA oculto"** documentado en
+  `floorplan-layer-toggle-panel.ts` desde 11f. Es una reversión deliberada, no un fix: aquella decisión asumía
+  capas acumulables, y con cinco capas (`ventilacion`, `electrico`, `fluido`, `senal`, `estructural`,
+  `energia`, `puertas`, `presion`) encendidas a la vez el plano es ilegible — que es justamente la
+  Obs 12 ("¿qué gana el jugador con verlas?"). Hay que borrar ese docblock, no dejarlo contradiciendo al
+  código.
+
+  Consecuencia a revisar al implementarlo: la capa `energia` es hoy la única lectura de "esta sección tiene
+  déficit", y con capas exclusivas deja de estar visible por defecto. El tinte + ícono por componente de la
+  ronda 3 de 13h cubre el caso de la pieza concreta, pero conviene confirmar que nada más dependa de tener esa
+  capa encendida.
 
 * **Rediseño del modal de instalación (Obs 13):** el fondo negro de la columna derecha es un parche temporal
   contra el contraste del gris del modal. Rediseñar la jerarquía de lectura de la ficha, no repintarla.
