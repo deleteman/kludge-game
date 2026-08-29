@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { thresholdSectionsAt } from "../doors/door-identity.js";
 
 import type { SectionId } from "../atmosphere/section.types.js";
 import { CANONICAL_SHIP_FLOORPLANS } from "./canonical-ships.js";
@@ -126,6 +127,32 @@ describe("CANONICAL_SHIP_FLOORPLANS", () => {
         ),
       );
       expect(covered, `puerta '${door.id}' fuera de sección`).toBe(true);
+    }
+  });
+
+  /**
+   * Ronda 2 de playtest de 13g. El operador reportó que la puerta del puente
+   * "no funciona: los tripulantes le pasan por arriba y no abre ni cierra".
+   * Estaba en una celda que tocaba TRES secciones (puente, pasillo-central y
+   * soporte-vital), y `thresholdSectionsAt` descarta a propósito los cruces de
+   * tres — así que `syncInstalledDoors` nunca la daba de alta y quedaba como
+   * una pieza decorativa.
+   *
+   * El test de arriba ("caen en celdas de alguna de las dos secciones") pasaba
+   * con el bug puesto: comprueba una propiedad MÁS DÉBIL que la que hace que la
+   * puerta funcione. Este comprueba la de verdad, la misma que exige el runtime.
+   */
+  it("exploracion: cada puerta está en un umbral REAL de las dos secciones que declara", () => {
+    const exploracion = CANONICAL_SHIP_FLOORPLANS.exploracion;
+    for (const door of exploracion.doors) {
+      const threshold = thresholdSectionsAt(exploracion, door.position);
+      const ids = threshold?.map((section) => section.id) ?? [];
+      expect(
+        threshold !== undefined && ids.includes(door.a) && ids.includes(door.b),
+        `puerta '${door.id}' en (${door.position.x},${door.position.y}) no es umbral de ` +
+          `'${door.a}'/'${door.b}' (toca: ${ids.join(" + ") || "3+ secciones o ninguna"}) — ` +
+          `el motor la descartaría en silencio`,
+      ).toBe(true);
     }
   });
 

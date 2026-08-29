@@ -1604,3 +1604,13 @@
 ### `game/src/scenes/floorplan-scene.ts` (modificado)
 - `updateEmitterRangeHighlight()`: un `Graphics` top-level en el depth nuevo `emitterRange` (2.8), redibujado
   desde `update()` porque la cobertura es viva (una puerta que se abre cambia la línea de visión).
+
+## Fixes de playtest de 13g, ronda 2
+
+### `engine/src/floorplan/floorplan-integrity.ts` (modificado)
+- Issue nuevo `door-not-a-threshold`: la celda de una puerta debe resolver por `thresholdSectionsAt` a las
+  DOS secciones que declara — la misma condición que `syncInstalledDoors` exige para darla de alta. Sin esto,
+  una puerta mal ubicada cargaba como pieza decorativa sin que nada fallara.
+
+### `engine/src/floorplan/maps/nave-exploracion.json` (dato)
+- `puerta-puente` (5,9) → (4,9): la celda anterior tocaba tres secciones y el motor la descartaba.

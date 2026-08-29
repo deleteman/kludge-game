@@ -925,6 +925,19 @@ cable, porque `range: 10` cubría media nave y `queueConnect` lo deja parado al 
 
 Suite: `/engine` 1059 → **1070**.
 
+##### Ronda 2 de playtest de 13g ✅ (2026-08-29)
+
+Un reporte: la puerta puente↔pasillo no bloquea el paso ni abre ni cierra. Estaba autorada en una celda que
+tocaba TRES secciones, y `thresholdSectionsAt` descarta los cruces de tres a propósito — así que
+`syncInstalledDoors` nunca la daba de alta y quedaba como pieza decorativa. Movida a (4,9), umbral real.
+
+Lo importante no es el dato sino que **fallaba en silencio**: `validateFloorplanIntegrity` daba la puerta por
+buena (secciones existentes, adyacentes, celda dentro de una de ellas) sin comprobar lo único que la hace
+funcionar — patrón 44 aplicado al plano. Se añade el issue `door-not-a-threshold`, que exige la misma
+condición que el runtime, y el mapa ahora revienta al parsearse con la causa escrita.
+
+Suite: `/engine` 1070 → **1072**.
+
 
 
 ### Fase 14 — Capítulo 2 y Acoplamientos Cruzados de Motor

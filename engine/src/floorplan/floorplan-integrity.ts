@@ -1,4 +1,5 @@
 import type { GridPosition } from "../geometry/grid-position.types.js";
+import { thresholdSectionsAt } from "../doors/door-identity.js";
 import type { FloorplanSection, ShipFloorplan } from "./floorplan.types.js";
 
 /**
@@ -22,6 +23,7 @@ export interface FloorplanIntegrityIssue {
     | "door-unknown-section"
     | "door-sections-not-adjacent"
     | "door-outside-section"
+    | "door-not-a-threshold"
     | "duplicate-door-id";
   readonly detail: string;
 }
@@ -177,6 +179,29 @@ export function validateFloorplanIntegrity(floorplan: ShipFloorplan): FloorplanI
       issues.push({
         kind: "door-outside-section",
         detail: `Door '${door.id}' at (${door.position.x}, ${door.position.y}) is in neither '${door.a}' nor '${door.b}'`,
+      });
+    }
+    // La celda tiene que ser un UMBRAL de verdad, y de las dos secciones que la
+    // puerta declara. Es lo que `MissionDoorRuntime.syncInstalledDoors` exige
+    // para dar de alta la puerta: si `thresholdSectionsAt` no resuelve, la
+    // instancia se queda como pieza decorativa — no bloquea el paso, no abre y
+    // no cierra, sin que nada falle en ningún lado.
+    //
+    // Nace de la ronda 2 de playtest de 13g: `puerta-puente` estaba en una
+    // celda que tocaba TRES secciones (puente, pasillo-central y
+    // soporte-vital), y los tres chequeos de arriba la daban por buena — las
+    // secciones existen, son adyacentes y la celda pertenece a una de ellas.
+    // O sea que el validador decía "puerta válida" sobre una puerta que el
+    // motor descartaba en silencio.
+    const threshold = thresholdSectionsAt(floorplan, door.position);
+    const thresholdIds = threshold?.map((section) => section.id) ?? [];
+    if (!threshold || !thresholdIds.includes(door.a) || !thresholdIds.includes(door.b)) {
+      issues.push({
+        kind: "door-not-a-threshold",
+        detail:
+          `Door '${door.id}' at (${door.position.x}, ${door.position.y}) is not a threshold between ` +
+          `'${door.a}' and '${door.b}': that cell touches ${threshold ? thresholdIds.join(" + ") : "more than two sections (or none)"}. ` +
+          `A door there would never open, close or block passage.`,
       });
     }
   }

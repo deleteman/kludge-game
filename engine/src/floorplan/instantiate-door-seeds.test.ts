@@ -21,18 +21,36 @@ describe("instantiateDoorSeeds (13h, ronda 1 de playtest)", () => {
     ).toBe(true);
   });
 
-  it("un vano de dos celdas es UNA instancia 2×1, no dos piezas", () => {
+  it("el footprint de cada instancia refleja el `span` autorado de su vano", () => {
     // Dos puertas aportarían dos aristas de difusión y ese vano intercambiaría
-    // aire al doble de velocidad que uno de una celda.
-    const anchos = seeded.components.filter(
-      (instance) => instance.placement.footprint.width * instance.placement.footprint.height > 1,
-    );
-    const vanosDeDos = plan.doors.filter((door) => door.span > 1);
-    expect(anchos).toHaveLength(vanosDeDos.length);
-    expect(vanosDeDos.length).toBeGreaterThan(0);
-    for (const instance of anchos) {
-      expect(instance.placement.footprint).toEqual({ width: 2, height: 1 });
+    // aire al doble de velocidad que uno de una celda: un vano de N celdas tiene
+    // que ser UNA instancia de N×1 (o 1×N), no N piezas.
+    //
+    // RECALIBRADO en la ronda 2 de playtest de 13g: antes exigía que el mapa
+    // autorado tuviera al menos un vano ancho, y el operador editó los suyos a
+    // `span: 1` a propósito. Un test que se cae porque el CONTENIDO cambió no
+    // estaba probando el mapeo, estaba probando el mapa. Ahora deriva lo
+    // esperado del `span` de cada puerta, sea cual sea.
+    for (const [index, door] of plan.doors.entries()) {
+      const instance = seeded.components[index]!;
+      const expected =
+        door.axis === "x"
+          ? { width: door.span, height: 1 }
+          : { width: 1, height: door.span };
+      expect(instance.placement.footprint, `vano '${door.id}'`).toEqual(expected);
     }
+  });
+
+  it("un vano ancho es UNA instancia, no N piezas de una celda", () => {
+    // El mapeo de arriba con un vano ANCHO de verdad, independiente de lo que
+    // el mapa autore hoy — es la propiedad que importa y no puede quedar sin
+    // cobertura porque el contenido cambie.
+    const ancho = instantiateDoorSeeds(
+      [{ ...plan.doors[0]!, span: 2, axis: "x" as const }],
+      REGISTRY,
+    );
+    expect(ancho.components).toHaveLength(1);
+    expect(ancho.components[0]!.placement.footprint).toEqual({ width: 2, height: 1 });
   });
 
   it("cada puerta trae su nodo RECEPTOR, que es lo que la vuelve cableable", () => {

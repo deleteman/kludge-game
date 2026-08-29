@@ -5484,3 +5484,43 @@ cruce del rango contra el Cap.2), el sensor compuesto en `motion-emitter-input-s
 señal el caso negativo, el actor detrás de una pared y el "el actor se va y el LED se apaga". VERIFICADO que
 los tests nuevos fallan de verdad con el bug puesto (patrón 24): revertir la cobertura a solo `"optical"` hace
 caer los dos casos del sensor compuesto. `tsc`, `eslint` y `npm run build` limpios.
+
+================================================================================
+2026-08-29 — Subfase 13g, RONDA 2 DE PLAYTEST: la puerta del puente, decorativa
+================================================================================
+El operador reportó que la puerta puente↔pasillo "no funciona: los tripulantes le pasan por arriba como si no
+fuera un obstáculo, y no se abre ni se cierra". Las otras 9 puertas de la nave sí funcionan.
+
+DIAGNÓSTICO: la puerta estaba autorada en la celda (5,9), y esa celda toca TRES secciones —`puente`,
+`pasillo-central` y `soporte-vital`. `thresholdSectionsAt` descarta a propósito los cruces de tres ("una
+puerta separa dos lados, no tres"), así que devuelve `undefined` y `MissionDoorRuntime.syncInstalledDoors`
+NUNCA daba de alta la instancia como puerta. Quedaba como una pieza cualquiera del plano: sin bloqueo de paso,
+sin apertura, sin cierre, sin compartimentación — y sin que nada fallara en ningún lado.
+
+1. DATO CORREGIDO: `puerta-puente` pasa de (5,9) a **(4,9)**, y de paso se le snapean las coordenadas a la
+   grilla (venían fraccionarias de arrastrarla en Tiled). Las únicas dos celdas que son umbral real
+   puente/pasillo-central son (4,9) y (4,10); se elige la más cercana a donde estaba. El `axis: "y"` se
+   conserva: es correcto para esa pared —un vano más ancho ahí crecería en vertical— y con `span: 1` no tiene
+   efecto.
+
+2. EL BUG ERA SILENCIOSO, Y ESO ERA LO PEOR. `validateFloorplanIntegrity` daba la puerta por BUENA: sus tres
+   chequeos de puerta pasaban (las secciones existen, son adyacentes, y la celda pertenece a una de ellas).
+   Ninguno comprobaba lo único que hace que una puerta funcione. Es el patrón 44 otra vez —un validador que no
+   valida lo que su nombre sugiere— aplicado al plano en vez de al grafo de señales.
+   Se añade el issue **`door-not-a-threshold`**, que exige que la celda resuelva por `thresholdSectionsAt` a
+   EXACTAMENTE las dos secciones que la puerta declara: la misma condición que el runtime exige para darla de
+   alta. Ahora el mapa revienta al parsearse, con un mensaje que nombra la causa y la consecuencia, en vez de
+   cargar una puerta muerta. VERIFICADO reintroduciendo el bug: el parser falla con
+   "Door 'puerta-puente' ... is not a threshold ... would never open, close or block passage".
+
+3. EL TEST QUE HABÍA TAMPOCO SERVÍA: "las puertas caen en celdas de alguna de las dos secciones que separan"
+   pasaba con el bug puesto, porque comprueba una propiedad MÁS DÉBIL que la que hace funcionar la puerta. Se
+   suma uno que comprueba el umbral de verdad, con el mismo predicado que usa el runtime.
+
+4. RECALIBRADO (patrón 45), a raíz de la edición de mapa del operador: `instantiate-door-seeds.test.ts`
+   exigía que el mapa autorado tuviera al menos un vano de `span > 1`, y el operador bajó los suyos a 1 a
+   propósito. Un test que se cae porque el CONTENIDO cambió no estaba probando el mapeo, estaba probando el
+   mapa. Ahora deriva el footprint esperado del `span` de cada puerta, sea cual sea, y cubre el caso del vano
+   ancho con una semilla sintética — la propiedad que importa deja de depender de lo que el mapa autore hoy.
+
+TESTS: 1070 → 1072 en `/engine`, 86 sin cambios en `/game`. `tsc`, `eslint` y `npm run build` limpios.
