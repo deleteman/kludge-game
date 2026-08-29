@@ -1473,3 +1473,40 @@
 ## `game/src/render/floorplan-renderer.ts` (modificado, ronda 1)
 - `drawDoorLayer` pasa de barra a CONTORNO por celda: independiente de la orientación (el bug de la barra siempre
   horizontal desaparece por construcción) y no tapa el sprite.
+
+# Subfase 13h — ronda 2 de playtest
+
+## `game/src/render/door-visuals.ts` (nuevo)
+- `doorOpenness` (unificado: estaba DUPLICADO textualmente en `floorplan-renderer.ts` y `floorplan-scene.ts`),
+  `easedDoorOpenness` (Sine.InOut, respeta los extremos para no adelantar la apertura real) y `doorSlideAxis`
+  (eje del vano si mide más de una celda; si no, perpendicular al sentido del paso entre sus dos secciones).
+
+## `engine/src/mission/door-signal-output.ts` (nuevo)
+- `doorSignalOutput`: qué le ordena el cable a una puerta. Los tres valores no son intercambiables — `undefined`
+  = nadie la gobierna (sin cable, o SIN MOTOR: un motor muerto no oye el cable), `true`/`false` = abrir/cerrar en
+  override. Era un closure en `/game`, donde no había forma de testearlo.
+
+## `engine/src/signals/orient-signal-wiring.ts` (nuevo)
+- `orientSignalWiring`: la dirección del cable sale de los ROLES, no del orden de clicks. Rechaza receptor↔receptor
+  y emisor↔emisor. Antes una arista al revés se aceptaba en silencio y no la leía nadie.
+
+## `game/src/audio/effects/door-sound.ts` (nuevo)
+- `EventDrivenSound<"door-transition">`. Enganchado al arranque de la transición, no a `door-settled`.
+
+## `engine/src/mission/mission-door-runtime.ts` (modificado, ronda 2)
+- `DoorWorldQueries.powered` toma la PUERTA en vez de un `SectionId`: se resuelve por instancia (misma fuente que
+  el reparto de 13b) y mira las dos secciones, no solo `door.a`.
+
+## `game/src/mission/mission-runtime.ts` (modificado, ronda 2)
+- `signalRuntime` se registra ANTES que `doorRuntime` (la puerta leía la señal del tick anterior).
+- `signalOutput`/`powered` delegan en `doorSignalOutput` e `isInstancePowered`.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 2)
+- `updateDoorSprites` corre la hoja `DOOR_SLIDE_CELLS` y la desvanece, sin tweens (ver el docblock: inversión a
+  mitad de camino, reconstrucción del overlay y pausa táctica).
+- `unreachableReason`: "Sin ruta al destino" nombra la puerta culpable, buscando la ruta otra vez sobre la grilla
+  sin puertas. Solo corre cuando una orden ya falló.
+- Suscripción a `doorEvents` — el primer consumidor: el motor emitía al vacío desde la ronda A.
+
+## `engine/src/components/catalog/composite/guerra.ts` (modificado, ronda 2)
+- `compuerta-blindada`: `ACT.cadence` 3 s → 1.5 s. Simulación y animación comparten el número.

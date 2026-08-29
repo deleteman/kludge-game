@@ -859,8 +859,14 @@ Alcance de la subfase:
 * **Las puertas ya son consumidor real desde 13h.** Al ejecutarse antes que esta subfase, 13h declara `powerDraw`
   en el `ACT` de la puerta y la congela cuando su sección no tiene energía — es el ejemplo de referencia de "una
   pieza que declara demanda y se apaga de verdad", y su `powerDraw` es uno de los que migran al subir el campo a
-  dato de componente. Ojo también con el predicado: 13h usa la UNIÓN de `unpoweredSections()` (cicatriz) y
-  `sectionHasNoPowerGranted()` (déficit vivo), que es la semántica correcta y la que esta subfase debe generalizar.
+  dato de componente. Ojo con el predicado, que CAMBIÓ en la ronda 2 de playtest de 13h: usaba la unión de
+  `unpoweredSections()` (cicatriz) y `sectionHasNoPowerGranted()` (déficit vivo), y eso estaba mal por dos
+  motivos — preguntaba a nivel de SECCIÓN cuando quien decide si el motor cobra sus unidades es el reparto por
+  instancia, y `sectionHasNoPowerGranted` está declarado en su propio docblock como "puramente cosmético… sigue
+  sin usarse para gating de señales/HUD". La semántica vigente, y la que esta subfase debe generalizar, es
+  `isInstancePowered(instanceId)` + la cicatriz permanente. Ver también `door-signal-output.ts`: para un
+  RECEPTOR cuya instancia es el propio actuador, "sin energía" tiene que resolverse como `undefined` (nadie
+  gobierna) y no como `false`, o la falta de energía se lee como una orden.
 
 * **Poblar `powerDraw` en el catálogo**, data-driven: tabla de consumos por clase en `engine/src/power/power-parameters.ts` (molde de `salvage-parameters.ts`), no literales dispersos por los catálogos. Criterio de partida — sensores/chips/indicadores 1, actuadores 2, mesas y equipamiento pesado 3. Los números concretos son de balanceo (Fase 23); lo que cierra esta subfase es que **existan y se respeten**.
 

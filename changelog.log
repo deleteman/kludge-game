@@ -5203,3 +5203,74 @@ TESTS: 1000 → 1013 en `/engine`. Nuevos: `blocksPathing` vs `blocksPassage` (6
 propagación de presión por puerta abierta y su detención al cerrarla, y `instantiate-door-seeds` (footprint
 2×1 de los vanos de dos celdas, nodo receptor por puerta, posición del nodo dentro de la propia puerta).
 `/game` 71 sin cambios. `tsc`, `eslint` y `vite build` limpios.
+
+================================================================================
+2026-08-29 — Subfase 13h, RONDA 2 DE PLAYTEST
+================================================================================
+Tres reportes del operador. Dos de acabado (movimiento y sonido de la hoja) y uno que, al rastrearlo,
+resultó ser la cadena fotorreceptor→puerta cortada en TRES lugares distintos a la vez.
+
+* **#1 — la puerta solo se hacía transparente; tiene que correrse a un costado.**
+  FIX: `game/src/render/door-visuals.ts` (nuevo) unifica `doorOpenness`, que estaba DUPLICADO textualmente
+  en `floorplan-renderer.ts` y `floorplan-scene.ts`, y le suma `easedDoorOpenness` (Sine.InOut) y
+  `doorSlideAxis`. `updateDoorSprites` pasa de solo-alpha a correr la hoja 0.9 celdas y desvanecerla.
+  El eje se deduce sin datos nuevos en Tiled (decisión del operador): del footprint si el vano es de más de
+  una celda, y del sentido del paso —la hoja corre PERPENDICULAR— si es de una.
+  SIN tweens de Phaser, y es una decisión: `startTransitionIfNeeded` invierte una transición a mitad de
+  camino sin reiniciar el reloj, el overlay se reconstruye entero en cada `redrawOverlay` (patrón 22), y
+  `updateDoorSprites` solo corre en `execution` — un tween se desincronizaría en los tres casos.
+  `ACT.cadence` de `compuerta-blindada`: 3 s → 1.5 s (decisión del operador). Simulación y animación
+  comparten el número, que es la invariante que `transitionSecondsOf` existe para sostener.
+
+* **#2 — ¿hay sonido de puerta en el pack?** Sí: `doorOpen_000..002.ogg` y `doorClose_000..002.ogg` estaban
+  en disco sin importar. Y el motor emitía `door-transition` completo desde la ronda A con CERO suscriptores
+  en `/game` — el eslabón que faltaba no era el asset.
+  FIX: 6 imports en `audio-asset-registry.ts`, `door-sound.ts` (molde de `overload-sound.ts`), una línea en
+  `SOUNDS_BY_KIND` (`DoorDomainEvent` ya estaba en la unión `DomainEvent`), y la suscripción a `doorEvents`
+  en `floorplan-scene.ts`. Se engancha a `door-transition` y no a `door-settled`: el sonido tiene que
+  empezar cuando la hoja arranca, no cuando termina. Primer fenómeno con asset EXACTO del pack (no aplica
+  la deuda #17).
+
+* **#3 — cablear el fotorreceptor a la puerta no la abría.** La cadena existía ENTERA y estaba cortada en
+  tres lugares, y los tres convivían en verde porque cada pieza estaba probada sola y el pegamento —donde
+  estaban los bugs— no tenía ningún test.
+  - **Corte A**: `powered` preguntaba a nivel de SECCIÓN, con `sectionHasNoPowerGranted`, cuyo propio
+    docblock declara que es "puramente cosmético… sigue sin usarse para gating de señales/HUD". El uso y el
+    comentario convivían contradiciéndose. Y miraba solo `door.a`, ignorando `door.b`. FIX: `DoorWorldQueries.powered`
+    pasa a tomar la puerta y a resolverse con `isInstancePowered` —la MISMA fuente que decide si el motor
+    cobra sus 2 unidades en el reparto de 13b— más la cicatriz permanente de ambos lados.
+  - **Corte B**: `outputOf` fuerza a `false` la salida de un nodo cuya instancia no está alimentada
+    (semántica correcta para un LED), pero el dueño del nodo receptor de una puerta ES la puerta: la falta
+    de energía llegaba a `SignalDoorRule` disfrazada de "el cable ordena cerrar", que la dejaba cerrada en
+    override y además bloqueando el pathfinding. FIX: la regla se extrae a `engine/src/mission/door-signal-output.ts`
+    —es dominio, no pegamento, y mientras fue un closure en `/game` no hubo forma de testearla— y devuelve
+    `undefined` sin motor: un motor muerto no OYE el cable, decide `UnpoweredDoorRule`, que CONGELA.
+  - **Corte C**: el orden de clicks ERA la dirección del cable, y `validateSignalGraphIntegrity` no valida
+    roles. Cablear puerta→sensor se aceptaba en silencio, la tarea se completaba, el tripulante caminaba
+    hasta allá, y la arista quedaba apuntando al revés sin que nadie volviera a leerla. Un no-op perfecto:
+    cuesta tiempo de juego y no falla. FIX: `engine/src/signals/orient-signal-wiring.ts` (nuevo) orienta
+    emisor→receptor sin importar el orden de clicks, y rechaza receptor↔receptor y emisor↔emisor con mensaje
+    localizado.
+  - **Latencia**: `signalRuntime` pasa a registrarse ANTES que `doorRuntime`. Iban al revés, así que la
+    puerta leía siempre la salida del tick anterior y eso se sumaba al hop-por-tick del evaluador.
+  - **Legibilidad** (decisión del operador de dejar la energía por defecto en 0): "Sin ruta al destino"
+    nombra el motivo cuando la culpa es una puerta (sin energía / trabada / cerrada por señal), buscando la
+    ruta otra vez sobre la grilla sin puertas para identificar a la culpable — solo cuando una orden YA
+    falló, nunca en el camino feliz. Y el panel dice "Automática: se abre al acercarse" en el caso `auto`,
+    que era el único que no explicaba nada.
+
+DECISIÓN DE DISEÑO CONFIRMADA: la señal es override TOTAL. Cablear un sensor saca a la puerta de automático
+para siempre — el sensor la abre al dispararse y la cierra al apagarse, y cerrada por señal es un obstáculo
+real de pathfinding. Cablear el fotorreceptor del pasillo a la puerta de hibernación es una forma legítima
+de sellar hibernación salvo cuando alguien pasa, con la trampa de que si el sensor no cubre el umbral la
+sala queda inalcanzable. Es la consecuencia buscada; lo que faltaba era que el juego lo dijera.
+
+DE PASO: `sectionCentroidCell` y `centroidCell` eran DOS copias textuales del mismo cálculo. `doorSlideAxis`
+estuvo a punto de agregar una tercera, así que se unificaron.
+
+TESTS: 1013 → 1028 en `/engine`, 71 → 78 en `/game`. Nuevos: la integración punta a punta que faltaba
+(fotorreceptor → cable → evaluador → puerta, incluida la reacción en el MISMO tick), `doorSignalOutput`
+(4 casos, el que discrimina el corte B), `orientSignalWiring` (6 casos), y los smoke de `easedDoorOpenness`
+(extremos, monotonía, aceleración) y `doorSlideAxis`. RECALIBRADO con el motivo escrito: el test de
+transición anclaba "la mitad" a los 3 s viejos y con 1.5 s medía el ciclo YA TERMINADO — ahora deriva la
+mitad de `transitionSecondsOf` en vez de hardcodear el número. `tsc`, `eslint` y `vite build` limpios.

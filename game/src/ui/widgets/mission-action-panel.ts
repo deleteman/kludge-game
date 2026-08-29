@@ -260,6 +260,8 @@ export interface ActionPanelLabels {
   readonly doorState: (state: DoorState) => string;
   /** Motivo por el que la puerta no responde, para que el botón gris lo diga. */
   readonly doorBlocked: (source: DoorOverrideSource) => string;
+  /** Qué hace una puerta que NO está gobernada por nada (ronda 2 de playtest). */
+  readonly doorAuto: string;
   readonly forceDoor: string;
   readonly repairDoor: string;
   /** Estado de la válvula y su acción, con el verbo que corresponde a lo que va a pasar. */
@@ -368,6 +370,22 @@ function renderDoorBlock(
       .setOrigin(0.5, 0);
     container.add(reasonText);
     cursorY += reasonText.height + 6;
+  } else if (!broken) {
+    // El caso `auto` también necesita decirse (ronda 2 de playtest). Sin esta
+    // línea, la puerta que SÍ funciona es la única que no explica nada, y el
+    // jugador no tiene forma de distinguir "automática" de "cableada pero el
+    // sensor está apagado" — que se ven casi igual y se resuelven distinto.
+    const autoText = scene.add
+      .text(width / 2, cursorY, labels.doorAuto, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(autoText);
+    cursorY += autoText.height + 6;
   }
 
   const stack = (label: string, enabled: boolean, onClick: () => void): void => {

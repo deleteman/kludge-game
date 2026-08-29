@@ -85,6 +85,10 @@ export {
   validateSignalGraphIntegrity,
 } from "./signals/signal-graph-integrity.js";
 export type { SignalGraphIntegrityIssue } from "./signals/signal-graph-integrity.js";
+export {
+  orientSignalWiring,
+  SignalWiringDirectionError,
+} from "./signals/orient-signal-wiring.js";
 
 export type {
   Blueprint,
@@ -927,6 +931,7 @@ export type {
 } from "./doors/door-events.types.js";
 export { MissionDoorRuntime } from "./mission/mission-door-runtime.js";
 export type { DoorWorldQueries, MissionDoorRuntimeOptions } from "./mission/mission-door-runtime.js";
+export { doorSignalOutput } from "./mission/door-signal-output.js";
 export { ValveRuntime } from "./valves/valve-runtime.js";
 export type { ValveSnapshot } from "./valves/valve.types.js";
 export { composeApertureSources } from "./mission/composite-aperture-source.js";

@@ -185,7 +185,14 @@ function nearestSectionCell(section: FloorplanSection, target: GridPosition): Gr
   return best;
 }
 
-function centroidCell(section: FloorplanSection): GridPosition {
+/**
+ * Centro geométrico de una sección, en celdas (puede ser fraccional). Exportada
+ * en la ronda 2 de playtest de 13h: `doorSlideAxis` necesita el mismo criterio
+ * de "dónde está esta sección" que ya usan los conductos para trazar su ruta —
+ * dos definiciones distintas darían un eje de deslizamiento que no coincide con
+ * por dónde se dibuja el paso.
+ */
+export function centroidCell(section: FloorplanSection): GridPosition {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;

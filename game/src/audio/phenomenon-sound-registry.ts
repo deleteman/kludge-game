@@ -7,6 +7,7 @@ import { corrosionSound } from "./effects/corrosion-sound.js";
 import { overloadSound } from "./effects/overload-sound.js";
 import { dismantleSparkSound } from "./effects/dismantle-spark-sound.js";
 import { sectionBreachedSound } from "./effects/section-breach-sound.js";
+import { doorSound } from "./effects/door-sound.js";
 
 /**
  * Sonido gemelo de `particles/effect-registry.ts` (mismo patrón Factory,
@@ -29,6 +30,9 @@ const SOUNDS_BY_KIND: {
   // Subfase 13f: el casco abriéndose al vacío. Sin asset propio (deuda #17),
   // reutiliza el banco de explosión grave.
   "section-breached": sectionBreachedSound,
+  // Subfase 13h (ronda 2): la puerta es el primer fenómeno de esta tabla cuyo
+  // asset viene EXACTO en el pack, sin aproximar (no aplica la deuda #17).
+  "door-transition": doorSound,
 };
 
 export function fireEventSound(scene: Phaser.Scene, event: DomainEvent): void {

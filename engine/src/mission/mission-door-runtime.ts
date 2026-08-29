@@ -1,6 +1,5 @@
 import type { Tickable } from "../tasks/core-loop-mode.js";
 import type { TickContext } from "../simulation/simulation-clock.types.js";
-import type { SectionId } from "../atmosphere/section.types.js";
 import type { VentilationConnection } from "../atmosphere/ventilation.types.js";
 import type { GridPosition } from "../geometry/grid-position.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
@@ -43,8 +42,17 @@ export interface DoorWorldQueries {
   readonly crewAt?: (cell: GridPosition) => CrewActorId | undefined;
   /** Salida del nodo receptor cableado a esta puerta. `undefined` = sin cable tendido. */
   readonly signalOutput?: (door: DoorRuntime) => boolean | undefined;
-  /** `false` si la sección no tiene energía otorgada este tick o arrastra la cicatriz de 13b. */
-  readonly powered?: (sectionId: SectionId) => boolean;
+  /**
+   * `false` si el motor de ESTA puerta no está alimentado este tick.
+   *
+   * Toma la puerta y no un `SectionId` desde la ronda 2 de playtest, por dos
+   * razones que resultaron ser la misma: preguntaba solo por `door.a` e
+   * ignoraba `door.b` (una puerta separa DOS secciones), y preguntaba a nivel
+   * de sección cuando quien decide si el motor cobra sus unidades es el reparto
+   * por instancia de 13b. Con dos fuentes distintas de "esta puerta tiene
+   * motor", podían discrepar — y discrepaban.
+   */
+  readonly powered?: (door: DoorRuntime) => boolean;
   /** Intensidad de campo magnético en una celda (caso de validación 9). */
   readonly magneticFieldAt?: (cell: GridPosition) => MagneticFieldIntensity;
 }
@@ -190,7 +198,7 @@ export class MissionDoorRuntime implements Tickable {
       actorNearby: this.hasActorNearby(door),
       signalOutput: queries?.signalOutput?.(door),
       taskOverrideOpen: this.taskOverrides.get(door.id),
-      powered: queries?.powered?.(door.a) ?? true,
+      powered: queries?.powered?.(door) ?? true,
       magneticFieldIntensity: this.strongestFieldAt(door),
       resistance: this.resistanceById.get(door.id) ?? "A",
     };

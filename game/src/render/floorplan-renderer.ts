@@ -12,8 +12,9 @@ import type {
 } from "engine";
 
 import { createTileLayers } from "./tile-layers.js";
+import { doorOpenness } from "./door-visuals.js";
 import { RENDER_DEPTH } from "./render-depths.js";
-import { computeConduitPaths, type ConduitPath } from "./conduit-path.js";
+import { centroidCell, computeConduitPaths, type ConduitPath } from "./conduit-path.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
   ANCHOR_COLOR,
@@ -336,26 +337,6 @@ function doorLayerColor(door: DoorRuntime): number {
   return door.state === "open" ? DOOR_STATE_COLOR.open : DOOR_STATE_COLOR.closed;
 }
 
-/** 0 = hoja completamente cerrada, 1 = del todo abierta. Interpola en la transición. */
-function doorOpenness(door: DoorRuntime, transitionSeconds: number): number {
-  const progress =
-    transitionSeconds > 0
-      ? Math.max(0, Math.min(1, door.transitionElapsedSeconds / transitionSeconds))
-      : 1;
-  switch (door.state) {
-    case "open":
-    case "destroyed":
-      return 1;
-    case "closed":
-    case "jammed":
-      return 0;
-    case "opening":
-      return progress;
-    case "closing":
-      return 1 - progress;
-  }
-}
-
 /**
  * Capa "presion" del HUD del plano (Subfase 13h): heatmap de presión por
  * sección. Molde exacto de `drawEnergyLayer` — una sala a presión nominal no
@@ -391,19 +372,18 @@ const PRESSURE_LAYER_NOMINAL_KPA = 95;
 /** Por debajo de esto la sala se lee como vacío letal, no como "perdiendo presión". */
 const PRESSURE_LAYER_VACUUM_KPA = 30;
 
-/** Centro en celdas del bounding box de una sección (Fase 11b: posición de partículas state-driven por sección). */
+/**
+ * Centro en celdas del bounding box de una sección (Fase 11b: posición de
+ * partículas state-driven por sección).
+ *
+ * Delega en `centroidCell` de `conduit-path.ts`, que calculaba exactamente lo
+ * mismo con otro nombre. Eran dos copias textuales; se unifican en la ronda 2
+ * de playtest de 13h, cuando `doorSlideAxis` estuvo a punto de agregar una
+ * tercera. La dirección de la dependencia es la que ya existía (el renderer
+ * importa de `conduit-path`, no al revés).
+ */
 export function sectionCentroidCell(section: FloorplanSection): GridPosition {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const cell of section.cells) {
-    minX = Math.min(minX, cell.x);
-    minY = Math.min(minY, cell.y);
-    maxX = Math.max(maxX, cell.x + 1);
-    maxY = Math.max(maxY, cell.y + 1);
-  }
-  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  return centroidCell(section);
 }
 
 /** Centro en píxeles del bounding box de una sección — reutilizado por `FloorplanScene` (Fase 10d) para posicionar tokens de tripulación. */

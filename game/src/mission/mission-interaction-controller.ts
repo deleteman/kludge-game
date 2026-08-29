@@ -6,7 +6,9 @@ import {
   assertSignalWiringReachable,
   isCompositeEntity,
   occupiedCells,
+  orientSignalWiring,
   sectionContainingCell,
+  SignalWiringDirectionError,
   SignalWiringUnreachableError,
   validateInstallation,
   wireExternalPort,
@@ -853,30 +855,35 @@ export class MissionInteractionController {
       return;
     }
 
+    let from: SignalNodeId;
+    let to: SignalNodeId;
     try {
+      // El orden de clicks deja de ser la dirección (13h, ronda 2 de playtest):
+      // una señal va de quien la produce a quien la consume, así que clickear
+      // primero la puerta y después el sensor tiene que tender el MISMO cable.
+      // Antes se escribía la arista al revés y no fallaba nada — simplemente no
+      // la leía nadie, después de que el tripulante caminara hasta allá.
+      ({ from, to } = orientSignalWiring(this.mission.blueprint.signalGraph, this.wireFirstNodeId, node.id));
       // Validación descartable: confirma que el par de nodos es cableable
       // ANTES de encolar la tarea (mismo criterio que el resto del proyecto).
       // Primero la regla de conductos (Fase 11f): un cable de señal no cruza a
       // otra sección sin un conducto `senal` — mensaje localizado propio; el
       // resto de errores de cableado muestra su texto crudo, como antes.
-      assertSignalWiringReachable(
-        this.mission.shipFloorplan,
-        this.mission.blueprint.signalGraph,
-        this.wireFirstNodeId,
-        node.id,
-      );
-      wireExternalPort(this.mission.blueprint, `preview-${Date.now()}` as SignalEdgeId, this.wireFirstNodeId, node.id);
+      assertSignalWiringReachable(this.mission.shipFloorplan, this.mission.blueprint.signalGraph, from, to);
+      wireExternalPort(this.mission.blueprint, `preview-${Date.now()}` as SignalEdgeId, from, to);
     } catch (error) {
       this.callbacks.setStatus(
         error instanceof SignalWiringUnreachableError
           ? t("ui.floorplan.mission.wire-no-conduit")
-          : `${(error as Error).message}`,
+          : error instanceof SignalWiringDirectionError
+            ? t("ui.floorplan.mission.wire-bad-direction")
+            : `${(error as Error).message}`,
       );
       this.setWireFirstNode(undefined);
       return;
     }
 
-    this.mission.queueConnect(this.selectedActorIdValue, this.wireFirstNodeId, node.id);
+    this.mission.queueConnect(this.selectedActorIdValue, from, to);
     this.setWireFirstNode(undefined);
     this.wireModeValue = false;
     this.callbacks.setStatus("");
@@ -1051,6 +1058,7 @@ export class MissionInteractionController {
         // Subfase 13h — puertas y válvulas.
         doorState: (state) => t(`ui.floorplan.mission.inspector.door-state.${state}`),
         doorBlocked: (source) => t(`ui.floorplan.mission.inspector.door-blocked.${source}`),
+        doorAuto: t("ui.floorplan.mission.inspector.door-auto"),
         forceDoor: t("ui.floorplan.mission.inspector.force-door"),
         repairDoor: t("ui.floorplan.mission.inspector.repair-door"),
         valveState: (aperture) =>

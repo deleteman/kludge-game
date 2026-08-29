@@ -61,6 +61,7 @@ import {
   createShipTaskEffect,
   coilFieldIntensityAt,
   composeApertureSources,
+  doorSignalOutput,
   MissionDoorRuntime,
   ValveRuntime,
   DEFAULT_WEAR,
@@ -521,28 +522,35 @@ export class MissionRuntime {
           this.crewState
             .all()
             .find((actor) => actor.currentCell?.x === cell.x && actor.currentCell?.y === cell.y)?.id,
-        // Una puerta construida es cableable porque su `ACT` deriva un nodo
-        // receptor (13h). Las autoradas en Tiled no tienen instancia detrás y
-        // devuelven `undefined` = sin cable, que NO es lo mismo que `false`.
-        signalOutput: (door) => {
-          if (!door.instanceId) {
-            return undefined;
-          }
-          const node = this.blueprint.signalGraph.nodes.find(
-            (candidate) => candidate.ownerRef === door.instanceId && candidate.role === "receptor",
-          );
-          if (!node) {
-            return undefined;
-          }
-          const wired = this.blueprint.signalGraph.edges.some((edge) => edge.to === node.id);
-          return wired ? this.signalRuntime.outputOf(node.id) : undefined;
-        },
-        // UNIÓN de la cicatriz permanente y el déficit vivo del tick (13b). No
-        // `isInstancePowered`, que da `true` para todo mientras nadie declare
-        // `powerDraw` — ver `instance-energized.ts`.
-        powered: (sectionId) =>
-          !this.powerRuntime.unpoweredSections().has(sectionId) &&
-          !this.powerRuntime.sectionHasNoPowerGranted(sectionId),
+        // Una puerta es cableable porque su `ACT` deriva un nodo receptor (13h).
+        // `undefined` = sin cable, que NO es lo mismo que `false` (cable
+        // ordenando cerrar): sin esa distinción, una puerta sin cablear se
+        // quedaría cerrada para siempre.
+        // La regla vive en `/engine` (`doorSignalOutput`): decidir cuándo una
+        // puerta está gobernada por una señal es dominio, no pegamento — y
+        // mientras fue un closure acá no hubo forma de testearla.
+        signalOutput: (door) =>
+          doorSignalOutput(
+            door,
+            this.blueprint.signalGraph,
+            (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+            (nodeId) => this.signalRuntime.outputOf(nodeId),
+          ),
+        // Ronda 2 de playtest, corte A: la MISMA fuente que decide si el motor
+        // cobra sus 2 unidades en el reparto de 13b, más la cicatriz permanente.
+        // Antes miraba `sectionHasNoPowerGranted`, cuyo propio docblock declara
+        // que es "puramente cosmético… sigue sin usarse para gating de
+        // señales/HUD" — o el comentario o el uso estaba mal, y convivían.
+        //
+        // La cicatriz permanente se consulta aparte porque NO entra en el
+        // reparto (`allocateSectionBudget` solo mira `sectionAllocations`), y se
+        // exigen las DOS secciones: una puerta está sobre la frontera, así que
+        // si cualquiera de los dos lados perdió la red para siempre, esa hoja
+        // deja de tener de dónde alimentarse. Antes solo miraba `door.a`.
+        powered: (door) =>
+          this.powerRuntime.isInstancePowered(door.instanceId) &&
+          !this.powerRuntime.unpoweredSections().has(door.a) &&
+          !this.powerRuntime.unpoweredSections().has(door.b),
         magneticFieldAt: (cell) => coilFieldIntensityAt(this.projectileWorld.activeCoils(), cell),
       },
     });
@@ -871,11 +879,6 @@ export class MissionRuntime {
     // señales lean `unpoweredSections()`/`isInstancePowered()` este mismo
     // tick — mismo criterio que atmósfera→estructura más abajo.
     this.coreLoop.registerTickable(this.powerRuntime);
-    // Subfase 13h: las puertas se gobiernan DESPUÉS de la energía (leen si su
-    // sección tiene suministro este tick) y ANTES de la atmósfera, para que la
-    // apertura que la difusión consume sea la de este tick y no la del
-    // anterior. Es el mismo criterio de orden que energía→señales.
-    this.coreLoop.registerTickable(this.doorRuntime);
     // Fase 11a: señales vivas + promoción de piezas sueltas + proyectiles. El
     // orden importa — las señales se evalúan ANTES que los proyectiles para
     // que una bobina que se energiza en este tick ya pulse en este tick, y no
@@ -883,6 +886,16 @@ export class MissionRuntime {
     // una pieza instalada este tick ya pueda acelerarse en el mismo tick si
     // ya hay campo activo.
     this.coreLoop.registerTickable(this.signalRuntime);
+    // Subfase 13h: las puertas se gobiernan DESPUÉS de la energía (leen si su
+    // motor tiene suministro este tick) y ANTES de la atmósfera, para que la
+    // apertura que la difusión consume sea la de este tick y no la del
+    // anterior.
+    //
+    // Ronda 2 de playtest: también DESPUÉS de las señales, por el mismo motivo
+    // que la bobina de 11a. Iban antes, así que una puerta cableada leía
+    // siempre la salida del tick anterior y eso se sumaba al hop-por-tick del
+    // evaluador: dos ticks entre pisar el sensor y que la hoja arrancara.
+    this.coreLoop.registerTickable(this.doorRuntime);
     this.coreLoop.registerTickable(this.loosePromoter);
     this.coreLoop.registerTickable(this.projectiles);
     // Fase 11b: atmósfera viva ANTES que la cicatriz estructural, para que

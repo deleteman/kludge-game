@@ -16,6 +16,12 @@ import impactMetal003Url from "../../assets/audio/gameplay/impactMetal_003.ogg?u
 import impactMetal004Url from "../../assets/audio/gameplay/impactMetal_004.ogg?url";
 import computerNoise002Url from "../../assets/audio/gameplay/computerNoise_002.ogg?url";
 import computerNoise003Url from "../../assets/audio/gameplay/computerNoise_003.ogg?url";
+import doorOpen000Url from "../../assets/audio/gameplay/doorOpen_000.ogg?url";
+import doorOpen001Url from "../../assets/audio/gameplay/doorOpen_001.ogg?url";
+import doorOpen002Url from "../../assets/audio/gameplay/doorOpen_002.ogg?url";
+import doorClose000Url from "../../assets/audio/gameplay/doorClose_000.ogg?url";
+import doorClose001Url from "../../assets/audio/gameplay/doorClose_001.ogg?url";
+import doorClose002Url from "../../assets/audio/gameplay/doorClose_002.ogg?url";
 
 import tick001Url from "../../assets/audio/UI/tick_001.ogg?url";
 import tick002Url from "../../assets/audio/UI/tick_002.ogg?url";
@@ -63,6 +69,14 @@ export const AUDIO_KEYS = {
   gasLeakAmbient: "sfx-engine-circular-0",
   alarm: ["sfx-computer-noise-2", "sfx-computer-noise-3"],
   install: ["sfx-impact-metal-0", "sfx-impact-metal-1"],
+  /**
+   * Puertas (Subfase 13h, ronda 2 de playtest). A diferencia del resto de esta
+   * tabla, acá el pack SÍ trae el asset exacto —`doorOpen`/`doorClose`— y no
+   * hace falta ninguna aproximación. Tres variantes por acción porque la nave
+   * tiene 10 puertas y siempre el mismo sample se volvería repetitivo enseguida.
+   */
+  doorOpen: ["sfx-door-open-0", "sfx-door-open-1", "sfx-door-open-2"],
+  doorClose: ["sfx-door-close-0", "sfx-door-close-1", "sfx-door-close-2"],
   footstep: ["sfx-impact-metal-2", "sfx-impact-metal-3", "sfx-impact-metal-4"],
   barkCrisisOrDanger: ["sfx-ui-tick-0", "sfx-ui-tick-1"],
   barkSuccess: ["sfx-ui-confirmation-0", "sfx-ui-confirmation-1"],
@@ -95,6 +109,12 @@ const AUDIO_URLS: Readonly<Record<string, string>> = {
   "sfx-impact-metal-4": impactMetal004Url,
   "sfx-computer-noise-2": computerNoise002Url,
   "sfx-computer-noise-3": computerNoise003Url,
+  "sfx-door-open-0": doorOpen000Url,
+  "sfx-door-open-1": doorOpen001Url,
+  "sfx-door-open-2": doorOpen002Url,
+  "sfx-door-close-0": doorClose000Url,
+  "sfx-door-close-1": doorClose001Url,
+  "sfx-door-close-2": doorClose002Url,
   "sfx-ui-tick-0": tick001Url,
   "sfx-ui-tick-1": tick002Url,
   "sfx-ui-confirmation-0": confirmation001Url,

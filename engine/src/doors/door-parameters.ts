@@ -16,7 +16,8 @@ export const DOOR_PARAMETERS = {
    * `compuerta-blindada` RE-A aguanta ~6 golpes medios antes de ceder, tiempo
    * suficiente para que el jugador reaccione pero no para ignorar al intruso.
    *
-   * Una puerta autorada en Tiled sin componente detrás usa `A` (es casco).
+   * La `RE` sale de la definición de la pieza; `A` es el fallback para una
+   * definición que no declare material.
    */
   maxHpByResistance: {
     A: 300,
@@ -75,11 +76,16 @@ export const DOOR_PARAMETERS = {
   setValveSeconds: 6,
 
   /**
-   * Tiempo de transición (segundos) de una puerta SIN `ACT` detrás — las
-   * autoradas en Tiled, que no son piezas del catálogo. Las que sí tienen
-   * componente leen `ACT.cadence`, que es la fuente de verdad.
+   * Tiempo de transición (segundos) de una puerta cuya definición no declara
+   * `ACT.cadence`. Desde la ronda 1 de playtest TODA puerta es una instancia de
+   * catálogo, así que esto es un fallback defensivo, no el caso normal: la
+   * fuente de verdad es `ACT.cadence` (`transitionSecondsOf`).
+   *
+   * Alineado con la cadencia real de `compuerta-blindada` (ronda 2): si el
+   * fallback y la pieza discreparan, una puerta improvisada se movería a otra
+   * velocidad que la del casco sin ninguna razón de diseño.
    */
-  defaultTransitionSeconds: 3,
+  defaultTransitionSeconds: 1.5,
 
   /**
    * Umbral de `ACT.power` a partir del cual el aplastamiento sube de severidad.

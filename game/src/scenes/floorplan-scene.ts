@@ -7,8 +7,7 @@ import {
   resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
-import type {
-  DoorRuntime, SignalEdgeId } from "engine";
+import type { SignalEdgeId } from "engine";
 import type {
   BarkEventType,
   ChemicalSubstanceId,
@@ -47,6 +46,7 @@ import {
 } from "../render/floorplan-renderer.js";
 import type { ConduitPath } from "../render/conduit-path.js";
 import { computeConduitRoute, computeSignalWireRoute } from "../render/conduit-path.js";
+import { doorSlideAxis, easedDoorOpenness } from "../render/door-visuals.js";
 import { createConduitPathFlowEffect, type ConduitPathFlowState } from "../particles/effects/conduit-flow-effect.js";
 import {
   computeSectionSignalActivity,
@@ -187,6 +187,14 @@ const CELL = GRID_CELL_SIZE_PX;
  * hasta que termina, y un reintento lento se leería como que se quedó colgado.
  */
 const DOOR_WAIT_RETRY_MS = 100;
+
+/**
+ * Cuánto se corre la hoja al abrirse, en celdas (ronda 2 de playtest). Casi una
+ * celda entera y no exactamente una: la hoja tiene que quedar "metida en la
+ * pared" pero seguir asomando lo justo para que se vea que hay una puerta ahí
+ * que se puede volver a cerrar.
+ */
+const DOOR_SLIDE_CELLS = 0.9;
 const HEADER_HEIGHT = 40;
 // Separados con margen explícito (bug corregido: antes se derivaban de la
 // misma constante y terminaban superpuestos, "cableado" tapando a "ejecutar").
@@ -1210,6 +1218,12 @@ export class FloorplanScene extends Phaser.Scene {
           title: t(`ui.floorplan.notification.${event.kind}`),
           type: event.severity === "lethal" ? "error" : "warning",
         });
+      }),
+      // Subfase 13h (ronda 2 de playtest): el PRIMER consumidor de `doorEvents`.
+      // El motor venía emitiendo estos eventos completos desde la ronda A y no
+      // había nadie suscrito, así que la puerta se movía en silencio.
+      this.mission.doorEvents.onAny((event) => {
+        fireEventSound(this, event);
       }),
       // Fase 13b (ronda 4): el jugador tiene más energía repartida de la que la
       // nave puede entregar — típicamente porque desmanteló una fuente. El
@@ -3646,8 +3660,8 @@ export class FloorplanScene extends Phaser.Scene {
    * throttle para leerse bien.
    */
   /**
-   * Estado visual de las puertas CONSTRUIDAS (Subfase 13h): el sprite de la
-   * compuerta se desvanece a medida que la hoja se abre.
+   * Estado visual de las puertas (Subfase 13h): la hoja CORRE a un costado y se
+   * desvanece a medida que se abre, como una puerta corrediza real.
    *
    * El sprite de catálogo es un único frame de puerta cerrada, así que abrir se
    * resuelve por código sobre él en vez de con un segundo frame. Se interpola
@@ -3655,24 +3669,53 @@ export class FloorplanScene extends Phaser.Scene {
    * la animación tuviera su propio número, la hoja terminaría de desaparecer
    * antes o después de que el paso se libere de verdad.
    *
+   * **Sin tweens de Phaser**, y es una decisión, no una omisión (ronda 2 de
+   * playtest):
+   *  - `startTransitionIfNeeded` INVIERTE una transición a mitad de camino sin
+   *    reiniciar el reloj (alguien vuelve a acercarse mientras la puerta se
+   *    cierra). Un tween con su propia duración se desincronizaría justo ahí.
+   *  - El overlay se destruye y reconstruye entero en cada `redrawOverlay`, así
+   *    que un tween atado a un sprite de instancia se pierde (patrón 22). Sin
+   *    tween no hay estado que perder: el frame siguiente recalcula el offset.
+   *  - Este método solo corre en modo `execution`, así que la pausa táctica
+   *    congela la hoja donde está. Un tween seguiría corriendo en pausa.
+   *
    * El tinte por estado (trabada/sin energía/rota) se pinta en la capa
    * `puertas`, no acá: `setTint` sobre el sprite pelearía con
    * `applyLightShading`, que ya gobierna el tinte de todos los sprites del
-   * plano en función de la iluminación (12d).
+   * plano en función de la iluminación (12d). La posición y el alpha sí son
+   * libres.
    */
   private updateDoorSprites(): void {
     if (this.componentSprites.size === 0) return;
     for (const door of this.mission.doorRuntime.allDoors()) {
-      if (!door.instanceId) continue;
       const sprites = this.componentSprites.get(door.instanceId);
       if (!sprites) continue;
-      const openness = doorSpriteOpenness(door, this.mission.doorTransitionSeconds(door));
-      // No se baja a 0: una puerta abierta del todo tiene que seguir siendo
-      // visible como puerta — si desapareciera, el jugador no sabría que hay
-      // algo ahí que se puede volver a cerrar.
-      const alpha = 1 - openness * 0.8;
-      for (const sprite of sprites) sprite.setAlpha(alpha);
+      const eased = easedDoorOpenness(door, this.mission.doorTransitionSeconds(door));
+      const axis = doorSlideAxis(door, (sectionId) => this.sectionCentroid(sectionId));
+      const offset = eased * CELL * DOOR_SLIDE_CELLS;
+      for (const sprite of sprites) {
+        // La base se captura del propio sprite la primera vez que se lo toca:
+        // al reconstruirse el overlay el objeto es nuevo y su `data` está
+        // vacía, así que la base se vuelve a leer sola sin sincronizar nada.
+        const baseX = (sprite.getData("doorBaseX") as number | undefined) ?? sprite.x;
+        const baseY = (sprite.getData("doorBaseY") as number | undefined) ?? sprite.y;
+        sprite.setData("doorBaseX", baseX);
+        sprite.setData("doorBaseY", baseY);
+        sprite.x = axis === "x" ? baseX + offset : baseX;
+        sprite.y = axis === "y" ? baseY + offset : baseY;
+        // No se baja a 0: una puerta abierta del todo tiene que seguir siendo
+        // visible como puerta — si desapareciera, el jugador no sabría que hay
+        // algo ahí que se puede volver a cerrar.
+        sprite.setAlpha(1 - eased * 0.85);
+      }
     }
+  }
+
+  /** Centro de una sección en celdas, para `doorSlideAxis`. */
+  private sectionCentroid(sectionId: SectionId): GridPosition | undefined {
+    const section = this.mission.shipFloorplan.sections.find((entry) => entry.id === sectionId);
+    return section ? sectionCentroidCell(section) : undefined;
   }
 
   private updateLedIndicators(): void {
@@ -4107,7 +4150,7 @@ export class FloorplanScene extends Phaser.Scene {
       // pared en línea recta Y ejecutar la acción igual en el lugar equivocado
       // (bug playtest #10), se aborta el `go-to` y las acciones que dependían de
       // llegar allí. El token no se mueve.
-      this.abortUnreachable(actorId, goToTaskId, token.dot);
+      this.abortUnreachable(actorId, goToTaskId, token.dot, targetPx);
       return;
     }
     const perHopMs = Math.max(60, (durationSeconds * 1000) / waypoints.length);
@@ -4152,7 +4195,12 @@ export class FloorplanScene extends Phaser.Scene {
    * próximo `go-to`, que ya sería otro tramo/sección). El token no se mueve; se
    * avisa con texto flotante + `console.warn` para diagnosticar la conectividad.
    */
-  private abortUnreachable(actorId: CrewActorId, goToTaskId: CrewTaskId, at: { x: number; y: number }): void {
+  private abortUnreachable(
+    actorId: CrewActorId,
+    goToTaskId: CrewTaskId,
+    at: { x: number; y: number },
+    target: { x: number; y: number },
+  ): void {
     const fromCell = { x: Math.floor(at.x / CELL), y: Math.floor(at.y / CELL) };
     console.warn(`[pathfinding] sin ruta para ${actorId} desde la celda (${fromCell.x}, ${fromCell.y}); tarea cancelada.`);
 
@@ -4172,7 +4220,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.redrawQueuePanel();
 
     const label = this.add
-      .text(at.x, at.y - 26, t("ui.floorplan.mission.no-path"), {
+      .text(at.x, at.y - 26, this.unreachableReason(fromCell, target), {
         fontFamily: "sans-serif",
         fontSize: "12px",
         color: "#ff5a5a",
@@ -4190,6 +4238,38 @@ export class FloorplanScene extends Phaser.Scene {
       ease: "Quad.easeOut",
       onComplete: () => label.destroy(),
     });
+  }
+
+  /**
+   * POR QUÉ no hay ruta (Subfase 13h, ronda 2 de playtest).
+   *
+   * Desde 13h una puerta puede bloquear el paso de tres formas nuevas —sin
+   * energía, trabada, o cerrada por un cable que el propio jugador tendió— y
+   * las tres se manifestaban como el mismo "Sin ruta al destino" genérico. Con
+   * la energía por defecto en 0, ese cartel llegaba a ser la respuesta a
+   * cualquier orden en toda la nave, sin decir nunca que faltaba repartir
+   * energía.
+   *
+   * Se identifica a la culpable buscando la ruta OTRA VEZ sobre la grilla sin
+   * puertas: si aparece un camino que antes no existía, la puerta es la causa,
+   * y la primera celda de ese camino con una puerta bloqueando es la puerta
+   * concreta. Es una búsqueda extra, pero solo corre en el momento en que una
+   * orden ya falló — nunca en el camino feliz.
+   */
+  private unreachableReason(fromCell: GridPosition, target: { x: number; y: number }): string {
+    const generic = t("ui.floorplan.mission.no-path");
+    if (!this.walkableGrid) return generic;
+    const goal = { x: Math.floor(target.x / CELL), y: Math.floor(target.y / CELL) };
+    const withoutDoors = findPath(this.walkableGrid, fromCell, goal);
+    if (!withoutDoors || withoutDoors.length === 0) return generic;
+
+    const blockingCell = withoutDoors.find((cell) => this.mission.doorRuntime.blocksPathingAt(cell));
+    const door = blockingCell && this.mission.doorRuntime.doorAt(blockingCell);
+    if (!door) return generic;
+    if (door.state === "jammed") return t("ui.floorplan.mission.no-path-door-jammed");
+    if (door.overrideSource === "unpowered") return t("ui.floorplan.mission.no-path-door-unpowered");
+    if (door.overrideSource === "signal") return t("ui.floorplan.mission.no-path-door-signal");
+    return t("ui.floorplan.mission.no-path-door-closed");
   }
 
   /** Línea recta de `from` a `to` partida en pasos de ~1 celda (fallback sin ruta). */
@@ -5122,22 +5202,3 @@ function sectionFlickerSeed(sectionId: SectionId): number {
   return hash;
 }
 
-/** 0 = hoja cerrada, 1 = del todo abierta. Interpola durante `opening`/`closing`. */
-function doorSpriteOpenness(door: DoorRuntime, transitionSeconds: number): number {
-  const progress =
-    transitionSeconds > 0
-      ? Math.max(0, Math.min(1, door.transitionElapsedSeconds / transitionSeconds))
-      : 1;
-  switch (door.state) {
-    case "open":
-    case "destroyed":
-      return 1;
-    case "closed":
-    case "jammed":
-      return 0;
-    case "opening":
-      return progress;
-    case "closing":
-      return 1 - progress;
-  }
-}

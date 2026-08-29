@@ -121,8 +121,13 @@ describe("MissionDoorRuntime (13h)", () => {
     const { runtime } = mountDoors({ queries: { occupiedCells: () => [{ x: 0, y: 0 }] } });
     const aperture = runtime.apertureSource();
 
-    // A mitad del ciclo de 3 s la hoja va por la mitad: ni sellada ni abierta.
-    run(runtime, 1.5);
+    // A mitad de la cadencia la hoja va por la mitad: ni sellada ni abierta.
+    // Se deriva de `transitionSecondsOf` en vez de escribir el número: la ronda
+    // 2 de playtest bajó la cadencia de 3 s a 1.5 s y este test, que la tenía
+    // hardcodeada, empezó a medir el ciclo YA TERMINADO en vez de la mitad.
+    const cadence = runtime.transitionSecondsOf(DOOR);
+    expect(cadence).toBe(1.5);
+    run(runtime, cadence / 2);
     const midway = aperture()[0]?.valveAperture ?? 0;
     expect(midway).toBeGreaterThan(0);
     expect(midway).toBeLessThan(1);
@@ -130,7 +135,7 @@ describe("MissionDoorRuntime (13h)", () => {
     // puerta a medio abrir.
     expect(runtime.blocksCell(THRESHOLD)).toBe(true);
 
-    run(runtime, 2, 1.5);
+    run(runtime, cadence, cadence / 2);
     expect(aperture()[0]?.valveAperture).toBe(1);
     expect(runtime.blocksCell(THRESHOLD)).toBe(false);
   });
