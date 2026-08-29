@@ -61,6 +61,8 @@ import {
   createShipTaskEffect,
   coilFieldIntensityAt,
   composeApertureSources,
+  componentPowerDraw,
+  deriveInstanceStates,
   doorSignalOutput,
   MissionDoorRuntime,
   ValveRuntime,
@@ -90,7 +92,14 @@ import {
   MapEntityRegistry,
   GAS,
 } from "engine";
-import type { ConduitId, DoorDomainEvent, DoorId, DoorRuntime, PlacedComponentInstance } from "engine";
+import type {
+  ConduitId,
+  DoorDomainEvent,
+  DoorId,
+  DoorRuntime,
+  InstanceState,
+  PlacedComponentInstance,
+} from "engine";
 import type {
   ComponentWear,
   CellBlockedQuery,
@@ -2151,13 +2160,28 @@ export class MissionRuntime {
       if (this.sectionIdAt(instance.placement.position) !== sectionId) {
         continue;
       }
-      const definition = this.componentRegistry.get(instance.componentDefinitionId);
-      const actuator = definition?.data.functional?.find((property) => property.tag === "ACT");
-      if (actuator && actuator.tag === "ACT") {
-        demand += actuator.powerDraw ?? 0;
-      }
+      demand += componentPowerDraw(this.componentRegistry.get(instance.componentDefinitionId));
     }
     return demand;
+  }
+
+  /**
+   * Estados NOTABLES de una pieza instalada (Subfase 13h, ronda 3 de playtest):
+   * lo que hay que poder ver sobre el plano sin abrir ningún panel.
+   *
+   * Se deriva en vivo, sin cachear: el estado cambia en cuanto el jugador mueve
+   * el dial de energía, y un valor guardado sería exactamente la UI mintiendo
+   * sobre el motor. El costo es una búsqueda por instancia consultada.
+   */
+  instanceStates(instance: PlacedComponentInstance): InstanceState[] {
+    return deriveInstanceStates(instance, {
+      resolveDefinition: (id) => this.componentRegistry.get(id),
+      isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+      sectionGrantedUnitsAt: (entry) => {
+        const sectionId = this.sectionIdAt(entry.placement.position);
+        return sectionId ? this.powerRuntime.sectionPowerGranted(sectionId) : 0;
+      },
+    });
   }
 
   /**

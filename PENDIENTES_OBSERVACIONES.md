@@ -841,3 +841,33 @@ Es exactamente el bug que el playtest de 13h reportó para las puertas (reporte 
 Cerrarlo bien exige decidir primero cuál es la fuente de verdad de los nodos del Cap.1: o se borran los
 autorados a mano y se derivan todos, o `mergeInstalledSignalGraph` deduplica por `ownerRef` + rol. Hasta
 entonces, cualquier semilla nueva de Tiled con propiedades de señal va a parecer rota sin decir por qué.
+
+## Deuda #38 — Los componentes sin sprite propio no son tinteables por estado (Subfase 13h, ronda 3)
+
+**Estado:** ABIERTA. Registrada 2026-08-29.
+
+El sistema de estado por componente (`component-state-visuals.ts` + `updateComponentStateTints`) tiñe
+`componentSpritesByInstanceId`, que solo se puebla cuando la pieza tiene sprite real
+(`hasComponentSprite`). Las piezas sin arte todavía se dibujan en el `Graphics` batcheado del overlay
+(`mission-overlay-renderer.ts`) y **no son objetos por instancia**, así que no pueden recibir tinte vivo ni
+ícono: su estado solo se lee en el tooltip y en el panel.
+
+Hoy no se nota porque el único estado es `unpowered` y el único consumidor de energía es `compuerta-blindada`,
+que sí tiene sprite. Se vuelve visible en cuanto 13g le dé `powerDraw` a chips, sensores y mesas.
+
+Dos salidas posibles: que el overlay cree un objeto por instancia también para el placeholder (uniforma el
+camino, cuesta objetos), o que el contorno del footprint se redibuje por frame con el color del estado (más
+barato, menos legible). Decidir al abrir 13g.
+
+## Deuda #39 — La oferta de energía de la nave nunca se dimensionó contra su demanda (Subfase 13h, ronda 3)
+
+**Estado:** ABIERTA POR DECISIÓN. Registrada 2026-08-29.
+
+`nave-exploracion` produce **10 unidades** (5 × `celula-fotovoltaica`) y sus 10 puertas piden **20**
+(`powerDraw: 2` cada una). Cada sección tiene exactamente una puerta, así que ninguna funciona con 1 unidad, y
+el techo real es peor: el reparto es por sección en bloques de 2 y las sobras impares se desperdician.
+
+El operador decidió explícitamente **dejar la escasez** y resolver la legibilidad (esta ronda), no el balance.
+Queda anotado acá porque el número correcto es trabajo de balanceo (Fase 23) y porque 13g va a EMPEORARLO: al
+declarar `powerDraw` en chips, sensores y mesas, la demanda sube sobre la misma oferta de 10. Al abrir 13g hay
+que decidir la oferta con la demanda total ya conocida, no pieza por pieza.

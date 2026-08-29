@@ -70,6 +70,13 @@ export interface DoorPanelInfo {
   readonly integrity: number;
 }
 
+/** Un estado notable de la pieza, listo para pintar. */
+export interface ComponentStatePanelInfo {
+  readonly icon: string;
+  readonly text: string;
+  readonly color: string;
+}
+
 export type ActionPanelContent =
   | { readonly kind: "idle" }
   | {
@@ -113,6 +120,12 @@ export type ActionPanelContent =
        * la misma pieza — no un panel aparte.
        */
       readonly door?: DoorPanelInfo;
+      /**
+       * Estados notables ya resueltos a texto/color por el llamador (13h ronda
+       * 3). El panel solo pinta — no conoce la tabla de estados ni la i18n,
+       * mismo criterio que con los hazards de 13d.
+       */
+      readonly states?: ReadonlyArray<ComponentStatePanelInfo>;
     }
   /**
    * Un CONDUCTO de ventilación seleccionado (Subfase 13h). Variante propia y no
@@ -582,10 +595,35 @@ export function renderMissionActionPanel(
     // completa vive en el tooltip de hover (`mission-tooltip.ts`) — este
     // panel solo ofrece la acción sobre la pieza seleccionada.
     const hazards = content.dismantleHazards ?? [];
+    let cursorY = flowY;
+
+    // Estados notables de la pieza (13h ronda 3), ANTES de los riesgos de
+    // desmontaje: primero por qué la pieza no está haciendo su trabajo, después
+    // qué pasa si la arrancás. Misma tabla que el tinte del plano y que el
+    // tooltip, así que las tres lecturas no pueden divergir.
+    //
+    // Es también lo que desactiva la contradicción que reportó el operador
+    // ("Pieza energizada" junto a "Sin energía"): con el número delante —pide 2,
+    // la sección otorga 1— las dos frases dejan de sonar opuestas y se leen como
+    // lo que son, la sección tiene corriente pero no le alcanza a esta pieza.
+    for (const state of content.states ?? []) {
+      const stateText = scene.add
+        .text(width / 2, cursorY, `${state.icon} ${state.text}`, {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "10px",
+          color: state.color,
+          align: "center",
+          wordWrap: { width: width - 20, useAdvancedWrap: true },
+        })
+        .setOrigin(0.5, 0);
+      container.add(stateText);
+      cursorY += stateText.height + 6;
+      claim(cursorY);
+    }
+
     // Badge de riesgo (13d): el jugador tiene que poder decidir ANTES de
     // encolar, no descubrirlo con el chispazo (pilar de legibilidad total).
     // Ámbar del contrato de color único de 12e — es escalable, no fatal.
-    let cursorY = flowY;
     for (const hazard of hazards) {
       // Una fuente chispea por su propia carga, no por la red: decirle al
       // jugador "está energizada" lo mandaría a cortar la sección, que no la

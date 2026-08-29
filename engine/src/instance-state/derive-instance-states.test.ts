@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import { deriveInstanceStates } from "./derive-instance-states.js";
+import type { InstanceStateQueries } from "./derive-instance-states.js";
+import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import type { ComponentId, PhysicalComponentDefinition } from "../components/physical-component.types.js";
+
+const INSTANCE_ID = "puerta-1" as PlacedComponentInstanceId;
+
+function instance(): PlacedComponentInstance {
+  return {
+    instanceId: INSTANCE_ID,
+    componentDefinitionId: "compuerta-blindada" as ComponentId,
+    placement: { position: { x: 1, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+    condition: "ok",
+    wear: "nuevo",
+  };
+}
+
+// Fixture ATÓMICO a propósito: `componentPowerDraw` solo lee `data.functional`,
+// así que un compuesto obligaría a inventarle una receta falsa que no aporta
+// nada a lo que este test comprueba.
+function definition(powerDraw?: number): PhysicalComponentDefinition {
+  return {
+    id: "compuerta-blindada" as ComponentId,
+    name: "Compuerta",
+    level: "atomic",
+    data: {
+      functional:
+        powerDraw === undefined
+          ? [{ tag: "EST", damageResistance: 80, articulatedRange: undefined }]
+          : [{ tag: "ACT", power: 70, cadence: 1.5, directional: false, powerDraw }],
+      footprint: { width: 1, height: 1 },
+    },
+  };
+}
+
+function queries(overrides: Partial<InstanceStateQueries> = {}): InstanceStateQueries {
+  return {
+    resolveDefinition: () => definition(2),
+    isInstancePowered: () => true,
+    sectionGrantedUnitsAt: () => 1,
+    ...overrides,
+  };
+}
+
+describe("deriveInstanceStates (13h, ronda 3 de playtest)", () => {
+  it("una pieza que declara consumo y no lo tiene cubierto está `unpowered`", () => {
+    const states = deriveInstanceStates(instance(), queries({ isInstancePowered: () => false }));
+    expect(states).toEqual([{ flag: "unpowered", required: 2, available: 1 }]);
+  });
+
+  it("lleva los NÚMEROS, no solo el hecho", () => {
+    // "Sin energía" a secas describe el síntoma; lo accionable es cuánto le
+    // falta a la sección. Es el dato que le faltó al operador para entender por
+    // qué una compuerta con la sección encendida no se movía.
+    const [state] = deriveInstanceStates(
+      instance(),
+      queries({ isInstancePowered: () => false, sectionGrantedUnitsAt: () => 1 }),
+    );
+    expect(state?.required).toBe(2);
+    expect(state?.available).toBe(1);
+  });
+
+  it("con la demanda cubierta no reporta nada", () => {
+    expect(deriveInstanceStates(instance(), queries({ isInstancePowered: () => true }))).toEqual([]);
+  });
+
+  it("una pieza SIN `powerDraw` no está nunca `unpowered`, aunque el reparto diga que no", () => {
+    // El caso que rompería el plano entero. `allocateComponentPower` marca como
+    // alimentada a toda pieza sin consumo declarado (retrocompat de 13b), pero
+    // al revés no vale: sin este guard, cualquier instancia sin `powerDraw` en
+    // una sección a 0 se marcaría apagada — o sea TODO el catálogo salvo la
+    // compuerta, que es hoy el único consumidor del juego.
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ resolveDefinition: () => definition(undefined), isInstancePowered: () => false }),
+    );
+    expect(states).toEqual([]);
+  });
+
+  it("`powerDraw: 0` cuenta como no declarar consumo", () => {
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ resolveDefinition: () => definition(0), isInstancePowered: () => false }),
+    );
+    expect(states).toEqual([]);
+  });
+
+  it("una definición que no resuelve no revienta ni inventa estados", () => {
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ resolveDefinition: () => undefined, isInstancePowered: () => false }),
+    );
+    expect(states).toEqual([]);
+  });
+});

@@ -531,6 +531,19 @@ export const DOOR_STATE_COLOR = {
 export const DOOR_LAYER_ALPHA = 0.9;
 
 /**
+ * Glifo de estado sobre un componente (13h ronda 3, ej. ⚡ "sin energía").
+ *
+ * Claro y con contorno oscuro a propósito: el ícono existe justamente porque el
+ * tinte del estado se multiplica por la luz de la celda y una pieza sin energía
+ * está donde menos luz hay. Pintarlo con el color del propio estado
+ * (`DOOR_STATE_COLOR.unpowered`, un gris oscuro) lo volvería invisible sobre un
+ * fondo oscuro — el error de contraste que ya costó una ronda en 13b. El
+ * contorno lo hace legible sobre suelo claro y oscuro por igual.
+ */
+export const STATE_ICON_CSS = "#f4f6fb";
+export const STATE_ICON_STROKE_CSS = "#101319";
+
+/**
  * Capa "presion" del HUD del plano (Subfase 13h): heatmap de presión por
  * sección, para ver de un vistazo qué sala se está vaciando. Molde exacto de
  * `ENERGY_LAYER_COLOR` — una sección a presión nominal no se dibuja

@@ -3,6 +3,7 @@ import type { ComponentId, PhysicalComponentDefinition } from "../components/phy
 import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { InstancePowerPriority, SectionPowerAllocation } from "./power.types.js";
+import { componentPowerDraw } from "./component-power-draw.js";
 
 /**
  * Reparto en dos niveles del presupuesto de energía (Fase 13b, "estilo FTL").
@@ -126,9 +127,7 @@ export function allocateComponentPower(
   const poweredInstanceIds = new Set<PlacedComponentInstanceId>();
   const unpoweredInstanceIds = new Set<PlacedComponentInstanceId>();
   for (const instance of ordered) {
-    const definition = componentRegistry.get(instance.componentDefinitionId);
-    const actuator = definition?.data.functional?.find((property) => property.tag === "ACT");
-    const draw = actuator && actuator.tag === "ACT" ? (actuator.powerDraw ?? 0) : 0;
+    const draw = componentPowerDraw(componentRegistry.get(instance.componentDefinitionId));
     if (draw <= 0) {
       poweredInstanceIds.add(instance.instanceId);
       continue;

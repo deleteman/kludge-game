@@ -5274,3 +5274,76 @@ TESTS: 1013 → 1028 en `/engine`, 71 → 78 en `/game`. Nuevos: la integración
 (extremos, monotonía, aceleración) y `doorSlideAxis`. RECALIBRADO con el motivo escrito: el test de
 transición anclaba "la mitad" a los 3 s viejos y con 1.5 s medía el ciclo YA TERMINADO — ahora deriva la
 mitad de `transitionSecondsOf` en vez de hardcodear el número. `tsc`, `eslint` y `vite build` limpios.
+
+================================================================================
+2026-08-29 — Subfase 13h, RONDA 3 DE PLAYTEST: estado visible por componente
+================================================================================
+El operador clickeó una compuerta que no abría y el panel le mostró dos mensajes que se leían como una
+contradicción: "Pieza energizada: desmontarla provocará un chispazo" junto a "Sin energía: el motor no la
+mueve".
+
+DIAGNÓSTICO: no era un bug — los dos mensajes eran VERDADEROS. Cada uno usa un predicado de energía distinto
+y deliberadamente diferente: el chispazo usa `isInstanceEnergized` ("¿hay corriente viva acá?", la SECCIÓN
+tiene unidades otorgadas) y la puerta usa `isInstancePowered` ("¿su demanda está satisfecha?", que es TODO O
+NADA: con 1 unidad otorgada y `powerDraw: 2`, no arranca). Chocan solo en la franja `0 < otorgado < draw`.
+
+EL NÚMERO DE FONDO: la nave produce 10 unidades (5 células fotovoltaicas × 2) y sus 10 puertas piden 20. Cada
+sección tiene exactamente una puerta, así que ninguna funciona con 1 unidad. La oferta nunca se dimensionó
+contra la demanda porque hasta la ronda 2 NADA consumía energía — `compuerta-blindada` es todavía el único
+consumidor de todo el juego.
+
+DECISIÓN DEL OPERADOR: la escasez se queda; lo que falta es MOSTRARLA, con un sistema genérico de tintado +
+aviso en tooltip reusable para otros estados. No es alcance inventado: es la viñeta de legibilidad que 13g ya
+tenía escrita ("una pieza apagada por triaje no se distingue de una encendida — hace falta su representación,
+o el gating es invisible"), adelantada porque 13h la volvió urgente.
+
+* **Motor — `engine/src/instance-state/` (dominio nuevo).** `InstanceStateFlag` (arranca con `unpowered`) y
+  `deriveInstanceStates(instance, queries)` con la misma interfaz ANGOSTA inyectada que `DoorWorldQueries`.
+  El estado lleva su DETALLE NUMÉRICO (`required`/`available`) como datos, no como texto ya compuesto: el
+  motor no arma strings de UI. Agregar un estado = una consulta más y una fila más en la tabla.
+  Guard crítico: `unpowered` exige `powerDraw > 0`. Sin él, toda pieza sin consumo declarado en una sección a
+  0 se marcaría apagada — o sea TODO el catálogo salvo la compuerta, y el plano entero se vería sin energía.
+
+* **`componentPowerDraw` centralizado.** La misma expresión estaba copiada en `allocateComponentPower` y en
+  `MissionRuntime.sectionPowerDemand`, y la derivación iba a ser la tercera. Si divergieran, el plano diría
+  que hay déficit y el reparto alimentaría la pieza igual. Cuando 13g suba `powerDraw` a dato de componente,
+  es el único lugar a tocar.
+
+* **`/game` — `component-state-visuals.ts` (nuevo).** Tabla ORDENADA estado→(tinte, ícono, aviso), molde de
+  `doorLayerColor`. No se SUMA a los que deciden el tinte: los REEMPLAZA — absorbe la prioridad
+  `condition > wear` que vivía escrita a mano en `mission-overlay-renderer.ts:104`. Sin eso, el renderer
+  habría escrito `condition` al crear el sprite y el update por frame `unpowered`, y la base habría oscilado
+  según quién escribió último (el patrón que ya costó una ronda con `setTint` en 12d). Cadena final:
+  `destroyed > jammed > unpowered > wear`.
+  COLOR: reusa `DOOR_STATE_COLOR.unpowered`, no el ámbar de `ENERGY_LAYER_COLOR.deficit` — ese mismo ámbar es
+  `COMPONENT_WEAR_TINT.degradado`, así que sobre un sprite ya significa otra cosa y dos estados distintos se
+  verían igual (principio 6 en su forma inversa). Hay un test que ancla esa no-colisión.
+
+* **Tinte + ÍCONO (decisión del operador).** Un tinte solo no alcanza: `applyLightShading` lo multiplica por
+  el nivel de luz de la celda cada frame, y una pieza sin energía vive justo donde menos luz hay — el estado
+  que más hay que mostrar sería el menos visible. El ⚡ va claro con contorno oscuro y NO entra en
+  `forEachShadedTarget`, así que la luz no lo apaga.
+  `updateComponentStateTints` escribe `setBaseTint`, nunca `setTint` (molde de `updateLedIndicators`), y se
+  llama FUERA del guard de modo `execution`: el jugador reparte energía en PAUSA y el dial tiene que
+  responderle en el acto.
+
+* **Tooltip y panel de acciones** muestran el mismo aviso desde la misma tabla: "⚡ Sin energía: pide 2 · la
+  sección otorga 1". El número es lo accionable; "sin energía" a secas describe el síntoma sin dar la salida.
+
+* **`tooltipRedrawKey`:** la firma de contenido vivo se calculaba SOLO para `kind === "section"` y para
+  `"instance"` era `""` fijo — o sea que el bug de 13f ronda 4 (dato vivo congelado en un widget cacheado)
+  seguía vivo en la rama de piezas, que también puede llevar atmósfera y brecha. Sin extenderla, bajar el
+  dial no habría apagado el aviso hasta mover el mouse de celda.
+
+* **Los dos mensajes** ya no se contradicen: el chispazo nombra la SECCIÓN ("La sección tiene corriente…") y
+  el de la puerta el DÉFICIT ("Sin energía suficiente…"). Ninguno se suprime — las dos verdades le importan
+  al jugador: una pieza que no arranca SÍ es peligrosa de desmontar.
+
+LÍMITE HONESTO: los componentes sin sprite propio se dibujan en el `Graphics` batcheado del overlay y no son
+tinteables por instancia. Para esos el estado se comunica por contorno y tooltip. Registrado como deuda.
+
+TESTS: 1028 → 1038 en `/engine`, 78 → 86 en `/game`. Nuevos: `deriveInstanceStates` (6 casos, incluido el que
+impide marcar apagado todo el catálogo), `resolveComponentVisual` + no-colisión de colores (8), y
+`power-predicates-disagreement` — el test que ANCLA que los dos predicados discrepan en esa franja, para que
+cualquier futuro "arreglo" de uno rompa ruidosamente en vez de en silencio. `tsc`, `eslint` y `vite build`
+limpios.

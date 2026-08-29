@@ -7,7 +7,7 @@ import {
   resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
-import type { SignalEdgeId } from "engine";
+import type { PlacedComponentInstance, SignalEdgeId } from "engine";
 import type {
   BarkEventType,
   ChemicalSubstanceId,
@@ -47,6 +47,7 @@ import {
 import type { ConduitPath } from "../render/conduit-path.js";
 import { computeConduitRoute, computeSignalWireRoute } from "../render/conduit-path.js";
 import { doorSlideAxis, easedDoorOpenness } from "../render/door-visuals.js";
+import { instanceStateLabel, resolveComponentVisual } from "../render/component-state-visuals.js";
 import { createConduitPathFlowEffect, type ConduitPathFlowState } from "../particles/effects/conduit-flow-effect.js";
 import {
   computeSectionSignalActivity,
@@ -114,6 +115,8 @@ import {
   CRISIS_FATAL_COLOR,
   CRISIS_SAFE_COLOR,
   SEALED_VALVE_COLOR,
+  STATE_ICON_CSS,
+  STATE_ICON_STROKE_CSS,
   BREACH_MARKER_COLOR,
   BREACH_SEALED_MARKER_COLOR,
   sectionScarFlickerAlpha,
@@ -406,6 +409,13 @@ export class FloorplanScene extends Phaser.Scene {
   private problemMarker?: Phaser.GameObjects.Arc;
   /** Marcador pulsante por brecha de casco abierta (13f ronda 1), clave `x,y` — ver `syncBreachMarkers`. */
   private readonly breachMarkers = new Map<string, Phaser.GameObjects.Arc>();
+  /**
+   * Glifo de estado por instancia (13h ronda 3), ej. ⚡ para "sin energía". Vive
+   * aparte de los sprites de componente a propósito: no entra en
+   * `forEachShadedTarget`, así que la luz de la celda no lo apaga — que es toda
+   * la razón de que exista además del tinte.
+   */
+  private readonly stateIcons = new Map<PlacedComponentInstanceId, Phaser.GameObjects.Text>();
   private briefingContainer?: Phaser.GameObjects.Container;
   private briefingOpen = false;
   /** Evita transicionar dos veces a la pantalla de resultado (el evento `crisis-resolved` es terminal, pero es barato blindarlo). */
@@ -1375,6 +1385,11 @@ export class FloorplanScene extends Phaser.Scene {
     // una marca persistente de la nave, no un efecto de la simulación.
     this.redrawUnpoweredSectionScar(time / 1000);
     this.syncUnpoweredSectionLights(time / 1000);
+    // Estado por componente (13h ronda 3). Va acá, con las cicatrices que
+    // "parpadean siempre", y NO dentro del bloque de modo `execution` de más
+    // abajo: el jugador reparte energía en PAUSA, y el tinte tiene que
+    // responderle en el acto o el dial parece no hacer nada.
+    this.updateComponentStateTints();
     // Chispas + luz de conductor sobrecargado (Fase 12a): misma cicatriz
     // permanente que la de arriba, parpadea siempre, sin importar el modo.
     this.syncOverloadedConductorEffects(time / 1000, delta / 1000);
@@ -1903,10 +1918,20 @@ export class FloorplanScene extends Phaser.Scene {
     // mientras la sala se represuriza, que es cuando el jugador lo mira. Mismo
     // criterio de `shipStatusRedrawKey`: se reconstruye cuando el TEXTO
     // cambiaría, no cada frame.
-    const redrawKey =
-      content.kind === "section"
-        ? `${content.atmosphere ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}` : ""}|${content.breach?.sealed ?? ""}`
+    //
+    // Ronda 3 de playtest de 13h: la firma se calculaba SOLO para `section` y
+    // para `instance` era `""` fijo, así que el bug de arriba seguía vivo en la
+    // rama de piezas — que también puede llevar atmósfera y brecha. Con el
+    // aviso de energía adentro se habría visto enseguida: bajar el dial no
+    // apagaría el aviso hasta mover el mouse de celda.
+    const atmosphereKey = content.atmosphere
+      ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}`
+      : "";
+    const statesKey =
+      content.kind === "instance"
+        ? (content.states ?? []).map((state) => `${state.flag}:${state.required}/${state.available}`).join(",")
         : "";
+    const redrawKey = `${atmosphereKey}|${content.breach?.sealed ?? ""}|${statesKey}`;
     if (
       !this.tooltip ||
       this.tooltipCell?.x !== cell.x ||
@@ -1926,6 +1951,7 @@ export class FloorplanScene extends Phaser.Scene {
         sectionVacuum: t("ui.floorplan.mission.tooltip.vacuum"),
         sectionBreach: (sealed) =>
           t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
+        instanceState: (state) => instanceStateLabel(state),
       }).setDepth(RENDER_DEPTH.hudContent);
       this.markAsHudObject(this.tooltip);
       this.tooltipCell = cell;
@@ -3734,6 +3760,71 @@ export class FloorplanScene extends Phaser.Scene {
       this.setBaseTint(sprite, color);
       this.syncLedLight(instanceId, sprite, active);
     }
+  }
+
+  /**
+   * Estado por COMPONENTE sobre el plano (Subfase 13h, ronda 3 de playtest):
+   * tinte + ícono para las piezas que están en un estado notable.
+   *
+   * Nace del reporte de una compuerta que pedía 2 unidades en una sección con
+   * 1: el gating de energía por componente funcionaba perfectamente y era
+   * **invisible** — una pieza apagada por triaje se veía igual que una
+   * encendida. Es la viñeta de legibilidad que 13g ya tenía escrita.
+   *
+   * Escribe `setBaseTint`, NUNCA `setTint`: el único que pinta el color visible
+   * es `applyLightShading` (ver el docblock de `baseTints`; este canal ya se
+   * peleó una vez). Molde exacto de `updateLedIndicators`, con una diferencia
+   * deliberada: **corre también en pausa táctica**, porque repartir energía es
+   * justamente algo que se hace en pausa y el efecto tiene que verse en el acto.
+   *
+   * El ícono va aparte y NO entra en `forEachShadedTarget`: un tinte se
+   * multiplica por la luz de su celda, y una pieza sin energía vive donde menos
+   * luz hay — el estado que más hay que mostrar sería el menos visible.
+   */
+  private updateComponentStateTints(): void {
+    const seen = new Set<PlacedComponentInstanceId>();
+    for (const instance of this.mission.blueprint.placedComponents) {
+      const states = this.mission.instanceStates(instance);
+      const visual = resolveComponentVisual(instance, states);
+      const sprites = this.componentSprites.get(instance.instanceId);
+      if (sprites) {
+        for (const sprite of sprites) {
+          this.setBaseTint(sprite, visual.tint ?? NEUTRAL_TINT);
+        }
+      }
+      if (visual.icon && states.length > 0) {
+        seen.add(instance.instanceId);
+        this.syncStateIcon(instance, visual.icon);
+      }
+    }
+    for (const [instanceId, icon] of this.stateIcons) {
+      if (!seen.has(instanceId)) {
+        icon.destroy();
+        this.stateIcons.delete(instanceId);
+      }
+    }
+  }
+
+  /** Glifo de estado en la esquina de la pieza. Se sincroniza, no se recrea (patrón de `syncBreachMarkers`). */
+  private syncStateIcon(instance: PlacedComponentInstance, glyph: string): void {
+    const existing = this.stateIcons.get(instance.instanceId);
+    if (existing) {
+      if (existing.text !== glyph) existing.setText(glyph);
+      return;
+    }
+    const { width } = effectiveFootprintExtent(instance.placement);
+    const icon = this.add
+      .text((instance.placement.position.x + width) * CELL - 3, instance.placement.position.y * CELL + 2, glyph, {
+        fontFamily: "sans-serif",
+        fontSize: "13px",
+        color: STATE_ICON_CSS,
+        stroke: STATE_ICON_STROKE_CSS,
+        strokeThickness: 3,
+      })
+      .setOrigin(1, 0)
+      .setDepth(RENDER_DEPTH.problemMarker);
+    this.markAsWorldObject(icon);
+    this.stateIcons.set(instance.instanceId, icon);
   }
 
   /**

@@ -36,6 +36,7 @@ import {
   ACTION_PANEL_HEIGHT_KEY,
   renderMissionActionPanel,
   type ActionPanelContent,
+  type ComponentStatePanelInfo,
   type DoorPanelInfo,
   type AvailableSubstanceEntry,
   type CompositionIngredient,
@@ -44,6 +45,11 @@ import {
 import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { SectionAtmosphereTooltip, TooltipContent } from "../ui/widgets/mission-tooltip.js";
+import {
+  instanceStateLabel,
+  stateNoticeCss,
+  visualForState,
+} from "../render/component-state-visuals.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 import type { MissionRuntime } from "./mission-runtime.js";
 import { AUDIO_KEYS } from "../audio/audio-asset-registry.js";
@@ -532,6 +538,11 @@ export class MissionInteractionController {
         // jugador está mirando cuando pregunta por qué su gente sigue cayendo.
         atmosphere: this.noteworthySectionAtmosphere(position),
         breach: this.mission.breachCovering(occupiedCells(instance.placement)),
+        // Estados notables derivados del mundo (13h ronda 3). Derivados EN EL
+        // MOMENTO del hover, como todo el resto del tooltip: el estado cambia
+        // en cuanto el jugador mueve el dial de energía, y un valor horneado
+        // sería la UI mintiendo sobre el motor.
+        states: this.mission.instanceStates(instance),
       };
     }
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
@@ -910,6 +921,27 @@ export class MissionInteractionController {
   }
 
   /**
+   * Estados notables de una pieza, ya resueltos a texto/ícono/color (13h ronda
+   * 3). La traducción y el color salen de `component-state-visuals.ts`, la
+   * MISMA tabla que tiñe el sprite en el plano y que llena el tooltip: el panel
+   * no puede decir algo distinto de lo que el jugador está viendo.
+   */
+  private componentStatesFor(instanceId: PlacedComponentInstanceId): ComponentStatePanelInfo[] {
+    const instance = this.mission.blueprint.placedComponents.find(
+      (entry) => entry.instanceId === instanceId,
+    );
+    if (!instance) return [];
+    return this.mission.instanceStates(instance).map((state) => {
+      const visual = visualForState(state.flag);
+      return {
+        icon: visual.icon ?? "•",
+        text: instanceStateLabel(state),
+        color: stateNoticeCss(visual),
+      };
+    });
+  }
+
+  /**
    * Estado de puerta de una instancia instalada (Subfase 13h), o `undefined` si
    * esa pieza no es una puerta. La resuelve el motor: el controller no sabe qué
    * hace que un `ACT`+`EST` sobre un umbral cuente como puerta.
@@ -991,6 +1023,10 @@ export class MissionInteractionController {
             // mundo vivo como el resto, para que instalar la plancha apague el
             // aviso sin cerrar y reabrir el panel.
             breach: this.breachInfoFor(this.actionPanelContent.instanceId),
+            // Estados notables (13h ronda 3), derivados en cada dibujo como
+            // todo lo demás de este bloque: mover el dial de energía tiene que
+            // apagar el aviso sin cerrar y reabrir el panel.
+            states: this.componentStatesFor(this.actionPanelContent.instanceId),
             // Subfase 13h: si la pieza es una puerta, su estado cambia solo
             // (alguien se acerca, se corta la energía, un intruso la golpea) —
             // se deriva del mundo vivo como todo lo demás de este bloque, para

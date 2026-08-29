@@ -1510,3 +1510,29 @@
 
 ## `engine/src/components/catalog/composite/guerra.ts` (modificado, ronda 2)
 - `compuerta-blindada`: `ACT.cadence` 3 s → 1.5 s. Simulación y animación comparten el número.
+
+# Subfase 13h — ronda 3 de playtest (estado visible por componente)
+
+## `engine/src/instance-state/` (dominio nuevo)
+- `instance-state.types.ts` — `InstanceStateFlag` (hoy `unpowered`) e `InstanceState`, que lleva el detalle
+  numérico (`required`/`available`) como DATOS: el motor no arma texto de UI.
+- `derive-instance-states.ts` — `deriveInstanceStates` con interfaz angosta inyectada (molde de
+  `DoorWorldQueries`). `unpowered` exige `powerDraw > 0`: sin ese guard, toda pieza sin consumo declarado se
+  marcaría apagada.
+
+## `engine/src/power/component-power-draw.ts` (nuevo)
+- `componentPowerDraw`: única lectura de `powerDraw`. Estaba copiada en `allocateComponentPower` y en
+  `sectionPowerDemand`. Punto único de cambio cuando 13g lo suba a dato de componente.
+
+## `game/src/render/component-state-visuals.ts` (nuevo)
+- Tabla ORDENADA estado→(tinte, ícono, aviso) + `resolveComponentVisual` (cadena
+  `destroyed > jammed > unpowered > wear`) e `instanceStateLabel` (compone los números; `t()` no interpola).
+- Es la ÚNICA fuente de tinte de sprite: absorbe la prioridad `condition > wear` que decidía el renderer.
+
+## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 3)
+- `updateComponentStateTints` + `syncStateIcon`: escriben `setBaseTint` (nunca `setTint`) y corren fuera del
+  guard de `execution`. El ícono no entra en `forEachShadedTarget`, así que la luz no lo apaga.
+- `tooltipRedrawKey` pasa a calcularse también para `kind === "instance"` (antes `""` fijo).
+
+## `game/src/ui/widgets/mission-tooltip.ts` y `mission-action-panel.ts` (modificados, ronda 3)
+- Líneas de estado con ícono, texto y color ya resueltos por el llamador desde la misma tabla.

@@ -1,5 +1,11 @@
 import type Phaser from "phaser";
-import type { ComponentCondition, ComponentWear, FunctionalProperty, MaterialProperties } from "engine";
+import type {
+  ComponentCondition,
+  ComponentWear,
+  FunctionalProperty,
+  InstanceState,
+  MaterialProperties,
+} from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import {
@@ -9,6 +15,7 @@ import {
   CRISIS_WARNING_CSS,
   LABEL_COLOR,
 } from "../../render/palette.js";
+import { stateNoticeCss, visualForState } from "../../render/component-state-visuals.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
@@ -41,6 +48,13 @@ export type TooltipContent =
       readonly atmosphere?: SectionAtmosphereTooltip;
       /** Brecha de casco bajo esta pieza: dice si lo instalado la está tapando de verdad. */
       readonly breach?: { readonly sealed: boolean };
+      /**
+       * Estados notables derivados del mundo (13h ronda 3), ej. "sin energía".
+       * Van como DATOS y no como texto ya compuesto: el aviso útil lleva
+       * números ("pide 2, la sección otorga 1") y `t()` no interpola, así que
+       * el widget arma la línea con la tabla de estados y el detalle numérico.
+       */
+      readonly states?: ReadonlyArray<InstanceState>;
     }
   | {
       readonly kind: "section";
@@ -79,6 +93,12 @@ export interface MissionTooltipLabels {
   readonly sectionVacuum: string;
   /** Brecha de casco en la celda bajo el cursor. */
   readonly sectionBreach: (sealed: boolean) => string;
+  /**
+   * Aviso de un estado notable de la pieza (13h ronda 3). Recibe el estado
+   * COMPLETO, con su detalle numérico, porque "sin energía" a secas describe el
+   * síntoma sin dar la salida: lo que le sirve al jugador es cuánto le falta.
+   */
+  readonly instanceState: (state: InstanceState) => string;
 }
 
 const TOOLTIP_WIDTH = 260;
@@ -204,6 +224,19 @@ export function renderMissionTooltip(
     // vacío si mata ahora mismo, y la brecha si el agujero sigue abierto. Un
     // fenómeno, una lectura (principio 6).
     const lines: Array<{ readonly text: string; readonly color: string }> = [];
+    // Estados de la PIEZA (13h ronda 3) antes que los de la sala: el jugador
+    // está preguntando por esta pieza. El ícono y el color salen de la misma
+    // tabla que el tinte del sprite, así que lo que ve en el plano y lo que lee
+    // acá no pueden divergir.
+    if (content.kind === "instance") {
+      for (const state of content.states ?? []) {
+        const visual = visualForState(state.flag);
+        lines.push({
+          text: `${visual.icon ?? "•"} ${labels.instanceState(state)}`,
+          color: stateNoticeCss(visual),
+        });
+      }
+    }
     if (content.atmosphere) {
       lines.push({
         text: `• ${labels.sectionPressure(content.atmosphere.pressureKpa)}`,

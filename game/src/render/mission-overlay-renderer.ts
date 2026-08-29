@@ -13,10 +13,9 @@ import type {
 import { RENDER_DEPTH } from "./render-depths.js";
 import { componentTextureKey, hasComponentSprite } from "./component-sprite-registry.js";
 import { computeSignalWireRoute } from "./conduit-path.js";
+import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
-  COMPONENT_CONDITION_TINT,
-  COMPONENT_WEAR_TINT,
   CONDUIT_COLORS,
   LABEL_COLOR,
   LED_INACTIVE_TINT,
@@ -98,10 +97,16 @@ export function renderMissionOverlay(
   const componentSpritesByInstanceId = new Map<PlacedComponentInstanceId, ReadonlyArray<Phaser.GameObjects.Image>>();
 
   blueprint.placedComponents.forEach((instance, index) => {
-    // `condition` gana sobre `wear` (Fase 13c): una pieza destruida se ve
-    // destruida aunque además esté degradada — el dato más grave manda, para
-    // no colapsar dos estados distintos en un color intermedio ambiguo.
-    const tint = COMPONENT_CONDITION_TINT[instance.condition] ?? COMPONENT_WEAR_TINT[instance.wear];
+    // La prioridad `condition > wear` vivía escrita a mano acá (Fase 13c) y se
+    // mudó a `resolveComponentVisual` en la ronda 3 de playtest de 13h: es la
+    // ÚNICA fuente de "de qué color va esta pieza". Sin eso, el estado derivado
+    // que la escena pinta por frame y el tinte que este renderer pone al crear
+    // el sprite se habrían pisado según quién escribió último.
+    //
+    // Acá se resuelve sin los estados vivos (el renderer no los conoce): el
+    // `updateComponentStateTints` de la escena completa la resolución en el
+    // mismo frame, sobre la misma tabla.
+    const tint = resolveComponentVisual(instance).tint;
     const { width, height } = effectiveFootprintExtent(instance.placement);
     const originX = instance.placement.position.x * CELL;
     const originY = instance.placement.position.y * CELL;

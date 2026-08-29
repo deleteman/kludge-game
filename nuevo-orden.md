@@ -876,7 +876,14 @@ Alcance de la subfase:
 
 * **Tarea en curso:** si la sección pierde energía mientras se ejecuta, la tarea pasa a `failed` con notificación (decisión del operador; principio 5 — quedarse sin energía a mitad de una síntesis cuesta algo). `task-failed` y su aviso ya existen: falta el gancho que lo dispare.
 
-* **Legibilidad (principio 6):** hoy la falta de energía se ve **por sección** (tinte + luz parpadeante, `redrawUnpoweredSectionScar`) pero no **por componente**. Una pieza apagada por triaje dentro de una sección con energía parcial no se distingue de una encendida — hace falta su representación, o el gating es invisible.
+* **Legibilidad (principio 6): ✅ YA RESUELTA por adelantado** en la ronda 3 de playtest de 13h. La puerta fue
+  el primer consumidor real y volvió urgente esta viñeta, así que se construyó ahí el sistema GENÉRICO que
+  pedía: `engine/src/instance-state/` deriva los estados notables de una instancia y
+  `game/src/render/component-state-visuals.ts` es la tabla ordenada estado→(tinte, ícono, aviso), consumida a
+  la vez por el sprite del plano, el tooltip y el panel de acciones. **13g no tiene que construir nada de
+  esto: agrega una fila por estado nuevo.** Dos cosas que sí hereda — la deuda #38 (las piezas sin sprite
+  propio no son tinteables, y 13g es justo lo que las va a poner en ese estado) y la #39 (la oferta de energía
+  de la nave nunca se dimensionó contra su demanda, y esta subfase la empeora).
 
 * **GDD:** revisar §5.1 (la línea de `FAB` escrita en 13e dice que no se modela como `ACT` porque no convierte energía en trabajo). Sigue sin ser `ACT` — no hace trabajo físico sobre el mundo — pero sí **requiere alimentación para operar**. Documentar `powerDraw` como dato de componente y no como campo de `ACT`.
 

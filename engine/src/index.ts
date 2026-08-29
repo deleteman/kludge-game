@@ -789,6 +789,10 @@ export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "
 export { emptyPowerState } from "./power/power.types.js";
 export { totalPowerBudget } from "./power/power-source.js";
 export { allocateSectionBudget, allocateComponentPower } from "./power/power-allocation.js";
+export { componentPowerDraw } from "./power/component-power-draw.js";
+export { deriveInstanceStates } from "./instance-state/derive-instance-states.js";
+export type { InstanceStateQueries } from "./instance-state/derive-instance-states.js";
+export type { InstanceState, InstanceStateFlag } from "./instance-state/instance-state.types.js";
 export type { PowerDomainEvent, PowerShortfallEvent } from "./power/power-events.types.js";
 export type { SectionBudgetResult, ComponentPowerResult } from "./power/power-allocation.js";
 export { MissionPowerRuntime } from "./power/mission-power-runtime.js";
