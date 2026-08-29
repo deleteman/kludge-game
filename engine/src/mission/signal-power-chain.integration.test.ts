@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allEmittersActive,
   buildComponentCatalog,
   MissionPowerRuntime,
   MissionSignalRuntime,
@@ -117,15 +118,29 @@ function blueprintWith(unitsForSala: number): Blueprint {
   };
 }
 
-function mountChain(unitsForSala: number) {
+function mountChain(unitsForSala: number, blockedCells: ReadonlyArray<GridPosition> = []) {
   const plan = floorplan();
   const shipState = new MutableShipState(blueprintWith(unitsForSala));
+  const blocked = {
+    isBlocked: (cell: GridPosition) =>
+      blockedCells.some((entry) => entry.x === cell.x && entry.y === cell.y),
+  };
 
   let actors: GridPosition[] = [];
   const powerRuntime = new MissionPowerRuntime(shipState, plan, REGISTRY);
   const signalRuntime = new MissionSignalRuntime(
     shipState,
-    motionAwareEmitterInputs(shipState, () => actors, { isBlocked: () => false }, () => new Map()),
+    // Base `allEmittersActive`, LA MISMA que produccion. Con el mapa vacio que
+    // este test usaba en 13g, un emisor que el resolvedor no supiera resolver
+    // salia `false` aca y `true` en el juego — o sea que el bug de la ronda 1
+    // (el LED siempre encendido) era invisible por construccion.
+    motionAwareEmitterInputs(
+      shipState,
+      () => actors,
+      blocked,
+      REGISTRY,
+      allEmittersActive(shipState),
+    ),
     undefined,
     powerRuntime,
     powerRuntime,
@@ -177,6 +192,40 @@ describe("cadena de señal con el reparto de energía real (Subfase 13g)", () =>
 
     expect(signalRuntime.outputOf(SENSOR_NODE)).toBe(true);
     expect(signalRuntime.outputOf(LED_NODE)).toBe(true);
+  });
+
+  it("CON energía y SIN nadie cerca, el LED queda apagado", () => {
+    // El bug de la ronda 1 de playtest de 13g, y el caso que faltaba: los tests
+    // de 13g probaban el positivo (actor encima del sensor) y el apagado por
+    // ENERGÍA, nunca el apagado por falta de estímulo. El operador lo vio antes
+    // que la suite: "el LED se activa aunque el fotorreceptor detecte algo o no".
+    const { signalRuntime, run } = mountChain(2);
+    run(2);
+
+    expect(signalRuntime.outputOf(SENSOR_NODE)).toBe(false);
+    expect(signalRuntime.outputOf(LED_NODE)).toBe(false);
+  });
+
+  it("un actor dentro del rango pero detrás de una pared no dispara el sensor", () => {
+    // Paredes y puertas cerradas cuentan: `/game` inyecta el mismo `blocked`
+    // que usa el pathfinding, con `doorRuntime.blocksCell` incluido.
+    const { signalRuntime, run, moveActorsTo } = mountChain(2, [{ x: 1, y: 0 }]);
+    moveActorsTo([{ x: 2, y: 0 }]);
+    run(2);
+
+    expect(signalRuntime.outputOf(SENSOR_NODE)).toBe(false);
+  });
+
+  it("el actor se va y el LED se apaga: el sensor sigue el mundo en las dos direcciones", () => {
+    const { signalRuntime, run, moveActorsTo } = mountChain(2);
+    moveActorsTo([{ x: 0, y: 0 }]);
+    const elapsed = run(2);
+    expect(signalRuntime.outputOf(LED_NODE)).toBe(true);
+
+    moveActorsTo([]);
+    run(2, elapsed);
+    expect(signalRuntime.outputOf(SENSOR_NODE)).toBe(false);
+    expect(signalRuntime.outputOf(LED_NODE)).toBe(false);
   });
 
   it("en una sección a 0 unidades la señal NO llega, aunque el sensor esté activo", () => {

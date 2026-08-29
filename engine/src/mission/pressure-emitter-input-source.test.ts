@@ -8,6 +8,10 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+
+/** Catálogo REAL: el bug de la ronda 1 de 13g solo se manifiesta con las piezas de verdad. */
+const REGISTRY = buildComponentCatalog().registry;
 
 const SENSOR_INSTANCE = "sensor-instance" as PlacedComponentInstanceId;
 const SENSOR_NODE = "sensor-node" as SignalNodeId;
@@ -81,6 +85,7 @@ describe("mission: pressureAwareEmitterInputs (Subfase 11h, caso 19)", () => {
       shipState,
       floorplan,
       (sectionId) => (sectionId === SECTION ? standardAtmosphere(pressureKpa) : undefined),
+      REGISTRY,
       () => new Map(),
     );
 
@@ -97,6 +102,7 @@ describe("mission: pressureAwareEmitterInputs (Subfase 11h, caso 19)", () => {
       shipState,
       floorplan,
       () => undefined,
+      REGISTRY,
       () => new Map(),
     );
 
@@ -111,6 +117,7 @@ describe("mission: pressureAwareEmitterInputs (Subfase 11h, caso 19)", () => {
       shipState,
       floorplan,
       () => standardAtmosphere(80),
+      REGISTRY,
       () => new Map([[OTHER_NODE, true]]),
     );
 

@@ -101,6 +101,8 @@ import {
   CONDUIT_LAYER_INACTIVE_ALPHA,
   CORE_LOOP_MODE_COLORS,
   CREW_TOKEN_COLORS,
+  EMITTER_RANGE_ALPHA,
+  EMITTER_RANGE_COLOR,
   HEADER_COLOR,
   HOVER_HIGHLIGHT_COLOR,
   LABEL_COLOR,
@@ -656,6 +658,14 @@ export class FloorplanScene extends Phaser.Scene {
   private tooltipRedrawKey?: string;
   /** Anillos que marcan los nodos clickeables (y el origen elegido) mientras el modo cableado está activo (playtest #15). */
   private wireNodeHighlights: Phaser.GameObjects.Arc[] = [];
+  /**
+   * Área que cubre el sensor seleccionado (13g ronda 1). Un solo `Graphics`
+   * reusado con `clear()` en vez de N rectángulos: el molde de las capas del
+   * HUD del plano (`drawEnergyLayer`), porque un radio puede ser decenas de
+   * celdas. Top-level, no dentro del container del overlay — un container
+   * aplana el depth de sus hijos (ver `render-depths.ts`).
+   */
+  private emitterRangeLayer?: Phaser.GameObjects.Graphics;
 
   /** Acumulador para redibujar el panel de cola con throttle durante la ejecución (barra de progreso/cuenta regresiva en vivo). */
   private queueRedrawAccumulatorMs = 0;
@@ -1390,6 +1400,12 @@ export class FloorplanScene extends Phaser.Scene {
     // abajo: el jugador reparte energía en PAUSA, y el tinte tiene que
     // responderle en el acto o el dial parece no hacer nada.
     this.updateComponentStateTints();
+    // 13g ronda 1: el área de alcance del sensor seleccionado. Va en `update()`
+    // y no en un hook de selección porque su geometría es VIVA — una puerta que
+    // se abre o se cierra cambia la línea de visión, así que un dibujo cacheado
+    // al seleccionar se congelaría justo mirándolo (patrón 41). Sale barato:
+    // early-return inmediato si no hay ningún sensor seleccionado.
+    this.updateEmitterRangeHighlight();
     // Chispas + luz de conductor sobrecargado (Fase 12a): misma cicatriz
     // permanente que la de arriba, parpadea siempre, sin importar el modo.
     this.syncOverloadedConductorEffects(time / 1000, delta / 1000);
@@ -1997,6 +2013,50 @@ export class FloorplanScene extends Phaser.Scene {
         .setDepth(RENDER_DEPTH.problemMarker);
       this.markAsWorldObject(ring);
       this.wireNodeHighlights.push(ring);
+    }
+  }
+
+  /**
+   * Área que un sensor cubre de verdad, pintada sobre el plano (ronda 1 de
+   * playtest de 13g).
+   *
+   * Por qué existe: el operador cableó un fotorreceptor a un LED y lo vio
+   * encendido siempre. No era un bug del gating — el sensor estaba detectando
+   * al tripulante que acababa de tenderle el cable, que `queueConnect` deja
+   * parado al lado. Con el alcance invisible, "detecta" y "no detecta" son
+   * indistinguibles desde el plano. Bajar el rango lo hace jugable; dibujarlo
+   * lo hace ENTENDIBLE, que es la otra mitad del problema.
+   *
+   * Las celdas salen de `emitterCoverageCells`, la MISMA función que usa el
+   * resolvedor para decidir el disparo, leyendo el mismo `motionBlockedQuery`
+   * (paredes del tilemap + puertas cerradas). Una fórmula propia acá sería la
+   * UI mintiendo sobre el motor: un radio pintado que no coincide con lo que el
+   * sensor detecta.
+   */
+  private updateEmitterRangeHighlight(): void {
+    if (!this.emitterRangeLayer) {
+      this.emitterRangeLayer = this.add.graphics().setDepth(RENDER_DEPTH.emitterRange);
+      this.markAsWorldObject(this.emitterRangeLayer);
+    }
+    const layer = this.emitterRangeLayer;
+    layer.clear();
+
+    // En modo cableado manda el nodo origen ya elegido (es el sensor que el
+    // jugador está por conectar); si no, la pieza abierta en el panel.
+    const wiredOwner = this.interaction.wireFirstNode
+      ? this.mission.blueprint.signalGraph.nodes.find(
+          (node) => node.id === this.interaction.wireFirstNode,
+        )?.ownerRef
+      : undefined;
+    const instanceId = wiredOwner ?? this.interaction.selectedInstanceId;
+    if (!instanceId) return;
+
+    const cells = this.mission.emitterCoverageOf(instanceId);
+    if (cells.length === 0) return;
+
+    layer.fillStyle(EMITTER_RANGE_COLOR, EMITTER_RANGE_ALPHA);
+    for (const cell of cells) {
+      layer.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
     }
   }
 

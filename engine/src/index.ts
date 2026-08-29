@@ -733,6 +733,15 @@ export {
 } from "./mission/pressure-emitter-input-source.js";
 // Fase 13a — sensor óptico/de presencia real (deuda #3), por línea de visión + rango.
 export { motionAwareEmitterInputs } from "./mission/motion-emitter-input-source.js";
+// 13g ronda 1 — resolución de sensores, compartida entre el motor (que decide
+// el disparo) y `/game` (que dibuja el área de alcance): una sola fórmula.
+export {
+  emitterCoverageCells,
+  emitterRangeOf,
+  emitterReaches,
+  PRESENCE_TRIGGER_TYPES,
+  PRESSURE_TRIGGER_TYPES,
+} from "./mission/emitter-sensing.js";
 export { hasLineOfSight } from "./geometry/line-of-sight.js";
 export type { CellBlockedQuery } from "./geometry/line-of-sight.js";
 export { resolveLcdDisplayValue } from "./mission/lcd-display-value.js";

@@ -14,7 +14,12 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     name: "Sensor de movimiento láser",
     data: {
       functional: [
-        { tag: "EM", range: 15, triggerType: "motion", frequency: 2 },
+        // 13g ronda 1: 15 → 6. Este sensor pasa a simularse por primera vez (su
+        // `triggerType: "motion"` nunca estuvo cubierto), así que hereda el
+        // mismo problema de rango que el `fotorreceptor` — con 15 celdas
+        // quedaría permanentemente disparado. Más largo que el atómico porque
+        // es la pieza especializada, que para eso se fabrica.
+        { tag: "EM", range: 6, triggerType: "motion", frequency: 2 },
         { tag: "REC", threshold: 0.4, responseDelayMs: 50 },
       ],
       material: { CE: "A" },

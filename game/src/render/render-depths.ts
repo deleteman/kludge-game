@@ -50,6 +50,13 @@ export const RENDER_DEPTH = {
    * tripulación, que tiene que poder pisarlo.
    */
   substanceSpill: 2.5,
+  /**
+   * Área de alcance de un sensor seleccionado (13g ronda 1 de playtest). Debajo
+   * de `hoverHighlight` para no competir con el resaltado de selección, y
+   * debajo de la tripulación: el área existe para explicar QUÉ dispara el
+   * sensor, así que el actor que lo dispara tiene que verse encima de ella.
+   */
+  emitterRange: 2.8,
   /** Resaltado de la celda bajo el cursor (post-playtest #4) — objeto de MUNDO, encima del suelo/objetos, debajo de tripulación y paredes. */
   hoverHighlight: 3,
   /** Sprites/tokens de tripulantes (Fase 10d: círculo placeholder, sin sprite todavía — GDD §17) — encima de los objetos colocados, debajo de las paredes. */

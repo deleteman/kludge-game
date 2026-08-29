@@ -118,7 +118,15 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Fotorreceptor",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "EM", range: 10, triggerType: "optical", frequency: 1 }],
+      // Ronda 1 de playtest de 13g: `range` 10 → 4. Con 10 celdas Manhattan el
+      // sensor cubría media nave, así que cualquier tripulante lo mantenía
+      // disparado para siempre — incluido el que acababa de tenderle el cable,
+      // que `queueConnect` deja parado al lado. Con 4 el sensor se lee: se
+      // enciende cuando alguien le pasa por delante y se apaga cuando se va.
+      // Cruzado contra el Cap.2 antes de elegirlo: sus dos sensores en (12,9) y
+      // (16,9) se solapan en x=12..16, así que el intruso sigue disparando la
+      // compuerta AND al pasar entre ellos. Número fino: Fase 23.
+      functional: [{ tag: "EM", range: 4, triggerType: "optical", frequency: 1 }],
       material: { RE: "B" },
     },
   },

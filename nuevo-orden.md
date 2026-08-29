@@ -907,6 +907,24 @@ Lo que apareció y el texto de la subfase no anticipaba:
 
 Suite: `/engine` 1038 → **1059**, `/game` 86 sin cambios. `tsc`, `eslint` y `npm run build` limpios.
 
+##### Ronda 1 de playtest de 13g ✅ (2026-08-29)
+
+Un reporte: "cablé el fotorreceptor al LED y el LED se activa siempre, detecte algo o no; sin energía se
+apaga". El gating de 13g estaba bien — el sensor detectaba de verdad al tripulante que le acababa de tender el
+cable, porque `range: 10` cubría media nave y `queueConnect` lo deja parado al lado.
+
+* **Rango 10 → 4**, cruzado antes contra el Cap.2: con el rango viejo el solape de sus dos sensores era total
+  y **su compuerta AND estaba permanentemente en verdadero**, o sea que el puzzle se resolvía solo.
+* **El área de alcance se dibuja** sobre el plano, con la MISMA función que decide el disparo (paredes y
+  puertas incluidas) y redibujada por frame, porque una puerta que se abre cambia la cobertura.
+* **Bug aparte, más ancho:** los resolvedores buscaban en `ATOMIC_COMPONENT_CATALOG`, así que ningún sensor
+  COMPUESTO se simulaba nunca. Corregido contra el registro completo. El fail-open de los 15 `triggerType` sin
+  simulación se conserva por decisión del operador, ahora documentado (deuda #40).
+* **Patrón 13 por tercera vez:** los tests de la cadena inyectaban base vacía en vez de `allEmittersActive`,
+  así que el bug era invisible por construcción. Corregido, con el caso negativo que faltaba.
+
+Suite: `/engine` 1059 → **1070**.
+
 
 
 ### Fase 14 — Capítulo 2 y Acoplamientos Cruzados de Motor

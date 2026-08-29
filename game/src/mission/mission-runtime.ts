@@ -115,6 +115,7 @@ import { sectionCentroidCell } from "../render/floorplan-renderer.js";
 // `transferBlocked`) en el contrato del panel de acciones, que es quien lo
 // convierte en texto. `import type` — se borra al compilar, sin dependencia real.
 import type { FabricatorBlockedReason } from "../ui/widgets/mission-action-panel.js";
+import { emitterCoverageCells, emitterRangeOf, PRESENCE_TRIGGER_TYPES } from "engine";
 import type {
   Blueprint,
   ChemicalSubstanceDefinition,
@@ -449,6 +450,7 @@ export class MissionRuntime {
       this.shipState,
       this.shipFloorplan,
       (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      this.componentRegistry,
       motionAwareEmitterInputs(
         this.shipState,
         () => [
@@ -459,6 +461,7 @@ export class MissionRuntime {
           ...this.enemyState.all().filter((enemy) => enemy.hp > 0).map((enemy) => enemy.cell),
         ],
         { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
+        this.componentRegistry,
         allEmittersActive(this.shipState),
       ),
     );
@@ -1473,6 +1476,37 @@ export class MissionRuntime {
       .get()
       .placedComponents.find((entry) => entry.instanceId === instanceId);
     return instance && instanceFabricatorDomain(instance, this.componentRegistry);
+  }
+
+  /**
+   * Celdas que un sensor de presencia cubre DE VERDAD, para que `/game` las
+   * pinte (13g ronda 1 de playtest), o vacío si la pieza no es un sensor.
+   *
+   * Se resuelve acá y no en la escena porque el registro de componentes y el
+   * `motionBlockedQuery` son estado privado de este runtime, y sobre todo
+   * porque reusa `emitterCoverageCells` — LA MISMA función que usa
+   * `motionAwareEmitterInputs` para decidir el disparo. Una segunda fórmula en
+   * la capa visual sería un área pintada que no coincide con lo que el sensor
+   * detecta: la UI mintiendo sobre el motor.
+   */
+  emitterCoverageOf(instanceId: PlacedComponentInstanceId): ReadonlyArray<GridPosition> {
+    const instance = this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId);
+    if (!instance) {
+      return [];
+    }
+    const range = emitterRangeOf(
+      instance.componentDefinitionId,
+      this.componentRegistry,
+      PRESENCE_TRIGGER_TYPES,
+    );
+    if (range === undefined) {
+      return [];
+    }
+    return emitterCoverageCells(instance.placement.position, range, this.shipFloorplan.gridSize, {
+      isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell),
+    });
   }
 
   /**

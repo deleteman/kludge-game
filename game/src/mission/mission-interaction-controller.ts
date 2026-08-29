@@ -305,6 +305,18 @@ export class MissionInteractionController {
     return this.wireFirstNodeId;
   }
 
+  /**
+   * Pieza seleccionada en el panel de acciones, o `undefined` si el panel está
+   * en `idle` o mostrando una celda vacía (13g ronda 1). Expuesto para que
+   * `FloorplanScene` pueda dibujar el área de alcance del sensor seleccionado
+   * sin abrir `actionPanelContent` entero, que es estado interno del panel.
+   */
+  get selectedInstanceId(): PlacedComponentInstanceId | undefined {
+    return this.actionPanelContent.kind === "instance"
+      ? this.actionPanelContent.instanceId
+      : undefined;
+  }
+
   toggleWireMode(): void {
     this.wireModeValue = !this.wireModeValue;
     this.setWireFirstNode(undefined);

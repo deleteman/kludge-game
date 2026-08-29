@@ -5434,3 +5434,53 @@ montando el `MissionPowerRuntime` DE VERDAD, no un `isInstancePowered` inyectado
 semántica correcta habría estado en verde con el bug puesto — patrones 13 y 43), y 6 casos de fallo de tarea
 por energía. RECALIBRADO con el motivo escrito: `initial-ship-state.test.ts` anclaba 10 unidades y 18 celdas.
 `tsc`, `eslint` y `npm run build` limpios.
+
+================================================================================
+2026-08-29 — Subfase 13g, RONDA 1 DE PLAYTEST: el sensor que siempre detectaba
+================================================================================
+El operador cableó un `fotorreceptor` directo a un `indicador-led` y reportó que el LED se enciende siempre,
+detecte el sensor o no; cortarle la energía a la sección sí lo apaga.
+
+DIAGNÓSTICO: el gating de 13g estaba bien — `outputOf` solo puede forzar a `false`, y por eso la energía era
+el único eje que apagaba el LED. El sensor estaba **detectando de verdad**: el `fotorreceptor` declaraba
+`range: 10` (Manhattan) y `queueConnect` manda al tripulante a la sección del nodo destino, o sea que el que
+tiende el cable queda dentro del radio, en la misma sala y con línea de visión. En un mapa de 40×22, radio 10
+cubre casi cualquier sitio donde haya tripulación.
+
+1. RANGO 10 → 4, cruzado contra el contenido real antes de elegir el número (patrón 34): el Cap.2 siembra sus
+   dos sensores en (12,9) y (16,9) con una compuerta AND en (14,9). Con radio 4 las coberturas se solapan en
+   un tramo del pasillo, así que el intruso dispara ambos al pasar entre ellos y el AND sigue significando
+   algo. Con el radio 10 anterior el solape era total: **el puzzle del Cap.2 se resolvía solo**. Bajados
+   también los hermanos que pasan a simularse (`sensor-movimiento-laser` 15→6, `torreta-automatizada` 18→8).
+
+2. EL ÁREA DE ALCANCE SE DIBUJA. Bajar el rango lo hace jugable; dibujarlo lo hace entendible, que es la otra
+   mitad del reporte — con el alcance invisible, "detecta" y "no detecta" son indistinguibles desde el plano.
+   Las celdas salen de `emitterCoverageCells`, LA MISMA función que usa el resolvedor para decidir el disparo,
+   leyendo el mismo `motionBlockedQuery`: paredes del tilemap y puertas cerradas incluidas (el operador
+   preguntó explícitamente por eso). Una fórmula propia en la capa visual habría sido un área pintada que no
+   coincide con lo que el sensor detecta. Se redibuja desde `update()` y no al seleccionar, porque la
+   cobertura es VIVA: una puerta que se abre cambia la línea de visión (patrón 41).
+
+3. HALLAZGO APARTE, DEL MISMO TIRÓN: los dos resolvedores buscaban la pieza en `ATOMIC_COMPONENT_CATALOG`, así
+   que **ningún sensor COMPUESTO se simulaba nunca** — `sensor-movimiento-laser` y `sensor-presion-gas`, que
+   son los sensores de verdad del catálogo, más cualquier creación de la mesa con `EM`, caían en el fail-open
+   y quedaban permanentemente encendidos. Ahora se resuelve contra el registro completo. Y la constante que
+   decidía esto se llamaba `MOTION_TRIGGER_TYPE` y valía `"optical"`: el nombre mentía, y por eso nadie notó
+   que el `triggerType: "motion"` del sensor de movimiento nunca estuvo cubierto (patrón 10, en una constante).
+
+4. EL FAIL-OPEN SE CONSERVA para los 15 `triggerType` que nadie simula (térmico, radar, radio, biométrico…),
+   decisión del operador, pero deja de estar implícito: escrito en el docblock y registrado como **deuda #40**,
+   con la nota de que el térmico lo desbloquea la Subfase 14a.
+
+5. POR QUÉ NINGÚN TEST LO ATRAPÓ, que es la lección cara (patrón 13, TERCERA ocurrencia): los dos tests de
+   integración de la cadena inyectaban como base un mapa VACÍO (`() => new Map()`), o sea base `false`,
+   mientras producción usa `allEmittersActive`, base `true`. Cualquier emisor que cayera en el fail-open salía
+   `false` en el test y `true` en el juego — **el bug era invisible por construcción**. Ahora los dos usan la
+   base real. Y faltaba el caso negativo entero: los tests de 13g probaban el positivo (actor encima del
+   sensor) y el apagado por ENERGÍA, nunca el apagado por falta de estímulo.
+
+TESTS: 1059 → 1070 en `/engine`, 86 sin cambios en `/game`. Nuevos: `emitter-sensing` (6 casos, incluido el
+cruce del rango contra el Cap.2), el sensor compuesto en `motion-emitter-input-source`, y en la cadena de
+señal el caso negativo, el actor detrás de una pared y el "el actor se va y el LED se apaga". VERIFICADO que
+los tests nuevos fallan de verdad con el bug puesto (patrón 24): revertir la cobertura a solo `"optical"` hace
+caer los dos casos del sensor compuesto. `tsc`, `eslint` y `npm run build` limpios.

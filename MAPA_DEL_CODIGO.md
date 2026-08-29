@@ -1585,3 +1585,22 @@
 ## `game/src/render/component-sprite-registry.ts` y `mission-overlay-renderer.ts` (modificados, deuda #38)
 - `ensureComponentPlaceholderTexture` + placeholder como `Image` por celda: las piezas sin arte recorren el
   mismo camino de tinte y sombreado que un sprite real, en vez de vivir en el `Graphics` batcheado.
+
+## Fixes de playtest de 13g, ronda 1
+
+### `engine/src/mission/emitter-sensing.ts` (nuevo)
+- `PRESENCE_TRIGGER_TYPES` / `PRESSURE_TRIGGER_TYPES`, `emitterRangeOf` (contra el REGISTRO, no el catálogo
+  atómico), `emitterReaches` y `emitterCoverageCells`. Una sola fórmula de alcance, compartida por el
+  resolvedor que decide el disparo y la capa de `/game` que dibuja el área.
+
+### `engine/src/mission/motion-emitter-input-source.ts` y `pressure-emitter-input-source.ts` (modificados)
+- Reciben el `EntityRegistry`: los sensores COMPUESTOS se resuelven por primera vez. `optical` y `motion` son
+  el mismo disparador de presencia. El fail-open de los tipos sin simular queda documentado (deuda #40).
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- `emitterCoverageOf(instanceId)`: punto único que resuelve las celdas cubiertas reusando el helper del motor
+  y el mismo `motionBlockedQuery` que alimenta al resolvedor.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `updateEmitterRangeHighlight()`: un `Graphics` top-level en el depth nuevo `emitterRange` (2.8), redibujado
+  desde `update()` porque la cobertura es viva (una puerta que se abre cambia la línea de visión).

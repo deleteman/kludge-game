@@ -8,6 +8,7 @@
 // resolución de crisis: identidad por POSICIÓN, no por instanceId) invierte
 // el drenaje en recuperación real hasta la atmósfera estándar.
 import { describe, expect, it } from "vitest";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import {
   MissionAtmosphereRuntime,
   MissionSignalRuntime,
@@ -131,6 +132,9 @@ function buildSink(shipState: MutableShipState) {
   });
 }
 
+/** Catálogo REAL (13g ronda 1): los resolvedores de sensor leen del registro, no del catálogo atómico. */
+const REGISTRY = buildComponentCatalog().registry;
+
 describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h)", () => {
   it("la presión cae mientras la junta está rota, el sensor/LCD/LED lo reflejan, y reparar (desmontar+instalar) la recupera", () => {
     const shipState = new MutableShipState(buildBlueprint(jammedSeal()));
@@ -139,7 +143,7 @@ describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h
     const atmosphereOf = (sectionId: SectionId) => atmosphereRuntime.atmosphereOf(sectionId);
     const signalRuntime = new MissionSignalRuntime(
       shipState,
-      pressureAwareEmitterInputs(shipState, floorplan, atmosphereOf, allEmittersActive(shipState)),
+      pressureAwareEmitterInputs(shipState, floorplan, atmosphereOf, REGISTRY, allEmittersActive(shipState)),
     );
 
     expect(atmosphereOf(SOPORTE_VITAL)?.pressureKpa).toBe(standardSectionAtmosphere().pressureKpa);

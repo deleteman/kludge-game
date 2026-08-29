@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allEmittersActive,
   buildComponentCatalog,
   doorSignalOutput,
   instantiateDoorSeeds,
@@ -152,7 +153,17 @@ function mountChain(options: { wired?: boolean; poweredDoor?: boolean } = {}) {
   let actors: GridPosition[] = [];
   const signalRuntime = new MissionSignalRuntime(
     shipState,
-    motionAwareEmitterInputs(shipState, () => actors, { isBlocked: () => false }, () => new Map()),
+    // La base es `allEmittersActive`, LA MISMA que produccion (13g ronda 1).
+    // Con un mapa vacio como base, todo emisor que `motionAwareEmitterInputs`
+    // no sepa resolver sale `false` en el test y `true` en el juego: el test no
+    // podia fallar aunque el bug estuviera puesto.
+    motionAwareEmitterInputs(
+      shipState,
+      () => actors,
+      { isBlocked: () => false },
+      REGISTRY,
+      allEmittersActive(shipState),
+    ),
   );
   const isInstancePowered = (instanceId: PlacedComponentInstanceId): boolean =>
     instanceId === DOOR_INSTANCE ? poweredDoor : true;

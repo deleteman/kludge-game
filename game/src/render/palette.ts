@@ -210,6 +210,16 @@ export const SELECTED_CELL_COLOR = CRISIS_SAFE_COLOR;
 export const WIRE_HIGHLIGHT_COLOR = 0xffc24d;
 
 /**
+ * Área que cubre un sensor seleccionado (13g ronda 1 de playtest). Reusa el
+ * ámbar del cableado a propósito: es información del MISMO dominio (señales),
+ * y así no se confunde con el verde de selección ni con el rojo/amarillo de
+ * crisis. Alpha bajo porque es un relleno grande que no debe tapar el mapa —
+ * mismo criterio que las capas del HUD del plano.
+ */
+export const EMITTER_RANGE_COLOR = WIRE_HIGHLIGHT_COLOR;
+export const EMITTER_RANGE_ALPHA = 0.16;
+
+/**
  * Color por modo del core loop (Fase 10d, ajuste post-playtest #4): el estado
  * pausa/ejecución debe notarse de un vistazo (principio 6 de CLAUDE.md, dos
  * estados nunca deben verse igual). Verde = corriendo, ámbar = congelado.

@@ -64,7 +64,10 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     name: "Torreta automatizada",
     data: {
       functional: [
-        { tag: "EM", range: 18, triggerType: "motion", frequency: 2 },
+        // 13g ronda 1: 18 → 8, mismo motivo que `sensor-movimiento-laser`. Una
+        // torreta que dispara a todo lo que haya en media nave no da al jugador
+        // ninguna decisión de colocación.
+        { tag: "EM", range: 8, triggerType: "motion", frequency: 2 },
         { tag: "ACT", power: 80, cadence: 5, directional: true },
       ],
       material: { RE: "A" },

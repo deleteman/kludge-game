@@ -16,6 +16,7 @@
 //  - `MissionSignalRuntime.outputOf`: el LED (booleano) se enciende un tick
 //    después de que el sensor se dispara (semántica síncrona del evaluador).
 import { describe, expect, it } from "vitest";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import {
   MissionSignalRuntime,
   MutableShipState,
@@ -116,6 +117,9 @@ function buildFloorplan(): ShipFloorplan {
   };
 }
 
+/** Catálogo REAL (13g ronda 1): los resolvedores de sensor leen del registro, no del catálogo atómico. */
+const REGISTRY = buildComponentCatalog().registry;
+
 describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
   it("el LCD sigue la presión real de la fuga y el LED se enciende al detectarla", () => {
     const shipState = new MutableShipState(buildBlueprint());
@@ -127,7 +131,7 @@ describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
         : undefined;
     const signalRuntime = new MissionSignalRuntime(
       shipState,
-      pressureAwareEmitterInputs(shipState, floorplan, atmosphereOf, allEmittersActive(shipState)),
+      pressureAwareEmitterInputs(shipState, floorplan, atmosphereOf, REGISTRY, allEmittersActive(shipState)),
     );
 
     // Tick 1: sin fuga todavía — el LCD ya lee 101 kPa (canal de lectura

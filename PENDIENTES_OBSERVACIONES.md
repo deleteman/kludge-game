@@ -893,3 +893,27 @@ de "el jugador puso todo en 0", porque `setSectionPowerUnits` borra la entrada a
 
 `power/initial-power-budget.test.ts` cruza oferta contra demanda con el contenido autorado real, así que un
 ajuste de balanceo futuro (Fase 23) no puede romper la relación en silencio.
+
+## Deuda #40 — 15 de los 17 `triggerType` de emisor no tienen simulación y quedan siempre activos (Subfase 13g, ronda 1 de playtest)
+
+**Estado:** ABIERTA POR DECISIÓN. Registrada 2026-08-29.
+
+Un emisor necesita que algo del mundo lo encienda. El motor sabe resolver **dos** disparadores:
+`PRESENCE_TRIGGER_TYPES` (`optical`/`motion`, contra la posición de tripulación y enemigos) y
+`PRESSURE_TRIGGER_TYPES` (`pressure`, contra la presión real de la sección). Para todos los demás —`thermal`,
+`radar`, `radio`, `biometric`, `spectral`, `magnified`, `remote`, `visual`, `navigation`, `computation`,
+`signal`, `manual`, `emergency`— nadie calcula nada, así que el `continue` de los dos envoltorios los deja con
+el `true` de `allEmittersActive`: **se comportan como sensores permanentemente disparados**.
+
+No es un descuido nuevo, es el límite conocido desde la Fase 13a; lo que cambió es que 13g lo volvió visible
+(el LED encendido y el tinte por estado ponen al jugador a mirar la señal). El operador decidió
+explícitamente conservar el fail-open: un sensor apagado para siempre tampoco sería más honesto mientras su
+dominio no exista, y dejaría inertes piezas que hoy al menos se pueden cablear.
+
+Lo que SÍ se arregló en esta ronda es la cobertura, que era un bug aparte: la búsqueda iba contra
+`ATOMIC_COMPONENT_CATALOG`, así que ni siquiera los sensores del tipo correcto se resolvían si eran
+**compuestos** — `sensor-movimiento-laser` y `sensor-presion-gas`, o sea los sensores de verdad del catálogo,
+más cualquier creación de la mesa con `EM`. Ahora se resuelve contra el registro completo.
+
+Cerrar esta deuda es, tipo por tipo, atarlos a un dominio real del motor. El térmico lo desbloquea la
+**Subfase 14a** (dominio de temperatura); el resto no tiene todavía un eje del que colgarse.
