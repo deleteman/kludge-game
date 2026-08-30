@@ -8,11 +8,13 @@ import type { StructuralResistanceLevel } from "../properties/material.types.js"
 import type { PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
 import { occupiedCells } from "../workbench/workbench-state.types.js";
 import { DOOR_PARAMETERS } from "../doors/door-parameters.js";
 import { doorAperture } from "../doors/door-aperture.js";
 import {
+  cellSeparates,
   doorActuator,
   doorTransitionSeconds,
   isDoorCapable,
@@ -128,8 +130,8 @@ export class MissionDoorRuntime implements Tickable {
       if (!isDoorCapable(definition)) {
         continue;
       }
-      const threshold = thresholdSectionsAt(this.options.floorplan, instance.placement.position);
-      if (!threshold) {
+      const boundary = this.resolveBoundary(instance.placement.position);
+      if (!boundary) {
         continue;
       }
       const id = `instance:${instance.instanceId}` as DoorId;
@@ -154,12 +156,16 @@ export class MissionDoorRuntime implements Tickable {
         const snapshot = this.pendingSnapshots.get(id);
         this.doorsById.set(id, {
           id,
-          a: threshold[0].id,
-          b: threshold[1].id,
+          a: boundary.a,
+          b: boundary.b,
           cells: occupiedCells(instance.placement),
           instanceId: instance.instanceId,
           mode: snapshot?.mode ?? "auto",
-          state: snapshot?.state ?? "closed",
+          // El save manda sobre la autoría: una partida cargada conserva el
+          // estado en que quedó la puerta. `initialOpen` solo decide cómo NACE
+          // (ronda 3 de playtest de 13g — hasta entonces el campo del mapa no
+          // lo leía nadie y todas las puertas nacían cerradas).
+          state: snapshot?.state ?? (boundary.initialOpen ? "open" : "closed"),
           transitionElapsedSeconds: 0,
           hp: snapshot?.hp ?? maxHp,
           maxHp,
@@ -468,6 +474,42 @@ export class MissionDoorRuntime implements Tickable {
 
   toSnapshots(): readonly DoorSnapshot[] {
     return [...this.doorsById.values()].map(toDoorSnapshot);
+  }
+
+  /**
+   * Las dos secciones que separa la puerta de esta celda, en dos pasos (ronda 3
+   * de playtest de 13g).
+   *
+   * 1. **Autorada**: si la capa Tiled `puertas` declara una puerta en esta
+   *    celda, sus `a`/`b` MANDAN — el mapa ya dijo qué separa. Solo se verifica
+   *    que la celda toque de verdad ambas secciones (`cellSeparates`), para que
+   *    un mapa mal editado no invente una frontera que no existe.
+   * 2. **Improvisada por el jugador**: no hay dato, así que se infiere de la
+   *    geometría con `thresholdSectionsAt`, que sigue descartando las esquinas
+   *    de tres salas porque ahí no hay nada que desempate.
+   *
+   * Por qué importa: hasta esta ronda solo existía el paso 2, así que el `a`/`b`
+   * autorado se tiraba y se re-infería peor. Una puerta en la boca de un pasillo
+   * toca TRES secciones —la sala, el pasillo y la sala de al lado— y quedaba
+   * descartada en silencio: sin bloquear el paso, sin abrir, sin compartimentar,
+   * pero dibujada y consumiendo energía. Es el bug que el operador reportó como
+   * "los tripulantes le pasan por arriba y no se abre ni cierra".
+   */
+  private resolveBoundary(
+    cell: GridPosition,
+  ): { readonly a: SectionId; readonly b: SectionId; readonly initialOpen: boolean } | undefined {
+    const authored = this.options.floorplan.doors.find(
+      (seed) => seed.position.x === cell.x && seed.position.y === cell.y,
+    );
+    if (authored) {
+      return cellSeparates(this.options.floorplan, cell, authored.a, authored.b)
+        ? { a: authored.a, b: authored.b, initialOpen: authored.initialOpen }
+        : undefined;
+    }
+    const threshold = thresholdSectionsAt(this.options.floorplan, cell);
+    return threshold
+      ? { a: threshold[0].id, b: threshold[1].id, initialOpen: false }
+      : undefined;
   }
 
   private recomputeBlockedCells(): void {

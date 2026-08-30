@@ -936,7 +936,24 @@ buena (secciones existentes, adyacentes, celda dentro de una de ellas) sin compr
 funcionar — patrón 44 aplicado al plano. Se añade el issue `door-not-a-threshold`, que exige la misma
 condición que el runtime, y el mapa ahora revienta al parsearse con la causa escrita.
 
-Suite: `/engine` 1070 → **1072**.
+Suite: `/engine` 1070 → **1072**. **Este fix estaba mal planteado — ver la ronda 3.**
+
+##### Ronda 3 de playtest de 13g ✅ (2026-08-30)
+
+El operador rechazó el fix de la ronda 2: la puerta estaba en la boca del pasillo, donde tiene sentido de
+diseño, y yo la moví una celda atrás para que encajara con el modelo. La causa real es que **la capa Tiled
+declara `a`/`b` y el motor los descarta** para re-inferirlos con `thresholdSectionsAt`, que se rinde cuando la
+celda toca tres secciones — cosa que la boca de un pasillo hace por definición.
+
+* **Resolución en dos pasos** (`resolveBoundary`): autorada → el `a`/`b` del mapa manda, verificado con
+  `cellSeparates`; improvisada por el jugador → inferencia, que sigue siendo el único camino posible ahí.
+* **El validador de la ronda 2 también estaba mal**: exigía que la inferencia coincidiera con lo autorado, o
+  sea prohibía autorar puertas justo donde el dato sirve. Ahora comprueba la precondición real del runtime.
+* La puerta vuelve a (5,9), y `initialOpen` —otro campo autorado que nadie leía— queda conectado.
+
+Lección registrada: **mover contenido para que encaje con el código es una señal de alarma, no una solución.**
+
+Suite: `/engine` 1072 → **1080**.
 
 
 

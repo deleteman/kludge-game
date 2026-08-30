@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { thresholdSectionsAt } from "../doors/door-identity.js";
+import { cellSeparates, sectionsTouchingCell, thresholdSectionsAt } from "../doors/door-identity.js";
 
 import type { SectionId } from "../atmosphere/section.types.js";
 import { CANONICAL_SHIP_FLOORPLANS } from "./canonical-ships.js";
@@ -131,29 +131,45 @@ describe("CANONICAL_SHIP_FLOORPLANS", () => {
   });
 
   /**
-   * Ronda 2 de playtest de 13g. El operador reportó que la puerta del puente
-   * "no funciona: los tripulantes le pasan por arriba y no abre ni cierra".
-   * Estaba en una celda que tocaba TRES secciones (puente, pasillo-central y
-   * soporte-vital), y `thresholdSectionsAt` descarta a propósito los cruces de
-   * tres — así que `syncInstalledDoors` nunca la daba de alta y quedaba como
-   * una pieza decorativa.
+   * Ronda 2 de playtest de 13g, CORREGIDO en la ronda 3. El operador reportó que
+   * la puerta del puente "no funciona: los tripulantes le pasan por arriba y no
+   * abre ni cierra", y está en la boca del pasillo — una celda que toca TRES
+   * secciones (puente, pasillo-central y soporte-vital).
+   *
+   * La ronda 2 lo trató como un mapa inválido y movió la puerta. Estaba mal: el
+   * mapa declara sin ambigüedad qué dos secciones separa, y el motor tiraba ese
+   * dato para re-inferirlo. Lo que se comprueba acá es la precondición REAL —
+   * que la celda toque las dos secciones declaradas—, la misma que usa
+   * `resolveBoundary`. Que toque una tercera es irrelevante.
    *
    * El test de arriba ("caen en celdas de alguna de las dos secciones") pasaba
    * con el bug puesto: comprueba una propiedad MÁS DÉBIL que la que hace que la
-   * puerta funcione. Este comprueba la de verdad, la misma que exige el runtime.
+   * puerta funcione.
    */
-  it("exploracion: cada puerta está en un umbral REAL de las dos secciones que declara", () => {
+  it("exploracion: la celda de cada puerta toca LAS DOS secciones que declara", () => {
     const exploracion = CANONICAL_SHIP_FLOORPLANS.exploracion;
     for (const door of exploracion.doors) {
-      const threshold = thresholdSectionsAt(exploracion, door.position);
-      const ids = threshold?.map((section) => section.id) ?? [];
+      const touching = sectionsTouchingCell(exploracion, door.position).map((s) => s.id);
       expect(
-        threshold !== undefined && ids.includes(door.a) && ids.includes(door.b),
-        `puerta '${door.id}' en (${door.position.x},${door.position.y}) no es umbral de ` +
-          `'${door.a}'/'${door.b}' (toca: ${ids.join(" + ") || "3+ secciones o ninguna"}) — ` +
+        cellSeparates(exploracion, door.position, door.a, door.b),
+        `puerta '${door.id}' en (${door.position.x},${door.position.y}) no toca ` +
+          `'${door.a}' y '${door.b}' (toca: ${touching.join(" + ") || "ninguna"}) — ` +
           `el motor la descartaría en silencio`,
       ).toBe(true);
     }
+  });
+
+  it("exploracion: la puerta del puente está en la boca del pasillo, tocando tres secciones", () => {
+    // Ancla el caso concreto del reporte: es una celda de tres secciones Y una
+    // puerta perfectamente válida. Si alguien vuelve a "arreglarla" moviéndola,
+    // este test lo dice.
+    const exploracion = CANONICAL_SHIP_FLOORPLANS.exploracion;
+    const puerta = exploracion.doors.find((door) => door.id === "puerta-puente");
+    expect(puerta).toBeDefined();
+    expect(puerta!.position).toEqual({ x: 5, y: 9 });
+    expect(sectionsTouchingCell(exploracion, puerta!.position).map((s) => s.id)).toHaveLength(3);
+    expect(thresholdSectionsAt(exploracion, puerta!.position)).toBeUndefined();
+    expect(cellSeparates(exploracion, puerta!.position, puerta!.a, puerta!.b)).toBe(true);
   });
 
   it("los arquetipos sin capa `puertas` siguen cargando con lista vacía", () => {

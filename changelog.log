@@ -5497,6 +5497,11 @@ puerta separa dos lados, no tres"), así que devuelve `undefined` y `MissionDoor
 NUNCA daba de alta la instancia como puerta. Quedaba como una pieza cualquiera del plano: sin bloqueo de paso,
 sin apertura, sin cierre, sin compartimentación — y sin que nada fallara en ningún lado.
 
+>>> CORRECCIÓN (ronda 3, 2026-08-30): el punto 1 de abajo estaba MAL. La puerta se movió cuando lo que había
+>>> que arreglar era el motor: el mapa declara `a`/`b` y el runtime los tiraba para re-inferirlos. La puerta
+>>> volvió a (5,9), la boca del pasillo, que es donde el operador la había puesto. El punto 2 (el validador)
+>>> también quedó mal planteado y se corrigió. Ver la entrada de la ronda 3.
+
 1. DATO CORREGIDO: `puerta-puente` pasa de (5,9) a **(4,9)**, y de paso se le snapean las coordenadas a la
    grilla (venían fraccionarias de arrastrarla en Tiled). Las únicas dos celdas que son umbral real
    puente/pasillo-central son (4,9) y (4,10); se elige la más cercana a donde estaba. El `axis: "y"` se
@@ -5524,3 +5529,51 @@ sin apertura, sin cierre, sin compartimentación — y sin que nada fallara en n
    ancho con una semilla sintética — la propiedad que importa deja de depender de lo que el mapa autore hoy.
 
 TESTS: 1070 → 1072 en `/engine`, 86 sin cambios en `/game`. `tsc`, `eslint` y `npm run build` limpios.
+
+================================================================================
+2026-08-30 — Subfase 13g, RONDA 3 DE PLAYTEST: el a/b autorado manda
+================================================================================
+El operador rechazó el fix de la ronda 2: "esa celda a la que moviste la puerta no es correcta, la puerta
+estaba en la boca del pasillo, ahora la moviste una celda atrás y no tiene sentido ahí". Tenía razón, y el
+diagnóstico de la ronda anterior estaba incompleto.
+
+LA CAUSA REAL: la capa Tiled `puertas` autora cada puerta con su `a` y su `b` EXPLÍCITOS, y el motor los
+DESCARTA. `instantiateDoorSeeds` solo conserva `position`, `span`/`axis` y el id; después
+`syncInstalledDoors` vuelve a INFERIR las dos secciones con `thresholdSectionsAt` y descarta la puerta si la
+celda toca tres. La boca de un pasillo toca tres por definición —la sala, el pasillo y la sala de al lado— y
+aun así separa sin ambigüedad las dos que la puerta declara. **El dato que desempata existía y se tiraba.**
+
+Y el validador que agregué en la ronda 2 empeoró las cosas: `door-not-a-threshold` exigía que la INFERENCIA
+coincidiera con lo autorado, o sea que prohibía autorar puertas justo donde el `a`/`b` es útil. Arreglé el
+síntoma (declarar inválido un mapa correcto) para tapar la causa (el dato descartado). Mover contenido para
+que encaje con el código es una señal de alarma, no una solución.
+
+1. RESOLUCIÓN EN DOS PASOS (`MissionDoorRuntime.resolveBoundary`, nuevo): si la capa `puertas` declara una
+   puerta en esa celda, sus `a`/`b` MANDAN —solo se verifica con `cellSeparates` que la celda toque de verdad
+   ambas secciones, para que un mapa mal editado no invente una frontera—; si no hay puerta autorada ahí, se
+   infiere con `thresholdSectionsAt` como hasta ahora. La inferencia NO se borra: es el único camino posible
+   para una puerta que el jugador improvisa e instala sobre un umbral, donde no existe ningún dato que
+   desempate. Hacían falta dos caminos y había uno solo.
+
+2. HELPERS NUEVOS en `door-identity.ts`: `sectionsTouchingCell` (todas las secciones que toca una celda, sin
+   exigir que sean dos) y `cellSeparates` (¿toca estas dos?). `thresholdSectionsAt` se reescribe sobre el
+   primero y conserva su semántica: sigue rindiéndose con 3+, que es lo correcto cuando no hay nada que
+   desempate.
+
+3. VALIDADOR CORREGIDO: `door-not-a-threshold` pasa a comprobar `cellSeparates` —la misma precondición que el
+   runtime— en vez de exigir que la inferencia dé exactamente dos. Con eso (5,9) es válida y se sigue
+   detectando el error real: una puerta cuya celda no toca alguna de las secciones que dice separar.
+
+4. LA PUERTA VUELVE A (5,9), snapeada a la grilla. Único cambio de dato de la ronda, y de una sola línea.
+
+5. `initialOpen` CONECTADO (decisión del operador): era otro campo autorado que nadie leía — todas las puertas
+   nacían cerradas. Ahora decide el estado inicial, con el snapshot del save por encima (una partida cargada
+   manda sobre la autoría). Verificado que ninguna de las 10 puertas lo autora hoy, así que no cambia el
+   comportamiento de ninguna partida: solo hace que el campo signifique algo.
+
+TESTS: 1072 → 1080 en `/engine`, 86 sin cambios en `/game`. Nuevo `door-authored-boundary.integration`: la
+puerta autorada en una celda de tres secciones se da de alta y BLOQUEA, la del mapa real resuelve
+puente/pasillo-central, las 10 se dan de alta sin perderse ninguna, `initialOpen: true` nace abierta, y —lo
+que impide arreglar esto rompiendo lo otro— una puerta improvisada por el jugador en una celda ambigua sigue
+descartándose. VERIFICADO reintroduciendo el comportamiento de la ronda 2: caen 5 de los 7 casos, y los 2 de
+la inferencia siguen verdes. `tsc`, `eslint` y `npm run build` limpios.

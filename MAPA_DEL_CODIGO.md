@@ -1614,3 +1614,18 @@
 
 ### `engine/src/floorplan/maps/nave-exploracion.json` (dato)
 - `puerta-puente` (5,9) → (4,9): la celda anterior tocaba tres secciones y el motor la descartaba.
+
+## Fixes de playtest de 13g, ronda 3
+
+### `engine/src/doors/door-identity.ts` (modificado)
+- `sectionsTouchingCell` (todas las secciones que toca una celda) y `cellSeparates` (¿toca estas dos?).
+  `thresholdSectionsAt` se reescribe sobre el primero y conserva su semántica de inferencia.
+
+### `engine/src/mission/mission-door-runtime.ts` (modificado)
+- `resolveBoundary`: autorada → `a`/`b` del mapa (verificados con `cellSeparates`); improvisada → inferencia.
+  Es lo que permite autorar una puerta en la boca de un pasillo, que toca tres secciones.
+- `initialOpen` del seed decide el estado inicial; el snapshot del save le gana.
+
+### `engine/src/floorplan/floorplan-integrity.ts` (modificado)
+- `door-not-a-threshold` pasa a exigir `cellSeparates` — la misma precondición que el runtime — en vez de que
+  la inferencia dé exactamente dos secciones, que prohibía mapas correctos.

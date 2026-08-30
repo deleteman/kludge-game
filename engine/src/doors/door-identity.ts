@@ -1,6 +1,7 @@
 import type { PhysicalComponentDefinition } from "../components/physical-component.types.js";
 import type { ActuatorProperty } from "../properties/functional.types.js";
 import type { FloorplanSection, ShipFloorplan } from "../floorplan/floorplan.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
 import type { GridPosition } from "../geometry/grid-position.types.js";
 import { DOOR_PARAMETERS } from "./door-parameters.js";
 
@@ -13,9 +14,11 @@ import { DOOR_PARAMETERS } from "./door-parameters.js";
  * calificaría una plancha motorizada que el jugador improvise en la mesa — que
  * es exactamente el tipo de composición libre que el juego promete.
  *
- * El umbral es lo tercero que hace falta y no se declara en ningún lado: se
- * deriva de la geometría. Una celda es umbral si toca ortogonalmente celdas de
- * DOS secciones distintas.
+ * El umbral es lo tercero que hace falta. Para una puerta que el jugador
+ * improvisa no se declara en ningún lado y hay que derivarlo de la geometría
+ * (`thresholdSectionsAt`); para una puerta AUTORADA en la capa Tiled `puertas`,
+ * el mapa ya dice qué dos secciones separa y ese dato manda — ver
+ * `cellSeparates` y la resolución en dos pasos de `syncInstalledDoors`.
  */
 export function isDoorCapable(definition: PhysicalComponentDefinition | undefined): boolean {
   const functional = definition?.data.functional;
@@ -51,14 +54,18 @@ export function doorTransitionSeconds(actuator: ActuatorProperty | undefined): n
 }
 
 /**
- * Par de secciones que separa una celda de umbral, o `undefined` si la celda no
- * es umbral. Devuelve las dos secciones ordenadas para que el id derivado de
- * una puerta construida sea estable.
+ * TODAS las secciones que una celda toca (la suya y las cuatro ortogonales),
+ * sin exigir que sean dos.
+ *
+ * Separado de `thresholdSectionsAt` en la ronda 3 de playtest de 13g: la boca de
+ * un pasillo toca tres secciones y aun así puede separar sin ambigüedad las dos
+ * que una puerta AUTORADA declara. Quien tiene ese dato necesita preguntar "¿la
+ * celda toca estas dos?" y no "¿cuáles son las dos?".
  */
-export function thresholdSectionsAt(
+export function sectionsTouchingCell(
   floorplan: ShipFloorplan,
   cell: GridPosition,
-): readonly [FloorplanSection, FloorplanSection] | undefined {
+): readonly FloorplanSection[] {
   const neighbours: GridPosition[] = [
     { x: cell.x + 1, y: cell.y },
     { x: cell.x - 1, y: cell.y },
@@ -77,11 +84,51 @@ export function thresholdSectionsAt(
       touching.set(section.id, section);
     }
   }
+  return [...touching.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
 
-  const sections = [...touching.values()].sort((left, right) => left.id.localeCompare(right.id));
+/**
+ * ¿Esta celda separa estas DOS secciones concretas? Es la pregunta que puede
+ * responder quien ya sabe qué separa la puerta —el mapa lo declara— y por eso
+ * no le molesta que la celda toque una tercera.
+ *
+ * Es la precondición REAL para dar de alta una puerta autorada, y por eso la
+ * comparten el runtime y `validateFloorplanIntegrity`: si el validador exigiera
+ * algo distinto de lo que el runtime exige, volveríamos a tener un mapa que
+ * valida y una puerta que no funciona (o al revés, que es lo que pasó en la
+ * ronda 2).
+ */
+export function cellSeparates(
+  floorplan: ShipFloorplan,
+  cell: GridPosition,
+  a: SectionId,
+  b: SectionId,
+): boolean {
+  if (a === b) {
+    return false;
+  }
+  const ids = new Set(sectionsTouchingCell(floorplan, cell).map((section) => section.id));
+  return ids.has(a) && ids.has(b);
+}
+
+/**
+ * Par de secciones que separa una celda de umbral, INFERIDO de la geometría, o
+ * `undefined` si no se puede inferir. Ordenado para que el id derivado de una
+ * puerta construida sea estable.
+ */
+export function thresholdSectionsAt(
+  floorplan: ShipFloorplan,
+  cell: GridPosition,
+): readonly [FloorplanSection, FloorplanSection] | undefined {
+  const sections = sectionsTouchingCell(floorplan, cell);
   // Más de dos secciones (una esquina donde se juntan tres salas) no es un
-  // umbral: una puerta separa dos lados, no tres. Se deja fuera a propósito en
-  // vez de elegir un par arbitrario.
+  // umbral INFERIBLE: no hay forma de saber cuál de los tres pares separa, y
+  // elegir uno arbitrario sería peor que no decidir. Sigue siendo el camino
+  // correcto para una puerta que el jugador improvisa, donde no hay ningún dato
+  // que desempate. Una puerta AUTORADA no pasa por acá: el mapa declara su par
+  // y se comprueba con `cellSeparates` (ronda 3 de playtest de 13g — antes esto
+  // era el único camino, y una puerta perfectamente válida en la boca de un
+  // pasillo se descartaba en silencio).
   const [first, second] = sections;
   return sections.length === 2 && first && second ? [first, second] : undefined;
 }

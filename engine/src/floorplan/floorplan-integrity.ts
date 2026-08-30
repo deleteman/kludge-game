@@ -1,5 +1,5 @@
 import type { GridPosition } from "../geometry/grid-position.types.js";
-import { thresholdSectionsAt } from "../doors/door-identity.js";
+import { cellSeparates, sectionsTouchingCell } from "../doors/door-identity.js";
 import type { FloorplanSection, ShipFloorplan } from "./floorplan.types.js";
 
 /**
@@ -181,26 +181,28 @@ export function validateFloorplanIntegrity(floorplan: ShipFloorplan): FloorplanI
         detail: `Door '${door.id}' at (${door.position.x}, ${door.position.y}) is in neither '${door.a}' nor '${door.b}'`,
       });
     }
-    // La celda tiene que ser un UMBRAL de verdad, y de las dos secciones que la
-    // puerta declara. Es lo que `MissionDoorRuntime.syncInstalledDoors` exige
-    // para dar de alta la puerta: si `thresholdSectionsAt` no resuelve, la
-    // instancia se queda como pieza decorativa — no bloquea el paso, no abre y
-    // no cierra, sin que nada falle en ningún lado.
+    // La celda tiene que tocar LAS DOS secciones que la puerta declara. Es la
+    // misma precondición que `MissionDoorRuntime.resolveBoundary` exige para dar
+    // de alta una puerta autorada: si no se cumple, la instancia se queda como
+    // pieza decorativa —no bloquea el paso, no abre y no cierra— sin que nada
+    // falle en ningún lado.
     //
-    // Nace de la ronda 2 de playtest de 13g: `puerta-puente` estaba en una
-    // celda que tocaba TRES secciones (puente, pasillo-central y
-    // soporte-vital), y los tres chequeos de arriba la daban por buena — las
-    // secciones existen, son adyacentes y la celda pertenece a una de ellas.
-    // O sea que el validador decía "puerta válida" sobre una puerta que el
-    // motor descartaba en silencio.
-    const threshold = thresholdSectionsAt(floorplan, door.position);
-    const thresholdIds = threshold?.map((section) => section.id) ?? [];
-    if (!threshold || !thresholdIds.includes(door.a) || !thresholdIds.includes(door.b)) {
+    // Nace de la ronda 2 de playtest de 13g y se CORRIGIÓ en la ronda 3. La
+    // primera versión exigía que `thresholdSectionsAt` (la INFERENCIA) diera
+    // exactamente esas dos secciones, lo cual prohibía autorar una puerta en la
+    // boca de un pasillo: esa celda toca tres secciones y la inferencia se
+    // rinde, aunque el mapa diga sin ambigüedad cuáles dos separa. O sea que el
+    // validador declaraba inválido un mapa correcto para tapar que el runtime
+    // tiraba el dato autorado. Ahora los dos preguntan lo mismo, y lo correcto.
+    if (!cellSeparates(floorplan, door.position, door.a, door.b)) {
+      const touching = sectionsTouchingCell(floorplan, door.position)
+        .map((section) => section.id)
+        .join(" + ");
       issues.push({
         kind: "door-not-a-threshold",
         detail:
-          `Door '${door.id}' at (${door.position.x}, ${door.position.y}) is not a threshold between ` +
-          `'${door.a}' and '${door.b}': that cell touches ${threshold ? thresholdIds.join(" + ") : "more than two sections (or none)"}. ` +
+          `Door '${door.id}' at (${door.position.x}, ${door.position.y}) does not touch both ` +
+          `'${door.a}' and '${door.b}': that cell touches ${touching || "no section at all"}. ` +
           `A door there would never open, close or block passage.`,
       });
     }
