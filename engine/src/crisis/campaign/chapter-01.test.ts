@@ -13,8 +13,12 @@ import {
   CHAPTER_01_SEAL_INSTANCE_ID,
   CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
   CHAPTER_01_SEEDED_SIGNAL_NODES_BY_ARCHETYPE,
+  CHAPTER_01_INITIAL_ATOMIC_STOCK,
   CHAPTER_01_SENSOR_NODE_ID,
 } from "./chapter-01-primer-aviso.js";
+import { isCompositeEntity } from "../../composition/composable-entity.types.js";
+import { consumeStock, stockOf } from "../../inventory/inventory-ledger.js";
+import { DEFAULT_WEAR } from "../../wear/wear.types.js";
 import type { CrisisState } from "../crisis-state.types.js";
 import type { CrisisEvalContext } from "../crisis-rule.js";
 import type { Blueprint } from "../../blueprint/blueprint.types.js";
@@ -148,5 +152,46 @@ describe("Capítulo 1 — Primer Aviso (escenario completo)", () => {
 
   it("no tiene timer — nunca falla por expiración, coherente con 'sin amenaza de vidas'", () => {
     expect(CHAPTER_01_PRIMER_AVISO.timer).toBeUndefined();
+  });
+});
+
+/**
+ * Ronda 1 de playtest de 14a-1. El motor simulaba el sensor térmico de verdad y
+ * el jugador no podía instalarlo: la pieza no declaraba `footprint` (el selector
+ * de instalación descarta esos compuestos con un `continue` mudo) y, aunque lo
+ * hubiera declarado, el capítulo arrancaba sin un solo ingrediente de su receta.
+ *
+ * Estos dos tests anclan las dos mitades. Ninguno repite los números del stock:
+ * derivan de la receta real y del propio catálogo, así que también fallan si
+ * alguien cambia la receta y se olvida del stock.
+ */
+describe("Capítulo 1 — material de prueba del eje térmico (Subfase 14a-1)", () => {
+  const registry = buildComponentCatalog().registry;
+  const THERMAL_SENSOR = "sensor-termico-precision" as ComponentId;
+
+  it("el sensor térmico declara footprint, o sea que sobrevive al filtro del selector", () => {
+    const definition = registry.get(THERMAL_SENSOR);
+    expect(definition?.data.footprint).toBeDefined();
+  });
+
+  it("el stock inicial alcanza para construir al menos 3 sensores térmicos", () => {
+    const definition = registry.get(THERMAL_SENSOR);
+    if (!definition || !isCompositeEntity(definition)) {
+      throw new Error("el sensor térmico dejó de ser un compuesto de catálogo");
+    }
+    const recipe = definition.recipe;
+
+    let stock = CHAPTER_01_INITIAL_ATOMIC_STOCK;
+    for (let built = 0; built < 3; built += 1) {
+      for (const ingredient of recipe.ingredients) {
+        const next = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+        expect(next, `falta ${ingredient.ref} para el sensor #${built + 1}`).not.toBeNull();
+        stock = next!;
+      }
+    }
+  });
+
+  it("el stock inicial alcanza para al menos 3 indicadores LED, uno por sensor", () => {
+    expect(stockOf(CHAPTER_01_INITIAL_ATOMIC_STOCK, "indicador-led" as ComponentId)).toBeGreaterThanOrEqual(3);
   });
 });

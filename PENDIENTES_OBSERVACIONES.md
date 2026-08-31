@@ -936,3 +936,68 @@ Mientras tanto usa el placeholder tinteable generado por código, que desde 13g 
 visual que un sprite real (deuda #38), así que no bloquea nada — pero es el tercer sensor del diseño de
 nivel del Cap. 2 y para la demo debería tener arte propio y distinguible del sensor de presión, que sí lo
 tiene (`sensor-presion.png`).
+
+## Deuda #42 — Los compuestos sin `footprint` desaparecen del selector de instalación sin explicación (Subfase 14a-1, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Registrada 2026-08-31.
+
+`buildInstallOptions` (`game/src/mission/mission-interaction-controller.ts:1290-1291`) descarta con un
+`continue` mudo todo compuesto de catálogo que no declare `data.footprint`:
+
+```ts
+for (const def of this.mission.installableCatalogComposites) {
+  const footprint = def.data.footprint;
+  if (!footprint) continue;      // ← sin fila, sin motivo, sin aviso
+```
+
+**Solo 6 de ~30 compuestos lo declaran** (`compuerta-blindada`, `radio-largo-alcance`,
+`herramientas-reparacion-externa`, `reservorio-agua-reciclada`, `banco-de-trabajo`, `estacion-quimica`).
+Los otros ~24 son invisibles. Es peor que estar bloqueado: un compuesto SIN ingredientes al menos aparece
+atenuado con motivo `missing-ingredients`, y uno sin footprint no aparece en absoluto.
+
+Es la causa concreta de que el sensor térmico de 14a-1 fuera inusable pese a estar simulado de verdad por el
+motor (se le dio footprint en esa ronda, arreglando el caso puntual y no la clase).
+
+`footprint` es opcional en compuestos POR DISEÑO (`composite-component-spec.types.ts:25-33`: los compuestos
+pre-Fase-7 se instalan solo vía mesa de creación, que calcula su propio footprint), así que la salida no es
+obvia. Dos evaluadas:
+- **Fila bloqueada con motivo `no-footprint`**, coherente con "nunca dejarlo en silencio" de CLAUDE.md. Pero
+  suma ~24 filas grises a una lista que ya es larga, y empeora el picker antes de mejorarlo — depende de que
+  exista primero el buscador de la deuda #43.
+- **Poblar `footprint` pieza por pieza** en los compuestos que tenga sentido colocar directo en el plano, y
+  dejar fuera a los que de verdad solo se fabrican. Requiere pasar el catálogo entero con criterio de diseño.
+
+Decidir junto con la deuda #43, no por separado.
+
+## Deuda #43 — El selector de instalación necesita un buscador por nombre (Subfase 14a-1, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Pedido explícito del operador, 2026-08-31.
+
+Desde la ronda 8 de fixes de playtest el selector es una **lista plana única** (habilitados primero,
+bloqueados después con su motivo): se eliminaron las pestañas "Inventario"/"Catálogo", y
+`game/src/ui/widgets/tab-strip.ts` quedó sin ningún importador — código muerto que conviene borrar en el
+mismo cambio.
+
+La lista crece con cada pieza colocable, con cada creación personalizada del jugador y con cada atómico sin
+stock (que igual aparece como fila `no-stock`). Sin filtro por nombre, encontrar una pieza concreta ya es
+scroll a ojo, y resolver la deuda #42 la haría directamente inmanejable.
+
+## Deuda #44 — Re-nivelar el stock inicial del Capítulo 1 antes de la demo (Subfase 14a-1, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Pedido explícito del operador, 2026-08-31. **Bloquea la Fase 15 (demo).**
+
+`CHAPTER_01_INITIAL_ATOMIC_STOCK` (`engine/src/crisis/campaign/chapter-01-primer-aviso.ts`) se infló para
+poder playtestear el eje térmico con varias pruebas simultáneas en la misma pantalla:
+
+| Pieza | Antes | Ahora | Para qué |
+|---|---|---|---|
+| `indicador-led` | 1 | **6** | un LED por sensor y que sobre |
+| `chip-circuito-generico` | 0 | **8** | receta del sensor térmico (×2 c/u) |
+| `placa-disipadora` | 0 | **4** | receta del sensor térmico (×1 c/u) |
+
+Son **4 sensores térmicos** construibles. Contradice de frente el diseño austero del capítulo — el loop
+"sin stock → inspeccionar → desarmar → reutilizar" que justifica el resto de esa lista y que es la lección
+que el Cap. 1 tiene que enseñar. Es deuda de balance asumida a cambio de poder verificar el eje.
+
+Cuando 14a-2 esté cerrada y el eje térmico validado: bajar estas tres entradas y **re-evaluar los niveles**
+(no solo este capítulo — el operador pidió revisar el nivelado en general antes de publicar).

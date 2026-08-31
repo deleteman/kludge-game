@@ -5671,3 +5671,60 @@ ningún test de save/serialización cambió: no se tocó `schemaVersion`. `tsc` 
 
 SPRITE FALTANTE: `game/assets/sprites/components/sensor-termico-precision.png`. Mientras no exista, la pieza
 usa el placeholder tinteable generado por código (`component-sprite-registry.ts`).
+
+================================================================================
+2026-08-31 — RONDA 1 DE PLAYTEST DE 14a-1: EL SENSOR TÉRMICO NO ERA INSTALABLE
+================================================================================
+
+REPORTE: "no tengo un sensor térmico en la lista a instalar (…) asegurate de que pueda instalar varios
+sensores térmicos y varios LEDs para hacer diferentes pruebas en la misma pantalla".
+
+RAZÓN: 14a-1 dejó el eje térmico vivo en el motor —sensor fuera del fail-open, tests de integración verdes,
+partículas— y NADA de eso era verificable en pantalla, porque la pieza no se podía obtener. La subfase estaba
+cerrada a medias y ningún test del motor podía detectarlo: los tres cortes estaban en la capa de contenido y
+de UI. Ver patrón 55 en la memoria de playtest ("que el motor simule una pieza no significa que el jugador
+pueda conseguirla").
+
+LOS TRES CORTES:
+
+  1. `sensor-termico-precision` no declaraba `data.footprint`, y `buildInstallOptions` descarta esos
+     compuestos con un `continue` MUDO (`mission-interaction-controller.ts:1290`): ni fila bloqueada, ni
+     motivo, ni aviso. Un compuesto sin ingredientes al menos sale atenuado con `missing-ingredients`; uno
+     sin footprint no sale en absoluto. Solo 6 de ~30 compuestos del catálogo lo declaran.
+  2. Aunque lo hubiera declarado, su receta (`chip-circuito-generico` ×2 + `placa-disipadora` ×1) pedía dos
+     piezas con stock 0 en el Capítulo 1.
+  3. `indicador-led` tenía stock 1, así que ni con el sensor arreglado se podía montar más de una prueba.
+
+DECISIONES DEL OPERADOR:
+  - Arreglar el compuesto que ya existe (footprint + stockear sus ingredientes), sin pieza atómica nueva.
+  - Subir el stock del Cap. 1, con nota explícita de re-nivelar y re-evaluar los niveles antes de la demo.
+  - No arreglar ahora el descarte silencioso del picker; registrarlo como pendiente junto con la necesidad
+    de un buscador por nombre.
+
+QUÉ SE HIZO (todo dato, salvo los tests):
+
+1. `footprint: {1,1}` a `sensor-termico-precision` (`composite/investigacion.ts`), como el resto de los
+   sensores. Con eso entra solo por la rama `compositeAvailable`; el controller no necesitó ningún cambio y
+   `derive-signal-nodes` ya le derivaba el nodo emisor por su tag `EM`.
+
+2. Stock del Cap. 1: `indicador-led` 1→6, `chip-circuito-generico` 0→8, `placa-disipadora` 0→4. Alcanza para
+   CUATRO sensores térmicos y sobran LEDs. El precedente es exacto: 11h ya había sumado 1 sensor de presión +
+   1 LCD + 1 LED por esta misma razón, y está escrito en ese archivo desde entonces — no lo leí antes de
+   cerrar 14a-1. La nota de re-nivelado va en el comentario del bloque Y como deuda #44, para que no viva
+   solo en un comentario de código.
+
+3. Tres tests nuevos en `chapter-01.test.ts`. Ninguno repite los números del stock: el del sensor DERIVA la
+   receta del catálogo real y consume con `consumeStock` del ledger, así que también falla si alguien cambia
+   la receta y se olvida del stock. El de footprint es la aserción de una línea que faltaba y que habría
+   atrapado esto antes del playtest.
+
+PENDIENTES REGISTRADOS: deuda #42 (compuestos sin footprint invisibles en el picker, ~24 piezas — decidir
+junto con #43), deuda #43 (buscador por nombre en el selector; `tab-strip.ts` es código muerto desde que se
+quitaron las pestañas), deuda #44 (re-nivelar el stock del Cap. 1, BLOQUEA la Fase 15).
+
+MEMORIA: se guardó que el picker ya no tiene pestañas — el dato con el que escribí pasos de prueba
+incorrectos. Y dos patrones nuevos de playtest: el 55 (verificar el camino de adquisición aparte del de
+simulación, y dejar stock para AL MENOS 3 montajes simultáneos porque el operador compara secciones entre sí)
+y el 56 (un dato de UI aprendido caduca; abrir el widget antes de nombrarlo en un paso de prueba).
+
+TESTS: 1100 → 1103 en `/engine`, 86 sin cambios en `/game`. `tsc` limpio en ambos workspaces.

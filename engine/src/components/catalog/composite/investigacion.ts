@@ -37,6 +37,12 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "sensor-termico-precision" as ComponentId,
     name: "Sensor térmico de precisión",
     data: {
+      // Ronda 1 de playtest de 14a-1: SIN footprint esta pieza era invisible en
+      // el selector de instalación — `buildInstallOptions` descarta con un
+      // `continue` mudo todo compuesto que no lo declare, así que no salía ni
+      // como fila bloqueada. El motor la simulaba de verdad desde 14a-1 y el
+      // jugador no tenía forma de instalarla. 1×1 como el resto de los sensores.
+      footprint: { width: 1, height: 1 },
       functional: [{ tag: "EM", range: 8, triggerType: "thermal", frequency: 1 }],
       material: { CT: "A" },
     },

@@ -982,6 +982,18 @@ Tres correcciones al texto original tras auditar el código:
 * Suite: `/engine` 1080 → **1100**.
 * **Sprite faltante:** `game/assets/sprites/components/sensor-termico-precision.png` — mientras tanto usa el placeholder tinteable por código.
 
+###### Ronda 1 de playtest de 14a-1 ✅ (2026-08-31)
+
+*"No tengo un sensor térmico en la lista a instalar."* El motor lo simulaba de verdad y el jugador no podía obtenerlo — la subfase estaba cerrada a medias, con los tres cortes fuera del alcance de cualquier test de motor:
+
+1. La pieza no declaraba `footprint`, y el selector descarta esos compuestos con un `continue` **mudo** (ni fila bloqueada ni motivo). Solo 6 de ~30 compuestos lo declaran → **deuda #42**.
+2. Su receta pedía dos piezas con stock 0 en el Cap. 1.
+3. `indicador-led` tenía stock 1: imposible montar más de una prueba.
+
+Fix, todo de datos: `footprint {1,1}` al sensor, y stock del Cap. 1 a `indicador-led` ×6 + `chip-circuito-generico` ×8 + `placa-disipadora` ×4 (cuatro sensores construibles). Tres tests nuevos que derivan de la receta real en vez de repetir los números. **El stock inflado hay que re-nivelarlo antes de la demo → deuda #44, bloquea la Fase 15.** También se registró la falta de un buscador por nombre en el selector (**deuda #43**, pedido del operador).
+
+Suite: `/engine` 1100 → **1103**.
+
 ##### Subfase 14a-2: Acoplamientos térmicos (pendiente)
 
 * **Enfriador/regulador térmico activo** (`ACT` nuevo, gateado por energía): pieza nueva del catálogo + sprite propio (decisión del operador), sexto escritor de temperatura.

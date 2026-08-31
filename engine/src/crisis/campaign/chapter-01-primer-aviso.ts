@@ -52,15 +52,30 @@ export const CHAPTER_01_ACTUATOR_INSTANCE_ID =
 // la junta hermética ya presente, completa exactamente la receta de un
 // segundo reservorio (1+1+2, `exploracion.ts`), gateada por stock real en el
 // selector de instalación (`MissionRuntime.hasRecipeStockFor`).
+// ⚠️ RE-NIVELAR ANTES DE LA DEMO (Fase 15) — pedido explícito del operador en la
+// ronda 1 de playtest de 14a-1, registrado también en `PENDIENTES_OBSERVACIONES.md`.
+// Las tres últimas entradas están INFLADAS a propósito para poder playtestear el
+// eje térmico (varios sensores y varios LEDs cableados a la vez en la misma
+// pantalla), y contradicen de frente el diseño austero de este capítulo — el loop
+// "sin stock → inspeccionar → desarmar → reutilizar" que justifica todo lo demás
+// de esta lista. Es deuda de balance asumida, no un criterio nuevo: cuando el eje
+// esté validado hay que volver a bajarlas y re-evaluar los niveles.
 export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // Repuestos de fábrica: el stock inicial del capítulo entra sin desgaste
   // (Fase 13c). El desgaste aparece al canibalizar piezas ya instaladas.
   "sensor-presion": { nuevo: 1 },
   "pantalla-lcd": { nuevo: 1 },
-  "indicador-led": { nuevo: 1 },
   "junta-hermetica": { nuevo: 2 },
   "tubo-flexible": { nuevo: 1 },
   "valvula-simple": { nuevo: 1 },
+  // Subfase 14a-1: material de prueba del eje térmico. `sensor-termico-precision`
+  // es COMPUESTO y no se stockea como unidad — se construye desde su receta
+  // (`chip-circuito-generico` ×2 + `placa-disipadora` ×1), que se paga del stock
+  // atómico al instalarlo. 8+4 alcanza para CUATRO sensores; los 6 LEDs son para
+  // cablear una prueba distinta por sensor y que sobre alguno.
+  "indicador-led": { nuevo: 6 },
+  "chip-circuito-generico": { nuevo: 8 },
+  "placa-disipadora": { nuevo: 4 },
 } as AtomicPartsStock;
 
 /**
