@@ -5577,3 +5577,97 @@ puente/pasillo-central, las 10 se dan de alta sin perderse ninguna, `initialOpen
 que impide arreglar esto rompiendo lo otro— una puerta improvisada por el jugador en una celda ambigua sigue
 descartándose. VERIFICADO reintroduciendo el comportamiento de la ronda 2: caen 5 de los 7 casos, y los 2 de
 la inferencia siguen verdes. `tsc`, `eslint` y `npm run build` limpios.
+
+================================================================================
+2026-08-31 — SUBFASE 14a-1: DOMINIO DE TEMPERATURA (estado vivo + sensor térmico real)
+================================================================================
+
+RAZÓN: la temperatura era el sexto eje del motor especificado en el GDD §5.2 y en la Especificación de datos
+técnicos, pero no existía como simulación: había estado declarado y lectores escritos, y NADIE movía el
+número. Tres cosas estaban muertas en el árbol antes de esta subfase.
+
+  1. `SectionAtmosphere.temperatureCelsius` existía desde 11b, persistido y validado en el serializador,
+     pero era un 21 fijo. `diffuse()` equilibraba presión y gases y jamás tocaba la temperatura.
+  2. `sensor-termico-precision` existía en el catálogo con `triggerType: "thermal"`, pero como ningún
+     resolvedor conocía ese trigger caía en el fail-open de `allEmittersActive`: estaba PERMANENTEMENTE
+     disparado. Cablearlo a un LED encendía el LED para siempre, hubiera o no un incendio. Es exactamente
+     el mismo bug que la ronda 1 de playtest de 13g encontró en el sensor de presión compuesto.
+  3. `NeutralizationEvent` traía `heatReleasedCelsius` (+15 °C por Espec. §1) y `heatDurationSeconds` desde
+     siempre: un payload de calor que nadie podía aplicar porque el evento ni siquiera sabía a qué sección.
+
+TRES DECISIONES DEL OPERADOR AL PLANIFICAR (el orden de trabajo pedía otra cosa en las tres):
+
+  - CAMPO: reusar `temperatureCelsius` a 21 °C en vez de renombrar a `temperatureC` y bajar a 20 como pedía
+    el doc. Sin bump de `schemaVersion` (sigue en 10), sin migración de saves, cero churn. El doc se corrigió
+    para que refleje el código y no al revés.
+  - triggerType: `"thermal"`, el que ya autoraba el catálogo, en vez del `"temperatura"` del doc. El resto
+    de los trigger types están en inglés (`pressure`, `motion`, `optical`) y tener el mismo concepto con dos
+    nombres es literalmente el bug que documenta `PRESENCE_TRIGGER_TYPES` (`MOTION_TRIGGER_TYPE` valía
+    `"optical"`).
+  - ALCANCE: partir 14a en dos entregas jugables. Esta es 14a-1; el enfriador ACT, la conductividad variable,
+    `thermalRegulatorOverloaded` y el daño estructural térmico quedan en 14a-2.
+
+QUÉ SE HIZO:
+
+1. PARÁMETROS (`engine/src/atmosphere/thermal-parameters.ts`, nuevo). Único lugar con números térmicos,
+   mismo criterio que `section-integrity-parameters.ts` y `power-parameters.ts`. `NOMINAL_TEMPERATURE_CELSIUS`
+   pasa a ser la única fuente del 21 (`standardSectionAtmosphere` lo importa). Tablas de calor por evento
+   autoradas como "+X °C en Y s" y no como °C/s, porque lo primero es legible para diseño y lo segundo no.
+
+2. CONDUCCIÓN ENTRE SECCIONES (`diffusion.ts`). Tercer bloque con la misma forma que presión y gases:
+   equilibrio ponderado por volumen, así que una sala chica al lado de un incendio se calienta más rápido
+   que un hangar sin ningún factor extra. Dos diferencias deliberadas con el gas: tasa propia (0.15 vs 0.1 —
+   el calor atraviesa un mamparo más rápido de lo que se mezcla el aire) y `MIN_THERMAL_APERTURE`, un piso
+   de apertura que hace que una puerta blindada CERRADA siga conduciendo calor. Compartimentar compra
+   tiempo, no inmunidad: sin ese piso, cerrar una puerta sería una solución gratuita y total a un incendio,
+   que es justo lo que el principio 5 prohíbe.
+
+3. ESCRITORES POR EVENTO (`mission-thermal-runtime.ts`, nuevo). Traduce eventos DISCRETOS a una tasa
+   CONTINUA de °C/s por sección. La razón de que exista el intermediario: sumar +60 °C de golpe en el
+   handler daría un pico de un frame que ni el sensor ni el jugador alcanzan a ver, y que la deriva borraría
+   enseguida. El pulso con duración es lo que convierte "hubo un incendio" en "esta sección está caliente y
+   hay que hacer algo". Pulsos solapados se suman. Un evento sin `sectionId` (mesa de creación) se ignora.
+
+4. DERIVA PASIVA (`MissionAtmosphereRuntime`). Exponencial y no lineal: con el dt de frame variable del core
+   loop nunca puede pasarse del nominal, así que no hace falta un caso especial de "casi llegué" — hay test
+   de regresión con dt=1000. Va ANTES del early-return del sumidero de presión: una misión sin fuentes de
+   presión igual tiene que climatizar. La climatización pelea CONTRA el pulso mientras dura, así que el pico
+   real es menor que el `celsius` autorado, y cuando el pulso se agota el mismo mecanismo devuelve la
+   sección al nominal sin que nadie tenga que "apagar" nada.
+
+5. SENSOR TÉRMICO REAL (`temperature-emitter-input-source.ts`, nuevo). Copia del molde de
+   `pressureAwareEmitterInputs`, con la búsqueda contra el REGISTRO completo (no `ATOMIC_COMPONENT_CATALOG`)
+   porque el sensor térmico es una pieza COMPUESTA — con un registro de fixture el test no probaría nada.
+   Dispara POR ENCIMA del umbral, al revés que el de presión: lo peligroso acá es el exceso, no la falta.
+
+6. `NeutralizationEvent` gana `sectionId` opcional, estampado por `MissionReactionRuntime` igual que el de
+   combustión. Sin eso, su calor seguía siendo un payload inaplicable.
+
+7. LEGIBILIDAD (principio 6). El efecto de partículas `heatVapor` YA existía y YA usaba 60 °C — el mismo
+   número que el umbral del sensor, por casualidad y sin nada que impidiera que se separaran en el próximo
+   balanceo. Ahora importa `THERMAL_SENSOR_TRIGGER_CELSIUS` del motor: si el jugador ve vapor, el sensor
+   está disparado, y al revés. Más dos líneas nuevas en el tooltip de sección: la temperatura (siempre, como
+   la presión, coloreada solo al cruzar el umbral) y "fuente de calor activa" (en ámbar, mismo contrato de
+   12e). Los dos son ejes distintos a propósito, igual que `vacuum` lo es de `trend`: una sala puede seguir a
+   200 °C con el incendio ya apagado, y una a 40 °C puede estar en camino a matar a todos. La clave de
+   redibujado del tooltip incluye la temperatura, o el panel abierto sobre una sección que se calienta se
+   congelaría en el valor del primer frame.
+
+8. LIMPIEZA COLATERAL: la cebolla de `emitterInputs` en `mission-runtime.ts` pasó a armarse en pasos
+   nombrados en vez de anidada. Con tres capas ya era ilegible cuál envolvía a cuál; cada capa solo pisa los
+   nodos de su `triggerType`, así que el orden entre ellas no cambia el resultado.
+
+ORDEN DE TICK: `thermalRuntime` se registra ANTES de `atmosphereRuntime`, por la misma razón por la que las
+inyecciones de gas van antes de difundir. Los eventos que abren un pulso llegan por suscripción y no en el
+tick, así que un evento emitido más tarde en el mismo tick aporta su calor en el siguiente — un frame de
+retraso, el mismo que ya tienen `sectionIntegrityRuntime` y `hazardRuntime`.
+
+TESTS: 1080 → 1100 en `/engine`, 86 sin cambios en `/game`. Unitarios por escritor y por lector, y
+`thermal-chain.integration`: el sensor arranca APAGADO (regresión directa del fail-open), la combustión
+violenta lo dispara, el calor llega al pasillo contiguo pero menos, y al agotarse el pulso todo vuelve solo
+al nominal y el sensor se apaga. Un segundo caso confirma que una combustión DÉBIL calienta sin llegar a
+disparar, o sea que el umbral discrimina de verdad en vez de encenderse con cualquier cosa. Verificado que
+ningún test de save/serialización cambió: no se tocó `schemaVersion`. `tsc` limpio en ambos workspaces.
+
+SPRITE FALTANTE: `game/assets/sprites/components/sensor-termico-precision.png`. Mientras no exista, la pieza
+usa el placeholder tinteable generado por código (`component-sprite-registry.ts`).

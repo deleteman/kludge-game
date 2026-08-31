@@ -2,6 +2,7 @@ import type { TickContext } from "../simulation/simulation-clock.types.js";
 import type { SectionId, SectionRuntime } from "./section.types.js";
 import type { GasKey } from "./atmosphere-composition.types.js";
 import type { VentilationConnection } from "./ventilation.types.js";
+import { MIN_THERMAL_APERTURE, THERMAL_DIFFUSION_RATE_PER_SECOND } from "./thermal-parameters.js";
 
 /** Espec. §4: la diferencia de concentración se reduce ~10%/s a válvula 100% abierta. */
 export const DIFFUSION_RATE_PER_SECOND = 0.1;
@@ -27,6 +28,8 @@ function clamp01(value: number): number {
  *    gas existente, nunca lo crea.
  *  - La PRESIÓN se equilibra por la misma conexión y con el mismo paso (ronda 1
  *    de playtest de 13h) — ver el comentario en el cuerpo.
+ *  - La TEMPERATURA se equilibra igual (Subfase 14a-1) pero con su propia tasa
+ *    y con un piso de apertura: cerrar una puerta detiene el gas, no el calor.
  */
 export function diffuse(
   sectionsById: ReadonlyMap<SectionId, SectionRuntime>,
@@ -39,17 +42,43 @@ export function diffuse(
     if (!a || !b) {
       continue;
     }
-    const step = Math.min(
+    const aperture = clamp01(connection.valveAperture);
+    const step = Math.min(1, DIFFUSION_RATE_PER_SECOND * aperture * tick.dtSeconds);
+    // La conducción térmica NO se apaga con la válvula cerrada (Subfase 14a-1):
+    // ver `MIN_THERMAL_APERTURE`. Por eso se calcula aparte y el `continue` de
+    // abajo exige que AMBOS pasos sean nulos — con `step <= 0` a secas, una
+    // puerta cerrada volvería a aislar térmicamente, que es justo lo que no
+    // queremos.
+    const thermalStep = Math.min(
       1,
-      DIFFUSION_RATE_PER_SECOND * clamp01(connection.valveAperture) * tick.dtSeconds,
+      THERMAL_DIFFUSION_RATE_PER_SECOND *
+        Math.max(MIN_THERMAL_APERTURE, aperture) *
+        tick.dtSeconds,
     );
-    if (step <= 0) {
+    if (step <= 0 && thermalStep <= 0) {
       continue;
     }
     const volA = a.section.volume;
     const volB = b.section.volume;
     const totalVolume = volA + volB;
     if (totalVolume <= 0) {
+      continue;
+    }
+
+    // Temperatura (Subfase 14a-1). Misma forma que la presión y los gases —
+    // equilibrio ponderado por volumen — porque es el mismo fenómeno por la
+    // misma conexión: una sala chica al lado de un incendio se calienta más
+    // rápido que un hangar. Lo único que cambia es la tasa y el piso de
+    // apertura.
+    const tA = a.atmosphere.temperatureCelsius;
+    const tB = b.atmosphere.temperatureCelsius;
+    if (thermalStep > 0 && tA !== tB) {
+      const equilibrium = (tA * volA + tB * volB) / totalVolume;
+      a.atmosphere.temperatureCelsius = tA + (equilibrium - tA) * thermalStep;
+      b.atmosphere.temperatureCelsius = tB + (equilibrium - tB) * thermalStep;
+    }
+
+    if (step <= 0) {
       continue;
     }
 

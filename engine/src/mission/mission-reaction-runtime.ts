@@ -93,8 +93,13 @@ export class MissionReactionRuntime implements Tickable {
       this.firedSubjectIds.add(subject.id);
       if (this.emitter) {
         for (const event of outcome.events) {
+          // 14a-1: la neutralización se estampa igual que la combustión —
+          // su calor (`heatReleasedCelsius`) no sirve de nada sin saber a qué
+          // sección aplicárselo.
           this.emitter.emit(
-            event.kind === "combustion" ? { ...event, sectionId: subject.sectionId } : event,
+            event.kind === "combustion" || event.kind === "neutralization"
+              ? { ...event, sectionId: subject.sectionId }
+              : event,
           );
         }
       }

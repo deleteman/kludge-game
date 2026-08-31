@@ -223,6 +223,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.pressure-draining": "Perdiendo presión",
   "ui.floorplan.mission.tooltip.pressure-recovering": "Represurizando: entra aire",
   "ui.floorplan.mission.tooltip.vacuum": "Vacío: letal para la tripulación",
+  "ui.floorplan.mission.tooltip.temperature": "Temperatura: {celsius} °C",
+  "ui.floorplan.mission.tooltip.heating": "Fuente de calor activa",
   "ui.floorplan.mission.tooltip.breach-open": "Brecha abierta en el casco",
   "ui.floorplan.mission.tooltip.breach-sealed": "Brecha tapada",
   "ui.floorplan.notification.breach-patch-failed": "Esa pieza no sella la brecha",

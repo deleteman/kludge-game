@@ -963,13 +963,34 @@ Agrupa, con el mismo criterio que separó la Fase 13 de gaps de motor del conten
 
 #### Subfase 14a: Dominio de Temperatura
 
-Sexto eje del motor junto a energía/presión/química/señales/estructura — especificado en el GDD §5.2 y la Especificación de datos técnicos (efecto térmico de neutralización ácido+base) pero sin ningún campo de estado hasta ahora. Entra antes de la demo por los efectos naturales que desbloquea (combustión con rastro real, tercer sensor del Cap.2, enfriador cableable), no solo por ser prerrequisito no declarado de la Fase 17 (Cap.4, caso de validación 2).
+Sexto eje del motor junto a energía/presión/química/señales/estructura — especificado en el GDD §5.2 y la Especificación de datos técnicos (efecto térmico de neutralización ácido+base) pero sin ningún **escritor** hasta ahora. Entra antes de la demo por los efectos naturales que desbloquea (combustión con rastro real, tercer sensor del Cap.2, enfriador cableable), no solo por ser prerrequisito no declarado de la Fase 17 (Cap.4, caso de validación 2).
 
-* **Estado:** `temperatureC` en `SectionAtmosphere`/`SectionAtmosphereSnapshot`, nominal 20°C.
-* **Escritores:** reacción exotérmica (neutralización), sobrecarga eléctrica (`OverloadEvent` modo fire), combustión (`CombustionEvent`, proporcional a `intensity`), enfriador/regulador térmico activo (`ACT` nuevo, gateado por energía), deriva pasiva hacia nominal.
-* **Lectores:** conductividad `CE`/`CT` variable (modula `OverloadRule`), cambio de estado de sustancia (L↔S↔G), `thermalRegulatorOverloaded` real (hoy hardcodeado `false` en `MissionReactionRuntime`), quinto escritor de daño estructural (13f), sensor térmico nuevo (`triggerType: "temperatura"`, mismo molde que `pressureAwareEmitterInputs`).
-* Cierra el ciclo combustión→calor→cortocircuito→combustión: la cascada multi-salto que hoy el motor no sostiene.
-* Test unitario por escritor/lector + integración "combustión sube temperatura que degrada conductor".
+Partida en dos entregas jugables al planificarla (decisión del operador, 2026-08-31): 14a-1 deja el eje vivo y legible de punta a punta; 14a-2 agrega los acoplamientos con los otros dominios.
+
+Tres correcciones al texto original tras auditar el código:
+- El campo **ya existía** como `temperatureCelsius` (no `temperatureC`) con nominal **21 °C** (no 20). Se reusa tal cual: sin bump de `schemaVersion`, sin migración de saves.
+- El `triggerType` es **`"thermal"`** (no `"temperatura"`): es el valor que ya autoraba `sensor-termico-precision` en el catálogo, y el resto de los trigger types están en inglés.
+- El **sensor térmico ya existía** en el catálogo pero caía en el *fail-open* de `allEmittersActive`: estaba permanentemente disparado.
+
+##### Subfase 14a-1: Estado vivo, escritores por evento y sensor térmico real ✅ CERRADA (2026-08-31)
+
+* **Estado:** `temperatureCelsius` reusado; `NOMINAL_TEMPERATURE_CELSIUS` pasa a ser la única fuente del 21.
+* **Parámetros** (`atmosphere/thermal-parameters.ts`): tasas de deriva y conducción, tablas de calor por evento, clamp de dos lados, umbral del sensor.
+* **Escritores:** `MissionThermalRuntime` traduce `CombustionEvent` (por `intensity`), `OverloadEvent` (modos fire/explosion) y `NeutralizationEvent` (con su propio `heatReleasedCelsius`, que hasta ahora nadie aplicaba) a pulsos de °C/s con duración; deriva pasiva exponencial hacia el nominal; conducción entre secciones dentro de `diffuse()`, con piso de apertura — cerrar una puerta frena el gas pero no el calor.
+* **Lectores:** sensor térmico real (`temperatureAwareEmitterInputs`) + lectura de temperatura y de "fuente de calor activa" en el tooltip de sección; el efecto de partículas `heatVapor` pasa a importar el umbral del motor en vez de repetir el 60.
+* `NeutralizationEvent` gana `sectionId` opcional, estampado por `MissionReactionRuntime` igual que el de combustión.
+* Suite: `/engine` 1080 → **1100**.
+* **Sprite faltante:** `game/assets/sprites/components/sensor-termico-precision.png` — mientras tanto usa el placeholder tinteable por código.
+
+##### Subfase 14a-2: Acoplamientos térmicos (pendiente)
+
+* **Enfriador/regulador térmico activo** (`ACT` nuevo, gateado por energía): pieza nueva del catálogo + sprite propio (decisión del operador), sexto escritor de temperatura.
+* **Conductividad `CE`/`CT` variable:** cablear `thermalConductivityRule` (ya escrita y sin llamador de producción) dentro de `MissionOverloadRuntime`, que hoy usa `conductorOverloadSubject` a secas.
+* **`thermalRegulatorOverloaded` real** en `MissionReactionRuntime` (hoy hardcodeado `false`, dejando muerta a `SpontaneousIgnitionRule`).
+* **Quinto escritor de daño estructural** (13f): una `SectionEnvironmentalDamageRule` térmica más en el registro.
+* **Cambio de estado de sustancia** (L↔S↔G).
+* Cierra el ciclo combustión→calor→cortocircuito→combustión: la cascada multi-salto que el motor todavía no sostiene.
+* Integración pendiente: "combustión sube temperatura que degrada conductor" (14a-1 dejó su equivalente, "combustión sube temperatura que dispara el sensor").
 
 #### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
 

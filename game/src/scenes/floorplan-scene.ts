@@ -1941,7 +1941,10 @@ export class FloorplanScene extends Phaser.Scene {
     // aviso de energía adentro se habría visto enseguida: bajar el dial no
     // apagaría el aviso hasta mover el mouse de celda.
     const atmosphereKey = content.atmosphere
-      ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}`
+      ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}` +
+        // 14a-1: sin la temperatura en la clave, el tooltip abierto sobre una
+        // sección que se calienta seguiría mostrando el valor del primer frame.
+        `:${Math.round(content.atmosphere.temperatureCelsius)}:${content.atmosphere.heating}`
       : "";
     const statesKey =
       content.kind === "instance"
@@ -1965,6 +1968,9 @@ export class FloorplanScene extends Phaser.Scene {
           t("ui.floorplan.mission.tooltip.pressure").replace("{kpa}", String(Math.round(kpa))),
         sectionPressureTrend: (trend) => t(`ui.floorplan.mission.tooltip.pressure-${trend}`),
         sectionVacuum: t("ui.floorplan.mission.tooltip.vacuum"),
+        sectionTemperature: (celsius) =>
+          t("ui.floorplan.mission.tooltip.temperature").replace("{celsius}", String(Math.round(celsius))),
+        sectionHeating: t("ui.floorplan.mission.tooltip.heating"),
         sectionBreach: (sealed) =>
           t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
         instanceState: (state) => instanceStateLabel(state),

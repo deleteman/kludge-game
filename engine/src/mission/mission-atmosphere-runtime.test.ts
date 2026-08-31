@@ -6,6 +6,7 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import { toSectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { TickContext } from "../simulation/simulation-clock.types.js";
+import { NOMINAL_TEMPERATURE_CELSIUS } from "../atmosphere/thermal-parameters.js";
 
 const tickOf = (elapsed: number, dt = 1): TickContext => ({ dtSeconds: dt, elapsedSeconds: elapsed });
 
@@ -129,5 +130,98 @@ describe("MissionAtmosphereRuntime (Fase 11b, atmósfera viva en misión)", () =
       runtime.tick(tickOf(0, 1));
       expect(runtime.netPressureRateOf(CABINA)).toBe(0);
     });
+  });
+});
+
+describe("MissionAtmosphereRuntime: temperatura (Subfase 14a-1)", () => {
+  /** Firma posicional: sink, gasInjection, pressureFloor, aperture, heat. */
+  function withHeat(rates: ReadonlyMap<SectionId, number>): MissionAtmosphereRuntime {
+    return new MissionAtmosphereRuntime(
+      twoSectionFloorplan(),
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => rates,
+    );
+  }
+
+  it("sin fuente de calor, una nave en reposo se queda en el nominal", () => {
+    const runtime = new MissionAtmosphereRuntime(twoSectionFloorplan(), []);
+    for (let i = 0; i < 100; i += 1) {
+      runtime.tick(tickOf(i, 1));
+    }
+    expect(runtime.atmosphereOf(CABINA)!.temperatureCelsius).toBeCloseTo(
+      NOMINAL_TEMPERATURE_CELSIUS,
+    );
+  });
+
+  it("la fuente de calor sube la temperatura de su sección", () => {
+    const runtime = withHeat(new Map([[CABINA, 20]]));
+    runtime.tick(tickOf(0, 1));
+    expect(runtime.atmosphereOf(CABINA)!.temperatureCelsius).toBeGreaterThan(
+      NOMINAL_TEMPERATURE_CELSIUS + 15,
+    );
+  });
+
+  it("la deriva pasiva devuelve al nominal cuando el calor se corta", () => {
+    let rates: ReadonlyMap<SectionId, number> = new Map([[CABINA, 40]]);
+    const runtime = new MissionAtmosphereRuntime(
+      twoSectionFloorplan(),
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => rates,
+    );
+    for (let i = 0; i < 5; i += 1) {
+      runtime.tick(tickOf(i, 1));
+    }
+    const pico = runtime.atmosphereOf(CABINA)!.temperatureCelsius;
+    expect(pico).toBeGreaterThan(100);
+
+    rates = new Map();
+    for (let i = 0; i < 400; i += 1) {
+      runtime.tick(tickOf(i, 1));
+    }
+    expect(runtime.atmosphereOf(CABINA)!.temperatureCelsius).toBeCloseTo(
+      NOMINAL_TEMPERATURE_CELSIUS,
+      1,
+    );
+  });
+
+  it("la deriva NO se pasa del nominal, ni con un dt enorme", () => {
+    // Regresión de la deriva exponencial: con un `dt` grande, una fórmula
+    // lineal cruzaría el objetivo y la sección terminaría más fría que el
+    // nominal después de un incendio.
+    const runtime = withHeat(new Map([[CABINA, 200]]));
+    runtime.tick(tickOf(0, 1));
+    const caliente = runtime.atmosphereOf(CABINA)!.temperatureCelsius;
+    expect(caliente).toBeGreaterThan(NOMINAL_TEMPERATURE_CELSIUS);
+
+    const enfriando = new MissionAtmosphereRuntime(twoSectionFloorplan(), [
+      toSectionAtmosphereSnapshot(CABINA, {
+        gases: new Map([[GAS.OXYGEN, 0.21]]),
+        temperatureCelsius: 500,
+        pressureKpa: 101,
+      }),
+    ]);
+    enfriando.tick(tickOf(0, 1000));
+    expect(enfriando.atmosphereOf(CABINA)!.temperatureCelsius).toBeGreaterThanOrEqual(
+      NOMINAL_TEMPERATURE_CELSIUS,
+    );
+  });
+
+  it("el calor de una sección se propaga a la contigua por el conducto", () => {
+    const runtime = withHeat(new Map([[CABINA, 60]]));
+    for (let i = 0; i < 10; i += 1) {
+      runtime.tick(tickOf(i, 1));
+    }
+    const cabina = runtime.atmosphereOf(CABINA)!.temperatureCelsius;
+    const bodega = runtime.atmosphereOf(BODEGA)!.temperatureCelsius;
+    expect(bodega).toBeGreaterThan(NOMINAL_TEMPERATURE_CELSIUS);
+    expect(bodega).toBeLessThan(cabina);
   });
 });

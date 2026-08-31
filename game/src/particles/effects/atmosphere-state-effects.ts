@@ -3,6 +3,7 @@ import type Phaser from "phaser";
 import type { GridPosition, ParticleEmitterHook, StateDrivenEffect } from "../particle-effect.types.js";
 import { type EffectScene, pickTexture, spreadRange, textureScale, toPixel } from "../particle-utils.js";
 import { CIRCLE_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
+import { THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
 
 /**
  * Tres fenómenos state-driven de GDD 11.1 leídos de `SectionAtmosphere` cada
@@ -113,7 +114,15 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
 }
 
 const FREEZING_THRESHOLD_CELSIUS = -10;
-const HEAT_VAPOR_THRESHOLD_CELSIUS = 60;
+/**
+ * Subfase 14a-1: el vapor de calor aparece exactamente cuando dispara el
+ * sensor térmico, y por eso importa SU constante en vez de repetir el 60.
+ * Hasta acá los dos números coincidían por casualidad y nada impedía que se
+ * separaran en el próximo balanceo — la UI mostrando un umbral y el motor
+ * usando otro es la clase de mentira visual que el principio 6 prohíbe: si el
+ * jugador ve vapor, el sensor está disparado, y al revés.
+ */
+const HEAT_VAPOR_THRESHOLD_CELSIUS = THERMAL_SENSOR_TRIGGER_CELSIUS;
 
 export function createFreezingEffect(
   onEmitterCreated?: ParticleEmitterHook,

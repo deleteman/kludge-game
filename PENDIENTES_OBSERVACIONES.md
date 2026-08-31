@@ -896,12 +896,14 @@ ajuste de balanceo futuro (Fase 23) no puede romper la relación en silencio.
 
 ## Deuda #40 — 15 de los 17 `triggerType` de emisor no tienen simulación y quedan siempre activos (Subfase 13g, ronda 1 de playtest)
 
-**Estado:** ABIERTA POR DECISIÓN. Registrada 2026-08-29.
+**Estado:** ABIERTA POR DECISIÓN, con `thermal` ya cerrado. Registrada 2026-08-29; actualizada 2026-08-31
+(Subfase 14a-1).
 
-Un emisor necesita que algo del mundo lo encienda. El motor sabe resolver **dos** disparadores:
-`PRESENCE_TRIGGER_TYPES` (`optical`/`motion`, contra la posición de tripulación y enemigos) y
-`PRESSURE_TRIGGER_TYPES` (`pressure`, contra la presión real de la sección). Para todos los demás —`thermal`,
-`radar`, `radio`, `biometric`, `spectral`, `magnified`, `remote`, `visual`, `navigation`, `computation`,
+Un emisor necesita que algo del mundo lo encienda. El motor sabe resolver **tres** disparadores:
+`PRESENCE_TRIGGER_TYPES` (`optical`/`motion`, contra la posición de tripulación y enemigos),
+`PRESSURE_TRIGGER_TYPES` (`pressure`, contra la presión real de la sección) y —desde 14a-1—
+`THERMAL_TRIGGER_TYPES` (`thermal`, contra la temperatura real de la sección). Quedan **14 de 17** sin
+simulación. Para todos los demás —`radar`, `radio`, `biometric`, `spectral`, `magnified`, `remote`, `visual`, `navigation`, `computation`,
 `signal`, `manual`, `emergency`— nadie calcula nada, así que el `continue` de los dos envoltorios los deja con
 el `true` de `allEmittersActive`: **se comportan como sensores permanentemente disparados**.
 
@@ -915,5 +917,22 @@ Lo que SÍ se arregló en esta ronda es la cobertura, que era un bug aparte: la 
 **compuestos** — `sensor-movimiento-laser` y `sensor-presion-gas`, o sea los sensores de verdad del catálogo,
 más cualquier creación de la mesa con `EM`. Ahora se resuelve contra el registro completo.
 
-Cerrar esta deuda es, tipo por tipo, atarlos a un dominio real del motor. El térmico lo desbloquea la
-**Subfase 14a** (dominio de temperatura); el resto no tiene todavía un eje del que colgarse.
+Cerrar esta deuda es, tipo por tipo, atarlos a un dominio real del motor. **`thermal` quedó cerrado en la
+Subfase 14a-1** (2026-08-31): `temperatureAwareEmitterInputs` resuelve `sensor-termico-precision` contra la
+temperatura viva de su sección, y el test de integración deja anclado que arranca APAGADO — que era el
+síntoma concreto de esta deuda. El resto no tiene todavía un eje del que colgarse.
+
+`quimico` es el siguiente y lo desbloquea la **Subfase 14b**.
+
+## Deuda #41 — Falta el sprite de `sensor-termico-precision` (Subfase 14a-1)
+
+**Estado:** ABIERTA. Registrada 2026-08-31.
+
+La Subfase 14a-1 puso en juego real al sensor térmico (antes estaba en el catálogo pero permanentemente
+disparado, ver deuda #40), y con eso pasó a ser una pieza que el jugador instala y mira. No tiene arte:
+falta `game/assets/sprites/components/sensor-termico-precision.png`.
+
+Mientras tanto usa el placeholder tinteable generado por código, que desde 13g recorre el mismo camino
+visual que un sprite real (deuda #38), así que no bloquea nada — pero es el tercer sensor del diseño de
+nivel del Cap. 2 y para la demo debería tener arte propio y distinguible del sensor de presión, que sí lo
+tiene (`sensor-presion.png`).

@@ -1629,3 +1629,50 @@
 ### `engine/src/floorplan/floorplan-integrity.ts` (modificado)
 - `door-not-a-threshold` pasa a exigir `cellSeparates` — la misma precondición que el runtime — en vez de que
   la inferencia dé exactamente dos secciones, que prohibía mapas correctos.
+
+## Subfase 14a-1: Dominio de Temperatura
+
+### `engine/src/atmosphere/thermal-parameters.ts` (nuevo)
+- Único lugar con números térmicos: `NOMINAL_TEMPERATURE_CELSIUS` (única fuente del 21, lo importa
+  `standardSectionAtmosphere`), `PASSIVE_DRIFT_PER_SECOND`, `THERMAL_DIFFUSION_RATE_PER_SECOND`,
+  `MIN_THERMAL_APERTURE`, clamp piso/techo, `THERMAL_SENSOR_TRIGGER_CELSIUS`, y las tablas de calor por
+  evento `COMBUSTION_HEAT` / `OVERLOAD_HEAT` (autoradas como "+X °C en Y s", no como °C/s).
+
+### `engine/src/atmosphere/diffusion.ts` (modificado)
+- Tercer bloque de equilibrio, igual que presión y gases pero con tasa propia y piso de apertura: una puerta
+  cerrada detiene el gas y NO el calor. El `continue` por apertura 0 pasa a exigir que ambos pasos sean nulos.
+
+### `engine/src/mission/mission-thermal-runtime.ts` (nuevo)
+- `Tickable` que traduce `CombustionEvent` / `OverloadEvent` (fire, explosion) / `NeutralizationEvent` a
+  pulsos de °C/s con duración, y los expone por `rates()` / `heatRateOf()`. La neutralización usa el calor
+  que trae el propio evento; el resto, la tabla de parámetros. Eventos sin `sectionId` se ignoran.
+
+### `engine/src/mission/mission-atmosphere-runtime.ts` (modificado)
+- `SectionHeatSource` como 7º parámetro opcional (mismo patrón DI que `SectionPressureSinkSource`), y
+  `applyThermalUpdate`: aporte por evento + deriva exponencial hacia el nominal, con clamp de dos lados.
+  Va antes del early-return del sumidero: una misión sin fuentes de presión igual climatiza.
+
+### `engine/src/mission/temperature-emitter-input-source.ts` (nuevo)
+- `temperatureAwareEmitterInputs`: resuelve `triggerType: "thermal"` contra la temperatura real de la sección
+  del sensor. Molde de `pressureAwareEmitterInputs`, búsqueda contra el registro completo (el sensor térmico
+  es compuesto), disparo POR ENCIMA del umbral. Saca a `sensor-termico-precision` del fail-open.
+
+### `engine/src/mission/emitter-sensing.ts` (modificado)
+- `THERMAL_TRIGGER_TYPES` junto a los sets de presencia y presión.
+
+### `engine/src/chemistry/reaction/reaction-events.types.ts` (modificado)
+- `NeutralizationEvent.sectionId` opcional, mismo criterio y mismo llenado que el de `CombustionEvent`.
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- `thermalRuntime` construido y registrado en el core loop ANTES de `atmosphereRuntime`; su `rates()` se
+  inyecta por closure como `SectionHeatSource`. `emitterInputs` pasa a armarse en pasos nombrados
+  (`withMotion` → `withPressure` → temperatura) en vez de anidada. `sectionAtmosphereInfo` agrega
+  `temperatureCelsius` y `heating`.
+
+### `game/src/ui/widgets/mission-tooltip.ts` (modificado)
+- Línea de temperatura (siempre, coloreada al cruzar el umbral del sensor) y línea de "fuente de calor
+  activa" en ámbar. Ejes separados a propósito, igual que `vacuum` lo es de `trend`.
+
+### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
+- `HEAT_VAPOR_THRESHOLD_CELSIUS` pasa a importar `THERMAL_SENSOR_TRIGGER_CELSIUS` del motor en vez de
+  repetir el 60: si el jugador ve vapor, el sensor está disparado.

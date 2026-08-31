@@ -12,6 +12,15 @@ import {
 } from "../atmosphere/atmosphere-snapshot.types.js";
 import type { SectionAtmosphereSnapshot } from "../atmosphere/atmosphere-snapshot.types.js";
 import type { SectionGasInjectionSource } from "./section-gas-injection.js";
+import {
+  NOMINAL_TEMPERATURE_CELSIUS,
+  PASSIVE_DRIFT_PER_SECOND,
+  TEMPERATURE_CEILING_CELSIUS,
+  TEMPERATURE_FLOOR_CELSIUS,
+} from "../atmosphere/thermal-parameters.js";
+
+/** Sin `heatSource` no hay aportes: se reusa un mapa vacío en vez de crear uno por tick. */
+const EMPTY_HEAT_RATES: ReadonlyMap<SectionId, number> = new Map();
 
 /**
  * Atmósfera VIVA de una misión (Fase 11b) — hasta esta fase, `diffuse()` y el
@@ -85,6 +94,20 @@ export type SectionPressureFloorSource = (sectionId: SectionId) => number;
  */
 export type SectionApertureSource = () => ReadonlyArray<VentilationConnection>;
 
+/**
+ * De dónde sale el calor APORTADO por eventos este tick (Subfase 14a-1): un
+ * `Map` de `SectionId` → °C/segundo. Mismo patrón DI, angosto y opcional, que
+ * `SectionPressureSinkSource`: el runtime de atmósfera no sabe POR QUÉ una
+ * sección se está calentando (un incendio, un cortocircuito, una
+ * neutralización exotérmica), solo aplica la tasa que el mundo le da.
+ * `MissionThermalRuntime` es su implementación de producción.
+ *
+ * Sin fuente, el comportamiento es el anterior a 14a-1 salvo por la deriva
+ * pasiva, que corre siempre: sin escritores no hay nada de qué derivar, así
+ * que una nave en reposo se queda en el nominal igual que antes.
+ */
+export type SectionHeatSource = () => ReadonlyMap<SectionId, number>;
+
 export class MissionAtmosphereRuntime implements Tickable {
   private readonly sectionsById: Map<SectionId, SectionRuntime>;
   private readonly connections: ReadonlyArray<VentilationConnection>;
@@ -120,6 +143,11 @@ export class MissionAtmosphereRuntime implements Tickable {
      * difunde por las conexiones estáticas del plano.
      */
     private readonly apertureSource?: SectionApertureSource,
+    /**
+     * Calor aportado por eventos (Subfase 14a-1). Mismo patrón DI que
+     * `sinkSource`, y como él opcional.
+     */
+    private readonly heatSource?: SectionHeatSource,
   ) {
     const model = deriveAtmosphereModel(shipFloorplan);
     const snapshotBySection = new Map(initialSnapshots.map((snapshot) => [snapshot.sectionId, snapshot]));
@@ -164,6 +192,11 @@ export class MissionAtmosphereRuntime implements Tickable {
     // otra conexión más y una válvula cerrada, la misma conexión con otro
     // número.
     diffuse(this.sectionsById, this.apertureSource?.() ?? this.connections, ctx);
+    // Temperatura ANTES del early-return del sumidero: una misión sin fuentes
+    // de presión igual tiene que climatizar. Va después de `diffuse()` para
+    // que el calor recién conducido derive en el mismo tick, por la misma razón
+    // por la que las inyecciones van antes.
+    this.applyThermalUpdate(ctx);
     if (!this.sinkSource) {
       return;
     }
@@ -188,6 +221,34 @@ export class MissionAtmosphereRuntime implements Tickable {
       runtime.atmosphere.pressureKpa = Math.min(
         PRESSURE_RECOVERY_CEILING_KPA,
         Math.max(floorKpa, runtime.atmosphere.pressureKpa - rateKpaPerSecond * ctx.dtSeconds),
+      );
+    }
+  }
+
+  /**
+   * Aporte de calor por eventos + deriva pasiva hacia el nominal (Subfase
+   * 14a-1). Los dos van juntos y en este orden a propósito: la climatización
+   * pelea CONTRA el pulso mientras dura, así que el pico real que ve el jugador
+   * es menor que el `celsius` autorado del pulso, y en cuanto el pulso se
+   * agota el mismo mecanismo devuelve la sección al nominal sin que nadie
+   * tenga que "apagar" nada.
+   *
+   * La deriva es exponencial (`+= (nominal - T) * rate * dt`), no lineal: con
+   * el dt de frame variable del core loop nunca puede pasarse del objetivo.
+   */
+  private applyThermalUpdate(ctx: TickContext): void {
+    const heatRates = this.heatSource?.() ?? EMPTY_HEAT_RATES;
+    for (const [, runtime] of this.sectionsById) {
+      const atmosphere = runtime.atmosphere;
+      const heatRate = heatRates.get(runtime.section.id) ?? 0;
+      const drifted =
+        atmosphere.temperatureCelsius +
+        (NOMINAL_TEMPERATURE_CELSIUS - atmosphere.temperatureCelsius) *
+          Math.min(1, PASSIVE_DRIFT_PER_SECOND * ctx.dtSeconds) +
+        heatRate * ctx.dtSeconds;
+      atmosphere.temperatureCelsius = Math.min(
+        TEMPERATURE_CEILING_CELSIUS,
+        Math.max(TEMPERATURE_FLOOR_CELSIUS, drifted),
       );
     }
   }

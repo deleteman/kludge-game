@@ -70,6 +70,80 @@ describe("atmosphere: diffuse (GDD 5.5, Espec. §4)", () => {
   });
 });
 
+describe("atmosphere: conducción de calor en diffuse (Subfase 14a-1)", () => {
+  function hot(id: string, volume: number, temperatureCelsius: number): SectionRuntime {
+    return {
+      section: { id: sectionId(id), volume },
+      atmosphere: {
+        gases: new Map([[GAS.OXYGEN, 0.21]]),
+        temperatureCelsius,
+        pressureKpa: 101,
+      },
+    };
+  }
+
+  it("dos secciones conectadas convergen en temperatura", () => {
+    const a = hot("a", 1, 200);
+    const b = hot("b", 1, 20);
+    const map = new Map([a, b].map((r) => [r.section.id, r]));
+
+    diffuse(map, [{ a: a.section.id, b: b.section.id, valveAperture: 1 }], tickOf(0));
+
+    expect(a.atmosphere.temperatureCelsius).toBeLessThan(200);
+    expect(b.atmosphere.temperatureCelsius).toBeGreaterThan(20);
+    // Equilibrio ponderado por volumen: con volúmenes iguales, la media.
+    const media = (a.atmosphere.temperatureCelsius + b.atmosphere.temperatureCelsius) / 2;
+    expect(media).toBeCloseTo(110);
+  });
+
+  it("una puerta cerrada FRENA el calor pero no lo aísla (MIN_THERMAL_APERTURE)", () => {
+    const abiertaA = hot("abierta-a", 1, 200);
+    const abiertaB = hot("abierta-b", 1, 20);
+    const cerradaA = hot("cerrada-a", 1, 200);
+    const cerradaB = hot("cerrada-b", 1, 20);
+    const map = new Map(
+      [abiertaA, abiertaB, cerradaA, cerradaB].map((r) => [r.section.id, r]),
+    );
+
+    diffuse(
+      map,
+      [
+        { a: abiertaA.section.id, b: abiertaB.section.id, valveAperture: 1 },
+        { a: cerradaA.section.id, b: cerradaB.section.id, valveAperture: 0 },
+      ],
+      tickOf(0),
+    );
+
+    // Cerrada: el gas NO se movió (contraste con el bloque de gases)…
+    expect(cerradaA.atmosphere.gases.get(GAS.OXYGEN)).toBeCloseTo(0.21);
+    // …pero el calor sí, aunque menos que con la puerta abierta.
+    expect(cerradaB.atmosphere.temperatureCelsius).toBeGreaterThan(20);
+    expect(cerradaB.atmosphere.temperatureCelsius).toBeLessThan(
+      abiertaB.atmosphere.temperatureCelsius,
+    );
+  });
+
+  it("una sala chica al lado de un incendio se calienta más que un hangar", () => {
+    const foco = hot("foco", 1, 400);
+    const chica = hot("chica", 1, 21);
+    const hangar = hot("hangar", 10, 21);
+    const map = new Map([foco, chica, hangar].map((r) => [r.section.id, r]));
+
+    diffuse(
+      map,
+      [
+        { a: foco.section.id, b: chica.section.id, valveAperture: 1 },
+        { a: foco.section.id, b: hangar.section.id, valveAperture: 1 },
+      ],
+      tickOf(0),
+    );
+
+    expect(chica.atmosphere.temperatureCelsius).toBeGreaterThan(
+      hangar.atmosphere.temperatureCelsius,
+    );
+  });
+});
+
 describe("atmosphere: combustión dependiente de O2 (acople Bloque 3 ↔ Bloque 2, caso 8)", () => {
   it("maps O2 fraction to the GDD 5.5 buckets", () => {
     expect(oxygenToCombustionBucket(0)).toBe("none");

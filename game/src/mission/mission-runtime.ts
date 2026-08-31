@@ -10,6 +10,7 @@ import {
   LooseFerromagneticPromoter,
   HAZARD_PARAMETERS,
   MissionAtmosphereRuntime,
+  MissionThermalRuntime,
   PRESSURE_RECOVERY_CEILING_KPA,
   MissionProjectileWorld,
   MissionOverloadRuntime,
@@ -31,6 +32,7 @@ import {
   TaskScheduler,
   allEmittersActive,
   pressureAwareEmitterInputs,
+  temperatureAwareEmitterInputs,
   motionAwareEmitterInputs,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
   CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
@@ -278,6 +280,8 @@ export class MissionRuntime {
   readonly loosePromoter: LooseFerromagneticPromoter;
   /** Atmósfera viva por sección (Fase 11b) — primer llamador de producción de `diffuse()`. */
   readonly atmosphereRuntime: MissionAtmosphereRuntime;
+  /** Escritores de temperatura por evento (Subfase 14a-1) — alimenta el `SectionHeatSource`. */
+  readonly thermalRuntime: MissionThermalRuntime;
   /** Cicatriz de RE por componente instalado (Fase 11b) — primer llamador de `StructuralIntegrity`. */
   readonly structuralRuntime: MissionStructuralRuntime;
   /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
@@ -446,24 +450,40 @@ export class MissionRuntime {
       this.componentRegistry,
       this.powerEvents,
     );
-    this.emitterInputs = pressureAwareEmitterInputs(
+    // Subfase 14a-1: una capa más de la cebolla. `sensor-termico-precision`
+    // existía en el catálogo desde el arranque pero ningún resolvedor conocía
+    // su `triggerType`, así que caía en el fail-open de `allEmittersActive` y
+    // estaba permanentemente disparado.
+    // La cebolla se arma en pasos nombrados y no anidada: con tres capas ya
+    // era ilegible cuál envolvía a cuál, y cada capa solo pisa los nodos de su
+    // `triggerType`, así que el orden entre ellas no cambia el resultado.
+    const atmosphereOf = (sectionId: SectionId) => this.atmosphereRuntime.atmosphereOf(sectionId);
+    const withMotion = motionAwareEmitterInputs(
+      this.shipState,
+      () => [
+        ...this.crewState
+          .all()
+          .filter((actor) => actor.hp > 0 && actor.currentCell !== undefined)
+          .map((actor) => actor.currentCell!),
+        ...this.enemyState.all().filter((enemy) => enemy.hp > 0).map((enemy) => enemy.cell),
+      ],
+      { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
+      this.componentRegistry,
+      allEmittersActive(this.shipState),
+    );
+    const withPressure = pressureAwareEmitterInputs(
       this.shipState,
       this.shipFloorplan,
-      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      atmosphereOf,
       this.componentRegistry,
-      motionAwareEmitterInputs(
-        this.shipState,
-        () => [
-          ...this.crewState
-            .all()
-            .filter((actor) => actor.hp > 0 && actor.currentCell !== undefined)
-            .map((actor) => actor.currentCell!),
-          ...this.enemyState.all().filter((enemy) => enemy.hp > 0).map((enemy) => enemy.cell),
-        ],
-        { isBlocked: (cell) => this.motionBlockedQuery.isBlocked(cell) },
-        this.componentRegistry,
-        allEmittersActive(this.shipState),
-      ),
+      withMotion,
+    );
+    this.emitterInputs = temperatureAwareEmitterInputs(
+      this.shipState,
+      this.shipFloorplan,
+      atmosphereOf,
+      this.componentRegistry,
+      withPressure,
     );
     // Fase 13b: `powerRuntime` reemplaza el objeto inline de `PowerScarSource`
     // (antes leía `unpoweredSectionIds` directo) y además gatea por instancia
@@ -613,7 +633,14 @@ export class MissionRuntime {
         () => this.valveRuntime.effectiveConnections(),
         this.doorRuntime.apertureSource(),
       ),
+      // Subfase 14a-1: el calor aportado por eventos. Se resuelve por closure
+      // igual que el piso de presión — `thermalRuntime` se construye abajo,
+      // porque necesita los emisores de reacción y de fallo ya creados.
+      () => this.thermalRuntime.rates(),
     );
+    // Subfase 14a-1: traductor de eventos discretos (combustión, sobrecarga en
+    // modo fuego, neutralización exotérmica) a °C/s por sección.
+    this.thermalRuntime = new MissionThermalRuntime(this.reactionEvents, this.failureEvents);
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
       this.shipState,
@@ -933,6 +960,13 @@ export class MissionRuntime {
     this.coreLoop.registerTickable(this.doorRuntime);
     this.coreLoop.registerTickable(this.loosePromoter);
     this.coreLoop.registerTickable(this.projectiles);
+    // Subfase 14a-1: los pulsos de calor se envejecen ANTES de que la
+    // atmósfera los consuma, por la misma razón que las inyecciones de gas van
+    // antes de difundir. Los eventos que abren un pulso llegan por suscripción
+    // (no en el tick), así que un evento emitido más tarde en este mismo tick
+    // aporta su calor en el siguiente — un frame de retraso, el mismo que ya
+    // tienen `sectionIntegrityRuntime` y `hazardRuntime`.
+    this.coreLoop.registerTickable(this.thermalRuntime);
     // Fase 11b: atmósfera viva ANTES que la cicatriz estructural, para que
     // `MissionStructuralRuntime` lea el nivel corrosivo YA difundido este tick.
     this.coreLoop.registerTickable(this.atmosphereRuntime);
@@ -1231,6 +1265,17 @@ export class MissionRuntime {
         readonly trend: "draining" | "recovering" | "stable";
         /** `true` mientras la sala mata por vacío — el MISMO umbral que usa `MissionHazardRuntime`, no un número aparte. */
         readonly vacuum: boolean;
+        /** Temperatura actual de la sección (Subfase 14a-1). */
+        readonly temperatureCelsius: number;
+        /**
+         * `true` mientras algún evento esté APORTANDO calor ahora mismo. Es un
+         * eje distinto de "está caliente", por la misma razón que `trend` es
+         * distinto de `vacuum`: una sala puede seguir a 200 °C con el incendio
+         * ya apagado (enfriándose sola), y una a 40 °C puede estar en camino a
+         * matar a todos. Lo que el jugador necesita saber es si el problema
+         * sigue activo.
+         */
+        readonly heating: boolean;
       }
     | undefined {
     const atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId);
@@ -1247,6 +1292,8 @@ export class MissionRuntime {
       pressureKpa: atmosphere.pressureKpa,
       trend: rate > 0 ? "draining" : recovering ? "recovering" : "stable",
       vacuum: atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa,
+      temperatureCelsius: atmosphere.temperatureCelsius,
+      heating: this.thermalRuntime.heatRateOf(sectionId) > 0,
     };
   }
 

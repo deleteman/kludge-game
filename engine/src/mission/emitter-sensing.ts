@@ -36,6 +36,18 @@ export const PRESENCE_TRIGGER_TYPES: ReadonlySet<string> = new Set(["optical", "
 export const PRESSURE_TRIGGER_TYPES: ReadonlySet<string> = new Set(["pressure"]);
 
 /**
+ * `triggerType` que el motor resuelve contra la temperatura real de la sección
+ * (Subfase 14a-1).
+ *
+ * Un solo valor —`"thermal"`, el que ya autoraba `sensor-termico-precision`—
+ * y NO `"temperatura"` como pedía el orden de trabajo: el resto de los trigger
+ * types del catálogo están en inglés (`pressure`, `motion`, `optical`), y
+ * tener el mismo concepto con dos nombres es exactamente el bug que documenta
+ * `PRESENCE_TRIGGER_TYPES` acá arriba.
+ */
+export const THERMAL_TRIGGER_TYPES: ReadonlySet<string> = new Set(["thermal"]);
+
+/**
  * Alcance declarado del `EM` de una pieza cuyo `triggerType` esté en
  * `triggerTypes`, o `undefined` si la pieza no es ese tipo de sensor (o no
  * resuelve en el registro).

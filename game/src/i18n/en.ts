@@ -223,6 +223,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.pressure-draining": "Losing pressure",
   "ui.floorplan.mission.tooltip.pressure-recovering": "Repressurising: air coming back",
   "ui.floorplan.mission.tooltip.vacuum": "Vacuum: lethal to crew",
+  "ui.floorplan.mission.tooltip.temperature": "Temperature: {celsius} °C",
+  "ui.floorplan.mission.tooltip.heating": "Active heat source",
   "ui.floorplan.mission.tooltip.breach-open": "Open hull breach",
   "ui.floorplan.mission.tooltip.breach-sealed": "Breach patched",
   "ui.floorplan.notification.breach-patch-failed": "That part does not seal the breach",

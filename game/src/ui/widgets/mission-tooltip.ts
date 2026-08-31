@@ -6,6 +6,7 @@ import type {
   InstanceState,
   MaterialProperties,
 } from "engine";
+import { THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import {
@@ -75,6 +76,10 @@ export interface SectionAtmosphereTooltip {
   readonly trend: "draining" | "recovering" | "stable";
   /** La sala mata por vacío AHORA MISMO. Es un eje distinto de `trend`: se puede estar recuperando y seguir siendo letal. */
   readonly vacuum: boolean;
+  /** Temperatura de la sección (Subfase 14a-1). */
+  readonly temperatureCelsius: number;
+  /** Algún evento está aportando calor AHORA. Eje distinto de "está caliente", igual que `vacuum` lo es de `trend`. */
+  readonly heating: boolean;
 }
 
 export interface MissionTooltipLabels {
@@ -91,6 +96,10 @@ export interface MissionTooltipLabels {
   readonly sectionPressureTrend: (trend: SectionAtmosphereTooltip["trend"]) => string;
   /** "Vacío: letal para la tripulación". */
   readonly sectionVacuum: string;
+  /** "Temperatura: 84 °C" (Subfase 14a-1). */
+  readonly sectionTemperature: (celsius: number) => string;
+  /** "Calentándose": hay una fuente de calor activa en la sección ahora mismo. */
+  readonly sectionHeating: string;
   /** Brecha de casco en la celda bajo el cursor. */
   readonly sectionBreach: (sealed: boolean) => string;
   /**
@@ -257,6 +266,22 @@ export function renderMissionTooltip(
       // dice el hecho crudo en vez de mezclarlo con el texto de tendencia.
       if (content.atmosphere.vacuum) {
         lines.push({ text: `☠ ${labels.sectionVacuum}`, color: CRISIS_FATAL_CSS });
+      }
+      // Subfase 14a-1: la temperatura va SIEMPRE, como la presión — es la
+      // lectura que hace diagnosticable todo el eje térmico. El color la marca
+      // solo cuando cruza el umbral del sensor, para que a 21 °C no compita
+      // con lo que de verdad está mal.
+      lines.push({
+        text: `• ${labels.sectionTemperature(content.atmosphere.temperatureCelsius)}`,
+        color:
+          content.atmosphere.temperatureCelsius > THERMAL_SENSOR_TRIGGER_CELSIUS
+            ? CRISIS_FATAL_CSS
+            : LABEL_COLOR,
+      });
+      // Y el aviso de fuente activa aparte, mismo criterio y mismo ámbar que
+      // `pressure-recovering`: "esto todavía está pasando".
+      if (content.atmosphere.heating) {
+        lines.push({ text: `• ${labels.sectionHeating}`, color: CRISIS_WARNING_CSS });
       }
     }
     if (content.breach) {

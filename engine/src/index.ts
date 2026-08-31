@@ -222,6 +222,19 @@ export type {
 } from "./atmosphere/section.types.js";
 export type { VentilationConnection } from "./atmosphere/ventilation.types.js";
 export { DIFFUSION_RATE_PER_SECOND, diffuse } from "./atmosphere/diffusion.js";
+// Subfase 14a-1 — dominio de temperatura: parámetros del sexto eje del motor.
+export {
+  COMBUSTION_HEAT,
+  MIN_THERMAL_APERTURE,
+  NOMINAL_TEMPERATURE_CELSIUS,
+  OVERLOAD_HEAT,
+  PASSIVE_DRIFT_PER_SECOND,
+  TEMPERATURE_CEILING_CELSIUS,
+  TEMPERATURE_FLOOR_CELSIUS,
+  THERMAL_DIFFUSION_RATE_PER_SECOND,
+  THERMAL_SENSOR_TRIGGER_CELSIUS,
+} from "./atmosphere/thermal-parameters.js";
+export type { HeatPulseSpec } from "./atmosphere/thermal-parameters.js";
 export {
   OXYGEN_COMBUSTION_THRESHOLDS,
   oxygenToCombustionBucket,
@@ -733,6 +746,9 @@ export {
 } from "./mission/pressure-emitter-input-source.js";
 // Fase 13a — sensor óptico/de presencia real (deuda #3), por línea de visión + rango.
 export { motionAwareEmitterInputs } from "./mission/motion-emitter-input-source.js";
+// Subfase 14a-1 — sensor térmico real: hasta acá caía en el fail-open y estaba
+// permanentemente disparado.
+export { temperatureAwareEmitterInputs } from "./mission/temperature-emitter-input-source.js";
 // 13g ronda 1 — resolución de sensores, compartida entre el motor (que decide
 // el disparo) y `/game` (que dibuja el área de alcance): una sola fórmula.
 export {
@@ -741,6 +757,7 @@ export {
   emitterReaches,
   PRESENCE_TRIGGER_TYPES,
   PRESSURE_TRIGGER_TYPES,
+  THERMAL_TRIGGER_TYPES,
 } from "./mission/emitter-sensing.js";
 export { hasLineOfSight } from "./geometry/line-of-sight.js";
 export type { CellBlockedQuery } from "./geometry/line-of-sight.js";
@@ -755,7 +772,10 @@ export {
 export type {
   SectionPressureSinkSource,
   SectionPressureFloorSource,
+  SectionHeatSource,
 } from "./mission/mission-atmosphere-runtime.js";
+// Subfase 14a-1 — escritores de temperatura por evento (combustión, sobrecarga, neutralización).
+export { MissionThermalRuntime } from "./mission/mission-thermal-runtime.js";
 // Subfase 11h — escenario de fuga por pieza sellada rota (Capítulo 1).
 export { sealBreachPressureSink } from "./mission/seal-breach-pressure-sink.js";
 export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";

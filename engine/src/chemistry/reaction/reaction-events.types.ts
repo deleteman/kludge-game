@@ -16,6 +16,16 @@ export interface NeutralizationEvent extends DomainEventBase {
   readonly heatReleasedCelsius: number;
   /** Duración del pico de calor, en segundos de simulación (Espec. §1). */
   readonly heatDurationSeconds: number;
+  /**
+   * Dónde ocurrió. Mismo criterio y mismo llenado que en `CombustionEvent`:
+   * la regla de neutralización es lógica pura sin noción de mundo, así que
+   * solo lo estampan los llamadores con contexto de misión.
+   *
+   * Sin esto, el calor de la neutralización era un payload que nadie podía
+   * aplicar: había +15 °C declarados pero ninguna sección a la que sumárselos
+   * (Subfase 14a-1).
+   */
+  readonly sectionId?: SectionId;
 }
 
 /** Intensidad de combustión según el O2 de la sección (GDD 5.5). */
