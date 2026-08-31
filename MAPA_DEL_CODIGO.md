@@ -1676,3 +1676,59 @@
 ### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
 - `HEAT_VAPOR_THRESHOLD_CELSIUS` pasa a importar `THERMAL_SENSOR_TRIGGER_CELSIUS` del motor en vez de
   repetir el 60: si el jugador ve vapor, el sensor está disparado.
+
+## Subfase 14a-2: Acoplamientos Térmicos
+
+### `engine/src/signals/graph-traversal.ts` (nuevo)
+- `upstreamNodes` / `downstreamNodes`: BFS del grafo de señal en las dos direcciones, tolerante a ciclos
+  (el latch de GDD 5.6). El de aguas arriba se extrajo de `mission-projectile-world.ts`, donde era privado.
+
+### `engine/src/power/conductor-load.ts` (nuevo)
+- `conductorElectricalLoad`: la carga de un conductor es la suma del `powerDraw` de lo que cuelga aguas
+  abajo. En unidades de `powerDraw`, que es por lo que se re-escaló `COND.maxCapacity` en el catálogo.
+
+### `engine/src/failure/thermal-conductivity-rule.ts` (modificado)
+- Pasa de un umbral (frío) a dos: `thermalCapacityFactor(temperatura, CT)` con rama fría (≤ -50) y caliente
+  (≥ 100, desplazada por el `CT` del material). `thermallyAdjustedConductorOverloadSubject` lo consume.
+
+### `engine/src/mission/mission-overload-runtime.ts` (modificado)
+- Deja de recorrer solo `scriptedOverloads` y evalúa TODO conductor instalado con carga derivada.
+  Cadena de capacidad: catálogo → `capacityOverride` → `wornCapacity` → factor térmico. Recibe `atmosphereOf`.
+
+### `engine/src/mission/thermal-regulators.ts` (nuevo)
+- `isThermalRegulatorDefinition` (identidad por propiedades: `ACT` no direccional + `CT: "A"`),
+  `isThermalRegulatorActive` (energía + señal, molde de `doorSignalOutput`),
+  `activeThermalRegulatorsBySection` y `sectionsWithThermalRegulator`.
+
+### `engine/src/mission/section-reactants.ts` (nuevo)
+- `sectionReactants`: qué hay en el aire de una sección que pueda reaccionar, excluyendo los gases de fondo y
+  las trazas. `reactantsFingerprint` para el antirruido por tick.
+
+### `engine/src/mission/mission-thermal-runtime.ts` (modificado)
+- Sexto y séptimo escritores: aporte continuo de los reguladores activos (`ActiveThermalRegulatorSource`) y
+  `applySubstanceSpill` para el pulso térmico de un derrame. Sigue siendo el único productor del mapa de °C/s.
+
+### `engine/src/mission/mission-reaction-runtime.ts` (modificado)
+- `tickEmergent`: química por sección a partir de las sustancias realmente presentes, además de la scripteada.
+  `thermalRegulatorOverloaded` pasa a derivarse (hay regulador instalado y la sala supera su umbral).
+
+### `engine/src/mission/section-gas-injection.ts` (modificado)
+- `GasInjectionDeps.onSpill`, avisado ANTES del descarte por sustancia no aérea: un criogénico enfría la sala
+  aunque quede como charco.
+
+### `engine/src/integrity/section-damage-rules.ts` (modificado)
+- `thermalDamageRule`, quinto escritor de daño, registrado en `SECTION_ENVIRONMENTAL_DAMAGE_RULES`. Dos lados
+  (calor y frío) y sin `floorHp`. `SectionDamageCause` suma `"thermal"`.
+
+### `engine/src/mission/ship-task-effect.ts` (modificado)
+- `installInstance` puebla `reservoirContents` desde `FACTORY_RESERVOIR_CONTENTS`: un reservorio fabricado por
+  el jugador nace con su sustancia, como los sembrados al crear la campaña.
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- `MissionOverloadRuntime` pasa a recibir `shipFloorplan` (faltaba, y sin él los `OverloadEvent` salían sin
+  `sectionId`) y `atmosphereOf`. Se cablean el `onSpill` de la inyección, la fuente de reguladores activos del
+  runtime térmico y el catálogo químico + reguladores del runtime de reacciones.
+
+### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
+- `FREEZING_THRESHOLD_CELSIUS` pasa a importar el umbral de daño por frío del motor, igual que el vapor de
+  calor importa el del sensor: la escarcha aparece cuando la sala empieza a sufrir.

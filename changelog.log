@@ -5728,3 +5728,100 @@ simulación, y dejar stock para AL MENOS 3 montajes simultáneos porque el opera
 y el 56 (un dato de UI aprendido caduca; abrir el widget antes de nombrarlo en un paso de prueba).
 
 TESTS: 1100 → 1103 en `/engine`, 86 sin cambios en `/game`. `tsc` limpio en ambos workspaces.
+
+================================================================================
+2026-08-31 — TRIAJE: DOS PEDIDOS DEL OPERADOR AL BUCKET PRE-DEMO (14d, Bloque 2)
+================================================================================
+
+QUÉ: se anotaron dos ítems nuevos en `nuevo-orden.md`, Subfase 14d Bloque 2 (rediseños con decisión de
+diseño previa). Solo documentación — no se tocó código.
+
+1) HISTÓRICO DE NOTIFICACIONES. Pedido: poder revisar en detalle cuando hay varios eventos a la vez.
+   Causa verificada: `NotificationCenter` auto-descarta cada tarjeta a los ~2.6-4s y además `MAX_ACTIVE = 4`
+   descarta la más vieja ANTES de tiempo al llegar la quinta — con una cascada emergente (13a) el jugador
+   pierde avisos que nunca leyó. El motor solo acumula las de tarea (`pendingNotifications`); el resto va
+   directo a la UI sin registro. Se dejaron abiertas las decisiones de dónde vive el log (buffer en /game vs.
+   dominio en /engine serializable), superficie de lectura, retención y detalle por entrada.
+
+2) ACCIONES BLOQUEADAS DE POR VIDA POR UNA PUERTA. Pedido: proponer alternativas. Dos causas raíz confirmadas:
+   (a) `redrawQueuePanel` (`floorplan-scene.ts`) filtra SOLO `completed`, así que las tareas `cancelled`/
+   `failed` que deja `showUnreachable` al cancelar el tramo contiguo se dibujan para siempre; (b)
+   `resolveBlockingReason` (`task-scheduler.ts`) trata `dependency-cancelled/failed` como bloqueo PERMANENTE y
+   `blocked` no es estado terminal — nadie reevalúa. Contraste útil ya en el código: `no-power` sí se reevalúa
+   cada tick. Se propusieron 4 alternativas (descartar y avisar / bloqueo reversible `no-route` / reversible
+   con caducidad / re-encolado explícito con botón "reintentar"), marcando que sacar las tareas terminales del
+   panel no depende de la decisión y puede hacerse primero.
+
+POR QUÉ ACÁ: 14d es el bucket de UI/UX y bugs pre-demo y ambos son superficie que la demo expone. Bloque 2 y
+no Bloque 1 porque ninguno tiene un fix único obvio: los dos requieren decidir antes de implementar.
+
+================================================================================
+2026-08-31 — SUBFASE 14a-2: ACOPLAMIENTOS TÉRMICOS EMERGENTES
+================================================================================
+
+QUÉ: el eje térmico de 14a-1 estaba vivo pero aislado — había estado, escritores por evento y un sensor, y
+la temperatura no le importaba a ningún otro dominio. 14a-2 la acopla con el eléctrico, el químico y el
+estructural.
+
+DECISIÓN DEL OPERADOR QUE CAMBIÓ EL ALCANCE: nada de contenido scripteado. Los dos runtimes donde entraban
+estos acoplamientos solo corrían sobre datos de guion, y `scriptedReactions` está VACÍO en todos los
+capítulos — o sea que `MissionReactionRuntime` no tenía ningún camino jugable. El pedido literal fue poner
+las piezas necesarias para que el jugador monte el escenario. Por eso la carga eléctrica y los reactivos
+pasan a derivarse del mundo.
+
+CUATRO SUPUESTOS DEL TEXTO ORIGINAL CORREGIDOS AL AUDITAR EL CÓDIGO (patrón 15):
+1. `thermalConductivityRule` modelaba solo el FRÍO (≤ -50 °C) y todos los escritores de 14a-1 son de calor:
+   estaba escrita, exportada, testeada e inalcanzable. Y la integración que la subfase declaraba como su
+   objetivo es la rama CALIENTE, que no existía. Se implementaron las dos.
+2. El enfriador YA EXISTÍA: `sistema-refrigeracion-muestras` (ACT + REC + CT:"A", powerDraw 2, receta de 2
+   placas disipadoras), sin footprint y sin escritor. Se reusó en vez de crear una pieza gemela — el operador
+   había decidido "pieza nueva" sin saber que estaba.
+3. "Cambio de estado L↔S↔G" no es un acoplamiento sino un subsistema (no hay puntos de fusión/ebullición en
+   ningún dato y `MatterState` es estático de catálogo). Salió a la Subfase 14a-3, con su propio ciclo de
+   preguntas.
+4. BUG BLOQUEANTE: `MissionOverloadRuntime` se construía SIN `shipFloorplan`, así que los `OverloadEvent`
+   salían sin `sectionId` y tanto `MissionThermalRuntime.open()` como `MissionReactionRuntime` los
+   descartaban en silencio. El pulso de calor por sobrecarga y el puente sobrecarga→ignición estaban muertos
+   en producción desde que se escribieron. Nada de lo demás era observable sin arreglarlo primero.
+
+QUÉ ENTRÓ:
+- Carga eléctrica emergente (`power/conductor-load.ts`): suma del `powerDraw` de lo que cuelga aguas abajo
+  del conductor. `COND.maxCapacity` re-escalada a unidades de consumo (cable 100→6, resistencia 50→3, fibra
+  200→12, blindado 150→9): 100 contra consumos de 1-3 son magnitudes incomparables (patrón 19). El BFS del
+  grafo se EXTRAJO de `mission-projectile-world.ts` a `signals/graph-traversal.ts` en vez de copiarse
+  (patrón 21). `scriptedOverloads` sobrevive como override de guion; el `load` del Cap.1 se recalibró 150→9.
+- Conductividad de dos ramas: frío ≤ -50 y calor ≥ 100 bajan la capacidad a la mitad, y el `CT` del material
+  desplaza el umbral caliente (A+0/M+20/B+40), que es lo que le da papel mecánico a la placa aislante.
+  Aplicada como CUARTO factor, después de `wornCapacity`, no en su lugar (patrón 16).
+- Enfriador (6º escritor): footprint + tasa continua de -4.5 °C/s, gateada por energía y por señal (sin cable
+  funciona sola, con cable manda el cable — molde de `doorSignalOutput`). El -4.5 sale de un cálculo: la
+  deriva pasiva pone el equilibrio en 21 - R/0.05, así que con menos de 3.55 °C/s no cruzaría nunca el umbral
+  frío y toda la rama fría quedaría inalcanzable (patrón 23). Hay test que lo simula en vez de razonarlo.
+- Efecto térmico por sustancia (7º escritor): tabla `SUBSTANCE_THERMAL_EFFECT`. Hasta ahora verter nitrógeno
+  líquido NO HACÍA NADA — `SectionGasInjection` descarta en silencio toda sustancia no aérea y el nitrógeno
+  es `state: "L"` + `INERTE`. Es el caso de validación 2 vuelto jugable.
+- Reacciones emergentes por sección + `thermalRegulatorOverloaded` real: `SpontaneousIgnitionRule` deja de
+  estar muerta en misión. Antirruido por huella (patrón 26).
+- Quinto escritor de daño estructural: `thermalDamageRule`, dos lados, sin `floorHp` (el fuego SÍ debe poder
+  reventar una sección; el bucle se corta solo porque la brecha deja la sala sin oxígeno).
+- Un reservorio recién instalado nace CON su sustancia de fábrica. `deriveInitialReservoirContents` solo
+  corría al crear la campaña, así que un tanque fabricado por el jugador quedaba vacío y "Verter en la
+  sección" ni siquiera aparecía. Es el patrón 55 un paso más adelante: la pieza SÍ se conseguía, y no servía.
+
+RECALIBRACIÓN QUE FORZÓ EL TEST DE INTEGRACIÓN: `THERMAL_REGULATOR_OVERLOAD_CELSIUS` bajó de 80 a 70. A 80
+era inalcanzable justo en el único caso en que se evalúa — la condición exige un regulador instalado, y un
+regulador instalado está enfriando, así que una combustión violenta en su sala pica en ~73 °C en vez de los
+~161 que daría sin él. El estado se apagaba por culpa de la pieza que lo hace observable (patrón 48).
+
+TESTS: 1103 → 1135 en `/engine`, 86 sin cambios en `/game`. `tsc` y `eslint` limpios en ambos workspaces.
+El de integración (`thermal-coupling.integration.test.ts`) monta la pila REAL —catálogo, plano, atmósfera,
+sobrecarga y reacciones— sin ningún doble que imponga el valor del borde entre dos sistemas (patrones 43/50),
+incluye un control sin tanque (para que el verde signifique algo) y una corrida a cadencia de FRAME además de
+la de 1 tick = 1 s (patrón 25).
+
+PENDIENTES ACTUALIZADOS: deuda #42 (se le dio footprint a tres compuestos más; sigue siendo el caso puntual,
+no la clase — quedan ~21 invisibles) y deuda #44 (el stock del Cap.1 creció otra vez; la tabla nueva está en
+el archivo, y el caso grave es `motor-pequeno`, que estaba a 0 POR DISEÑO para forzar el loop de canibalizar).
+
+SPRITES FALTANTES (avisados, con placeholder tinteable): `sistema-refrigeracion-muestras.png`,
+`tanque-muestra-criogenica.png`, `reservorio-disolvente.png`, y sigue faltando `sensor-termico-precision.png`.

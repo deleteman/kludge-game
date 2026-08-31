@@ -247,6 +247,11 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
         { tag: "REC", threshold: 0.4, responseDelayMs: 120 },
       ],
       material: { CT: "A" },
+      // Subfase 14a-2: sin `footprint` el selector de instalación la descartaba
+      // con un `continue` mudo (deuda #42), así que la pieza existía en el
+      // catálogo y el jugador no podía colocarla. 1×2 como la `placa-disipadora`
+      // que la compone.
+      footprint: { width: 1, height: 2 },
     },
     recipe: {
       ingredients: [

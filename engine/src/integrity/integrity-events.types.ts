@@ -3,7 +3,13 @@ import type { GridPosition } from "../geometry/grid-position.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 
 /** Qué fenómeno físico dañó la sección (Subfase 13f, los cuatro escritores). */
-export type SectionDamageCause = "kinetic-impact" | "combustion" | "corrosion" | "decompression";
+export type SectionDamageCause =
+  | "kinetic-impact"
+  | "combustion"
+  | "corrosion"
+  | "decompression"
+  /** Temperatura fuera del rango de operación, por calor o por frío (Subfase 14a-2). */
+  | "thermal";
 
 /**
  * La vida de una sección cruzó a un nivel peor (nominal → warning → critical).

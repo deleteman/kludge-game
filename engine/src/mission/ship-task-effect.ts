@@ -32,6 +32,8 @@ import type { MissionDoorRuntime } from "./mission-door-runtime.js";
 import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
 import { creditElementList } from "../inventory/element-ledger.js";
+import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
+import { FACTORY_RESERVOIR_CONTENTS } from "../reservoir/factory-reservoir-contents.js";
 import type { MutableElementStock } from "../inventory/mutable-element-stock.js";
 import { contentOf, drawFrom, freeCapacity, pourInto } from "../reservoir/reservoir-ledger.js";
 import { instanceReservoirCapacity } from "../reservoir/reservoir-query.js";
@@ -594,6 +596,26 @@ function installInstance(
     ],
   };
 
+  // Subfase 14a-2: un reservorio recién instalado nace CON su sustancia de
+  // fábrica, igual que los sembrados al crear la campaña.
+  //
+  // `deriveInitialReservoirContents` solo se llamaba al crear la campaña y al
+  // cambiar de capítulo, así que un tanque que el jugador fabricaba e instalaba
+  // quedaba vacío para siempre: la acción "Verter en la sección" ni siquiera
+  // aparecía, porque exige contenido. Es la misma clase de corte que la ronda 1
+  // de 14a-1 — la pieza simulada que no se podía conseguir — un paso más
+  // adelante en la cadena: acá SÍ se conseguía, y no servía para nada.
+  const withContents: Blueprint = {
+    ...withComponent,
+    reservoirContents: [
+      ...withComponent.reservoirContents,
+      ...deriveInitialReservoirContents(
+        [withComponent.placedComponents[withComponent.placedComponents.length - 1]!],
+        FACTORY_RESERVOIR_CONTENTS,
+      ),
+    ],
+  };
+
   const definition = registry.get(payload.componentDefinitionId);
   const derivedNodes = deriveSignalNodes(
     definition?.data.functional,
@@ -601,8 +623,8 @@ function installInstance(
     payload.placement,
   );
   if (derivedNodes.length === 0) {
-    return withComponent;
+    return withContents;
   }
 
-  return mergeInstalledSignalGraph(withComponent, { nodes: derivedNodes, edges: [] });
+  return mergeInstalledSignalGraph(withContents, { nodes: derivedNodes, edges: [] });
 }

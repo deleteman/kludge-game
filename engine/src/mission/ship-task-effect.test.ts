@@ -228,6 +228,64 @@ describe("createShipTaskEffect", () => {
     });
   });
 
+  it("un reservorio recién instalado nace CON su sustancia de fábrica (14a-2)", () => {
+    // Antes de 14a-2, `deriveInitialReservoirContents` solo corría al crear la
+    // campaña: un tanque que el jugador fabricaba e instalaba quedaba vacío para
+    // siempre, y "Verter en la sección" ni siquiera aparecía porque exige
+    // contenido. La pieza se conseguía y no servía para nada.
+    const registry = buildComponentCatalog().registry;
+    const shipState = new MutableShipState(fixtureShip());
+    const effect = createShipTaskEffect(shipState, registry, new MutableAtomicStock({}));
+    const instanceId = "tanque-1" as PlacedComponentInstanceId;
+
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "install",
+        payload: {
+          kind: "install",
+          instanceId,
+          componentDefinitionId: "tanque-muestra-criogenica" as ComponentId,
+          placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 2 }, rotation: 0 },
+        },
+      }),
+    );
+
+    expect(shipState.get().reservoirContents).toContainEqual(
+      expect.objectContaining({
+        componentInstanceId: instanceId,
+        substanceId: "nitrogeno-liquido",
+      }),
+    );
+  });
+
+  it("una pieza que no es reservorio de sustancia no inventa contenido (14a-2)", () => {
+    const registry = buildComponentCatalog().registry;
+    const shipState = new MutableShipState(fixtureShip());
+    const effect = createShipTaskEffect(
+      shipState,
+      registry,
+      new MutableAtomicStock({ ["fotorreceptor" as ComponentId]: { nuevo: 1 } }),
+    );
+
+    effect(
+      createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "install",
+        payload: {
+          kind: "install",
+          instanceId: "foto-9" as PlacedComponentInstanceId,
+          componentDefinitionId: "fotorreceptor" as ComponentId,
+          placement: { position: { x: 6, y: 4 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+        },
+      }),
+    );
+
+    expect(shipState.get().reservoirContents).toEqual([]);
+  });
+
   it("install derives a node for a custom composite creation with an EM part (11c.1)", () => {
     // Una creación de la mesa (compuesto) con una parte EM queda cableable al
     // instalarla en misión: `nameAndRegisterCreation` agrega el EM a

@@ -148,6 +148,9 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 100, dischargeRate: 2 }],
       material: { CT: "A" },
+      // 14a-2: colocable en el plano (deuda #42). Es la fuente de frío del caso
+      // de validación 2 — sin footprint no había forma de llevarlo a la sala.
+      footprint: { width: 1, height: 2 },
     },
     recipe: {
       ingredients: [
@@ -247,7 +250,9 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "cable-fibra-optica" as ComponentId,
     name: "Cable de fibra óptica",
     data: {
-      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 200 }],
+      // 14a-2: unidades de `powerDraw`, misma escala que el catálogo atómico
+      // (`power/conductor-load.ts`). El doble que un cable de cobre.
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 12 }],
       material: { CE: "A" },
     },
     recipe: {
@@ -317,6 +322,9 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     data: {
       functional: [{ tag: "RES", resourceType: "L", capacity: 60, dischargeRate: 4 }],
       material: { CE: "N" },
+      // 14a-2: colocable en el plano (deuda #42). Es la fuente de volátil que
+      // hace alcanzable la ignición espontánea.
+      footprint: { width: 1, height: 1 },
     },
     recipe: {
       ingredients: [

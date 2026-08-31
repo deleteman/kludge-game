@@ -7,6 +7,7 @@ import {
 import { StructuralIntegrity } from "./structural-failure.js";
 import {
   THERMAL_CONDUCTIVITY_PARAMETERS,
+  thermalCapacityFactor,
   thermallyAdjustedConductorOverloadSubject,
 } from "./thermal-conductivity-rule.js";
 import { EventEmitter } from "../simulation/event-emitter.js";
@@ -73,9 +74,51 @@ describe("failure: thermallyAdjustedConductorOverloadSubject (GDD 5.2 conductivi
       failureMode: "cut",
       capacity:
         conductor.maxCapacity *
-        THERMAL_CONDUCTIVITY_PARAMETERS.effectiveCapacityFractionBelowTrigger,
+        THERMAL_CONDUCTIVITY_PARAMETERS.effectiveCapacityFractionOutsideRange,
       load: 8,
     });
+  });
+
+  it("shrinks effective capacity and triggers overload once heated past the hot threshold (14a-2)", () => {
+    const subject = thermallyAdjustedConductorOverloadSubject(
+      "cable-1",
+      conductor,
+      8,
+      THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerTemperatureCelsius + 10,
+    );
+    expect(rule.evaluate(subject, tickOf(0))).toMatchObject({
+      failureMode: "cut",
+      capacity:
+        conductor.maxCapacity *
+        THERMAL_CONDUCTIVITY_PARAMETERS.effectiveCapacityFractionOutsideRange,
+    });
+  });
+
+  it("stays nominal between both thresholds, where the ship actually operates", () => {
+    const { triggerTemperatureCelsius, hotTriggerTemperatureCelsius } = THERMAL_CONDUCTIVITY_PARAMETERS;
+    for (const temperature of [triggerTemperatureCelsius + 1, 21, hotTriggerTemperatureCelsius - 1]) {
+      expect(thermalCapacityFactor(temperature)).toBe(1);
+    }
+  });
+
+  it("lets thermal insulation (CT: B) survive a temperature that degrades a conductive one (CT: A)", () => {
+    const { hotTriggerTemperatureCelsius, hotTriggerOffsetByThermalConductivity } =
+      THERMAL_CONDUCTIVITY_PARAMETERS;
+    const justAboveNominalTrigger = hotTriggerTemperatureCelsius + 1;
+    expect(thermalCapacityFactor(justAboveNominalTrigger, "A")).toBeLessThan(1);
+    expect(thermalCapacityFactor(justAboveNominalTrigger, "B")).toBe(1);
+    // Y el aislante también cede si se sigue calentando: protege, no inmuniza.
+    expect(
+      thermalCapacityFactor(
+        hotTriggerTemperatureCelsius + hotTriggerOffsetByThermalConductivity.B + 1,
+        "B",
+      ),
+    ).toBeLessThan(1);
+  });
+
+  it("assumes the worst case when the material declares no CT (fail-safe, not fail-open)", () => {
+    const justAbove = THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerTemperatureCelsius + 1;
+    expect(thermalCapacityFactor(justAbove, undefined)).toBe(thermalCapacityFactor(justAbove, "A"));
   });
 });
 

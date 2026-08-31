@@ -958,6 +958,11 @@ atenuado con motivo `missing-ingredients`, y uno sin footprint no aparece en abs
 Es la causa concreta de que el sensor térmico de 14a-1 fuera inusable pese a estar simulado de verdad por el
 motor (se le dio footprint en esa ronda, arreglando el caso puntual y no la clase).
 
+**Actualización 14a-2 (2026-08-31):** se le dio `footprint` a tres compuestos más
+(`sistema-refrigeracion-muestras`, `tanque-muestra-criogenica`, `reservorio-disolvente`) porque el escenario de
+acoplamientos térmicos los necesitaba colocables. Sigue siendo **el caso puntual, no la clase**: quedan ~21
+compuestos invisibles. La deuda sigue ABIERTA y sigue dependiendo de decidirse junto con la #43.
+
 `footprint` es opcional en compuestos POR DISEÑO (`composite-component-spec.types.ts:25-33`: los compuestos
 pre-Fase-7 se instalan solo vía mesa de creación, que calcula su propio footprint), así que la salida no es
 obvia. Dos evaluadas:
@@ -993,11 +998,31 @@ poder playtestear el eje térmico con varias pruebas simultáneas en la misma pa
 |---|---|---|---|
 | `indicador-led` | 1 | **6** | un LED por sensor y que sobre |
 | `chip-circuito-generico` | 0 | **8** | receta del sensor térmico (×2 c/u) |
-| `placa-disipadora` | 0 | **4** | receta del sensor térmico (×1 c/u) |
+| `placa-disipadora` | 0 | **9** | receta del sensor térmico (×1) + enfriador (×2) + tanque criogénico (×1) |
 
-Son **4 sensores térmicos** construibles. Contradice de frente el diseño austero del capítulo — el loop
+**Actualizado en la Subfase 14a-2 (2026-08-31).** El operador pidió explícitamente que el escenario de
+acoplamientos térmicos se pudiera montar con piezas reales en vez de con contenido scripteado, así que el stock
+creció otra vez para pagar las recetas de los tres compuestos que hacen falta:
+
+| Pieza | Antes de 14a-2 | Ahora | Para qué |
+|---|---|---|---|
+| `placa-disipadora` | 4 | **9** | + 2 enfriadores (×2) + 2 tanques criogénicos (×1) |
+| `junta-hermetica` | 2 | **7** | 2 tanques (×2) + 1 reservorio de disolvente (×2) + la fuga sembrada |
+| `tubo-flexible` | 1 | **4** | 2 enfriadores (×1) + 1 disolvente (×1) + el reservorio de agua de 13e |
+| `valvula-simple` | 1 | **2** | + 1 reservorio de disolvente |
+| `motor-pequeno` | 0 | **2** | 2 enfriadores (×1) — **rompe a propósito el "stock 0" deliberado del capítulo** |
+| `tubo-rigido` | 0 | **4** | 2 tanques criogénicos (×2) |
+| `cable-cobre` | 0 | **4** | cargar un conductor por encima de su capacidad y verlo cortarse |
+
+El caso más grave es `motor-pequeno`: estaba a 0 **por diseño**, para forzar el loop "sin stock → inspeccionar →
+desarmar → reutilizar" que es la lección del capítulo. Al re-nivelar hay que decidir si el enfriador se paga
+desarmando algo (coherente con el capítulo) o si el escenario térmico vive en el Cap. 2 y el Cap. 1 vuelve a su
+austeridad original.
+
+Con el estado anterior eran **4 sensores térmicos** construibles. Contradice de frente el diseño austero del capítulo — el loop
 "sin stock → inspeccionar → desarmar → reutilizar" que justifica el resto de esa lista y que es la lección
 que el Cap. 1 tiene que enseñar. Es deuda de balance asumida a cambio de poder verificar el eje.
 
-Cuando 14a-2 esté cerrada y el eje térmico validado: bajar estas tres entradas y **re-evaluar los niveles**
-(no solo este capítulo — el operador pidió revisar el nivelado en general antes de publicar).
+14a-2 ya está cerrada y el eje térmico validado, así que esta deuda está **lista para ejecutarse**: bajar todas
+las entradas de las dos tablas y **re-evaluar los niveles** (no solo este capítulo — el operador pidió revisar el
+nivelado en general antes de publicar).

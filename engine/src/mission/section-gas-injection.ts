@@ -79,6 +79,13 @@ export interface GasInjectionDeps {
   readonly substanceOf?: (substanceId: ChemicalSubstanceId) => ChemicalSubstanceDefinition | undefined;
   /** Volumen de la sección receptora (`sectionArea`), para escalar la fracción. */
   readonly sectionVolumeOf?: (sectionId: SectionId) => number | undefined;
+  /**
+   * Efecto térmico del derrame (Subfase 14a-2). Se avisa SIEMPRE, sea la
+   * sustancia aérea o no: un criogénico enfría la sala aunque quede como charco
+   * en el piso y no desplace oxígeno. Antes de 14a-2 verter nitrógeno líquido no
+   * hacía absolutamente nada — se descartaba acá en silencio.
+   */
+  readonly onSpill?: (sectionId: SectionId, substanceId: ChemicalSubstanceId, amount: number) => void;
 }
 
 /**
@@ -108,6 +115,10 @@ export class TransientGasInjection {
     if (amount <= 0) {
       return;
     }
+    // 14a-2: el aviso de derrame va ANTES del descarte por no-aérea. Lo que
+    // decide `isAirborneSubstance` es si la sustancia entra en la ATMÓSFERA, no
+    // si el derrame ocurrió.
+    this.deps.onSpill?.(sectionId, substanceId, amount);
     if (this.deps.substanceOf && !isAirborneSubstance(this.deps.substanceOf(substanceId))) {
       return;
     }

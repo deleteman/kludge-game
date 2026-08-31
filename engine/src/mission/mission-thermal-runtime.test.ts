@@ -4,7 +4,16 @@ import { EventEmitter } from "../simulation/event-emitter.js";
 import type { ReactionDomainEvent } from "../chemistry/reaction/reaction-events.types.js";
 import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
-import { COMBUSTION_HEAT, OVERLOAD_HEAT } from "../atmosphere/thermal-parameters.js";
+import {
+  COMBUSTION_HEAT,
+  COOLER_RATE_CELSIUS_PER_SECOND,
+  NOMINAL_TEMPERATURE_CELSIUS,
+  OVERLOAD_HEAT,
+  PASSIVE_DRIFT_PER_SECOND,
+  SUBSTANCE_THERMAL_EFFECT,
+  TEMPERATURE_FLOOR_CELSIUS,
+} from "../atmosphere/thermal-parameters.js";
+import { THERMAL_CONDUCTIVITY_PARAMETERS } from "../failure/thermal-conductivity-rule.js";
 
 const SECTION = "seccion-a" as SectionId;
 const OTHER_SECTION = "seccion-b" as SectionId;
@@ -135,5 +144,71 @@ describe("mission: MissionThermalRuntime (Subfase 14a-1)", () => {
     runtime.tick(tickAt(1));
 
     expect(runtime.rates().size).toBe(0);
+  });
+});
+
+describe("mission: MissionThermalRuntime — enfriamiento (Subfase 14a-2)", () => {
+  it("un regulador activo aporta una tasa NEGATIVA sostenida, sin eventos de por medio", () => {
+    const runtime = new MissionThermalRuntime(undefined, undefined, () => new Map([[SECTION, 1]]));
+    runtime.tick(tickAt(1));
+    expect(runtime.heatRateOf(SECTION)).toBeCloseTo(COOLER_RATE_CELSIUS_PER_SECOND);
+    // Sostenido: a diferencia de un pulso, no se agota con el tiempo.
+    for (let i = 0; i < 100; i += 1) {
+      runtime.tick(tickAt(1, i));
+    }
+    expect(runtime.heatRateOf(SECTION)).toBeCloseTo(COOLER_RATE_CELSIUS_PER_SECOND);
+  });
+
+  it("dos reguladores en la misma sala enfrían el doble", () => {
+    const runtime = new MissionThermalRuntime(undefined, undefined, () => new Map([[SECTION, 2]]));
+    runtime.tick(tickAt(1));
+    expect(runtime.heatRateOf(SECTION)).toBeCloseTo(COOLER_RATE_CELSIUS_PER_SECOND * 2);
+  });
+
+  it("el enfriamiento se SUMA al incendio en vez de ganarle o perder por separado", () => {
+    const reactionEvents = new EventEmitter<ReactionDomainEvent>();
+    const runtime = new MissionThermalRuntime(reactionEvents, undefined, () => new Map([[SECTION, 1]]));
+    reactionEvents.emit({
+      kind: "combustion",
+      elapsedSeconds: 0,
+      intensity: "standard",
+      radius: "half-section",
+      crewDamage: "medium",
+      sectionId: SECTION,
+    });
+    runtime.tick(tickAt(1));
+
+    const fire = COMBUSTION_HEAT.standard.celsius / COMBUSTION_HEAT.standard.durationSeconds;
+    expect(runtime.heatRateOf(SECTION)).toBeCloseTo(fire + COOLER_RATE_CELSIUS_PER_SECOND);
+  });
+
+  it("un derrame criogénico abre un pulso de frío que escala con la cantidad vertida", () => {
+    const runtime = new MissionThermalRuntime();
+    runtime.applySubstanceSpill(SECTION, "nitrogeno-liquido", 5);
+    runtime.tick(tickAt(1));
+
+    const spec = SUBSTANCE_THERMAL_EFFECT["nitrogeno-liquido"]!;
+    expect(runtime.heatRateOf(SECTION)).toBeCloseTo((spec.celsius * 5) / spec.durationSeconds);
+  });
+
+  it("una sustancia sin efecto térmico declarado no mueve la temperatura", () => {
+    const runtime = new MissionThermalRuntime();
+    runtime.applySubstanceSpill(SECTION, "agua", 10);
+    runtime.tick(tickAt(1));
+    expect(runtime.heatRateOf(SECTION)).toBe(0);
+  });
+
+  it("el enfriador alcanza de verdad el umbral de degradación del conductor", () => {
+    // Patrón 23: el número solo sirve si el rango entre él y los otros números
+    // del sistema NO es vacío. La deriva pasiva empuja hacia el nominal, así que
+    // esto se comprueba simulando, no razonando sobre la constante suelta.
+    let temperature = NOMINAL_TEMPERATURE_CELSIUS;
+    for (let i = 0; i < 600; i += 1) {
+      temperature +=
+        (NOMINAL_TEMPERATURE_CELSIUS - temperature) * PASSIVE_DRIFT_PER_SECOND +
+        COOLER_RATE_CELSIUS_PER_SECOND;
+    }
+    expect(temperature).toBeLessThan(THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius);
+    expect(temperature).toBeGreaterThan(TEMPERATURE_FLOOR_CELSIUS);
   });
 });

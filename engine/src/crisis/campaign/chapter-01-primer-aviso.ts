@@ -65,9 +65,11 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // (Fase 13c). El desgaste aparece al canibalizar piezas ya instaladas.
   "sensor-presion": { nuevo: 1 },
   "pantalla-lcd": { nuevo: 1 },
-  "junta-hermetica": { nuevo: 2 },
-  "tubo-flexible": { nuevo: 1 },
-  "valvula-simple": { nuevo: 1 },
+  // 14a-2 sube junta 2→7, tubo flexible 1→4 y válvula 1→2: ver el bloque de
+  // abajo, donde está la cuenta de qué compuesto consume cada cosa.
+  "junta-hermetica": { nuevo: 7 },
+  "tubo-flexible": { nuevo: 4 },
+  "valvula-simple": { nuevo: 2 },
   // Subfase 14a-1: material de prueba del eje térmico. `sensor-termico-precision`
   // es COMPUESTO y no se stockea como unidad — se construye desde su receta
   // (`chip-circuito-generico` ×2 + `placa-disipadora` ×1), que se paga del stock
@@ -75,7 +77,21 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // cablear una prueba distinta por sensor y que sobre alguno.
   "indicador-led": { nuevo: 6 },
   "chip-circuito-generico": { nuevo: 8 },
-  "placa-disipadora": { nuevo: 4 },
+  "placa-disipadora": { nuevo: 9 },
+  // Subfase 14a-2: material para montar el escenario de acoplamientos térmicos
+  // sin depender de contenido scripteado (decisión del operador). Los tres
+  // compuestos que hacen falta son de catálogo y se pagan de estas piezas:
+  //   · `sistema-refrigeracion-muestras` = disipadora ×2 + motor ×1 + tubo flexible ×1 + chip ×1
+  //   · `tanque-muestra-criogenica`      = tubo rígido ×2 + disipadora ×1 + junta ×2
+  //   · `reservorio-disolvente`          = tubo flexible ×1 + válvula ×1 + junta ×2
+  // Los niveles alcanzan para DOS enfriadores, DOS tanques criogénicos y UN
+  // reservorio de disolvente a la vez, más cable de sobra para cargar un
+  // conductor por encima de su capacidad: el operador compara secciones entre
+  // sí, y con una sola unidad no se distingue "funciona" de "está siempre
+  // encendido".
+  "motor-pequeno": { nuevo: 2 },
+  "tubo-rigido": { nuevo: 4 },
+  "cable-cobre": { nuevo: 4 },
 } as AtomicPartsStock;
 
 /**
@@ -120,10 +136,10 @@ export const CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS: ReadonlyArray<ComponentId
 
 /**
  * Conductor sobrecargado (Fase 12a, corrección post-playtest): un `cable-cobre` (catálogo atómico,
- * `COND`/`E`/`maxCapacity: 100`) sembrado `condition: "ok"` en `ingenieria`, puramente decorativo — no
+ * `COND`/`E`) sembrado `condition: "ok"` en `ingenieria`, puramente decorativo — no
  * toca `triggers`/`resolutions` de este capítulo, mismo criterio que la fuga de presión (attrezzo
- * paralelo al puzzle). `scriptedOverloads` (ver `buildChapter01Definition`) le declara un `load: 150`
- * fijo (> 100 de capacidad) para que `MissionOverloadRuntime` dispare `failureMode: "cut"` de forma
+ * paralelo al puzzle). `scriptedOverloads` (ver `buildChapter01Definition`) le declara una carga
+ * fija por encima de su capacidad para que `MissionOverloadRuntime` dispare `failureMode: "cut"` de forma
  * determinística desde el primer tick de ejecución — la cicatriz visual (chispas + luz,
  * `game/src/particles/effects/overloaded-conductor-effect.ts`) es la única forma de que el sistema de
  * iluminación de 12a sea verificable jugando, no solo en tests.
@@ -254,10 +270,13 @@ function buildChapter01Definition(archetype: ShipArchetype): CrisisDefinition {
     ],
     // Sin `timer`: capítulo 1 no tiene amenaza real, solo introduce el loop.
     consequence: { kind: "time-loss", severity: "minor" },
-    // Fase 12a: `load: 150` fijo > `maxCapacity: 100` de catálogo del `cable-cobre` sembrado más abajo
-    // — dispara de forma determinística, sin depender de ningún otro estado de la misión.
+    // Fase 12a: carga fija por encima de la `maxCapacity` de catálogo del `cable-cobre` sembrado más
+    // abajo — dispara de forma determinística, sin depender de ningún otro estado de la misión.
+    // Subfase 14a-2: recalibrado de 150 a 9 al re-escalar `COND.maxCapacity` a unidades de `powerDraw`
+    // (`power/conductor-load.ts`). El override de guion sobrevive precisamente para este attrezzo; el
+    // resto de los conductores de la nave ya obtienen su carga del cableado real del jugador.
     ...(params.overloadedConductorPosition
-      ? { scriptedOverloads: [{ instanceId: CHAPTER_01_OVERLOAD_INSTANCE_ID, load: 150 }] }
+      ? { scriptedOverloads: [{ instanceId: CHAPTER_01_OVERLOAD_INSTANCE_ID, load: 9 }] }
       : {}),
   };
 }

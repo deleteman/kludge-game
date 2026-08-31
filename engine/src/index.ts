@@ -225,13 +225,16 @@ export { DIFFUSION_RATE_PER_SECOND, diffuse } from "./atmosphere/diffusion.js";
 // Subfase 14a-1 — dominio de temperatura: parámetros del sexto eje del motor.
 export {
   COMBUSTION_HEAT,
+  COOLER_RATE_CELSIUS_PER_SECOND,
   MIN_THERMAL_APERTURE,
   NOMINAL_TEMPERATURE_CELSIUS,
   OVERLOAD_HEAT,
   PASSIVE_DRIFT_PER_SECOND,
+  SUBSTANCE_THERMAL_EFFECT,
   TEMPERATURE_CEILING_CELSIUS,
   TEMPERATURE_FLOOR_CELSIUS,
   THERMAL_DIFFUSION_RATE_PER_SECOND,
+  THERMAL_REGULATOR_OVERLOAD_CELSIUS,
   THERMAL_SENSOR_TRIGGER_CELSIUS,
 } from "./atmosphere/thermal-parameters.js";
 export type { HeatPulseSpec } from "./atmosphere/thermal-parameters.js";
@@ -269,6 +272,7 @@ export type { OverloadSubject } from "./failure/overload-rule.js";
 export { StructuralIntegrity } from "./failure/structural-failure.js";
 export {
   THERMAL_CONDUCTIVITY_PARAMETERS,
+  thermalCapacityFactor,
   thermallyAdjustedConductorOverloadSubject,
 } from "./failure/thermal-conductivity-rule.js";
 export type {
@@ -776,6 +780,17 @@ export type {
 } from "./mission/mission-atmosphere-runtime.js";
 // Subfase 14a-1 — escritores de temperatura por evento (combustión, sobrecarga, neutralización).
 export { MissionThermalRuntime } from "./mission/mission-thermal-runtime.js";
+export type { ActiveThermalRegulatorSource } from "./mission/mission-thermal-runtime.js";
+// Subfase 14a-2: acoplamientos térmicos.
+export { conductorElectricalLoad } from "./power/conductor-load.js";
+export { downstreamNodes, upstreamNodes } from "./signals/graph-traversal.js";
+export {
+  activeThermalRegulatorsBySection,
+  isThermalRegulatorActive,
+  isThermalRegulatorDefinition,
+  sectionsWithThermalRegulator,
+} from "./mission/thermal-regulators.js";
+export { reactantsFingerprint, sectionReactants } from "./mission/section-reactants.js";
 // Subfase 11h — escenario de fuga por pieza sellada rota (Capítulo 1).
 export { sealBreachPressureSink } from "./mission/seal-breach-pressure-sink.js";
 export type { SealBreachConfig } from "./mission/seal-breach-pressure-sink.js";

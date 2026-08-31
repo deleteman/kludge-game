@@ -4,7 +4,14 @@ import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { ReactionDomainEvent } from "../chemistry/reaction/reaction-events.types.js";
 import type { FailureDomainEvent } from "../failure/failure-events.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
-import { COMBUSTION_HEAT, OVERLOAD_HEAT } from "../atmosphere/thermal-parameters.js";
+import {
+  COMBUSTION_HEAT,
+  COOLER_RATE_CELSIUS_PER_SECOND,
+  OVERLOAD_HEAT,
+  SUBSTANCE_THERMAL_EFFECT,
+} from "../atmosphere/thermal-parameters.js";
+
+const EMPTY_REGULATORS: ReadonlyMap<SectionId, number> = new Map();
 
 /**
  * Escritores de temperatura por evento (Subfase 14a-1).
@@ -32,6 +39,14 @@ interface HeatPulse {
   remainingSeconds: number;
 }
 
+/**
+ * Cuántos reguladores térmicos están enfriando activamente en cada sección
+ * (Subfase 14a-2). DI angosto y opcional, mismo criterio que `SectionHeatSource`:
+ * el runtime no conoce el blueprint, el reparto de energía ni el grafo de
+ * señal — quien resuelve eso es `mission/thermal-regulators.ts`.
+ */
+export type ActiveThermalRegulatorSource = () => ReadonlyMap<SectionId, number>;
+
 export class MissionThermalRuntime implements Tickable {
   private pulses: HeatPulse[] = [];
   /**
@@ -45,6 +60,15 @@ export class MissionThermalRuntime implements Tickable {
   constructor(
     reactionEvents?: EventEmitter<ReactionDomainEvent>,
     failureEvents?: EventEmitter<FailureDomainEvent>,
+    /**
+     * Enfriadores activos (14a-2, sexto escritor). A diferencia de los otros
+     * escritores, no es un pulso por evento sino un estado CONTINUO: la máquina
+     * enfría mientras esté encendida. Se suma dentro de este runtime y no como
+     * un segundo `SectionHeatSource` para que siga habiendo un único productor
+     * del mapa de °C/s — dos fuentes escribiendo el mismo canal es el patrón que
+     * ya costó una ronda de playtest con el tinte de sprites.
+     */
+    private readonly activeRegulators?: ActiveThermalRegulatorSource,
   ) {
     reactionEvents?.on("combustion", (event) => {
       const spec = COMBUSTION_HEAT[event.intensity];
@@ -95,8 +119,26 @@ export class MissionThermalRuntime implements Tickable {
     return this.lastRates;
   }
 
+  /**
+   * Pulso térmico de una sustancia vertida sobre una sección (14a-2, séptimo
+   * escritor). Lo llama `SectionGasInjection` al recibir el derrame, ANTES de
+   * decidir si la sustancia llega o no a la atmósfera: un líquido criogénico
+   * enfría la sala aunque no sea un gas y no desplace oxígeno.
+   *
+   * El efecto escala con la cantidad: el jugador gradúa cuánto enfría con
+   * cuánto vierte.
+   */
+  applySubstanceSpill(sectionId: SectionId, substanceId: string, amount: number): void {
+    const spec = SUBSTANCE_THERMAL_EFFECT[substanceId];
+    if (!spec || amount <= 0) {
+      return;
+    }
+    this.open(sectionId, spec.celsius * amount, spec.durationSeconds);
+  }
+
   tick(ctx: TickContext): void {
-    if (this.pulses.length === 0) {
+    const regulators = this.activeRegulators?.() ?? EMPTY_REGULATORS;
+    if (this.pulses.length === 0 && regulators.size === 0) {
       // Un mapa nuevo vacío y no el anterior: si el último pulso venció, la
       // tasa tiene que caer a 0, no quedarse pegada en la del tick pasado.
       if (this.lastRates.size > 0) {
@@ -105,6 +147,12 @@ export class MissionThermalRuntime implements Tickable {
       return;
     }
     const rates = new Map<SectionId, number>();
+    // El enfriamiento entra como un aporte más y se SUMA a los pulsos de calor:
+    // un enfriador dentro de una sección en llamas frena el incendio en vez de
+    // ganarle o perder por separado.
+    for (const [sectionId, count] of regulators) {
+      rates.set(sectionId, (rates.get(sectionId) ?? 0) + count * COOLER_RATE_CELSIUS_PER_SECOND);
+    }
     const alive: HeatPulse[] = [];
     for (const pulse of this.pulses) {
       rates.set(pulse.sectionId, (rates.get(pulse.sectionId) ?? 0) + pulse.celsiusPerSecond);

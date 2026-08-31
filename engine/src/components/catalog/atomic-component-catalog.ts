@@ -42,7 +42,13 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Cable de cobre",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 100 }],
+      // `maxCapacity` de un `COND(E)` está en unidades de `powerDraw` desde
+      // 14a-2 (era 100, contra consumos de 1-3: dos `number` que compilaban
+      // igual y medían magnitudes distintas). Ver `power/conductor-load.ts`.
+      // A 6, un cable sostiene ~3 piezas de señal + 1 actuador; con el factor
+      // térmico de 0.5 baja a 3, así que una carga de 4-6 es segura en
+      // operación normal y solo revienta al enfriar o calentar la sección.
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 6 }],
       material: { RE: "M", CE: "A" },
     },
   },
@@ -51,7 +57,8 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Bobina de cobre",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 100 }],
+      // Misma escala que `cable-cobre` (14a-2, unidades de `powerDraw`).
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 6 }],
       material: { RE: "M", CE: "A" },
     },
     // Nota: enrollado; cuando se combina con núcleo ferromagnético + corriente → electroimán (GDD 5.2, caso 9).
@@ -61,7 +68,9 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Resistencia eléctrica",
     data: {
       footprint: { width: 1, height: 1 },
-      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 50 }],
+      // La mitad que el cable (14a-2, unidades de `powerDraw`): es el conductor
+      // "fino" del catálogo, el que revienta primero.
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 3 }],
       material: { RE: "M", CE: "A" },
     },
     // Nota: conductor con pérdida controlada, limita corriente.

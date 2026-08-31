@@ -294,7 +294,9 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "cable-blindado-alto-amperaje" as ComponentId,
     name: "Cable blindado de alto amperaje",
     data: {
-      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 150 }],
+      // 14a-2: unidades de `powerDraw`, misma escala que el catálogo atómico
+      // (`power/conductor-load.ts`). Vez y media un cable de cobre.
+      functional: [{ tag: "COND", resourceType: "E", maxCapacity: 9 }],
       material: { CE: "A", RE: "A" },
     },
     recipe: {

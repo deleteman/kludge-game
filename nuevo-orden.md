@@ -994,15 +994,68 @@ Fix, todo de datos: `footprint {1,1}` al sensor, y stock del Cap. 1 a `indicador
 
 Suite: `/engine` 1100 → **1103**.
 
-##### Subfase 14a-2: Acoplamientos térmicos (pendiente)
+##### Subfase 14a-2: Acoplamientos térmicos ✅ CERRADA (2026-08-31)
 
-* **Enfriador/regulador térmico activo** (`ACT` nuevo, gateado por energía): pieza nueva del catálogo + sprite propio (decisión del operador), sexto escritor de temperatura.
-* **Conductividad `CE`/`CT` variable:** cablear `thermalConductivityRule` (ya escrita y sin llamador de producción) dentro de `MissionOverloadRuntime`, que hoy usa `conductorOverloadSubject` a secas.
-* **`thermalRegulatorOverloaded` real** en `MissionReactionRuntime` (hoy hardcodeado `false`, dejando muerta a `SpontaneousIgnitionRule`).
-* **Quinto escritor de daño estructural** (13f): una `SectionEnvironmentalDamageRule` térmica más en el registro.
-* **Cambio de estado de sustancia** (L↔S↔G).
-* Cierra el ciclo combustión→calor→cortocircuito→combustión: la cascada multi-salto que el motor todavía no sostiene.
-* Integración pendiente: "combustión sube temperatura que degrada conductor" (14a-1 dejó su equivalente, "combustión sube temperatura que dispara el sensor").
+**Decisión del operador al planificarla: nada de contenido scripteado.** Los dos runtimes donde entraban estos
+acoplamientos solo corrían sobre datos de guion — `MissionOverloadRuntime` sobre `scriptedOverloads` y
+`MissionReactionRuntime` sobre `scriptedReactions`, este último **vacío en TODOS los capítulos**. El pedido fue
+poner las piezas necesarias para que el jugador monte el escenario. Eso cambió el alcance: la carga eléctrica y
+los reactivos pasan a derivarse del mundo.
+
+Cuatro supuestos del texto original que la auditoría de código corrigió:
+- `thermalConductivityRule` modelaba **solo el frío** (≤ -50 °C) y todos los escritores de 14a-1 son de calor:
+  era inalcanzable, y la integración que la subfase declaraba es la rama CALIENTE, que no estaba escrita.
+- El **enfriador ya existía**: `sistema-refrigeracion-muestras` (`composite/medica.ts`), `ACT` + `REC` + `CT: "A"`,
+  sin `footprint` y sin escritor. Se reusa en vez de crear una pieza gemela.
+- **Cambio de estado L↔S↔G no es un acoplamiento sino un subsistema**: `MatterState` es un campo estático de
+  catálogo, no hay puntos de fusión/ebullición y no existen consumidores. → **sale a la Subfase 14a-3**.
+- **Bug bloqueante**: `MissionOverloadRuntime` se construía sin `shipFloorplan`, así que los `OverloadEvent`
+  salían sin `sectionId` y tanto el pulso de calor por sobrecarga como el puente sobrecarga→ignición estaban
+  **muertos en producción** desde que se escribieron.
+
+Qué entró:
+* **Carga eléctrica emergente** (`power/conductor-load.ts`): la carga de un conductor es la suma del `powerDraw`
+  de lo que cuelga de él aguas abajo. Se re-escaló `COND.maxCapacity` a unidades de consumo (cable 100→6,
+  resistencia 50→3, fibra 200→12, blindado 150→9): eran magnitudes incomparables. El BFS del grafo se extrajo de
+  cinética a `signals/graph-traversal.ts` en vez de copiarlo. `scriptedOverloads` sobrevive como override.
+* **Conductividad de dos ramas** (`thermalCapacityFactor`): frío ≤ -50 y calor ≥ 100 °C bajan la capacidad a la
+  mitad, y el `CT` del material desplaza el umbral caliente (A +0 / M +20 / B +40), que es lo que le da papel
+  mecánico a la placa aislante. Se aplica como cuarto factor, después de `wornCapacity`.
+* **Enfriador** (sexto escritor): `footprint` al `sistema-refrigeracion-muestras`, tasa continua de -4.5 °C/s
+  gateada por energía y por señal (sin cable funciona sola, con cable manda el cable). El número sale de un
+  cálculo: con menos de 3.55 °C/s no cruzaría nunca el umbral frío.
+* **Efecto térmico por sustancia** (séptimo escritor): tabla `SUBSTANCE_THERMAL_EFFECT`. Verter nitrógeno líquido
+  **no hacía absolutamente nada** hasta ahora — `SectionGasInjection` descartaba en silencio toda sustancia no
+  aérea. Es el caso de validación 2 vuelto jugable.
+* **Reacciones emergentes por sección** (`mission/section-reactants.ts`) + **`thermalRegulatorOverloaded` real**:
+  `SpontaneousIgnitionRule` deja de estar muerta en misión. Con antirruido por huella.
+* **Quinto escritor de daño estructural**: `thermalDamageRule`, calor ≥ 100 y frío ≤ -40, sin `floorHp` (el
+  fuego sí debe poder reventar una sección). La interfaz de 13f no hizo falta tocarla.
+* **Reservorio recién instalado nace CON su sustancia**: `deriveInitialReservoirContents` solo corría al crear la
+  campaña, así que un tanque fabricado por el jugador quedaba vacío y "Verter en la sección" ni aparecía.
+* `footprint` + stock del Cap.1 para las tres piezas del escenario (deuda #42 puntual, #44 actualizada).
+
+**Recalibración forzada por el test de integración**: `THERMAL_REGULATOR_OVERLOAD_CELSIUS` bajó de 80 a 70. A 80
+era inalcanzable justo en el único caso en que se evalúa — la condición exige un regulador instalado, y un
+regulador instalado está enfriando, así que una combustión violenta en su sala pica en ~73 °C en vez de ~161.
+El estado se apagaba por culpa de la pieza que lo hace observable.
+
+Suite: `/engine` 1103 → **1135**, `/game` 86 sin cambios. `tsc` y `eslint` limpios.
+
+**Sprites faltantes** (placeholder tinteable mientras tanto): `sistema-refrigeracion-muestras.png`,
+`tanque-muestra-criogenica.png`, `reservorio-disolvente.png` en `game/assets/sprites/components/` — y sigue
+faltando `sensor-termico-precision.png` de 14a-1.
+
+##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
+
+Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.
+Hoy `ChemicalSubstanceData.state` es un dato ESTÁTICO de catálogo, no hay puntos de fusión/ebullición en ningún
+lado y no existe ningún consumidor del estado. Necesita su propio ciclo de preguntas antes de planificarse:
+- Datos nuevos por sustancia (¿punto de fusión y ebullición por entrada de catálogo, o buckets por tag?).
+- Qué consume el estado: GDD 5.6 pide "líquido → sólido detiene flujo; sólido → gas genera presión/expansión",
+  o sea que toca `reservoir-ledger`, el flujo por conductos y el sumidero de presión.
+- Enganche natural ya identificado: `isAirborneSubstance` (`mission/section-gas-injection.ts`) discrimina por
+  `state`, así que un estado vivo cambiaría solo el destino de un derrame.
 
 #### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
 
@@ -1096,7 +1149,7 @@ código durante el triaje, así que la subfase no arranca a ciegas.
   y el contorno no, se van a contradecir.
 
 **Bloque 2 — Rediseños con decisión de diseño previa.** Abrir la subfase con **un único ciclo de preguntas**
-que cubra los cinco (CLAUDE.md, "minimizar assumptions"), no uno por ítem:
+que los cubra a todos (CLAUDE.md, "minimizar assumptions"), no uno por ítem:
 
 * **Superficie de capas del plano (Obs 15 + Obs 12 + fine-tunning de capas) — son la misma pregunta.** Obs 12
   ("¿hay algún uso real para las capas? ¿qué gana el jugador con verlas?", confirmado por el operador en el
@@ -1138,6 +1191,63 @@ que cubra los cinco (CLAUDE.md, "minimizar assumptions"), no uno por ítem:
 * **Elegir cantidad al transferir (deuda #27, prioridad baja):** el destino ya se resuelve con el modo espacial
   (ronda 7 de 13e) y la cantidad ya se capa al espacio libre (ronda 9), así que lo único vivo es dejar al
   jugador elegir *cuánto*. `TransferSubstanceTaskPayload` ya lleva `amount`.
+
+* **Histórico de notificaciones — log revisable (pedido del operador, 2026-08-31):** hoy las notificaciones son
+  efímeras y no dejan rastro: `NotificationCenter` (`game/src/ui/widgets/notification-center.ts`) auto-descarta
+  cada tarjeta a los `2600 + 500·líneas` ms y, encima, tiene `MAX_ACTIVE = 4` — al quinto aviso simultáneo
+  **descarta la más vieja antes de tiempo** (`push()`, línea 89), o sea que con varios eventos a la vez el
+  jugador pierde avisos que nunca llegó a leer. Es exactamente el caso que más importa: una cascada emergente
+  (13a) dispara varios eventos en el mismo tick. Hace falta un histórico persistente durante la misión, con
+  detalle consultable en pausa. El motor ya tiene la mitad del dato: `TaskScheduler.pendingNotifications` /
+  `drainNotifications()` acumulan las notificaciones de tarea, pero el resto de los avisos se pushean directo a
+  la UI sin pasar por ningún registro. Decisiones a tomar en el ciclo de preguntas:
+  - **Dónde vive el registro:** ¿un buffer en `/game` alimentado por el propio `NotificationCenter.push()` (más
+    barato, pero el log no sobrevive al cambio de escena ni se guarda), o un dominio en `/engine` con eventos
+    tipados y serializables? Si el histórico tiene que persistir en el save, es lo segundo y hay bump de
+    `CampaignSaveState`.
+  - **Superficie de lectura:** ¿panel dedicado abrible desde el HUD (molde de `power-priority-list.ts`), o la
+    pila actual que se vuelve scrolleable/expandible al hacer click? Debe respetar la regla de 14d Bloque 1
+    ("ningún elemento de UI sobre el mapa deja pasar el click").
+  - **Alcance y retención:** ¿solo la misión en curso o toda la campaña? ¿Tope de entradas? ¿Filtro por tipo
+    (`info`/`success`/`warning`/`error`) y/o por tripulante?
+  - **Detalle por entrada:** timestamp de misión, tipo, tripulante/sección implicados, y si al clickear una
+    entrada la cámara viaja a la sección del evento (el "detalle" que pidió el operador).
+  - Los textos siguen pasando por claves de traducción (CLAUDE.md); el contrato de color es el de 12e, que
+    `notification-center.ts` ya consume.
+
+* **Acciones que quedan bloqueadas de por vida cuando una puerta corta el paso (pedido del operador,
+  2026-08-31).** El operador reporta que al bloquearse un set de acciones porque una puerta no deja pasar
+  (sin energía, trabada, cerrada por señal), esas acciones **quedan en el listado para siempre**: no se
+  reintentan si la puerta vuelve a funcionar y tampoco desaparecen — basura visual. Dos causas raíz distintas,
+  ambas verificadas en código:
+  - **Las tareas terminales nunca se sacan de la lista.** El armado del panel de cola en `floorplan-scene.ts`
+    (`redrawQueuePanel`, ~línea 3105) filtra **solo** `completed`; una tarea `cancelled` o `failed` se sigue
+    dibujando indefinidamente. Y `showUnreachable` (`floorplan-scene.ts`) cancela el `go-to` **y todo el tramo
+    contiguo** de acciones de ese destino, así que un solo fallo de ruta deja media cola en pantalla como
+    zombis.
+  - **El bloqueo por dependencia cancelada es permanente por diseño.** `resolveBlockingReason`
+    (`engine/src/tasks/task-scheduler.ts`) trata `dependency-cancelled`/`dependency-failed` como bloqueo
+    definitivo, y `blocked` **no** es un estado terminal: la tarea queda viva, con el actor en `waiting`, sin
+    nadie que la reevalúe nunca. Nótese el contraste deliberado ya documentado ahí: `no-power` sí es
+    reversible y se reevalúa cada tick — o sea que el motor ya sabe expresar "bloqueo que se destraba solo",
+    y una puerta que recupera energía es más parecido a eso que a una dependencia cancelada.
+  Alternativas a decidir (no implementar ninguna sin el ciclo de preguntas):
+  1. **Descartar y avisar (mínimo):** las tareas canceladas/falladas desaparecen del panel al terminar (o tras
+    un breve fade que las muestre tachadas), y el jugador recibe una notificación con el motivo — que además
+    aterriza en el histórico del ítem anterior. Es el fix más chico y resuelve la "basura visual", pero deja
+    en pie el trabajo de re-encolar todo a mano.
+  2. **Bloqueo reversible por puerta:** que "sin ruta por puerta" deje de cancelar y pase a ser un motivo de
+    bloqueo propio (`no-route`), reevaluado cada tick como ya se hace con `no-power`. La tarea se reanuda sola
+    cuando la puerta se abre. Riesgo: un tripulante puede quedarse parado indefinidamente sin que el jugador
+    entienda por qué — mitigable pintando la tarea en ámbar con el motivo en el label (patrón de 13e ronda 2)
+    y encolando la reevaluación solo mientras el destino siga siendo válido.
+  3. **Bloqueo reversible con caducidad:** como (2), pero la tarea se auto-cancela si sigue sin ruta después
+    de N segundos de simulación, para que la cola no crezca sin techo en una nave rota.
+  4. **Re-encolado explícito:** las tareas se cancelan (como hoy) pero el panel ofrece un botón "reintentar"
+    sobre el tramo cancelado, que las vuelve a encolar en orden. Deja la decisión en el jugador; es más UI.
+  Sea cual sea la elegida, **el panel tiene que dejar de mostrar tareas terminales** — esa parte no depende de
+  la decisión de diseño y puede hacerse primero. Y hay que revisar de paso el estado `waiting` del actor, que
+  hoy queda pegado mientras exista una tarea `blocked` permanente.
 
 * **Preguntas abiertas de primera impresión (fine-tunning):** "¿el menú inicial se siente profesional, qué le
   falta?" (parcialmente atendido en 12g con la entrada escalonada de botones) y "¿los primeros 10 minutos son

@@ -84,6 +84,66 @@ export const OVERLOAD_HEAT: Readonly<Partial<Record<FailureMode, HeatPulseSpec>>
 };
 
 /**
+ * Enfriamiento que aporta un regulador térmico activo mientras opera (Subfase
+ * 14a-2, sexto escritor). Negativo: es un aporte de °C/s como cualquier otro,
+ * solo que hacia abajo.
+ *
+ * **El número sale de un cálculo, no de una estimación.** La climatización de
+ * fondo empuja hacia el nominal a `(21 - T) * PASSIVE_DRIFT_PER_SECOND`, así que
+ * una máquina que aporte `R` °C/s se estabiliza en `21 - R / 0.05`. Para cruzar
+ * el umbral frío de `THERMAL_CONDUCTIVITY_PARAMETERS` (-50 °C) hacen falta al
+ * menos **3.55 °C/s**; con menos, el enfriador nunca llegaría y el acoplamiento
+ * de conductividad quedaría inalcanzable — exactamente el error de elegir un
+ * umbral sin mirar los otros números del sistema. A 4.5 el equilibrio queda en
+ * **-69 °C**: cruza el umbral con margen y sigue dentro del clamp de -80.
+ */
+export const COOLER_RATE_CELSIUS_PER_SECOND = -4.5;
+
+/**
+ * Temperatura a partir de la cual un regulador térmico instalado en la sección
+ * se considera SOBRECARGADO (GDD 5.3, "volátil + regulador térmico sobrecargado
+ * → riesgo de ignición espontánea"). Subfase 14a-2: es lo que le da una fuente
+ * real a `ReactionContext.thermalRegulatorOverloaded`, hasta ahora un `false`
+ * literal que dejaba muerta a `SpontaneousIgnitionRule`.
+ *
+ * Entre el umbral del sensor (60, "hay un incendio") y el de degradación del
+ * conductor (100): el regulador se rinde antes de que el cableado ceda, así que
+ * la ignición espontánea es un aviso previo al cortocircuito y no su duplicado.
+ *
+ * **El 70 salió de simular, no de elegirlo.** Estaba en 80, y el test de
+ * integración destapó que era inalcanzable *justo en el único caso en que este
+ * umbral se evalúa*: la condición exige que haya un regulador instalado, y un
+ * regulador instalado está enfriando a `COOLER_RATE_CELSIUS_PER_SECOND`, así que
+ * una combustión `violent` en su sala pica en ~73 °C en vez de los ~161 que daría
+ * sin él. O sea que el estado "el regulador no da abasto" se apagaba exactamente
+ * por culpa del regulador que lo hace observable. Con 70 una combustión violenta
+ * (o una explosión de sobrecarga) sí lo rinde, y una `standard` —que con el
+ * enfriador puesto no pasa de ~30 °C— no: el enfriador sigue sirviendo para algo.
+ */
+export const THERMAL_REGULATOR_OVERLOAD_CELSIUS = 70;
+
+/**
+ * Efecto térmico de una sustancia volcada sobre una sección (Subfase 14a-2,
+ * séptimo escritor). Misma forma que `COMBUSTION_HEAT` —°C totales y duración,
+ * porque "-6 °C por unidad durante 8 s" es legible para diseño y "-0.75 °C/s"
+ * no— pero escalada por la CANTIDAD vertida: el jugador gradúa el efecto con
+ * cuánto derrama.
+ *
+ * Existe porque hasta 14a-2 verter nitrógeno líquido en una sección no hacía
+ * absolutamente nada: `SectionGasInjection` descarta toda sustancia no aérea, y
+ * el nitrógeno líquido es `state: "L"` + `INERTE`. Un derrame que no llega a la
+ * atmósfera igual enfría el suelo y el aire de la sala — eso es lo que esta
+ * tabla modela, y es lo que vuelve jugable el caso de validación 2
+ * ("refrigerante conductor + nitrógeno líquido + panel eléctrico").
+ *
+ * Data-driven a propósito: sumar una sustancia con efecto térmico es añadir una
+ * fila, no escribir lógica.
+ */
+export const SUBSTANCE_THERMAL_EFFECT: Readonly<Record<string, HeatPulseSpec>> = {
+  "nitrogeno-liquido": { celsius: -6, durationSeconds: 8 },
+};
+
+/**
  * Umbral del sensor térmico (`triggerType: "thermal"`). Dispara POR ENCIMA, al
  * revés que el de presión, que dispara por debajo de la atmósfera estándar.
  *

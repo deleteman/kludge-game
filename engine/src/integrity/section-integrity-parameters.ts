@@ -79,6 +79,32 @@ export const SECTION_INTEGRITY_PARAMETERS = {
     floorFraction: 0.15,
   },
 
+  /**
+   * Daño térmico a la estructura de la sección (Subfase 14a-2, quinto
+   * escritor). Dos lados, igual que el clamp de dos lados del propio eje: el
+   * calor deforma y el frío extremo fragiliza.
+   *
+   * Los dos umbrales se eligieron cruzando los números que ya existen, no a
+   * ojo:
+   *  - `hotOnsetCelsius` es el MISMO 100 que degrada un conductor
+   *    (`THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerTemperatureCelsius`), para
+   *    que un solo umbral gobierne "esta sección está en rojo" y el jugador no
+   *    tenga que aprender dos números.
+   *  - `coldOnsetCelsius` a -40 queda POR ENCIMA del umbral frío del conductor
+   *    (-50): enfriar para cortar un circuito daña un poco la sala antes de
+   *    conseguirlo. La solución cuesta (principio 5), no sale gratis.
+   *
+   * **Sin `floorFraction`**, a diferencia de la descompresión: el calor SÍ debe
+   * poder colapsar una sección. El bucle de realimentación se corta solo — una
+   * brecha vacía la sala, sin oxígeno no hay combustión y la deriva la enfría.
+   */
+  thermal: {
+    hotOnsetCelsius: 100,
+    coldOnsetCelsius: -40,
+    /** Daño por segundo en el extremo del clamp (`TEMPERATURE_CEILING/FLOOR`); escala linealmente desde el umbral. */
+    maxDamagePerSecond: 6,
+  },
+
   breach: {
     /**
      * Drenaje de presión de una sección brechada, en kPa/s. Un orden de

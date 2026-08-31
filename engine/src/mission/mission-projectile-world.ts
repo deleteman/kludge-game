@@ -16,6 +16,7 @@ import type {
   PlacedComponentInstanceId,
 } from "../blueprint/blueprint.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import { upstreamNodes } from "../signals/graph-traversal.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 import type { SignalOutputReader } from "./mission-signal-runtime.js";
 import type { MutableCrewState } from "./mutable-crew-state.js";
@@ -240,18 +241,3 @@ function energizedNodeOf(
   return node?.id ?? null;
 }
 
-/** Todos los nodos que alcanzan a `target` siguiendo las aristas hacia atrás (BFS, tolera ciclos). */
-function upstreamNodes(blueprint: Blueprint, target: SignalNodeId): ReadonlySet<SignalNodeId> {
-  const seen = new Set<SignalNodeId>([target]);
-  const pending: SignalNodeId[] = [target];
-  while (pending.length > 0) {
-    const current = pending.pop() as SignalNodeId;
-    for (const edge of blueprint.signalGraph.edges) {
-      if (edge.to === current && !seen.has(edge.from)) {
-        seen.add(edge.from);
-        pending.push(edge.from);
-      }
-    }
-  }
-  return seen;
-}

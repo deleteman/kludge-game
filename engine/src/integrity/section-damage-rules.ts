@@ -9,18 +9,24 @@ import type { CombustionEvent } from "../chemistry/reaction/reaction-events.type
 import type { KineticImpactEvent } from "../kinetics/kinetic-events.types.js";
 import type { SectionDamageCause } from "./integrity-events.types.js";
 import { SECTION_INTEGRITY_PARAMETERS } from "./section-integrity-parameters.js";
+import {
+  TEMPERATURE_CEILING_CELSIUS,
+  TEMPERATURE_FLOOR_CELSIUS,
+} from "../atmosphere/thermal-parameters.js";
 import type { SectionIntegrity } from "./section-integrity.types.js";
 
 /**
  * Reglas de daño a la vida de una sección (Subfase 13f) como **Strategy**,
  * mismo patrón que las reglas de reacción (GDD 5.6) y que
- * `dismantle-hazard-rules.ts` (13d): añadir una quinta causa de daño es
- * implementar la interfaz, no editar un `if` central.
+ * `dismantle-hazard-rules.ts` (13d): añadir una causa de daño es implementar la
+ * interfaz, no editar un `if` central. La quinta (térmica, 14a-2) lo confirmó:
+ * entró como una fila más en el registro, sin tocar el orquestador.
  *
  * Dos familias, porque los fenómenos son de dos naturalezas distintas y
  * colapsarlas daría una interfaz que miente sobre la mitad de sus casos:
  *  - **Ambientales** (`SectionEnvironmentalDamageRule`): se evalúan por tick
- *    contra la atmósfera de la sección — corrosión y descompresión.
+ *    contra la atmósfera de la sección — corrosión, descompresión y
+ *    temperatura fuera de rango (esta última, Subfase 14a-2).
  *  - **Puntuales**: traducen un evento discreto ya emitido por otro dominio a
  *    HP — impacto cinético y combustión. Son funciones puras, no reglas con
  *    estado: no hay nada que acumular entre ticks.
@@ -102,10 +108,46 @@ export const decompressionDamageRule: SectionEnvironmentalDamageRule = {
   },
 };
 
+/**
+ * Escritor 5 (Subfase 14a-2) — temperatura fuera del rango de operación.
+ *
+ * No necesitó ampliar `SectionEnvironmentalDamageContext`: la interfaz ya trae
+ * la `SectionAtmosphere` completa, `temperatureCelsius` incluido. Añadir la
+ * quinta causa fue implementar la interfaz y sumar una fila al registro, que es
+ * exactamente lo que el Strategy de 13f prometía.
+ *
+ * Los dos lados escalan linealmente entre su umbral y el clamp del eje, así que
+ * el daño de una sala a 110 °C es un rasguño y el de una a 500 °C es serio —
+ * la intensidad del incendio se traduce en daño, no solo su existencia.
+ *
+ * **Sin `floorHp`, a diferencia de la descompresión**: el fuego sí tiene que
+ * poder reventar una sección. El bucle no se realimenta solo porque la brecha
+ * corta el oxígeno y la deriva pasiva enfría.
+ */
+export const thermalDamageRule: SectionEnvironmentalDamageRule = {
+  cause: "thermal",
+  damageFor({ atmosphere, dtSeconds }) {
+    const { hotOnsetCelsius, coldOnsetCelsius, maxDamagePerSecond } =
+      SECTION_INTEGRITY_PARAMETERS.thermal;
+    const temperature = atmosphere.temperatureCelsius;
+    let severity = 0;
+    if (temperature >= hotOnsetCelsius) {
+      severity = (temperature - hotOnsetCelsius) / (TEMPERATURE_CEILING_CELSIUS - hotOnsetCelsius);
+    } else if (temperature <= coldOnsetCelsius) {
+      severity = (coldOnsetCelsius - temperature) / (coldOnsetCelsius - TEMPERATURE_FLOOR_CELSIUS);
+    }
+    if (severity <= 0) {
+      return { amount: 0 };
+    }
+    return { amount: maxDamagePerSecond * Math.min(1, severity) * dtSeconds };
+  },
+};
+
 /** Reglas ambientales en el orden en que se evalúan cada tick. */
 export const SECTION_ENVIRONMENTAL_DAMAGE_RULES: ReadonlyArray<SectionEnvironmentalDamageRule> = [
   corrosionDamageRule,
   decompressionDamageRule,
+  thermalDamageRule,
 ];
 
 /**

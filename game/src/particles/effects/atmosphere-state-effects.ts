@@ -3,7 +3,7 @@ import type Phaser from "phaser";
 import type { GridPosition, ParticleEmitterHook, StateDrivenEffect } from "../particle-effect.types.js";
 import { type EffectScene, pickTexture, spreadRange, textureScale, toPixel } from "../particle-utils.js";
 import { CIRCLE_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
-import { THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
+import { SECTION_INTEGRITY_PARAMETERS, THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
 
 /**
  * Tres fenómenos state-driven de GDD 11.1 leídos de `SectionAtmosphere` cada
@@ -113,7 +113,14 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
   };
 }
 
-const FREEZING_THRESHOLD_CELSIUS = -10;
+/**
+ * Subfase 14a-2: el mismo criterio que el vapor de calor, ahora que el frío
+ * tiene escritores reales (el enfriador y el derrame criogénico). El umbral es
+ * el del daño estructural por frío, o sea que la escarcha aparece exactamente
+ * cuando la sala empieza a sufrir — antes era un -10 suelto que no coincidía con
+ * ningún umbral del motor y que el balanceo podía separar sin que nada avisara.
+ */
+const FREEZING_THRESHOLD_CELSIUS = SECTION_INTEGRITY_PARAMETERS.thermal.coldOnsetCelsius;
 /**
  * Subfase 14a-1: el vapor de calor aparece exactamente cuando dispara el
  * sensor térmico, y por eso importa SU constante en vez de repetir el 60.

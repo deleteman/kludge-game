@@ -80,6 +80,8 @@ import {
   MutableElementStock,
   pourInto,
   TransientGasInjection,
+  activeThermalRegulatorsBySection,
+  sectionsWithThermalRegulator,
   deriveMixtureHazardPreview,
   durationMultiplierFor,
   baseDurationFor,
@@ -407,6 +409,11 @@ export class MissionRuntime {
       const section = this.shipFloorplan.sections.find((entry) => entry.id === sectionId);
       return section && sectionArea(section);
     },
+    // Subfase 14a-2: séptimo escritor de temperatura. Verter un criogénico
+    // enfría la sala aunque el líquido no llegue a la atmósfera — antes de esto,
+    // volcar nitrógeno líquido no producía ningún efecto en ningún sistema.
+    onSpill: (sectionId, substanceId, amount) =>
+      this.thermalRuntime.applySubstanceSpill(sectionId, substanceId, amount),
   });
   /**
    * Operaciones de fluido en curso (13e, deuda #10) — de acá sale el caudal
@@ -640,7 +647,19 @@ export class MissionRuntime {
     );
     // Subfase 14a-1: traductor de eventos discretos (combustión, sobrecarga en
     // modo fuego, neutralización exotérmica) a °C/s por sección.
-    this.thermalRuntime = new MissionThermalRuntime(this.reactionEvents, this.failureEvents);
+    // Subfase 14a-2: además de los pulsos por evento, el aporte CONTINUO de los
+    // reguladores térmicos que estén realmente operando (alimentados y, si están
+    // cableados, con señal activa). La decisión de "activo" vive en `/engine`
+    // (`thermal-regulators.ts`) y no en este closure: es una regla de dominio, y
+    // una regla dentro de un closure de `/game` es código sin test.
+    this.thermalRuntime = new MissionThermalRuntime(this.reactionEvents, this.failureEvents, () =>
+      activeThermalRegulatorsBySection(this.shipState.get(), {
+        registry: this.componentRegistry,
+        floorplan: this.shipFloorplan,
+        isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+        outputOf: (nodeId) => this.signalRuntime.outputOf(nodeId),
+      }),
+    );
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
       this.shipState,
@@ -834,21 +853,29 @@ export class MissionRuntime {
       );
     }
     this.crisisDefinition = definition;
-    // Fase 12a: sobrecarga scripteada por contenido — sin simulación de carga
-    // eléctrica real en el motor (ver comentario de `MissionOverloadRuntime`),
-    // el guion de la crisis (`scriptedOverloads`, ausente = ninguno todavía en
-    // ningún capítulo) es la única fuente de `load`/`capacity`.
+    // Subfase 14a-2: la carga de cada conductor se deriva del cableado real del
+    // jugador (`power/conductor-load.ts`); `scriptedOverloads` queda como
+    // override de guion para el attrezzo del capítulo 1.
+    //
+    // El `shipFloorplan` NO es opcional en producción aunque la firma lo
+    // permita: sin él los `OverloadEvent` salen sin `sectionId`, y tanto
+    // `MissionThermalRuntime.open()` como `MissionReactionRuntime` los
+    // descartan en silencio — o sea que el pulso de calor por sobrecarga y el
+    // puente sobrecarga→ignición estaban muertos desde que se escribieron.
     this.overloadRuntime = new MissionOverloadRuntime(
       this.shipState,
       this.componentRegistry,
       definition.scriptedOverloads ?? [],
       this.failureEvents,
+      this.shipFloorplan,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
     );
-    // Fase 13a: química viva scripteada por contenido — sin fuente real de
-    // sustancias/reservorios todavía (deuda #9/#10, Fase 13e), el guion de la
-    // crisis (`scriptedReactions`, ausente = ninguna todavía en ningún
-    // capítulo) es la única fuente de reactivos; oxígeno e ignición (vía
-    // puente a `failureEvents`) sí son reales.
+    // Fase 13a: química viva de misión. Subfase 14a-2: los reactivos ya NO
+    // vienen solo del guion — `scriptedReactions` está vacío en todos los
+    // capítulos, así que este runtime no tenía ningún camino jugable. Ahora
+    // evalúa además las sustancias realmente presentes en el aire de cada
+    // sección, y `thermalRegulatorOverloaded` tiene una fuente real (había un
+    // `false` literal que dejaba muerta a `SpontaneousIgnitionRule`).
     this.reactionRuntime = new MissionReactionRuntime(
       this.shipState,
       this.shipFloorplan,
@@ -860,6 +887,12 @@ export class MissionRuntime {
       // Subfase 13d: segunda fuente de ignición real — el chispazo de arrancar
       // una pieza viva (§5.5, caso de validación 8).
       this.salvageEvents,
+      (substanceId) => this.chemicalRegistry.get(substanceId),
+      () =>
+        sectionsWithThermalRegulator(this.shipState.get(), {
+          registry: this.componentRegistry,
+          floorplan: this.shipFloorplan,
+        }),
     );
     this.crisisRuntime = new CrisisRuntime({
       definition,
