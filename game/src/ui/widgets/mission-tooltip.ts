@@ -105,8 +105,16 @@ export type TooltipContent =
  * Todo derivado en el momento del hover, como el resto del tooltip.
  */
 export interface SignalTooltipInfo {
-  /** Cuántas piezas cuelgan de sus salidas, y cuánta demanda suman. */
-  readonly drives?: { readonly count: number; readonly load: number };
+  /**
+   * Cuántas piezas cuelgan DIRECTAMENTE de sus salidas, cuánta demanda suman y
+   * cuánto puede sostener.
+   *
+   * `capacity` llegó en la ronda 2 de playtest de 14a-4 y es el arreglo del
+   * reporte "no entiendo los dos números": `Gobierna: 7 · 8 de demanda` era un
+   * número sin denominador, correcto y sin significado. Con el tercero, la
+   * línea dice si el montaje entra o no.
+   */
+  readonly drives?: { readonly count: number; readonly load: number; readonly capacity: number };
   /** Quién la gobierna y si la señal está llegando AHORA. `undefined` = sin cable. */
   readonly governedBy?: { readonly name: string; readonly active: boolean };
   /** Esta pieza EMITE su estado hacia la cadena (un actuador cableado como origen). */
@@ -151,7 +159,13 @@ export interface MissionTooltipLabels {
    */
   readonly instanceState: (state: InstanceState) => string;
   /** "Gobierna 7 piezas · 9 de demanda" (14a-4 ronda 1). */
-  readonly signalDrives: (drives: { readonly count: number; readonly load: number }) => string;
+  readonly signalDrives: (drives: {
+    readonly count: number;
+    readonly load: number;
+    readonly capacity: number;
+  }) => string;
+  /** Qué pasa cuando la demanda supera lo que el emisor sostiene. */
+  readonly signalOverloadedEmitter: string;
   /** "Gobernada por: Fotorreceptor (señal activa)". */
   readonly signalGovernedBy: (governedBy: { readonly name: string; readonly active: boolean }) => string;
   /** "Emite señal: sí/no" — la salida de un actuador hacia la cadena. */
@@ -160,6 +174,8 @@ export interface MissionTooltipLabels {
   readonly wireLoad: (load: number, capacity: number) => string;
   /** Qué pasa si la carga supera la capacidad. */
   readonly wireOverloadWarning: string;
+  /** Por qué la carga es la que es: un cable lleva lo que cuelga aguas abajo. */
+  readonly wireLoadExplained: string;
   /** "Quemado: no conduce. Retiralo para recuperar el hueco." */
   readonly wireBurned: string;
   /** "La temperatura de la sala le baja la capacidad a la mitad." */
@@ -320,7 +336,24 @@ export function renderMissionTooltip(
       // fotorreceptor está preguntando por el cableado, no por el aire.
       const signal = content.signal;
       if (signal?.drives) {
-        lines.push({ text: `⌁ ${labels.signalDrives(signal.drives)}`, color: LABEL_COLOR });
+        // Mismo semáforo que el cable (ronda 2 de playtest): la demanda contra
+        // la capacidad de la salida. Que el emisor y sus cables hablen el mismo
+        // color es lo que hace que el jugador conecte una cosa con la otra.
+        const ratio = signal.drives.capacity > 0 ? signal.drives.load / signal.drives.capacity : 0;
+        lines.push({
+          text: `⌁ ${labels.signalDrives(signal.drives)}`,
+          color:
+            ratio > 1
+              ? CRISIS_FATAL_CSS
+              : ratio >= WIRE_LOAD_WARNING_RATIO
+                ? CRISIS_WARNING_CSS
+                : LABEL_COLOR,
+        });
+        // Y qué implica pasarse, en palabras. El operador vio el ámbar sin
+        // ninguna forma de saber qué significaba.
+        if (ratio > 1) {
+          lines.push({ text: `• ${labels.signalOverloadedEmitter}`, color: CRISIS_FATAL_CSS });
+        }
       }
       if (signal?.governedBy) {
         lines.push({
@@ -357,6 +390,11 @@ export function renderMissionTooltip(
         // La consecuencia EN PALABRAS: un umbral sin su consecuencia es un
         // número que no significa nada.
         lines.push({ text: `• ${labels.wireOverloadWarning}`, color: LABEL_COLOR });
+        // De DÓNDE sale ese número. Ronda 2 de playtest: el operador vio siete
+        // cables diciendo `1 / 6` y no tenía cómo saber que un cable lleva lo
+        // que cuelga aguas abajo de él, ni por qué entonces la carga nunca
+        // subía. Es la frase que convierte siete cifras iguales en una regla.
+        lines.push({ text: `• ${labels.wireLoadExplained}`, color: LABEL_COLOR });
       }
       if (content.wear !== "nuevo") {
         lines.push({

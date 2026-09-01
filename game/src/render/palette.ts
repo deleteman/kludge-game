@@ -492,6 +492,22 @@ export function sectionScarFlickerAlpha(elapsedSeconds: number): number {
 export const OVERLOADED_CONDUCTOR_LIGHT_COLOR = 0xf2d24b;
 
 /**
+ * Pieza cableada que NO recibe señal porque quien la alimenta no da abasto
+ * (14a-4, ronda 2 de playtest, `InstanceStateFlag: "unsignaled"`).
+ *
+ * Violeta y no un tono de la familia eléctrica a propósito. Los tres colores
+ * que ya significan algo sobre un sprite están tomados: ámbar es
+ * `wear: degradado` y la cicatriz de sobrecarga, gris es `sin energía`, y rojo
+ * es fatal. Un cuarto estado en cualquiera de esas familias se leería como una
+ * variante del anterior, que es justo el fallo que el operador señaló al pedir
+ * que los dos estados pudieran convivir sin confundirse (principio 6).
+ *
+ * Es además el ÚNICO estado reversible sin coste de los cuatro —desconectar
+ * algo lo devuelve— y merece no parecerse a los que sí cuestan material.
+ */
+export const UNSIGNALED_COMPONENT_TINT = 0xa07de0;
+
+/**
  * Estado de un CABLE de señal del jugador (Subfase 14a-4).
  *
  * Desde 14a-4 la arista tiene carga y capacidad, así que ya no puede pintarse

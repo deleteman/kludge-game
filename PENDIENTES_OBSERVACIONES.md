@@ -1025,6 +1025,13 @@ desarmar → reutilizar" que es la lección del capítulo. Al re-nivelar hay que
 desarmando algo (coherente con el capítulo) o si el escenario térmico vive en el Cap. 2 y el Cap. 1 vuelve a su
 austeridad original.
 
+**Actualizado en la ronda 2 de playtest de 14a-4 (2026-09-02).** El emisor pasó a tener capacidad de
+salida, así que el stock del capítulo ya no se dimensiona solo por "cuántos cables puede tender el
+jugador" (criterio de la ronda 1) sino por **cuántos relés puede intercalar**: sin un
+`chip-circuito-generico` disponible, un jugador que sobrecarga un sensor no tiene ninguna salida y la
+lección se corta a la mitad. Hoy alcanza (chips ×8), pero es una dependencia nueva que el re-nivelado
+tiene que respetar: bajar los chips por austeridad rompería la mecánica que 14a-4 acaba de abrir.
+
 Con el estado anterior eran **4 sensores térmicos** construibles. Contradice de frente el diseño austero del capítulo — el loop
 "sin stock → inspeccionar → desarmar → reutilizar" que justifica el resto de esa lista y que es la lección
 que el Cap. 1 tiene que enseñar. Es deuda de balance asumida a cambio de poder verificar el eje.
@@ -1066,3 +1073,10 @@ capacidad agregada propia). Queda anotada por si el diseño del Cap. 2 llega a p
 uso" que ya se aplicó a los payloads de tarea.
 
 El caso de validación 2 dejó de depender del fixture: ahora corre sobre un cable real con capacidad de catálogo.
+
+**Actualizado en la ronda 2 de playtest de 14a-4 (2026-09-02).** El "nodo de derivación" que quedó
+anotado acá terminó existiendo, pero sin pieza nueva: `chip-circuito-generico` ya era un relé por
+construcción —el evaluador calcula la salida de todo nodo que no sea emisor— y solo lo bloqueaba la
+guarda receptor→receptor de `orientSignalWiring`. Levantarla, más la capacidad de salida por pieza,
+da el tronco explícito que se buscaba **reusando el catálogo existente**, que es lo que el principio 1
+pedía. El caso de uso que faltaba llegó del playtest, no de un diseño anticipado.

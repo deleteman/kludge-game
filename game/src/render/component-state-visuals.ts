@@ -7,6 +7,7 @@ import {
   DOOR_STATE_COLOR,
   hexToCss,
   OVERLOADED_CONDUCTOR_LIGHT_COLOR,
+  UNSIGNALED_COMPONENT_TINT,
 } from "./palette.js";
 
 /**
@@ -47,6 +48,15 @@ export interface ComponentStateVisual {
   readonly icon?: string;
   /** Clave i18n del aviso de tooltip. `undefined` = el estado no se comenta. */
   readonly noticeKey?: string;
+  /**
+   * Cómo se nombran los dos números del detalle. Viven en la fila del estado
+   * porque no significan lo mismo en cada uno: en `unpowered` son las unidades
+   * que la pieza pide contra las que su sección otorga; en `unsignaled` son la
+   * demanda colgada de su alimentador contra lo que ese alimentador sostiene.
+   * Compartir un solo par de etiquetas dejaba al segundo diciendo "otorga 3"
+   * sobre un número que nadie otorga.
+   */
+  readonly detailKeys?: { readonly required: string; readonly available: string };
 }
 
 /** Color CSS del aviso en el tooltip, derivado del mismo tinte (una sola fuente de color por estado). */
@@ -84,12 +94,57 @@ const STATE_VISUAL: Readonly<Record<InstanceStateFlag, ComponentStateVisual>> = 
     icon: "⌁",
     noticeKey: "ui.floorplan.mission.state.overloaded",
   },
+  /**
+   * Cableada pero sin señal (ronda 2 de playtest de 14a-4): su alimentador no
+   * sostiene toda la demanda que le colgaron y el triaje la sacrificó. Va entre
+   * el corte y la falta de energía porque es lo que el jugador puede resolver
+   * ahora mismo, con el montaje que ya tiene delante.
+   *
+   * El glifo es un círculo tachado y no otro rayo: el rayo ya es "sin energía",
+   * y la pieza sin señal SÍ tiene energía — está lista y nadie le está diciendo
+   * que actúe. Que los dos glifos se puedan ver juntos es un pedido explícito
+   * del operador, y lo resuelve `stateGlyphs`.
+   */
+  unsignaled: {
+    tint: UNSIGNALED_COMPONENT_TINT,
+    icon: "⊘",
+    noticeKey: "ui.floorplan.mission.state.unsignaled",
+    detailKeys: {
+      required: "ui.floorplan.mission.state.signal-demand",
+      available: "ui.floorplan.mission.state.signal-capacity",
+    },
+  },
   unpowered: {
     tint: DOOR_STATE_COLOR.unpowered,
     icon: "⚡",
     noticeKey: "ui.floorplan.mission.state.unpowered",
+    detailKeys: {
+      required: "ui.floorplan.mission.state.needs",
+      available: "ui.floorplan.mission.state.granted",
+    },
   },
 };
+
+/**
+ * TODOS los glifos vivos de una pieza, en orden de gravedad (ronda 2 de
+ * playtest de 14a-4).
+ *
+ * El tinte sigue siendo uno solo —`resolveComponentVisual`, el más grave— pero
+ * los glifos no: son canales distintos y colapsarlos costaba información real.
+ * Con solo el primero, una pieza sin energía Y sin señal mostraba el rayo, el
+ * jugador arreglaba la energía y recién entonces descubría que además faltaba
+ * señal. Pedido explícito del operador: "ambos estados pueden convivir, así que
+ * las indicaciones visuales deben estar preparadas para eso".
+ *
+ * Un color mixto habría sido el camino equivocado (principio 6 en su forma
+ * inversa); dos símbolos uno al lado del otro dicen las dos cosas sin inventar
+ * un tercer significado.
+ */
+export function stateGlyphs(states: readonly InstanceState[]): string[] {
+  return states
+    .map((state) => visualForState(state.flag).icon)
+    .filter((icon): icon is string => icon !== undefined);
+}
 
 export function visualForState(flag: InstanceStateFlag): ComponentStateVisual {
   return STATE_VISUAL[flag];
@@ -106,12 +161,12 @@ export function visualForState(flag: InstanceStateFlag): ComponentStateVisual {
  * accionable es cuánto le falta a la sección, no que "no tiene energía".
  */
 export function instanceStateLabel(state: InstanceState): string {
-  const base = visualForState(state.flag).noticeKey;
-  const text = base ? t(base) : state.flag;
-  if (state.required === undefined || state.available === undefined) {
+  const visual = visualForState(state.flag);
+  const text = visual.noticeKey ? t(visual.noticeKey) : state.flag;
+  if (state.required === undefined || state.available === undefined || !visual.detailKeys) {
     return text;
   }
-  return `${text}: ${t("ui.floorplan.mission.state.needs")} ${state.required} · ${t("ui.floorplan.mission.state.granted")} ${state.available}`;
+  return `${text}: ${t(visual.detailKeys.required)} ${state.required} · ${t(visual.detailKeys.available)} ${state.available}`;
 }
 
 /**

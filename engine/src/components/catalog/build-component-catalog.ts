@@ -16,17 +16,41 @@ import { MEDICA_CATALOG } from "./composite/medica.js";
 import { TALLER_CATALOG } from "./composite/taller.js";
 import type { CompositeComponentSpec } from "./composite/composite-component-spec.types.js";
 import { declaredPowerDraw } from "../../power/power-parameters.js";
+import { declaredSignalOutputCapacity } from "../../signals/signal-output-parameters.js";
+import type { FunctionalProperties } from "../../properties/functional.types.js";
 
 /**
- * Inyecta la demanda eléctrica de `power-parameters.ts` en la definición
- * (Subfase 13g). Se hace acá y no en los specs para que los consumos vivan en
- * UNA tabla en vez de repartidos por los seis archivos de catálogo; `data` es
- * el sitio del dato porque `powerDraw` no es un tag del GDD, igual que
- * `footprint`. Las piezas sin entrada en la tabla quedan sin el campo (0).
+ * Inyecta en la definición los datos que viven en tablas de parámetros y no en
+ * los specs de catálogo: la demanda eléctrica de `power-parameters.ts` (13g) y
+ * la capacidad de salida de señal de `signal-output-parameters.ts` (14a-4,
+ * ronda 2). Se hace acá para que cada número viva en UNA tabla en vez de
+ * repartido por los seis archivos de catálogo; `data` es el sitio porque
+ * ninguno de los dos es un tag del GDD, igual que `footprint`.
+ *
+ * Las piezas sin entrada en la tabla de consumo quedan sin el campo (0). La
+ * capacidad de salida, en cambio, se inyecta a toda pieza que PUEDA alimentar a
+ * otra —`EM`, `REC` o `ACT`— incluso cuando toma el default, porque ahí el campo
+ * ausente significaría "no alimenta a nadie", no "alimenta gratis": una salida
+ * sin límite es justo el estado que esta ronda viene a cerrar.
+ *
+ * `REC` entra en la lista y no es un descuido: desde que `orientSignalWiring`
+ * acepta receptor→receptor (misma ronda), un `chip-circuito-generico` —que solo
+ * declara `REC`— es el relé del sistema, y un relé sin presupuesto propio sería
+ * capacidad infinita gratis.
  */
-function withPowerDraw<T extends object>(id: ComponentId, data: T): T {
+const SIGNAL_SOURCE_TAGS = new Set(["EM", "REC", "ACT"]);
+
+function withParameterData<T extends { readonly functional?: FunctionalProperties }>(
+  id: ComponentId,
+  data: T,
+): T {
   const powerDraw = declaredPowerDraw(id);
-  return powerDraw > 0 ? { ...data, powerDraw } : data;
+  const drivesOthers = data.functional?.some((property) => SIGNAL_SOURCE_TAGS.has(property.tag)) ?? false;
+  return {
+    ...data,
+    ...(powerDraw > 0 ? { powerDraw } : {}),
+    ...(drivesOthers ? { signalOutputCapacity: declaredSignalOutputCapacity(id) } : {}),
+  };
 }
 
 /**
@@ -55,7 +79,7 @@ export function buildComponentCatalog(): {
     const atomic = factory.buildAtomic({
       id: atomicSpec.id,
       name: atomicSpec.name,
-      data: withPowerDraw(atomicSpec.id, atomicSpec.data),
+      data: withParameterData(atomicSpec.id, atomicSpec.data),
     });
     registry.register(atomic.id, atomic);
   }
@@ -89,7 +113,7 @@ export function buildComponentCatalog(): {
     const composite = factory.buildComposite({
       id: compositeSpec.id,
       name: compositeSpec.name,
-      data: withPowerDraw(compositeSpec.id, compositeSpec.data),
+      data: withParameterData(compositeSpec.id, compositeSpec.data),
       recipe: compositeSpec.recipe,
     });
     registry.register(composite.id, composite);
@@ -100,7 +124,7 @@ export function buildComponentCatalog(): {
     const composite = factory.buildComposite({
       id: compositeSpec.id,
       name: compositeSpec.name,
-      data: withPowerDraw(compositeSpec.id, compositeSpec.data),
+      data: withParameterData(compositeSpec.id, compositeSpec.data),
       recipe: compositeSpec.recipe,
     });
     registry.register(composite.id, composite);

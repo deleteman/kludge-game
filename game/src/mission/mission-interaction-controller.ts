@@ -55,7 +55,8 @@ import {
   type SubstanceDetailLine,
 } from "../ui/widgets/mission-action-panel.js";
 import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
-import { layoutSignalNodes, signalNodeAtPoint } from "../render/signal-node-layout.js";
+import { layoutSignalNodes, signalNodesAtPoint } from "../render/signal-node-layout.js";
+import type { PositionedSignalNode } from "../render/signal-node-layout.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { SectionAtmosphereTooltip, TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import {
@@ -138,6 +139,12 @@ export interface MissionInteractionCallbacks {
    * cicatriz: tres cálculos separados se desalinearían.
    */
   readonly wireAtCell?: (cell: GridPosition) => SignalEdgeId | undefined;
+  /**
+   * El click en modo cableado cayó sobre VARIOS nodos y hay que preguntar cuál
+   * (14a-4 ronda 2). La escena abre el menú circular y responde llamando a
+   * `applyWireNode` — el dibujo es suyo, la decisión sigue siendo de acá.
+   */
+  readonly onSignalNodeChoice?: (candidates: ReadonlyArray<PositionedSignalNode>) => void;
 }
 
 /**
@@ -940,21 +947,46 @@ export class MissionInteractionController {
     );
   }
 
+  /**
+   * Click en modo cableado: PRIMERO decidir de qué nodo se está hablando.
+   *
+   * Ronda 2 de playtest de 14a-4: con dos nodos a 16 px en una celda de 32 y un
+   * radio de click de 10, las zonas de los dos se solapan. El hit-test elegía
+   * el más cercano —determinista, pero el jugador no tenía forma de saber cuál
+   * había tomado ("hacerle click a uno de ellos y no al otro es muy difícil").
+   * Con ambigüedad real se deja de adivinar y se le pregunta; con un candidato
+   * solo se resuelve directo, así que cablear normal no gana ningún paso.
+   */
   private handleWireModeClick(
     position: GridPosition,
     worldPoint?: { readonly x: number; readonly y: number },
   ): void {
     // 14a-4 ronda 1: se elige el nodo más cercano al PÍXEL, no el primero de la
-    // celda. Con dos nodos por celda (entrada y salida de un actuador) buscar
-    // por celda devolvía siempre el mismo y el otro era inalcanzable. Sin punto
-    // de mundo (llamador viejo o test) cae al criterio anterior.
+    // celda. Sin punto de mundo (llamador viejo o test) cae al criterio anterior.
     const positioned = layoutSignalNodes(this.mission.blueprint.signalGraph.nodes);
-    const hit = worldPoint ? signalNodeAtPoint(positioned, worldPoint.x, worldPoint.y) : undefined;
+    const candidates = worldPoint ? signalNodesAtPoint(positioned, worldPoint.x, worldPoint.y) : [];
+    if (candidates.length > 1) {
+      this.callbacks.onSignalNodeChoice?.(candidates);
+      return;
+    }
+    const hit = candidates[0];
     const node = hit
       ? this.mission.blueprint.signalGraph.nodes.find((candidate) => candidate.id === hit.id)
       : this.mission.blueprint.signalGraph.nodes.find(
           (candidate) => candidate.position.x === position.x && candidate.position.y === position.y,
         );
+    if (!node) return;
+    this.applyWireNode(node.id);
+  }
+
+  /**
+   * Aplicar el nodo ya ELEGIDO. Separado del click para que el menú circular
+   * entre por el mismo camino: si el menú duplicara esta lógica, la
+   * deselección, el retiro de cable y el aviso de "falta tripulante" tendrían
+   * dos implementaciones que divergirían a la primera corrección.
+   */
+  applyWireNode(nodeId: SignalNodeId): void {
+    const node = this.mission.blueprint.signalGraph.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
     // Feedback sonoro al clickear un nodo en modo cableado (12c.7, PENDIENTES obs #6).
     this.scene.sound.play(pickSoundKey(AUDIO_KEYS.mapCellSelect), { volume: 0.4 });

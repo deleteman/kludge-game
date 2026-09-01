@@ -68,7 +68,14 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.remove-wire-healthy": "Vuelve al stock, un escalón más gastado.",
   "ui.floorplan.mission.remove-wire-burned": "Quemado: la pieza se perdió, no vuelve al stock.",
   "ui.floorplan.mission.tooltip.signal-drives": "Gobierna",
-  "ui.floorplan.mission.tooltip.signal-demand": "de demanda",
+  // Ronda 2 de playtest de 14a-4: la línea pasa a tener denominador, así que
+  // "de demanda" deja de ser un sufijo y pasa a encabezar el par X / Y.
+  "ui.floorplan.mission.tooltip.signal-demand": "demanda",
+  "ui.floorplan.mission.tooltip.signal-pieces": "piezas",
+  "ui.floorplan.mission.tooltip.signal-emitter-overloaded":
+    "No da abasto: las piezas de menor prioridad se quedan sin señal. Desconectá alguna o intercalá un chip.",
+  "ui.floorplan.mission.tooltip.wire-load-explained":
+    "Un cable lleva lo que cuelga aguas abajo de él: en estrella cada cable lleva poco, en tronco lleva todo.",
   "ui.floorplan.mission.tooltip.signal-governed-by": "Gobernada por",
   "ui.floorplan.mission.tooltip.signal-emitting": "Emite señal",
   "ui.floorplan.mission.tooltip.signal-active": "señal activa",
@@ -99,6 +106,16 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.state.overloaded": "Cortado por sobrecarga",
   "ui.floorplan.mission.state.needs": "pide",
   "ui.floorplan.mission.state.granted": "la sección otorga",
+  // Ronda 2 de playtest de 14a-4: la pieza está cableada y con energía, pero
+  // quien la alimenta no da abasto y el triaje la dejó afuera.
+  "ui.floorplan.mission.state.unsignaled": "Sin señal: el emisor no da abasto",
+  // Nombres de nodo para el menú circular de elección (14a-4 ronda 2).
+  "ui.floorplan.mission.signal-node.emitter": "emite",
+  "ui.floorplan.mission.signal-node.actuator-output": "salida",
+  "ui.floorplan.mission.signal-node.receptor": "entrada",
+  "ui.floorplan.mission.signal-node.conductor": "paso",
+  "ui.floorplan.mission.state.signal-demand": "demanda colgada",
+  "ui.floorplan.mission.state.signal-capacity": "el emisor sostiene",
   "ui.floorplan.mission.no-path": "Sin ruta al destino",
   "ui.floorplan.mission.no-path-door-unpowered": "Sin ruta: una puerta del camino no tiene energía",
   "ui.floorplan.mission.no-path-door-jammed": "Sin ruta: una puerta del camino está trabada",

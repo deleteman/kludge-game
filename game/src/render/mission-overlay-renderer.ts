@@ -10,6 +10,7 @@ import type {
   ShipFloorplan,
   SignalEdge,
   SignalEdgeId,
+  SignalNodeId,
 } from "engine";
 
 import { RENDER_DEPTH } from "./render-depths.js";
@@ -110,6 +111,11 @@ export function renderMissionOverlay(
   wireState?: {
     readonly edgeLoadRatio?: (edge: SignalEdge) => number | undefined;
     readonly burnedEdgeIds?: ReadonlySet<SignalEdgeId>;
+    /**
+     * Carga de la SALIDA de un nodo contra su capacidad (14a-4 ronda 2), o
+     * `undefined` si no alimenta a nadie. Pinta un aro alrededor del punto.
+     */
+    readonly nodeLoadRatio?: (nodeId: SignalNodeId) => number | undefined;
   },
 ): MissionOverlayRender {
   const container = scene.add.container(0, 0).setDepth(RENDER_DEPTH.objects);
@@ -344,6 +350,11 @@ export function drawSignalLayer(
   wireState?: {
     readonly edgeLoadRatio?: (edge: SignalEdge) => number | undefined;
     readonly burnedEdgeIds?: ReadonlySet<SignalEdgeId>;
+    /**
+     * Carga de la SALIDA de un nodo contra su capacidad (14a-4 ronda 2), o
+     * `undefined` si no alimenta a nadie. Pinta un aro alrededor del punto.
+     */
+    readonly nodeLoadRatio?: (nodeId: SignalNodeId) => number | undefined;
   },
 ): void {
   signalGraphics.clear();
@@ -378,5 +389,15 @@ export function drawSignalLayer(
   for (const positioned of layoutSignalNodes(blueprint.signalGraph.nodes)) {
     signalGraphics.fillStyle(SIGNAL_NODE_COLORS[positioned.role], 1);
     signalGraphics.fillCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX);
+    // Aro de carga de la salida (14a-4 ronda 2). El RELLENO sigue siendo el
+    // color de rol —identidad, no estado, la distinción que `palette.ts` enuncia
+    // en su cabecera— y el estado va en un canal aparte, con el mismo
+    // verde/ámbar/rojo de los cables. Sin esto, el emisor que el operador
+    // sobrecargó no decía nada hasta pasarle el mouse por encima.
+    const ratio = wireState?.nodeLoadRatio?.(positioned.id);
+    if (ratio !== undefined) {
+      signalGraphics.lineStyle(2, wireLoadColor(ratio), 0.95);
+      signalGraphics.strokeCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX + 3);
+    }
   }
 }

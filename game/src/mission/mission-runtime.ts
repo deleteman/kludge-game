@@ -17,6 +17,7 @@ import {
   MissionPowerRuntime,
   MissionReactionRuntime,
   MissionSignalRuntime,
+  MissionFanoutRuntime,
   MissionStructuralRuntime,
   ShipStatusQuery,
   MutableAtomicStock,
@@ -123,7 +124,6 @@ import type { SignalTooltipInfo } from "../ui/widgets/mission-tooltip.js";
 import {
   activeSignalEdges,
   actuatorEmitterInputs,
-  downstreamNodes,
   edgeConductorWear,
   emitterCoverageCells,
   isActuatorOutputNode,
@@ -261,6 +261,8 @@ export class MissionRuntime {
   readonly kineticEvents = new EventEmitter<KineticDomainEvent>();
   /** Estado de señales vivo de la misión (Fase 11a): qué nodos están energizados AHORA. */
   readonly signalRuntime: MissionSignalRuntime;
+  /** Triaje de fan-out de señal (14a-4 ronda 2): quién se queda sin señal y por cuánto. */
+  private readonly fanoutRuntime: MissionFanoutRuntime;
   /**
    * Fuente de entradas de emisor compartida por `signalRuntime` y por la
    * predicción de trayectoria (Subfase 11h): envuelve `allEmittersActive` para
@@ -530,12 +532,18 @@ export class MissionRuntime {
     // (`InstancePowerSource`) — el propio `MissionPowerRuntime` relee el
     // `Blueprint` vivo en cada tick, mismo criterio de "no congelar al
     // construir la misión" que regía antes.
+    // Ronda 2 de playtest de 14a-4. El triaje de fan-out va ANTES del runtime
+    // de señal porque este lo consulta en cada tick para cerrar los cables
+    // hacia lo que su alimentador no sostiene. No es un `Tickable`: el reparto
+    // depende del montaje, no del reloj (ver `MissionFanoutRuntime`).
+    this.fanoutRuntime = new MissionFanoutRuntime(this.shipState, this.componentRegistry);
     this.signalRuntime = new MissionSignalRuntime(
       this.shipState,
       this.emitterInputs,
       this.signalEvents,
       this.powerRuntime,
       this.powerRuntime,
+      this.fanoutRuntime,
     );
     const chemicalCatalog = buildChemicalCatalog();
     this.chemicalRegistry = chemicalCatalog.registry;
@@ -2351,19 +2359,27 @@ export class MissionRuntime {
     const ownIds = new Set(own.map((node) => node.id));
     const edges = activeSignalEdges(blueprint);
 
-    // Lo que cuelga de sus salidas: se suma el powerDraw de las piezas alcanzadas
-    // por CADA cable que sale de la pieza, sin contarlas dos veces si dos cables
-    // llegan a la misma.
-    const driven = new Set<PlacedComponentInstanceId>();
-    let hasOutgoing = false;
-    for (const edge of edges) {
-      if (!ownIds.has(edge.from)) continue;
-      hasOutgoing = true;
-      for (const nodeId of downstreamNodes(blueprint, edge.to, edges)) {
-        const owner = blueprint.signalGraph.nodes.find((node) => node.id === nodeId)?.ownerRef;
-        if (owner && owner !== instanceId) driven.add(owner);
-      }
+    // Lo que cuelga de sus salidas. Ronda 2 de playtest de 14a-4: se lee del
+    // MISMO reparto que decide quién se queda sin señal, en vez de recorrer el
+    // grafo por segunda vez acá. La primera versión sumaba todo lo alcanzable
+    // aguas abajo, que ya no es lo que el motor cobra —la demanda de una salida
+    // no es transitiva, ver `emitter-fanout.ts`— y el tooltip habría quedado
+    // mostrando un número que ningún límite compara.
+    //
+    // Con varias salidas (una torreta tiene `EM` + la salida de su `ACT`) se
+    // suman los conteos y las demandas y se toma la capacidad MENOR: es la que
+    // se rompe primero, y la que el jugador tiene que mirar.
+    let drivenCount = 0;
+    let drivenLoad = 0;
+    let drivenCapacity = Number.POSITIVE_INFINITY;
+    for (const node of own) {
+      const status = this.fanoutRuntime.statusOfSourceNode(node.id);
+      if (!status) continue;
+      drivenCount += status.driven;
+      drivenLoad += status.demand;
+      drivenCapacity = Math.min(drivenCapacity, status.capacity);
     }
+    const hasOutgoing = drivenCount > 0;
 
     // Quién la gobierna: el origen del primer cable que entra. Con varios, se
     // nombra uno y basta — la lista completa es el grafo, no un tooltip.
@@ -2376,15 +2392,7 @@ export class MissionRuntime {
     const actuatorOutput = own.find((node) => node.role === "emitter" && isActuatorOutputNode(node.id));
     return {
       ...(hasOutgoing
-        ? {
-            drives: {
-              count: driven.size,
-              load: [...driven].reduce(
-                (total, ref) => total + this.instancePowerDraw(ref),
-                0,
-              ),
-            },
-          }
+        ? { drives: { count: drivenCount, load: drivenLoad, capacity: drivenCapacity } }
         : {}),
       ...(sourceNode
         ? {
@@ -2415,6 +2423,20 @@ export class MissionRuntime {
     const status = this.overloadRuntime.edgeStatus(edge);
     if (!status || status.capacity <= 0) return undefined;
     return status.load / status.capacity;
+  }
+
+  /**
+   * Cuán cargada está la SALIDA de un nodo (14a-4 ronda 2), para el aro de
+   * color del punto. `undefined` si ese nodo no alimenta a nadie — un nodo sin
+   * cables no lleva aro, o toda la nave tendría anillos verdes sin significado.
+   *
+   * Sale del mismo reparto que sacrifica consumidores, no de una cuenta propia:
+   * el aro y el glifo `⊘` tienen que hablar del mismo número.
+   */
+  nodeLoadRatio(nodeId: SignalNodeId): number | undefined {
+    const status = this.fanoutRuntime.statusOfSourceNode(nodeId);
+    if (!status || status.capacity <= 0) return undefined;
+    return status.demand / status.capacity;
   }
 
   /**
@@ -2544,6 +2566,10 @@ export class MissionRuntime {
         const sectionId = this.sectionIdAt(entry.placement.position);
         return sectionId ? this.powerRuntime.sectionPowerGranted(sectionId) : 0;
       },
+      // Ronda 2 de 14a-4: la misma fuente que cierra los cables en
+      // `MissionSignalRuntime`, para que el glifo del plano y el motor no
+      // puedan discrepar sobre quién está recibiendo señal.
+      signalStarvationOf: (instanceId) => this.fanoutRuntime.starvationOf(instanceId),
     });
   }
 

@@ -18,6 +18,27 @@ export class SignalWiringDirectionError extends Error {}
  * preferencia de UI sino una regla del dominio — por eso vive acá y no en
  * `/game`. Un conductor puede ser cualquiera de los dos extremos, así que con
  * un conductor de por medio se respeta el orden de clicks.
+ *
+ * **Ronda 2 de playtest de 14a-4**: cae el rechazo receptor→receptor. Su
+ * argumento ("dos consumidores no tienen nada que decirse") era falso en este
+ * motor: `SignalEvaluator.tick` calcula la salida de TODO nodo que no sea
+ * emisor a partir de sus entradas, así que un `chip-circuito-generico` —que
+ * solo declara `REC`— ya es un relé por construcción. Lo único que impedía
+ * cablear `sensor → chip → LEDs` era esta guarda, y sin ese montaje la carga de
+ * un cable nunca puede acumularse: en estrella cada cable lleva una sola pieza.
+ *
+ * Es la MISMA guarda que en la ronda 1 impidió que una puerta emitiera, y que
+ * entonces se rodeó dándole al `ACT` un nodo emisor de salida en vez de
+ * corregirla. Ese nodo se queda —un `ACT` emite su estado REAL, no el
+ * passthrough de sus entradas, son dos semánticas distintas— pero el agujero
+ * estaba acá.
+ *
+ * El rechazo **emisor→emisor sí es correcto** y se conserva: la salida de un
+ * emisor la fija el mundo, ninguna arista puede gobernarla. Por eso la regla de
+ * orientación es ahora "si el segundo extremo es emisor y el primero no, se da
+ * vuelta" — que además arregla `conductor → emisor`, hasta acá aceptado tal
+ * cual y escrito entrando a un emisor: otro no-op silencioso de los que 13h
+ * vino a cerrar.
  */
 export function orientSignalWiring<TOwnerRef>(
   graph: SignalGraph<TOwnerRef>,
@@ -32,18 +53,17 @@ export function orientSignalWiring<TOwnerRef>(
     );
   }
 
-  // Dos consumidores no tienen nada que decirse, y dos emisores tampoco: la
-  // salida de un emisor la fija el mundo (un sensor, una presión), así que
-  // ninguna arista puede gobernarla. En los dos casos el cable sería un adorno.
-  if (first.role === "receptor" && second.role === "receptor") {
-    throw new SignalWiringDirectionError("Two receptors cannot be wired to each other");
-  }
+  // La salida de un emisor la fija el mundo (un sensor, una presión), así que
+  // ninguna arista puede gobernarla: entre dos emisores el cable sería un
+  // adorno. Es el único par que sigue siendo imposible.
   if (first.role === "emitter" && second.role === "emitter") {
     throw new SignalWiringDirectionError("Two emitters cannot be wired to each other");
   }
 
-  // El único caso que hay que dar vuelta: se clickeó primero el consumidor.
-  if (first.role === "receptor") {
+  // El único caso que hay que dar vuelta: se clickeó primero el consumidor y
+  // segundo la fuente. Formulado sobre el SEGUNDO extremo (y no sobre "el
+  // primero es receptor") para que cubra también `conductor → emisor`.
+  if (second.role === "emitter") {
     return { from: secondNodeId, to: firstNodeId };
   }
   return { from: firstNodeId, to: secondNodeId };

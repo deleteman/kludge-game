@@ -1,4 +1,4 @@
-import { GRID_CELL_SIZE_PX } from "engine";
+import { GRID_CELL_SIZE_PX, isActuatorOutputNode } from "engine";
 import type { GridPosition, SignalNode, SignalNodeId } from "engine";
 
 /**
@@ -85,6 +85,55 @@ export function layoutSignalNodes(
     }
   }
   return positioned;
+}
+
+/**
+ * Cómo se llama un nodo para el jugador (14a-4 ronda 2). Los tres roles del
+ * grafo no alcanzan: `emitter` cubre tanto un sensor —que produce el dato— como
+ * la salida de un actuador —que reporta lo que ya hizo—, y en el menú de
+ * elección de una puerta esas dos etiquetas son justamente las que hay que
+ * distinguir de su entrada.
+ *
+ * Devuelve la CLAVE y no el texto: el motor y esta capa no arman strings de UI
+ * (CLAUDE.md), la traducción la hace el llamador.
+ */
+export function signalNodeRoleKey(node: PositionedSignalNode): string {
+  if (node.role === "emitter") {
+    return isActuatorOutputNode(node.id)
+      ? "ui.floorplan.mission.signal-node.actuator-output"
+      : "ui.floorplan.mission.signal-node.emitter";
+  }
+  return node.role === "receptor"
+    ? "ui.floorplan.mission.signal-node.receptor"
+    : "ui.floorplan.mission.signal-node.conductor";
+}
+
+/**
+ * TODOS los nodos bajo un punto, del más cercano al más lejano (ronda 2 de
+ * playtest de 14a-4).
+ *
+ * `signalNodeAtPoint` elige el más cercano, que es determinista pero no
+ * legible: con dos nodos a 16 px en una celda de 32 y un radio de click de 10,
+ * las zonas se solapan y el jugador no tiene forma de saber cuál tomó. El
+ * operador lo reportó como "hacerle click a uno de ellos y no al otro es muy
+ * difícil".
+ *
+ * La respuesta no es afinar la tolerancia —eso solo cambia a quién le toca
+ * fallar— sino DEJAR DE ADIVINAR cuando hay ambigüedad real: con más de un
+ * candidato, la UI abre un menú y el jugador elige. Con uno solo se resuelve
+ * directo, así que el gesto normal de cablear no gana ningún paso.
+ */
+export function signalNodesAtPoint(
+  positioned: ReadonlyArray<PositionedSignalNode>,
+  worldX: number,
+  worldY: number,
+  radiusPx = SIGNAL_NODE_RADIUS_PX + 3,
+): PositionedSignalNode[] {
+  return positioned
+    .map((node) => ({ node, distance: Math.hypot(node.x - worldX, node.y - worldY) }))
+    .filter((entry) => entry.distance <= radiusPx)
+    .sort((a, b) => a.distance - b.distance)
+    .map((entry) => entry.node);
 }
 
 /**

@@ -142,3 +142,54 @@ describe("signals: SignalEvaluator (integración temporal, GDD 5.6)", () => {
     expect(outputs).toEqual([false, true, true, false, false, true]);
   });
 });
+
+/**
+ * Compuerta por arista (14a-4, ronda 2 de playtest). Es cómo se manifiesta el
+ * triaje de fan-out: un emisor que no da abasto deja sin señal a los
+ * consumidores que no entran en su capacidad, SIN que el grafo pierda la
+ * arista — quitarla del grafo activo cambiaría la carga del cable y el montaje
+ * oscilaría (ver `emitter-fanout.ts`).
+ */
+describe("signals: SignalEvaluator con compuerta por arista (14a-4 ronda 2)", () => {
+  const graph: SignalGraph = {
+    nodes: [node("sensor", "emitter"), node("led", "receptor")],
+    edges: [edge("sensor", "led")],
+  };
+
+  it("sin compuerta se comporta igual que siempre", () => {
+    // La regresión que protege a TODOS los llamadores previos: el parámetro es
+    // opcional y omitirlo no puede cambiar una sola evaluación.
+    const evaluator = new SignalEvaluator(graph);
+    const state = evaluator.createState();
+    run(evaluator, state, { sensor: true }, 0);
+    run(evaluator, state, { sensor: true }, 1);
+    expect(state.get(id("led"))?.output).toBe(true);
+  });
+
+  it("una arista cerrada entrega false aunque el emisor esté activo", () => {
+    const evaluator = new SignalEvaluator(graph);
+    const state = evaluator.createState();
+    const inputs: SignalEmitterInputs = new Map([[id("sensor"), true]]);
+    evaluator.tick(state, inputs, tickOf(0), () => false);
+    evaluator.tick(state, inputs, tickOf(1), () => false);
+    expect(state.get(id("led"))?.output).toBe(false);
+    // El emisor sigue emitiendo: lo que se corta es quién lo recibe, no el
+    // estado del mundo. Es lo que permite que otra pieza siga alimentada.
+    expect(state.get(id("sensor"))?.output).toBe(true);
+  });
+
+  it("la compuerta se decide por arista, no por nodo", () => {
+    const dos: SignalGraph = {
+      nodes: [node("sensor", "emitter"), node("led", "receptor"), node("puerta", "receptor")],
+      edges: [edge("sensor", "led"), edge("sensor", "puerta")],
+    };
+    const evaluator = new SignalEvaluator(dos);
+    const state = evaluator.createState();
+    const inputs: SignalEmitterInputs = new Map([[id("sensor"), true]]);
+    const gate = (candidate: SignalEdge): boolean => candidate.to !== id("led");
+    evaluator.tick(state, inputs, tickOf(0), gate);
+    evaluator.tick(state, inputs, tickOf(1), gate);
+    expect(state.get(id("led"))?.output).toBe(false);
+    expect(state.get(id("puerta"))?.output).toBe(true);
+  });
+});

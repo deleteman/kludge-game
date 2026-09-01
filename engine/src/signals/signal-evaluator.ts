@@ -50,7 +50,25 @@ export class SignalEvaluator<TOwnerRef = string> {
     return createSignalGraphState(this.graph);
   }
 
-  tick(state: SignalGraphState, emitterInputs: SignalEmitterInputs, tick: TickContext): void {
+  tick(
+    state: SignalGraphState,
+    emitterInputs: SignalEmitterInputs,
+    tick: TickContext,
+    /**
+     * Compuerta por arista (14a-4, ronda 2 de playtest): una arista cerrada
+     * entrega `false` en vez de la salida previa de su origen. Por defecto
+     * TODAS están abiertas, así que ningún llamador anterior cambia.
+     *
+     * Existe para el triaje de fan-out (`signals/emitter-fanout.ts`): un emisor
+     * que no da abasto deja sin señal a los consumidores que no entran en su
+     * capacidad. Deliberadamente NO se implementa quitando esas aristas de
+     * `activeSignalEdges`, porque ese mismo conjunto es el que recorre
+     * `edgeElectricalLoad`: la carga bajaría al sacrificar, el consumidor
+     * volvería a entrar, y el montaje parpadearía un tick sí y otro no. La
+     * carga es la demanda CABLEADA; esto es solo quién la recibe.
+     */
+    edgeGate?: (edge: SignalEdge) => boolean,
+  ): void {
     const previousOutputs = new Map<SignalNodeId, boolean>();
     for (const node of this.graph.nodes) {
       previousOutputs.set(node.id, state.get(node.id)?.output ?? false);
@@ -75,7 +93,7 @@ export class SignalEvaluator<TOwnerRef = string> {
           throw new Error(`No signal rule registered for behavior kind: ${behavior.kind}`);
         }
         const inputs: SignalInput[] = (this.incomingByNode.get(node.id) ?? []).map((edge) => ({
-          value: previousOutputs.get(edge.from) ?? false,
+          value: edgeGate && !edgeGate(edge) ? false : (previousOutputs.get(edge.from) ?? false),
           port: edge.toPort,
         }));
         const latchBefore = nodeState.latchMemory;

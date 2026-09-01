@@ -6,6 +6,7 @@ import type { SignalDomainEvent } from "../signals/signal-events.types.js";
 import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { SignalGraphState } from "../signals/signal-state.types.js";
 import type { SignalNode, SignalNodeId } from "../signals/signal-node.types.js";
+import type { SignalEdge } from "../signals/signal-edge.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import { activeSignalGraph } from "../signals/active-signal-graph.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
@@ -34,6 +35,20 @@ export interface PowerScarSource {
  */
 export interface InstancePowerSource {
   isInstancePowered(instanceId: PlacedComponentInstanceId): boolean;
+}
+
+/**
+ * Triaje de fan-out de señal (14a-4, ronda 2 de playtest): una salida sostiene
+ * una demanda limitada, y lo que no entra deja de recibir señal.
+ *
+ * Interfaz aparte de `InstancePowerSource` por la misma razón que aquella lo es
+ * de `PowerScarSource`: son cortes distintos del mundo y nada obliga a que
+ * quien modele uno modele el otro. Además la CONSECUENCIA es distinta — sin
+ * energía la pieza no opera; sin señal opera perfectamente, pero nadie le está
+ * diciendo que actúe.
+ */
+export interface SignalFanoutSource {
+  isInstanceSignalStarved(instanceId: PlacedComponentInstanceId): boolean;
 }
 
 /**
@@ -87,6 +102,7 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
     private readonly emitter?: EventEmitter<SignalDomainEvent>,
     private readonly powerScars?: PowerScarSource,
     private readonly instancePower?: InstancePowerSource,
+    private readonly signalFanout?: SignalFanoutSource,
   ) {
     this.rawGraph = shipState.get().signalGraph;
     this.overloadedRefs = shipState.get().overloadedRefs;
@@ -135,7 +151,29 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
 
   tick(ctx: TickContext): void {
     this.syncGraph();
-    this.evaluator.tick(this.state, this.emitterInputs(), ctx);
+    this.evaluator.tick(this.state, this.emitterInputs(), ctx, this.edgeGate());
+  }
+
+  /**
+   * Compuerta del triaje de fan-out (14a-4 ronda 2): un cable hacia una pieza
+   * que su alimentador no sostiene no entrega señal.
+   *
+   * Se cierra la ARISTA y no se quita del grafo activo a propósito: el grafo
+   * activo es también lo que recorre `edgeElectricalLoad`, así que sacar la
+   * arista bajaría la carga del cable, la pieza volvería a entrar en el
+   * presupuesto y el montaje parpadearía un tick sí y otro no (ver el docblock
+   * de `signals/emitter-fanout.ts`).
+   *
+   * `undefined` cuando no hay triaje conectado, para que el evaluador tome su
+   * camino sin compuerta y ningún llamador anterior cambie.
+   */
+  private edgeGate(): ((edge: SignalEdge) => boolean) | undefined {
+    const fanout = this.signalFanout;
+    if (!fanout) return undefined;
+    return (edge) => {
+      const owner = this.nodeById.get(edge.to)?.ownerRef;
+      return owner === undefined || !fanout.isInstanceSignalStarved(owner);
+    };
   }
 
   /**

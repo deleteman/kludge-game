@@ -34,6 +34,8 @@ export interface AtomicComponentData {
   readonly material?: MaterialProperties;
   /** Ver `CompositeComponentData.powerDraw` — mismo dato, misma semántica. */
   readonly powerDraw?: number;
+  /** Ver `CompositeComponentData.signalOutputCapacity` — mismo dato, misma semántica. */
+  readonly signalOutputCapacity?: number;
 }
 
 /** Nivel 1 (compuesto) y Nivel 2 (ensamblaje) del GDD 7.1 — mismo tipo, ver composition/. */
@@ -72,6 +74,20 @@ export interface CompositeComponentData {
    * del pool de su sección.
    */
   readonly powerDraw?: number;
+  /**
+   * Cuánta demanda puede SOSTENER la salida de señal de esta pieza, en las
+   * mismas unidades que `powerDraw` (14a-4, ronda 2 de playtest). Es el límite
+   * que hace que colgar siete consumidores de un sensor tenga una consecuencia:
+   * lo que no entra queda sin señal (`signals/emitter-fanout.ts`).
+   *
+   * Solo lo llevan las piezas que pueden alimentar a otra (`EM`, `REC` o `ACT`)
+   * — a una plancha metálica no le significa nada. Ausente en una de esas = el
+   * default de
+   * `signals/signal-output-parameters.ts`, que es también de dónde se inyecta:
+   * mismo mecanismo y misma razón que `powerDraw`, una tabla en vez de números
+   * repartidos por los seis archivos de catálogo.
+   */
+  readonly signalOutputCapacity?: number;
 }
 
 export type PhysicalComponentDefinition = ComposableEntity<

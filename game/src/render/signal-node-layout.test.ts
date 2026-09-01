@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GRID_CELL_SIZE_PX } from "engine";
 import type { SignalNode, SignalNodeId } from "engine";
-import { layoutSignalNodes, signalNodeAtPoint } from "./signal-node-layout.js";
+import { layoutSignalNodes, signalNodeAtPoint, signalNodesAtPoint } from "./signal-node-layout.js";
 
 /**
  * Ronda 1 de playtest de 14a-4. Lógica pura, así que lleva test propio aunque
@@ -79,5 +79,31 @@ describe("signalNodeAtPoint", () => {
     // frustrante con el mapa alejado.
     const positioned = layoutSignalNodes([node("a", 0, 0)]);
     expect(signalNodeAtPoint(positioned, centerOf(0) + 5, centerOf(0))?.id).toBe("a");
+  });
+});
+
+describe("signalNodesAtPoint (14a-4 ronda 2)", () => {
+  it("devuelve los DOS nodos de una celda compartida, del más cercano al más lejano", () => {
+    // Es la señal de ambigüedad: con dos candidatos la UI deja de adivinar y
+    // abre el menú. El operador reportó que acertarle a uno era muy difícil.
+    const positioned = layoutSignalNodes([node("in", 1, 1), node("out", 1, 1, "emitter")]);
+    expect(signalNodesAtPoint(positioned, centerOf(1), centerOf(1))).toHaveLength(2);
+  });
+
+  it("ordena por distancia: el primero es el mismo que elegiría el hit-test simple", () => {
+    const positioned = layoutSignalNodes([node("in", 1, 1), node("out", 1, 1, "emitter")]);
+    const segundo = positioned[1]!;
+    const candidatos = signalNodesAtPoint(positioned, segundo.x, segundo.y);
+    expect(candidatos[0]?.id).toBe(signalNodeAtPoint(positioned, segundo.x, segundo.y)?.id);
+  });
+
+  it("un nodo solo devuelve UN candidato: cablear normal no gana ningún paso", () => {
+    const positioned = layoutSignalNodes([node("a", 0, 0)]);
+    expect(signalNodesAtPoint(positioned, centerOf(0), centerOf(0))).toHaveLength(1);
+  });
+
+  it("lejos de todo no devuelve nada", () => {
+    const positioned = layoutSignalNodes([node("a", 0, 0)]);
+    expect(signalNodesAtPoint(positioned, centerOf(9), centerOf(9))).toEqual([]);
   });
 });

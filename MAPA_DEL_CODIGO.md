@@ -1889,3 +1889,48 @@
 - `wireByCell` + `rebuildWireCellIndex` (índice celda→cable para el tooltip, con `signalWireCells`, la
   misma función que siembra la cicatriz); `refreshSignalWireColors` sale del gate de ejecución; el click
   pasa el punto de mundo además de la celda, para el hit-test por nodo más cercano.
+
+---
+
+# Subfase 14a-4 — Ronda 2 de playtest (2026-09-02)
+
+### `engine/src/signals/signal-output-parameters.ts` (nuevo)
+- `SIGNAL_OUTPUT_CAPACITY_BY_COMPONENT` + `declaredSignalOutputCapacity` + los defaults
+  (`DEFAULT_SIGNAL_OUTPUT_CAPACITY`, `ACTUATOR_OUTPUT_CAPACITY`). Tabla data-driven gemela de
+  `power-parameters.ts`, inyectada en `data.signalOutputCapacity` por `build-component-catalog.ts`.
+
+### `engine/src/signals/emitter-fanout.ts` (nuevo)
+- `allocateEmitterFanout`: cuánto cuelga de cada salida, quién queda sin señal. La demanda NO es
+  transitiva (cada salida paga solo lo directo) — es lo que convierte a un chip en relé útil. Ordena
+  con `orderByPowerPriority`, el comparador del triaje eléctrico.
+
+### `engine/src/mission/mission-fanout-runtime.ts` (nuevo)
+- El reparto vivo, memoizado por identidad de blueprint + prioridades. Punto único para los tres
+  consumidores (compuerta de señal, estado de instancia, tooltips), que no se conocen entre sí.
+
+### `engine/src/signals/orient-signal-wiring.ts` + `signal-evaluator.ts` (modificados)
+- Cae el rechazo receptor→receptor (el relé); la orientación se decide por "el segundo es emisor", lo
+  que además arregla `conductor → emisor`. `SignalEvaluator.tick` gana una compuerta opcional por
+  arista, el mecanismo del triaje sin tocar el grafo activo.
+
+### `engine/src/power/power-allocation.ts` + `instance-state/` (modificados)
+- `orderByPowerPriority` extraído y compartido entre los dos triajes.
+- `InstanceStateFlag` gana `unsignaled`; `InstanceStateQueries` gana `signalStarvationOf`, que
+  devuelve los dos números (demanda / capacidad) en vez de un booleano.
+
+### `game/src/ui/widgets/signal-node-menu.ts` (nuevo)
+- Menú circular para elegir entre nodos superpuestos. Aparece solo con ambigüedad real.
+
+### `game/src/render/component-state-visuals.ts` (modificado)
+- Fila `unsignaled` y `stateGlyphs`: el tinte sigue siendo uno (el más grave), los glifos se acumulan.
+  `detailKeys` por estado, porque los dos números de `unsignaled` no son los de `unpowered`.
+
+### `game/src/render/signal-node-layout.ts` (modificado)
+- `signalNodesAtPoint` (todos los candidatos bajo el punto, para detectar ambigüedad) y
+  `signalNodeRoleKey` (cómo se llama un nodo para el jugador: entrada / salida / emite / paso).
+
+### `game/src/scenes/floorplan-scene.ts` + `mission-interaction-controller.ts` (modificados)
+- `handleWireModeClick` se parte en "elegir nodo" y `applyWireNode`, para que el menú entre por el
+  mismo camino; línea fantasma con flecha en `pointermove`; aro de carga en el nodo emisor
+  (`nodeLoadRatio`, canal separado del color de rol); el resalte de nodos pasa a usar
+  `layoutSignalNodes` en vez del centro de celda.

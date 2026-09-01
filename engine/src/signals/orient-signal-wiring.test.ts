@@ -34,10 +34,6 @@ describe("orientSignalWiring (13h, ronda 2 de playtest)", () => {
     expect(orientSignalWiring(GRAPH, PUERTA, SENSOR)).toEqual({ from: SENSOR, to: PUERTA });
   });
 
-  it("rechaza dos receptores: no tienen nada que decirse", () => {
-    expect(() => orientSignalWiring(GRAPH, PUERTA, OTRA_PUERTA)).toThrow(SignalWiringDirectionError);
-  });
-
   it("rechaza dos emisores: la salida de un sensor la fija el mundo, no un cable", () => {
     expect(() => orientSignalWiring(GRAPH, SENSOR, OTRO_SENSOR)).toThrow(SignalWiringDirectionError);
   });
@@ -45,6 +41,26 @@ describe("orientSignalWiring (13h, ronda 2 de playtest)", () => {
   it("con un conductor de por medio respeta el orden de clicks (puede ser cualquiera de los dos extremos)", () => {
     expect(orientSignalWiring(GRAPH, SENSOR, CABLE)).toEqual({ from: SENSOR, to: CABLE });
     expect(orientSignalWiring(GRAPH, CABLE, PUERTA)).toEqual({ from: CABLE, to: PUERTA });
+  });
+});
+
+describe("orientSignalWiring (14a-4, ronda 2 de playtest)", () => {
+  it("acepta receptor→receptor y respeta el orden de clicks", () => {
+    // El relé. Un `chip-circuito-generico` solo declara `REC`, pero el
+    // evaluador calcula la salida de todo nodo que no sea emisor: cablear
+    // `chip → LED` siempre fue propagable y solo lo prohibía esta guarda. Sin
+    // este caso no existe ninguna topología en tronco, y la carga de un cable
+    // no puede pasar nunca de la pieza única que cuelga de él.
+    expect(orientSignalWiring(GRAPH, PUERTA, OTRA_PUERTA)).toEqual({ from: PUERTA, to: OTRA_PUERTA });
+    expect(orientSignalWiring(GRAPH, OTRA_PUERTA, PUERTA)).toEqual({ from: OTRA_PUERTA, to: PUERTA });
+  });
+
+  it("da vuelta conductor→emisor en vez de escribir una arista que entra a un emisor", () => {
+    // Regresión de un no-op silencioso preexistente: la guarda vieja miraba si
+    // el PRIMER extremo era receptor, así que un conductor clickeado primero y
+    // un sensor después pasaba tal cual. La arista quedaba entrando al emisor,
+    // cuya salida fija el mundo — nadie la leía nunca.
+    expect(orientSignalWiring(GRAPH, CABLE, SENSOR)).toEqual({ from: SENSOR, to: CABLE });
   });
 
   it("un nodo que no existe es un error, no una arista colgante", () => {

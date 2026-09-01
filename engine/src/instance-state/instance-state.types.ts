@@ -20,10 +20,17 @@
  * la mitad visible: la pieza cambiaba de comportamiento y no lo decía en
  * ninguna parte.
  *
+ * `unsignaled` (ronda 2 de playtest de 14a-4) es el tercero, y llega por el
+ * mismo camino: el triaje de fan-out (`signals/emitter-fanout.ts`) hace que una
+ * pieza deje de responder porque su emisor no da abasto, y sin este flag el
+ * jugador vería una puerta cableada que simplemente no se abre, sin ninguna
+ * pista de por qué. El pedido del operador fue explícito: "un icono nuevo, como
+ * el rayo cuando no tienen energía", y que los dos estados **puedan convivir**.
+ *
  * Candidatos que siguen pendientes con la infraestructura ya lista: pieza
  * sobre una brecha sin sellar, reservorio vacío.
  */
-export type InstanceStateFlag = "unpowered" | "overloaded";
+export type InstanceStateFlag = "unpowered" | "overloaded" | "unsignaled";
 
 /**
  * Detalle numérico opcional de un estado. Existe porque el aviso útil no es
@@ -36,8 +43,15 @@ export type InstanceStateFlag = "unpowered" | "overloaded";
  */
 export interface InstanceState {
   readonly flag: InstanceStateFlag;
-  /** Unidades que la pieza demanda. Solo para `unpowered`. */
+  /**
+   * Lo que se PIDE. `unpowered`: las unidades que demanda la pieza.
+   * `unsignaled`: la demanda total colgada del emisor que la gobierna — el
+   * número que hay que bajar.
+   */
   readonly required?: number;
-  /** Unidades otorgadas a su sección este tick. Solo para `unpowered`. */
+  /**
+   * Lo que HAY. `unpowered`: unidades otorgadas a su sección este tick.
+   * `unsignaled`: la capacidad de salida de ese emisor.
+   */
   readonly available?: number;
 }

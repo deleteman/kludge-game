@@ -6100,3 +6100,51 @@ puerta.
   siempre (limitación que el docblock de `derive-signal-nodes.ts` ya admitía).
 
 TESTS: motor 1189 (156 archivos), juego 113 (13 archivos). `tsc`, `eslint` y `build` limpios.
+
+================================================================================
+2026-09-02 — Subfase 14a-4, RONDA 2 DE PLAYTEST: el emisor tiene un límite
+================================================================================
+
+RAZÓN: el operador colgó 7 consumidores de un solo fotorreceptor (5 LEDs, una compuerta, una LCD) y
+reportó que ningún cable llegaba a ámbar, que todos decían `carga 1/6`, y que `Gobierna: 7 · 8 de
+demanda` no se entendía. Verificado: los tres números estaban BIEN. El problema era de diseño.
+
+* **La carga del cable era inalcanzable.** Un cable lleva lo que cuelga aguas abajo, así que en
+  estrella cada uno lleva 1. Sobrecargarlo exige un tronco (`sensor → chip → N`), y el tronco costaba
+  un cable MÁS que la estrella: ningún jugador razonable lo construiría. Faltaba algo que empujara
+  hacia la topología que produce la mecánica — no era calibración.
+* **El relé estaba prohibido por una guarda equivocada.** `orientSignalWiring` rechazaba
+  receptor→receptor argumentando que "dos consumidores no tienen nada que decirse"; falso, porque el
+  evaluador calcula la salida de todo nodo que no sea emisor. Es la misma guarda que la ronda 1 rodeó
+  dándole al `ACT` un nodo emisor en vez de arreglarla. Cae ese rechazo (queda emisor→emisor, que sí
+  es correcto) y de paso se corrige `conductor → emisor`, que escribía una arista entrando a un
+  emisor: otro no-op silencioso de los que 13h vino a cerrar.
+* **Capacidad de salida por pieza** (`signals/signal-output-parameters.ts`, tabla data-driven gemela
+  de `POWER_DRAW_BY_COMPONENT`, inyectada en `data.signalOutputCapacity`): sensor suelto 3, chip 8,
+  consola 12, salida de `ACT` 2. Lo que no entra deja de recibir señal, con triaje por el MISMO dial
+  de prioridad que la energía — `orderByPowerPriority`, extraído de `allocateComponentPower` y
+  compartido para que un solo dial no pueda ordenar distinto en cada sistema.
+* **La demanda de una salida NO es transitiva**, y es lo que hace que el relé sirva: el sensor paga
+  el chip (1), el chip paga el montaje (8). Lo destapó el primer test de `emitter-fanout.ts` — con
+  demanda transitiva el sensor seguía viendo 9 a través del chip y el jugador no tenía salida. La
+  carga del CABLE sí sigue siendo transitiva (por eso el tronco de 9 revienta sobre un cobre de 6).
+* **Anti-oscilación**: el triaje no descuenta la carga del cable. Si lo hiciera, sacrificar
+  descargaría el cable, la pieza volvería a entrar y el montaje parpadearía un tick sí y otro no. Se
+  implementa como compuerta por ARISTA en `SignalEvaluator.tick` (parámetro opcional), no quitándola
+  del grafo activo — que es lo que recorre `edgeElectricalLoad`.
+* **`unsignaled`**, tercer `InstanceStateFlag`, cobrando la promesa escrita en su propio types. Y los
+  glifos pasan a ser una LISTA (`stateGlyphs`): el tinte sigue siendo uno solo —el más grave— pero
+  `⚡` y `⊘` se dibujan juntos. Pedido explícito del operador: con un solo glifo el jugador arreglaba
+  la energía y recién entonces descubría que además faltaba señal.
+* **Elegir el nodo**: con dos nodos a 16 px en una celda de 32 y radio de click de 10, las zonas se
+  solapaban y el hit-test elegía en silencio. Un click ambiguo abre ahora un menú circular; con un
+  solo candidato resuelve directo, así que cablear normal no gana ningún paso. Además el resalte de
+  nodos del modo cableado dejó de dibujarse en el centro de la celda — estaba desalineado de los
+  puntos que resalta desde la ronda 1.
+* **Ver la dirección**: legalizar receptor→receptor devuelve la dirección al orden de clicks, o sea
+  que un cable al revés vuelve a ser un no-op silencioso. Lo cubre la línea fantasma con flecha, que
+  muestra el sentido antes de encolar la tarea y no después de que el tripulante caminó hasta allá.
+* **Los números con denominador**: `Gobierna 7 piezas · demanda 8 / 3`, con semáforo y la
+  consecuencia en palabras; el tooltip de cable explica de dónde sale su carga.
+
+TESTS: motor 1207 (155 archivos), juego 122 (13 archivos). `tsc`, `eslint` y `build` limpios.

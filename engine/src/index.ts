@@ -741,6 +741,7 @@ export type {
   EmitterInputSource,
   PowerScarSource,
   InstancePowerSource,
+  SignalFanoutSource,
   SignalOutputReader,
 } from "./mission/mission-signal-runtime.js";
 // Subfase 11h — sensor de presión real (Indicador LED / Pantalla LCD) + resolución de valor del LCD.
@@ -791,6 +792,15 @@ export {
   isWiringMaterial,
 } from "./signals/edge-conductor.js";
 export { activeSignalEdges, activeSignalGraph, isEdgeBurned } from "./signals/active-signal-graph.js";
+// Triaje de fan-out de señal (14a-4 ronda 2): una salida sostiene una demanda limitada.
+export { allocateEmitterFanout } from "./signals/emitter-fanout.js";
+export { MissionFanoutRuntime } from "./mission/mission-fanout-runtime.js";
+export type { EmitterFanoutResult, EmitterFanoutStatus } from "./signals/emitter-fanout.js";
+export {
+  ACTUATOR_OUTPUT_CAPACITY,
+  DEFAULT_SIGNAL_OUTPUT_CAPACITY,
+  declaredSignalOutputCapacity,
+} from "./signals/signal-output-parameters.js";
 export { actuatorEmitterInputs, type ActuatorActivityReader } from "./mission/actuator-emitter-input-source.js";
 export { seedActuatorOutputNodes } from "./mission/seed-actuator-output-nodes.js";
 export { actuatorOutputNodeId, isActuatorOutputNode } from "./workbench/derive-signal-nodes.js";
@@ -843,7 +853,7 @@ export { composePressureSinks } from "./mission/composite-pressure-sink.js";
 export type { PowerState, SectionPowerAllocation, InstancePowerPriority } from "./power/power.types.js";
 export { emptyPowerState } from "./power/power.types.js";
 export { totalPowerBudget } from "./power/power-source.js";
-export { allocateSectionBudget, allocateComponentPower } from "./power/power-allocation.js";
+export { allocateSectionBudget, allocateComponentPower, orderByPowerPriority } from "./power/power-allocation.js";
 export { componentPowerDraw } from "./power/component-power-draw.js";
 // Subfase 13g — la demanda eléctrica, declarada por pieza en una sola tabla.
 export { POWER_DRAW_BY_COMPONENT, declaredPowerDraw } from "./power/power-parameters.js";

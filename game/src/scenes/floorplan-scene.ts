@@ -59,7 +59,11 @@ import { computeConduitRoute, computeSignalWireRoute, signalWireCells } from "..
 const SIGNAL_WIRE_COLOR_REFRESH_SECONDS = 0.25;
 import type { PixelPoint } from "../render/conduit-path.js";
 import { doorSlideAxis, easedDoorOpenness } from "../render/door-visuals.js";
-import { instanceStateLabel, resolveComponentVisual } from "../render/component-state-visuals.js";
+import {
+  instanceStateLabel,
+  resolveComponentVisual,
+  stateGlyphs,
+} from "../render/component-state-visuals.js";
 import { createConduitPathFlowEffect, type ConduitPathFlowState } from "../particles/effects/conduit-flow-effect.js";
 import {
   computeSectionSignalActivity,
@@ -67,6 +71,9 @@ import {
   signalWireFlowIntensity,
 } from "../mission/conduit-flow-heuristics.js";
 import { drawSignalLayer, renderMissionOverlay } from "../render/mission-overlay-renderer.js";
+import { createSignalNodeMenu } from "../ui/widgets/signal-node-menu.js";
+import { layoutSignalNodes, signalNodeRoleKey } from "../render/signal-node-layout.js";
+import type { PositionedSignalNode } from "../render/signal-node-layout.js";
 import { renderProjectileTokens } from "../render/projectile-renderer.js";
 import { renderTrajectoryGhost } from "../render/projectile-trajectory-renderer.js";
 import tilesetUrl from "../../assets/sprites/tiles/tileset-nave.png";
@@ -696,6 +703,10 @@ export class FloorplanScene extends Phaser.Scene {
   private tooltipRedrawKey?: string;
   /** Anillos que marcan los nodos clickeables (y el origen elegido) mientras el modo cableado está activo (playtest #15). */
   private wireNodeHighlights: Phaser.GameObjects.Arc[] = [];
+  /** Menú circular de elección de nodo (14a-4 ronda 2), solo mientras hay ambigüedad. */
+  private signalNodeMenu?: Phaser.GameObjects.Container;
+  /** Línea fantasma con flecha del cable en curso (14a-4 ronda 2). */
+  private wireGhost?: Phaser.GameObjects.Graphics;
   /**
    * Área que cubre el sensor seleccionado (13g ronda 1). Un solo `Graphics`
    * reusado con `clear()` en vez de N rectángulos: el molde de las capas del
@@ -805,17 +816,24 @@ export class FloorplanScene extends Phaser.Scene {
         onWireModeChanged: () => {
           this.updateWireModeButton();
           this.updateWireHighlights();
+          this.closeSignalNodeMenu();
+          this.clearWireGhost();
         },
         markAsHudObject: (obj) => this.markAsHudObject(obj),
         onOpenFabricator: (instanceId) => this.openWorkbench(instanceId),
         onSelectionChanged: () => this.updateSelectedHighlight(),
-        onWireSelectionChanged: () => this.updateWireHighlights(),
+        onWireSelectionChanged: () => {
+          this.updateWireHighlights();
+          this.clearWireGhost();
+        },
         onTransferModeChanged: () => this.updateTransferMode(),
         onInstallPlacementChanged: () => this.updateInstallPlacementMode(),
         // 14a-4 ronda 1: el tooltip de cable. La escena es la única que sabe
         // rutear un cable (necesita la grilla transitable), así que resuelve
         // ella la consulta y el controller solo pregunta.
         wireAtCell: (cell) => this.wireByCell.get(`${cell.x},${cell.y}`),
+        // 14a-4 ronda 2: el click cayó sobre varios nodos y hay que preguntar.
+        onSignalNodeChoice: (candidates) => this.openSignalNodeMenu(candidates),
       },
     );
 
@@ -1051,6 +1069,11 @@ export class FloorplanScene extends Phaser.Scene {
       this.updateTooltip(pointer);
       this.updateCursor(pointer);
       this.updateTransferChannel(pointer);
+      // 14a-4 ronda 2: la línea fantasma del cable en curso. Coordenadas de
+      // MUNDO, no de pantalla — el fantasma cuelga del nodo origen y tiene que
+      // seguir pegado a él si el jugador panea.
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      this.updateWireGhost(world.x, world.y);
     });
     this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
       // Selección de tripulante (tira) y cancelar tarea (cola) por hit-test a
@@ -2058,10 +2081,16 @@ export class FloorplanScene extends Phaser.Scene {
         instanceState: (state) => instanceStateLabel(state),
         // 14a-4 ronda 1. `t()` no interpola, así que los números se componen
         // acá — mismo criterio que el resto de las líneas con valores.
-        signalDrives: ({ count, load }) =>
-          `${t("ui.floorplan.mission.tooltip.signal-drives")}: ${count} · ${load} ${t(
-            "ui.floorplan.mission.tooltip.signal-demand",
-          )}`,
+        // Ronda 2 de playtest: con denominador. `Gobierna: 7 · 8 de demanda`
+        // eran dos números correctos que no se comparaban contra nada; el
+        // operador lo reportó tal cual ("no entiendo los dos números").
+        signalDrives: ({ count, load, capacity }) =>
+          `${t("ui.floorplan.mission.tooltip.signal-drives")} ${count} ${t(
+            "ui.floorplan.mission.tooltip.signal-pieces",
+          )} · ${t("ui.floorplan.mission.tooltip.signal-demand")} ${load} / ${
+            Number.isFinite(capacity) ? capacity : "∞"
+          }`,
+        signalOverloadedEmitter: t("ui.floorplan.mission.tooltip.signal-emitter-overloaded"),
         signalGovernedBy: ({ name, active }) =>
           `${t("ui.floorplan.mission.tooltip.signal-governed-by")}: ${name} (${t(
             active
@@ -2079,6 +2108,7 @@ export class FloorplanScene extends Phaser.Scene {
             Number.isInteger(capacity) ? capacity : capacity.toFixed(1)
           }`,
         wireOverloadWarning: t("ui.floorplan.mission.tooltip.wire-overload-warning"),
+        wireLoadExplained: t("ui.floorplan.mission.tooltip.wire-load-explained"),
         wireBurned: t("ui.floorplan.mission.tooltip.wire-burned"),
         wireThermallyDerated: t("ui.floorplan.mission.tooltip.wire-thermal"),
       }).setDepth(RENDER_DEPTH.hudContent);
@@ -2116,17 +2146,103 @@ export class FloorplanScene extends Phaser.Scene {
     if (!this.interaction.wireMode) return;
 
     const sourceId = this.interaction.wireFirstNode;
-    for (const node of this.mission.blueprint.signalGraph.nodes) {
-      const center = this.cellCenterPx(node.position);
-      const isSource = node.id === sourceId;
+    // 14a-4 ronda 2: por `layoutSignalNodes`, no por el centro de la celda. La
+    // ronda 1 separó el DIBUJO de los nodos y el hit-test, pero este resalte se
+    // quedó en el centro — o sea que en una puerta de 1 celda los dos anillos
+    // se pintaban uno encima del otro, desalineados de los puntos que resaltan.
+    // Es parte de por qué acertarle a un nodo era tan difícil.
+    for (const positioned of layoutSignalNodes(this.mission.blueprint.signalGraph.nodes)) {
+      const isSource = positioned.id === sourceId;
       const ring = this.add
-        .circle(center.x, center.y, isSource ? 13 : 11)
+        .circle(positioned.x, positioned.y, isSource ? 13 : 11)
         .setStrokeStyle(isSource ? 4 : 2, WIRE_HIGHLIGHT_COLOR, 1)
         .setFillStyle(WIRE_HIGHLIGHT_COLOR, isSource ? 0.3 : 0)
         .setDepth(RENDER_DEPTH.problemMarker);
       this.markAsWorldObject(ring);
       this.wireNodeHighlights.push(ring);
     }
+  }
+
+  /**
+   * Menú circular de elección de nodo (14a-4 ronda 2). Ver
+   * `ui/widgets/signal-node-menu.ts` para el porqué; acá solo vive su ciclo de
+   * vida, que es el de cualquier overlay contextual de la escena.
+   */
+  private openSignalNodeMenu(candidates: ReadonlyArray<PositionedSignalNode>): void {
+    this.closeSignalNodeMenu();
+    this.signalNodeMenu = createSignalNodeMenu(
+      this,
+      candidates,
+      { roleLabel: (node) => t(signalNodeRoleKey(node)) },
+      {
+        onPick: (node) => {
+          this.closeSignalNodeMenu();
+          this.interaction.applyWireNode(node.id);
+        },
+        onCancel: () => this.closeSignalNodeMenu(),
+      },
+    );
+    this.markAsWorldObject(this.signalNodeMenu);
+  }
+
+  private closeSignalNodeMenu(): void {
+    this.signalNodeMenu?.destroy(true);
+    this.signalNodeMenu = undefined;
+  }
+
+  /**
+   * Línea fantasma con flecha desde el nodo origen hasta el cursor (14a-4
+   * ronda 2).
+   *
+   * Es lo que devuelve la protección que se pierde al legalizar
+   * receptor→receptor: con dos receptores el orden de clicks vuelve a ser la
+   * dirección, y un cable al revés es un no-op silencioso —el defecto que 13h
+   * ronda 2 cerró—. Con la flecha, el sentido se ve ANTES de encolar la tarea,
+   * no después de que el tripulante caminó hasta allá.
+   */
+  private updateWireGhost(worldX: number, worldY: number): void {
+    const sourceId = this.interaction.wireFirstNode;
+    if (!this.interaction.wireMode || !sourceId) {
+      this.clearWireGhost();
+      return;
+    }
+    const source = layoutSignalNodes(this.mission.blueprint.signalGraph.nodes).find(
+      (node) => node.id === sourceId,
+    );
+    if (!source) {
+      this.clearWireGhost();
+      return;
+    }
+    if (!this.wireGhost) {
+      this.wireGhost = this.add.graphics().setDepth(RENDER_DEPTH.problemMarker);
+      this.markAsWorldObject(this.wireGhost);
+    }
+    const ghost = this.wireGhost;
+    ghost.clear();
+    ghost.lineStyle(2, WIRE_HIGHLIGHT_COLOR, 0.7);
+    ghost.lineBetween(source.x, source.y, worldX, worldY);
+    // Punta de flecha en el extremo del cursor: la línea sola diría que hay una
+    // conexión pendiente, no hacia dónde va.
+    const angle = Math.atan2(worldY - source.y, worldX - source.x);
+    const WING = Math.PI / 7;
+    const LENGTH = 10;
+    ghost.lineBetween(
+      worldX,
+      worldY,
+      worldX - Math.cos(angle - WING) * LENGTH,
+      worldY - Math.sin(angle - WING) * LENGTH,
+    );
+    ghost.lineBetween(
+      worldX,
+      worldY,
+      worldX - Math.cos(angle + WING) * LENGTH,
+      worldY - Math.sin(angle + WING) * LENGTH,
+    );
+  }
+
+  private clearWireGhost(): void {
+    this.wireGhost?.destroy();
+    this.wireGhost = undefined;
   }
 
   /**
@@ -3351,6 +3467,7 @@ export class FloorplanScene extends Phaser.Scene {
       // heurística de la capa visual.
       {
         edgeLoadRatio: (edge) => this.mission.edgeLoadRatio(edge),
+      nodeLoadRatio: (nodeId) => this.mission.nodeLoadRatio(nodeId),
         burnedEdgeIds: new Set(
           this.mission.blueprint.signalGraph.edges
             .filter((edge) => isEdgeBurned(this.mission.blueprint, edge))
@@ -3920,6 +4037,7 @@ export class FloorplanScene extends Phaser.Scene {
     this.signalWireColorCooldown = SIGNAL_WIRE_COLOR_REFRESH_SECONDS;
     drawSignalLayer(this.signalGraphics, this.mission.blueprint, this.mission.shipFloorplan, this.walkableGrid, {
       edgeLoadRatio: (edge) => this.mission.edgeLoadRatio(edge),
+      nodeLoadRatio: (nodeId) => this.mission.nodeLoadRatio(nodeId),
       burnedEdgeIds: new Set(
         this.mission.blueprint.signalGraph.edges
           .filter((edge) => isEdgeBurned(this.mission.blueprint, edge))
@@ -4057,9 +4175,15 @@ export class FloorplanScene extends Phaser.Scene {
           this.setBaseTint(sprite, visual.tint ?? NEUTRAL_TINT);
         }
       }
-      if (visual.icon && states.length > 0) {
+      // Ronda 2 de playtest de 14a-4: TODOS los glifos vivos, no solo el del
+      // estado más grave. El tinte sigue siendo uno (`visual.tint`), pero los
+      // símbolos se acumulan — pedido del operador al agregar `unsignaled`:
+      // una pieza sin energía Y sin señal tiene que decir las dos cosas, o el
+      // jugador arregla una y recién ahí descubre la otra.
+      const glyphs = stateGlyphs(states);
+      if (glyphs.length > 0) {
         seen.add(instance.instanceId);
-        this.syncStateIcon(instance, visual.icon);
+        this.syncStateIcon(instance, glyphs.join(" "));
       }
     }
     for (const [instanceId, icon] of this.stateIcons) {

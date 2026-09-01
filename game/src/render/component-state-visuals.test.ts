@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { InstanceState, InstanceStateFlag } from "engine";
 
-import { instanceStateLabel, resolveComponentVisual, visualForState } from "./component-state-visuals.js";
+import {
+  instanceStateLabel,
+  resolveComponentVisual,
+  stateGlyphs,
+  visualForState,
+} from "./component-state-visuals.js";
+import { t } from "../i18n/i18n.js";
 import {
   COMPONENT_CONDITION_TINT,
   COMPONENT_WEAR_TINT,
@@ -56,7 +62,7 @@ describe("resolveComponentVisual (13h, ronda 3 de playtest)", () => {
     // nadie se acuerde de venir a ampliarlo. `overloaded` usa un ámbar propio
     // (el de la cicatriz de chispas) que no es el de `CRISIS_WARNING_COLOR`.
     const reserved = [...Object.values(COMPONENT_WEAR_TINT), ...Object.values(COMPONENT_CONDITION_TINT)];
-    const flags: InstanceStateFlag[] = ["unpowered", "overloaded"];
+    const flags: InstanceStateFlag[] = ["unpowered", "overloaded", "unsignaled"];
     const tints = flags.map((flag) => visualForState(flag).tint);
 
     for (const tint of tints) {
@@ -108,5 +114,52 @@ describe("instanceStateLabel", () => {
 
   it("un estado sin detalle numérico se queda en su frase, sin sufijos vacíos", () => {
     expect(instanceStateLabel({ flag: "unpowered" })).not.toContain("undefined");
+  });
+});
+
+/**
+ * Ronda 2 de playtest de 14a-4. El operador pidió el estado nuevo y, en la
+ * misma frase, que pudiera convivir con el de energía: "cuidado que ambos
+ * estados pueden convivir, así que las indicaciones visuales deben estar
+ * preparadas para eso".
+ */
+describe("`unsignaled` y la convivencia de estados (14a-4 ronda 2)", () => {
+  const SIN_SENAL: InstanceState = { flag: "unsignaled", required: 8, available: 3 };
+  const SIN_ENERGIA: InstanceState = { flag: "unpowered", required: 2, available: 1 };
+
+  it("trae glifo propio, distinto del rayo de la energía", () => {
+    expect(visualForState("unsignaled").icon).toBeDefined();
+    expect(visualForState("unsignaled").icon).not.toBe(visualForState("unpowered").icon);
+  });
+
+  it("con DOS estados se dibujan los DOS glifos", () => {
+    // El agujero que esta función viene a tapar: `resolveComponentVisual`
+    // devuelve un solo visual, así que hasta acá el jugador arreglaba la
+    // energía y recién entonces descubría que además faltaba señal.
+    expect(stateGlyphs([SIN_SENAL, SIN_ENERGIA])).toEqual([
+      visualForState("unsignaled").icon,
+      visualForState("unpowered").icon,
+    ]);
+  });
+
+  it("el TINTE sigue siendo uno solo: el del estado más grave", () => {
+    // Los glifos se acumulan, el color no. Un color mixto sería inventar un
+    // tercer significado (principio 6 en su forma inversa).
+    const visual = resolveComponentVisual({ condition: "ok", wear: "nuevo" }, [SIN_SENAL, SIN_ENERGIA]);
+    expect(visual.tint).toBe(visualForState("unsignaled").tint);
+  });
+
+  it("sin estados no hay glifos", () => {
+    expect(stateGlyphs([])).toEqual([]);
+  });
+
+  it("el detalle nombra la demanda y la capacidad, no 'pide/otorga'", () => {
+    // Los dos números de `unsignaled` no son los de `unpowered`: nadie "otorga"
+    // la capacidad de un emisor. Compartir las etiquetas dejaba el aviso
+    // describiendo mal su propio número.
+    const label = instanceStateLabel(SIN_SENAL);
+    expect(label).toContain("8");
+    expect(label).toContain("3");
+    expect(label).not.toContain(t("ui.floorplan.mission.state.granted"));
   });
 });

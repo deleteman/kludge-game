@@ -1176,6 +1176,50 @@ acoplamiento en sí, que funcionó:
 
 Suite: motor **1189** (156 archivos), juego **113**. `tsc`, `eslint` y `build` limpios.
 
+###### Ronda 2 de playtest de 14a-4 ✅ CERRADA (2026-09-02)
+
+El operador colgó **7 consumidores de un solo fotorreceptor** (5 LEDs, una compuerta, una LCD) y
+reportó que ningún cable llegaba a ámbar, que todos decían `carga 1/6`, y que `Gobierna: 7 · 8 de
+demanda` no se entendía. **Los tres números estaban bien**, y aun así el sistema no funcionaba como
+diseño:
+
+* **La mecánica de carga era INALCANZABLE.** Un cable lleva lo que cuelga aguas abajo de él, así que
+  en estrella cada uno lleva 1. Sobrecargarlo exige un TRONCO (`sensor → chip → N piezas`), y montar
+  en tronco costaba un cable MÁS que la estrella: nadie lo iba a construir jamás. No era calibración
+  — faltaba algo que empujara hacia la topología que la produce.
+* **El relé estaba prohibido.** `chip-circuito-generico` solo declara `REC`, y `orientSignalWiring`
+  rechazaba receptor→receptor con el argumento de que "dos consumidores no tienen nada que decirse".
+  Falso en este motor: el evaluador calcula la salida de todo nodo que no sea emisor, o sea que un
+  chip ya era un relé por construcción. Era además la MISMA guarda que la ronda 1 rodeó dándole al
+  `ACT` un nodo emisor en vez de corregirla. Cae el rechazo; queda el de emisor→emisor, que sí es
+  correcto. De paso se arregla `conductor → emisor`, que no se daba vuelta y escribía una arista
+  entrando a un emisor.
+* **El emisor pasa a tener capacidad de salida** (`signal-output-parameters.ts`, tabla data-driven
+  gemela de `POWER_DRAW_BY_COMPONENT`): sensor suelto 3, chip 8, consola 12, salida de `ACT` 2. Lo
+  que no entra **deja de recibir señal**, con triaje por el **mismo dial de prioridad que la energía**
+  (`orderByPowerPriority`, extraído y compartido). Ahora el chip-relé es necesario, el tronco aparece
+  solo, y el tronco sí se quema.
+* **La demanda NO es transitiva** — la decisión que hace que el relé sirva de algo, y que el primer
+  test de `emitter-fanout.ts` destapó: con demanda transitiva el sensor seguía viendo 9 a través del
+  chip y no había ninguna salida al problema. Cada salida paga lo que cuelga DIRECTAMENTE de ella.
+  La carga del CABLE sí sigue siendo transitiva (por eso el tronco revienta) y sigue contando lo
+  cableado, no lo que recibe señal: descontarla al sacrificar habría hecho oscilar el montaje un tick
+  sí y otro no.
+* **`unsignaled`, tercer estado de instancia**, cobrando la promesa que `instance-state.types.ts`
+  tenía escrita. Y los **glifos pasan a ser una lista**: el tinte sigue siendo uno (el más grave),
+  pero `⚡` y `⊘` se dibujan juntos — pedido explícito del operador, porque con uno solo el jugador
+  arreglaba la energía y recién ahí descubría que faltaba señal.
+* **Elegir el nodo y ver la dirección.** Con dos nodos a 16 px en una celda de 32 y radios de click de
+  10, las zonas se solapaban: ahora un click ambiguo abre un **menú circular** en vez de adivinar (con
+  un solo candidato resuelve directo, sin pasos extra). Y como legalizar receptor→receptor devuelve la
+  dirección al orden de clicks, se agrega la **línea fantasma con flecha**, que muestra el sentido
+  ANTES de encolar la tarea. De paso, el resalte de nodos del modo cableado dejó de dibujarse en el
+  centro de la celda: estaba desalineado de los puntos que resalta desde la ronda 1.
+* **Los números tienen denominador**: `Gobierna 7 piezas · demanda 8 / 3`, con semáforo y la
+  consecuencia en palabras; y el tooltip de cable explica por qué su carga es la que es.
+
+Suite: motor **1207** (155 archivos), juego **122** (13 archivos). `tsc`, `eslint` y `build` limpios.
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.

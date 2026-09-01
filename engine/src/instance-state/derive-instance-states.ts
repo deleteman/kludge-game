@@ -22,6 +22,16 @@ export interface InstanceStateQueries {
   readonly isInstanceOverloaded: (instanceId: PlacedComponentInstance["instanceId"]) => boolean;
   /** Unidades otorgadas a la sección que contiene a la pieza, para el detalle del aviso. */
   readonly sectionGrantedUnitsAt: (instance: PlacedComponentInstance) => number;
+  /**
+   * Pieza sacrificada por el triaje de fan-out de señal (14a-4 ronda 2):
+   * `undefined` si recibe señal, y si no, cuánta demanda cuelga del emisor que
+   * la gobierna contra cuánto sostiene. Devolver los dos números y no un
+   * booleano es lo que hace accionable el aviso — igual que en `unpowered`, lo
+   * útil no es "no recibe señal" sino cuánto sobra.
+   */
+  readonly signalStarvationOf: (
+    instanceId: PlacedComponentInstance["instanceId"],
+  ) => { readonly demand: number; readonly capacity: number } | undefined;
 }
 
 /**
@@ -49,6 +59,20 @@ export function deriveInstanceStates(
   // jugador buscaría el problema donde no está.
   if (queries.isInstanceOverloaded(instance.instanceId)) {
     states.push({ flag: "overloaded" });
+  }
+
+  // Sin señal va DESPUÉS de la sobrecarga y ANTES de la falta de energía: es un
+  // problema de montaje que el jugador puede resolver ahora mismo (desconectar
+  // algo, subir la prioridad de esta pieza, meter un relé), mientras que la
+  // energía se arregla en otro panel y con otro recurso. Anunciar primero lo
+  // que se arregla acá.
+  const starvation = queries.signalStarvationOf(instance.instanceId);
+  if (starvation) {
+    states.push({
+      flag: "unsignaled",
+      required: starvation.demand,
+      available: starvation.capacity,
+    });
   }
 
   // El guard sobre `powerDraw` NO es una optimización. `allocateComponentPower`

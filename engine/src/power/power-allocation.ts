@@ -107,14 +107,27 @@ export interface ComponentPowerResult {
  * alimentados y no restan del pool (retrocompat con todo el catálogo previo
  * a 13b).
  */
-export function allocateComponentPower(
-  sectionPoolUnits: number,
-  instances: ReadonlyArray<PlacedComponentInstance>,
+/**
+ * Orden de sacrificio por prioridad manual: menor `priority` = más prioritario,
+ * sin prioridad explícita = al final, desempate determinista por `instanceId`.
+ *
+ * Extraído en la ronda 2 de playtest de 14a-4, cuando el triaje de señal
+ * (`signals/emitter-fanout.ts`) pasó a repartir con el MISMO dial que el
+ * eléctrico — decisión del operador: una sola noción de "qué me importa más"
+ * gobierna los dos sistemas, y el jugador no aprende dos. Copiar el comparador
+ * habría garantizado que algún día el mismo dial ordenara distinto en cada
+ * sistema, con el jugador mirando la misma lista y viendo dos resultados.
+ *
+ * Genérico sobre el elemento —solo pide un `instanceId`— porque el triaje de
+ * señal ordena instancias colocadas y el eléctrico también, pero nada obliga a
+ * que el próximo consumidor traiga el mismo tipo.
+ */
+export function orderByPowerPriority<T extends { readonly instanceId: PlacedComponentInstanceId }>(
+  items: ReadonlyArray<T>,
   priorities: ReadonlyArray<InstancePowerPriority>,
-  componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
-): ComponentPowerResult {
+): T[] {
   const priorityByInstance = new Map(priorities.map((entry) => [entry.instanceId, entry.priority]));
-  const ordered = [...instances].sort((a, b) => {
+  return [...items].sort((a, b) => {
     const priorityA = priorityByInstance.get(a.instanceId) ?? Number.POSITIVE_INFINITY;
     const priorityB = priorityByInstance.get(b.instanceId) ?? Number.POSITIVE_INFINITY;
     if (priorityA !== priorityB) {
@@ -122,6 +135,15 @@ export function allocateComponentPower(
     }
     return a.instanceId < b.instanceId ? -1 : a.instanceId > b.instanceId ? 1 : 0;
   });
+}
+
+export function allocateComponentPower(
+  sectionPoolUnits: number,
+  instances: ReadonlyArray<PlacedComponentInstance>,
+  priorities: ReadonlyArray<InstancePowerPriority>,
+  componentRegistry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+): ComponentPowerResult {
+  const ordered = orderByPowerPriority(instances, priorities);
 
   let remaining = sectionPoolUnits;
   const poweredInstanceIds = new Set<PlacedComponentInstanceId>();
