@@ -1,9 +1,10 @@
 import type Phaser from "phaser";
 
-import type { GridPosition, ParticleEmitterHook, StateDrivenEffect } from "../particle-effect.types.js";
+import type { EffectArea, GridPosition, ParticleEmitterHook, StateDrivenEffect } from "../particle-effect.types.js";
 import { type EffectScene, pickTexture, spreadRange, textureScale, toPixel } from "../particle-utils.js";
 import { CIRCLE_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
-import { SECTION_INTEGRITY_PARAMETERS, THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
+import { HAZARD_PARAMETERS, TEMPERATURE_CEILING_CELSIUS, TEMPERATURE_FLOOR_CELSIUS } from "engine";
+import { coverageQuantity, sectionEmitZone, thresholdSeverity } from "./atmosphere-effect-coverage.js";
 
 /**
  * Tres fenómenos state-driven de GDD 11.1 leídos de `SectionAtmosphere` cada
@@ -28,6 +29,27 @@ export interface GasCloudState {
 }
 
 /**
+ * Origen del emisor. Con cobertura de sección va en (0,0) porque
+ * `sectionEmitZone` devuelve coordenadas de MUNDO y Phaser las suma a la
+ * posición del emisor; sin ella, en el punto de siempre.
+ */
+function emitterOrigin(px: number, py: number, area: EffectArea | undefined): [number, number] {
+  return area ? [0, 0] : [px, py];
+}
+
+/**
+ * Dispersión de las partículas: la sección entera si el llamador pasó sus
+ * celdas, el radio puntual de antes si no.
+ *
+ * El fallback no es una concesión: la galería de partículas (Fase 8) y los
+ * tests instancian estos efectos sin ninguna sección detrás, y romperlos para
+ * arreglar la partida sería cambiar un problema por otro.
+ */
+function spread(area: EffectArea | undefined, radiusPx: number): Record<string, unknown> {
+  return area ? { emitZone: sectionEmitZone(area) } : { x: spreadRange(radiusPx), y: spreadRange(radiusPx) };
+}
+
+/**
  * Por debajo de esta concentración no se pinta nada (ronda 3 de fixes de 13e).
  * La difusión reparte trazas mínimas por toda la nave conexa a ~10%/s, así que
  * sin umbral una fuga en una sala terminaba encendiendo una nube en las ocho
@@ -48,14 +70,16 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
   let scene: EffectScene | undefined;
   let px = 0;
   let py = 0;
+  let area: EffectArea | undefined;
   let emitter: Phaser.GameObjects.Particles.ParticleEmitter | undefined;
   /** Concentración que se está DIBUJANDO, persiguiendo a la real con retardo. */
   let shown = 0;
 
   return {
-    start(s: EffectScene, position: GridPosition): void {
+    start(s: EffectScene, position: GridPosition, sectionArea?: EffectArea): void {
       scene = s;
       ({ px, py } = toPixel(position));
+      area = sectionArea;
       shown = 0;
     },
     update(state: GasCloudState, deltaSeconds = 1 / 60): void {
@@ -69,29 +93,31 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
         emitter?.stop();
         return;
       }
-      const quantity = Math.max(1, Math.round(shown * 12));
+      // La nube ya escalaba con la concentración; lo que se agrega en 14a-2 es
+      // que además escale con el ÁREA y se reparta por las celdas reales de la
+      // sección, igual que sus dos hermanos. Sin `area` (galería de partículas,
+      // tests) cae al comportamiento puntual de antes.
+      const quantity = area ? coverageQuantity(area.cells.length, shown) : Math.max(1, Math.round(shown * 12));
       // La opacidad también acompaña: con solo `quantity`, una nube naciente y
       // una saturada se veían igual de densas y el crecimiento no se leía. Va
       // en el alpha del EMISOR (multiplica al de cada partícula) y no en el op
       // `alpha` del config, que solo admite número y borraría el desvanecido.
       const opacity = 0.25 + Math.min(1, shown) * 0.75;
       if (!emitter) {
-        const radius = 6 + shown * 20;
-        // Config COMPLETO en la creación (fix 11f.4): incluye `quantity`/`tint`/
-        // `x`/`y` para NO depender de un `setConfig` posterior, que recarga
+        // Config COMPLETO en la creación (fix 11f.4): incluye `quantity`/`tint`
+        // y la zona para NO depender de un `setConfig` posterior, que recarga
         // todos los ops del emisor y deja los ausentes (`scale`/`speed`/
         // `lifespan`) en su default (scale 1 → partículas de 512px, speed 0 →
         // inmóviles) — la causa de que la nube fuera invisible. Sin `frequency`
         // (= 0) el emisor emite cada frame, como antes.
-        emitter = scene.add.particles(px, py, pickTexture(SMOKE_TEXTURES), {
+        emitter = scene.add.particles(...emitterOrigin(px, py, area), pickTexture(SMOKE_TEXTURES), {
           lifespan: 1000,
           speed: { min: 5, max: 15 },
           scale: { start: textureScale(16), end: textureScale(40) },
           alpha: { start: 0.35, end: 0 },
           quantity,
           tint: state.tint,
-          x: spreadRange(radius),
-          y: spreadRange(radius),
+          ...spread(area, 6 + shown * 20),
         });
         emitter.setAlpha(opacity);
         onEmitterCreated?.(emitter);
@@ -114,22 +140,31 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
 }
 
 /**
- * Subfase 14a-2: el mismo criterio que el vapor de calor, ahora que el frío
- * tiene escritores reales (el enfriador y el derrame criogénico). El umbral es
- * el del daño estructural por frío, o sea que la escarcha aparece exactamente
- * cuando la sala empieza a sufrir — antes era un -10 suelto que no coincidía con
- * ningún umbral del motor y que el balanceo podía separar sin que nada avisara.
+ * Umbral de la escarcha, ronda 1 de playtest de 14a-2: pasa del umbral de la
+ * ESTRUCTURA (-40) al del TRIPULANTE (-10).
+ *
+ * 14a-2 lo había atado al daño estructural con el argumento correcto —que un
+ * umbral visual suelto se separa del motor en el próximo balanceo— pero eligió
+ * el umbral equivocado de los que existen. La escarcha es la señal de "no
+ * entres acá", no de "el casco se está partiendo", y con -40 la sala mataba a
+ * un tripulante durante 30 °C enteros sin mostrar absolutamente nada.
+ *
+ * Ahora **ver escarcha = esta sala mata**, exactamente, por los dos lados: el
+ * vapor de calor ya coincidía con el umbral caliente desde 14a-1.
  */
-const FREEZING_THRESHOLD_CELSIUS = SECTION_INTEGRITY_PARAMETERS.thermal.coldOnsetCelsius;
+const FREEZING_THRESHOLD_CELSIUS = HAZARD_PARAMETERS.thermal.coldOnsetCelsius;
 /**
  * Subfase 14a-1: el vapor de calor aparece exactamente cuando dispara el
- * sensor térmico, y por eso importa SU constante en vez de repetir el 60.
+ * sensor térmico, y por eso importa una constante en vez de repetir el 60.
  * Hasta acá los dos números coincidían por casualidad y nada impedía que se
  * separaran en el próximo balanceo — la UI mostrando un umbral y el motor
  * usando otro es la clase de mentira visual que el principio 6 prohíbe: si el
- * jugador ve vapor, el sensor está disparado, y al revés.
+ * jugador ve vapor, el sensor está disparado, y al revés. Ronda 1 de 14a-2:
+ * pasa a leerse de `HAZARD_PARAMETERS.thermal`, que ES el disparo del sensor
+ * (hay un test que lo fija) y además el umbral de daño a la tripulación — un
+ * solo número para los tres.
  */
-const HEAT_VAPOR_THRESHOLD_CELSIUS = THERMAL_SENSOR_TRIGGER_CELSIUS;
+const HEAT_VAPOR_THRESHOLD_CELSIUS = HAZARD_PARAMETERS.thermal.hotOnsetCelsius;
 
 export function createFreezingEffect(
   onEmitterCreated?: ParticleEmitterHook,
@@ -137,12 +172,14 @@ export function createFreezingEffect(
   let scene: EffectScene | undefined;
   let px = 0;
   let py = 0;
+  let area: EffectArea | undefined;
   let emitter: Phaser.GameObjects.Particles.ParticleEmitter | undefined;
 
   return {
-    start(s: EffectScene, position: GridPosition): void {
+    start(s: EffectScene, position: GridPosition, sectionArea?: EffectArea): void {
       scene = s;
       ({ px, py } = toPixel(position));
+      area = sectionArea;
     },
     update(state: { temperatureCelsius: number }): void {
       if (!scene) return;
@@ -150,19 +187,29 @@ export function createFreezingEffect(
         emitter?.stop();
         return;
       }
+      // Severidad, no on/off: la escarcha era binaria de tamaño fijo mientras
+      // su hermano `gasLeak` ya escalaba con la concentración. Se unifican al
+      // criterio del que lo hacía bien — a -12 °C apenas escarcha, a -70 la
+      // sala está tomada.
+      const severity = thresholdSeverity(
+        state.temperatureCelsius,
+        FREEZING_THRESHOLD_CELSIUS,
+        TEMPERATURE_FLOOR_CELSIUS,
+      );
+      const quantity = area ? coverageQuantity(area.cells.length, severity) : 3;
       if (!emitter) {
-        emitter = scene.add.particles(px, py, pickTexture(CIRCLE_TEXTURES), {
+        emitter = scene.add.particles(...emitterOrigin(px, py, area), pickTexture(CIRCLE_TEXTURES), {
           lifespan: 900,
           speed: { min: 2, max: 8 },
           scale: { start: textureScale(10), end: 0 },
           tint: 0xbfe8ff,
-          quantity: 3,
+          quantity,
           frequency: 100,
-          x: spreadRange(10),
-          y: spreadRange(10),
+          ...spread(area, 10),
         });
         onEmitterCreated?.(emitter);
       }
+      emitter.setQuantity(quantity);
       emitter.start();
     },
     stop(): void {
@@ -178,12 +225,14 @@ export function createHeatVaporEffect(
   let scene: EffectScene | undefined;
   let px = 0;
   let py = 0;
+  let area: EffectArea | undefined;
   let emitter: Phaser.GameObjects.Particles.ParticleEmitter | undefined;
 
   return {
-    start(s: EffectScene, position: GridPosition): void {
+    start(s: EffectScene, position: GridPosition, sectionArea?: EffectArea): void {
       scene = s;
       ({ px, py } = toPixel(position));
+      area = sectionArea;
     },
     update(state: { temperatureCelsius: number }): void {
       if (!scene) return;
@@ -191,21 +240,30 @@ export function createHeatVaporEffect(
         emitter?.stop();
         return;
       }
+      // Mismo criterio que la escarcha, del otro lado del eje: el rango es
+      // enorme (60 → 900 °C), así que sin escalado un incendio y una sala
+      // templada de más se veían idénticos.
+      const severity = thresholdSeverity(
+        state.temperatureCelsius,
+        HEAT_VAPOR_THRESHOLD_CELSIUS,
+        TEMPERATURE_CEILING_CELSIUS,
+      );
+      const quantity = area ? coverageQuantity(area.cells.length, severity) : 4;
       if (!emitter) {
-        emitter = scene.add.particles(px, py, pickTexture(SMOKE_TEXTURES), {
+        emitter = scene.add.particles(...emitterOrigin(px, py, area), pickTexture(SMOKE_TEXTURES), {
           lifespan: 700,
           speed: { min: 8, max: 20 },
           angle: { min: 260, max: 280 },
           scale: { start: textureScale(16), end: textureScale(30) },
           alpha: { start: 0.3, end: 0 },
           tint: 0xf0f0f0,
-          quantity: 4,
+          quantity,
           frequency: 80,
-          x: spreadRange(8),
-          y: spreadRange(4),
+          ...spread(area, 8),
         });
         onEmitterCreated?.(emitter);
       }
+      emitter.setQuantity(quantity);
       emitter.start();
     },
     stop(): void {

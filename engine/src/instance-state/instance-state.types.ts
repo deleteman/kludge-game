@@ -7,16 +7,23 @@
  * junto a estos en la tabla visual de `/game`; acá van los estados que se
  * DERIVAN del mundo y no están escritos en ningún lado.
  *
- * Nace con uno solo a propósito. El pedido del operador fue un sistema
+ * Nació con uno solo a propósito. El pedido del operador fue un sistema
  * genérico, y lo que lo vuelve genérico no es arrancar con muchos estados sino
  * que agregar el próximo sea **una consulta más y una fila más en la tabla**,
  * sin tocar ninguna decisión central.
  *
- * Candidatos naturales para los que la infraestructura ya está: sobrecargado
- * (`Blueprint.overloadedRefs`), pieza sobre una brecha sin sellar, reservorio
- * vacío. Subfase 13g hereda esta tabla para el resto de sus consumidores.
+ * `overloaded` (ronda 1 de playtest de 14a-2) es el primer cobro de esa
+ * promesa, y llegó por donde el propio docblock lo anunciaba: la
+ * infraestructura (`Blueprint.overloadedRefs`) estaba lista desde la Fase 12a.
+ * El operador lo pidió con "el cable no muestra ningún estado en su tooltip" —
+ * 14a-2 cerró el acoplamiento térmico que CORTA conductores y dejó sin hacer
+ * la mitad visible: la pieza cambiaba de comportamiento y no lo decía en
+ * ninguna parte.
+ *
+ * Candidatos que siguen pendientes con la infraestructura ya lista: pieza
+ * sobre una brecha sin sellar, reservorio vacío.
  */
-export type InstanceStateFlag = "unpowered";
+export type InstanceStateFlag = "unpowered" | "overloaded";
 
 /**
  * Detalle numérico opcional de un estado. Existe porque el aviso útil no es

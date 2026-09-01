@@ -1732,3 +1732,55 @@
 ### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
 - `FREEZING_THRESHOLD_CELSIUS` pasa a importar el umbral de daño por frío del motor, igual que el vapor de
   calor importa el del sensor: la escarcha aparece cuando la sala empieza a sufrir.
+
+---
+
+# Ronda 1 de playtest de 14a-2 — legibilidad del eje térmico (2026-09-01)
+
+### `game/src/particles/effects/atmosphere-effect-coverage.ts` (NUEVO)
+- Cuánta superficie ocupa un fenómeno de atmósfera y con qué densidad, aparte de "qué partícula es cada
+  fenómeno" (`atmosphere-state-effects.ts`). `sectionEmitZone` reparte partículas sobre las celdas REALES de una
+  sección (nunca su bounding box), `coverageQuantity` escala con área y severidad con techo y piso, y
+  `thresholdSeverity` normaliza los dos lados del eje térmico. Compartido por los tres efectos de atmósfera y
+  por las chispas de sobrecarga.
+
+### `game/src/particles/particle-effect.types.ts` (modificado)
+- `EffectArea` (celdas de grid) y tercer parámetro opcional de `StateDrivenEffect.start`: un efecto de SALA
+  necesita su superficie, no solo un punto. Opcional, así la galería de partículas y los tests siguen
+  instanciando efectos sin sección detrás.
+
+### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
+- Los tres efectos aceptan `EffectArea` y escalan densidad por severidad × área; `FREEZING_THRESHOLD_CELSIUS` y
+  `HEAT_VAPOR_THRESHOLD_CELSIUS` pasan a leerse de `HAZARD_PARAMETERS.thermal` (el umbral del TRIPULANTE, no el
+  de la estructura): ver escarcha o vapor significa que la sala mata.
+
+### `game/src/particles/effects/overloaded-conductor-effect.ts` (modificado)
+- Chispas con núcleo propio (`OVERLOADED_SPARK_CORE_COLOR`, distinto del ámbar de la luz), frecuencia por debajo
+  de la vida para que nunca haya cero partículas vivas, y dispersión sobre el footprint real de la pieza.
+
+### `engine/src/mission/mission-hazard-parameters.ts` + `mission-hazard-runtime.ts` (modificados)
+- Quinto peligro: `HAZARD_PARAMETERS.thermal` (umbrales -10/60, propios y distintos de los de la sección) y su
+  aplicación por ACTOR. `applyVacuum` se generalizó al `bite()` compartido por vacío y térmico, con
+  `thermalDamageCause` mapeando temperatura → `"cold"`/`"fire"`. Vacío y frío llevan cuentas separadas y se
+  acumulan.
+
+### `engine/src/instance-state/` (modificado)
+- `InstanceStateFlag` suma `"overloaded"`; `InstanceStateQueries.isInstanceOverloaded` y su rama en
+  `deriveInstanceStates`, emitida ANTES que `unpowered` (el orden de emisión es la subprioridad visual).
+
+### `game/src/render/component-state-visuals.ts` + `palette.ts` + `render-depths.ts` (modificados)
+- Fila `overloaded` en `STATE_VISUAL` (tinte = ámbar de su propia cicatriz, glifo, `noticeKey`).
+  `FROST_LAYER_COLOR`/`FROST_MIN_ALPHA`/`FROST_MAX_ALPHA` y `OVERLOADED_SPARK_CORE_COLOR` en la paleta;
+  `RENDER_DEPTH.frostLayer` (1.6) entre la cicatriz de energía y los objetos.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `initSectionAtmosphereEffects` pasa las celdas de la sección a los tres efectos; `redrawFrostLayer` pinta la
+  escarcha por celda con alpha por severidad; `syncOverloadedConductorEffects` pasa el footprint real de la pieza.
+
+### `game/src/ui/widgets/mission-tooltip.ts` (modificado)
+- `isLethalTemperature`: la lectura de temperatura se colorea por los DOS lados del eje, con los umbrales del
+  daño a tripulación.
+
+### `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado)
+- Retirados el `cable-cobre` sembrado en `ingenieria`, su `scriptedOverloads` y `overloadedConductorPosition`:
+  reventaba en el primer tick y era un falso positivo permanente sobre la cadena térmica.

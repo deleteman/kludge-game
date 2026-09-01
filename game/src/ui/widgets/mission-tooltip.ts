@@ -6,7 +6,7 @@ import type {
   InstanceState,
   MaterialProperties,
 } from "engine";
-import { THERMAL_SENSOR_TRIGGER_CELSIUS } from "engine";
+import { HAZARD_PARAMETERS } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
 import { HEADER_COLOR, OBJECTIVE_DONE_COLOR, TIMER_TEXT_COLORS, TAG_CATEGORY_CSS } from "../../render/palette.js";
 import {
@@ -108,6 +108,20 @@ export interface MissionTooltipLabels {
    * síntoma sin dar la salida: lo que le sirve al jugador es cuánto le falta.
    */
   readonly instanceState: (state: InstanceState) => string;
+}
+
+/**
+ * ¿Esta temperatura mata a un tripulante? Los DOS lados del eje (ronda 1 de
+ * playtest de 14a-2): el lado caliente coincide con el disparo del sensor
+ * térmico y con el vapor por la decisión de 14a-1, y el frío se agrega ahora
+ * con el mismo criterio. Se importan los umbrales en vez de repetir los
+ * números, para que un rebalanceo no deje al tooltip afirmando un límite que el
+ * motor ya movió.
+ */
+function isLethalTemperature(celsius: number): boolean {
+  return (
+    celsius >= HAZARD_PARAMETERS.thermal.hotOnsetCelsius || celsius <= HAZARD_PARAMETERS.thermal.coldOnsetCelsius
+  );
 }
 
 const TOOLTIP_WIDTH = 260;
@@ -269,14 +283,20 @@ export function renderMissionTooltip(
       }
       // Subfase 14a-1: la temperatura va SIEMPRE, como la presión — es la
       // lectura que hace diagnosticable todo el eje térmico. El color la marca
-      // solo cuando cruza el umbral del sensor, para que a 21 °C no compita
-      // con lo que de verdad está mal.
+      // solo cuando cruza un umbral, para que a 21 °C no compita con lo que de
+      // verdad está mal.
+      //
+      // Ronda 1 de playtest de 14a-2: hasta acá SOLO se coloreaba el lado
+      // caliente, o sea que una sala a -50 °C —letal, y con la escarcha
+      // pintándose encima— se leía en el mismo gris neutro que una a 21. El eje
+      // tiene dos lados y la UI mostraba uno; es el hermano exacto del cable que
+      // no decía su estado. Los dos umbrales salen de `HAZARD_PARAMETERS.thermal`
+      // (la vida del TRIPULANTE, no la estructura de la sección): si el tooltip
+      // se pone rojo, esa sala mata a quien esté adentro — la misma promesa que
+      // hace la escarcha.
       lines.push({
         text: `• ${labels.sectionTemperature(content.atmosphere.temperatureCelsius)}`,
-        color:
-          content.atmosphere.temperatureCelsius > THERMAL_SENSOR_TRIGGER_CELSIUS
-            ? CRISIS_FATAL_CSS
-            : LABEL_COLOR,
+        color: isLethalTemperature(content.atmosphere.temperatureCelsius) ? CRISIS_FATAL_CSS : LABEL_COLOR,
       });
       // Y el aviso de fuente activa aparte, mismo criterio y mismo ámbar que
       // `pressure-recovering`: "esto todavía está pasando".

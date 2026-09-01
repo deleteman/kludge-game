@@ -36,6 +36,7 @@ function queries(overrides: Partial<InstanceStateQueries> = {}): InstanceStateQu
   return {
     resolveDefinition: () => definition(2),
     isInstancePowered: () => true,
+    isInstanceOverloaded: () => false,
     sectionGrantedUnitsAt: () => 1,
     ...overrides,
   };
@@ -90,5 +91,50 @@ describe("deriveInstanceStates (13h, ronda 3 de playtest)", () => {
       queries({ resolveDefinition: () => undefined, isInstancePowered: () => false }),
     );
     expect(states).toEqual([]);
+  });
+});
+
+/**
+ * Ronda 1 de playtest de 14a-2. El operador: "el cable no muestra ningún estado
+ * en su tooltip". 14a-2 cerró el acoplamiento térmico que corta conductores y
+ * dejó sin hacer la mitad visible — el docblock de `instance-state.types.ts` ya
+ * nombraba `Blueprint.overloadedRefs` como el candidato con la infraestructura
+ * lista.
+ */
+describe("deriveInstanceStates — `overloaded` (14a-2 ronda 1)", () => {
+  it("una instancia en `overloadedRefs` reporta el estado", () => {
+    const states = deriveInstanceStates(instance(), queries({ isInstanceOverloaded: () => true }));
+    expect(states).toEqual([{ flag: "overloaded" }]);
+  });
+
+  it("una que no está en `overloadedRefs` no lo reporta", () => {
+    expect(deriveInstanceStates(instance(), queries({ isInstanceOverloaded: () => false }))).toEqual([]);
+  });
+
+  it("no depende de `powerDraw`: un conductor sin consumo declarado igual se corta", () => {
+    // El guard de `unpowered` sobre `powerDraw` es específico de ESE estado. Un
+    // `cable-cobre` no declara consumo y es justamente la pieza que este estado
+    // tiene que poder describir — copiar el guard lo habría dejado mudo en su
+    // único caso real.
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ resolveDefinition: () => definition(undefined), isInstanceOverloaded: () => true }),
+    );
+    expect(states).toEqual([{ flag: "overloaded" }]);
+  });
+
+  /**
+   * La franja donde los DOS predicados son ciertos, que es la que ancla qué se
+   * muestra: `resolveComponentVisual` pinta `states[0]`, así que el orden de
+   * emisión ES la subprioridad. Un cable cortado dentro de una sección apagada
+   * tiene que anunciarse como cortado — si dijera "sin energía", el jugador
+   * iría a mover el dial en vez de a reemplazar la pieza.
+   */
+  it("sobrecargado y sin energía a la vez: el corte va PRIMERO", () => {
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ isInstanceOverloaded: () => true, isInstancePowered: () => false }),
+    );
+    expect(states.map((state) => state.flag)).toEqual(["overloaded", "unpowered"]);
   });
 });

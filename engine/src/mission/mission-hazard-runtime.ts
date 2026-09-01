@@ -53,6 +53,14 @@ export interface MissionHazardRuntimeDeps {
  *    para esto — la causa de daño `"cold"` ya existe en `CrewDamageCause` y ya
  *    tiene su variante visual en `crew-death-effect.ts` (principio 6 sin
  *    inflar el registro de fenómenos).
+ *  - **Térmico** (ronda 1 de 14a-2): frío o calor extremos en la atmósfera de
+ *    la sala. Mismo criterio que el vacío en todo — mordiscos discretos,
+ *    exposición por ACTOR, causas `"cold"`/`"fire"` ya existentes.
+ *
+ * VACÍO Y FRÍO SE ACUMULAN (decisión del operador): una sección brechada Y
+ * congelada da los dos mordiscos, cada uno con su propia cuenta. No se suprime
+ * uno con el otro — son dos fenómenos distintos del motor y el jugador que
+ * dejó que se junten los dos paga por los dos.
  *
  * LETALIDAD (decisión del operador, 2026-08-24): el cruce a `incapacitation`
  * hiere pero NUNCA mata por sí solo (`minHp: 1`, el mismo mecanismo de 13d) —
@@ -77,20 +85,22 @@ export class MissionHazardRuntime implements Tickable {
    * jugador tiene que poder sacar a un tripulante y meter a otro sin que el
    * segundo herede los mordiscos del primero.
    */
-  private readonly vacuumExposure = new Map<CrewActorId, VacuumExposure>();
+  private readonly vacuumExposure = new Map<CrewActorId, BiteExposure>();
+  /** Ídem para el térmico, en un mapa APARTE: los dos se acumulan y cada uno lleva su propia cuenta. */
+  private readonly thermalExposure = new Map<CrewActorId, BiteExposure>();
 
   constructor(private readonly deps: MissionHazardRuntimeDeps) {}
 
   tick(ctx: TickContext): void {
     for (const actor of this.deps.crewState.all()) {
       if (actor.hp <= 0 || !actor.currentCell) {
-        this.vacuumExposure.delete(actor.id);
+        this.clearExposure(actor.id);
         continue;
       }
       const section = sectionContainingCell(this.deps.shipFloorplan, actor.currentCell);
       const atmosphere = section && this.deps.atmosphereRuntime.atmosphereOf(section.id);
       if (!section || !atmosphere) {
-        this.vacuumExposure.delete(actor.id);
+        this.clearExposure(actor.id);
         continue;
       }
 
@@ -116,13 +126,29 @@ export class MissionHazardRuntime implements Tickable {
       }
 
       if (atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa) {
-        this.applyVacuum(actor, ctx);
+        this.bite(this.vacuumExposure, actor, HAZARD_PARAMETERS.vacuum, "cold", ctx);
       } else {
         // Salir de la sección brechada resetea la cuenta: el vacío no deja
         // daño acumulado latente, o volver a entrar mataría de inmediato.
         this.vacuumExposure.delete(actor.id);
       }
+
+      // Térmico: los dos lados del eje, con el mismo criterio de salida que el
+      // vacío — irse de la sala corta la cuenta. Es el camino de vuelta, sin el
+      // cual sacar a alguien de una sala congelada no lo salvaría.
+      const temperature = atmosphere.temperatureCelsius;
+      const thermalCause = thermalDamageCause(temperature);
+      if (thermalCause) {
+        this.bite(this.thermalExposure, actor, HAZARD_PARAMETERS.thermal, thermalCause, ctx);
+      } else {
+        this.thermalExposure.delete(actor.id);
+      }
     }
+  }
+
+  private clearExposure(actorId: CrewActorId): void {
+    this.vacuumExposure.delete(actorId);
+    this.thermalExposure.delete(actorId);
   }
 
   private applyHazard(actor: CrewActor, event: HazardEvent, ctx: TickContext): void {
@@ -133,30 +159,38 @@ export class MissionHazardRuntime implements Tickable {
   }
 
   /**
-   * Daño por vacío: mordiscos DISCRETOS, no un goteo continuo.
+   * Daño ambiental por mordiscos DISCRETOS, no por goteo continuo. Es el molde
+   * que comparten el vacío (13f) y el térmico (14a-2), en un solo lugar porque
+   * el bug que lo originó es uno solo y no debe poder reaparecer en el segundo
+   * llamador.
    *
    * La primera versión de 13f escalaba una fracción con `dtSeconds` en cada
    * tick. Con el core loop corriendo por frame la pérdida redondeaba a cero:
-   * cero daño real y un `crew-damaged` por frame. El vacío es ahora un
-   * mordisco cada `biteIntervalSeconds`, el primero de ellos inmediato y no
-   * letal (el aviso), y ~10 s hasta la muerte desde HP lleno.
+   * cero daño real y un `crew-damaged` por frame. Ahora es un mordisco cada
+   * `biteIntervalSeconds`, el primero inmediato y NO letal (el aviso).
    */
-  private applyVacuum(actor: CrewActor, ctx: TickContext): void {
-    const exposure = this.vacuumExposure.get(actor.id) ?? { secondsSinceBite: 0, bites: 0 };
+  private bite(
+    exposureBySource: Map<CrewActorId, BiteExposure>,
+    actor: CrewActor,
+    params: { readonly biteIntervalSeconds: number; readonly hpFractionPerBite: number },
+    cause: CrewDamageCause,
+    ctx: TickContext,
+  ): void {
+    const exposure = exposureBySource.get(actor.id) ?? { secondsSinceBite: 0, bites: 0 };
     exposure.secondsSinceBite += ctx.dtSeconds;
 
     const firstBite = exposure.bites === 0;
-    if (firstBite || exposure.secondsSinceBite >= HAZARD_PARAMETERS.vacuum.biteIntervalSeconds) {
-      this.hurt(actor, HAZARD_PARAMETERS.vacuum.hpFractionPerBite, "cold", ctx, {
+    if (firstBite || exposure.secondsSinceBite >= params.biteIntervalSeconds) {
+      this.hurt(actor, params.hpFractionPerBite, cause, ctx, {
         // El primer mordisco es el aviso: hiere pero deja vivo. A partir del
-        // segundo el vacío mata de verdad.
+        // segundo el peligro mata de verdad.
         lethal: !firstBite,
       });
       exposure.bites += 1;
       exposure.secondsSinceBite = 0;
     }
 
-    this.vacuumExposure.set(actor.id, exposure);
+    exposureBySource.set(actor.id, exposure);
   }
 
   private hurt(
@@ -186,10 +220,26 @@ export class MissionHazardRuntime implements Tickable {
   }
 }
 
-/** Cuenta de mordiscos de vacío de UN tripulante. Mutable a propósito: es estado de tick, no de dominio. */
-interface VacuumExposure {
+/** Cuenta de mordiscos de UN tripulante para UNA fuente de daño. Mutable a propósito: es estado de tick, no de dominio. */
+interface BiteExposure {
   secondsSinceBite: number;
   bites: number;
+}
+
+/**
+ * Qué causa de daño corresponde a una temperatura, o `undefined` si está en el
+ * rango donde no pasa nada. Las dos causas ya existen en `CrewDamageCause` y ya
+ * tienen su variante en `crew-death-effect.ts`, así que el eje térmico no
+ * agrega ningún fenómeno visual nuevo que haya que dibujar.
+ *
+ * `"cold"` es la MISMA causa que usa el vacío. No colisionan porque llevan
+ * cuentas de exposición separadas y, del lado visual, ambas significan
+ * exactamente lo que la partícula muestra: este tripulante se está congelando.
+ */
+function thermalDamageCause(temperatureCelsius: number): CrewDamageCause | undefined {
+  if (temperatureCelsius <= HAZARD_PARAMETERS.thermal.coldOnsetCelsius) return "cold";
+  if (temperatureCelsius >= HAZARD_PARAMETERS.thermal.hotOnsetCelsius) return "fire";
+  return undefined;
 }
 
 function accumulatorFor(

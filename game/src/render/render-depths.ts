@@ -22,6 +22,15 @@ export const RENDER_DEPTH = {
   bloodDecal: 1,
   /** Tinte parpadeante de sección sin energía (Fase 11b, cicatriz) — encima del suelo, debajo de objetos/paredes/tripulantes, igual que `bloodDecal`: es una marca de superficie, no un objeto. */
   sectionScar: 1.5,
+  /**
+   * Capa de ESCARCHA por celda (ronda 1 de playtest de 14a-2): la sala
+   * congelada se pinta entera, no solo con partículas sueltas. Marca de
+   * superficie como `sectionScar`, y justo encima de ella porque el hielo se
+   * deposita sobre el suelo — incluido el de una sección que además está a
+   * oscuras, donde las dos cicatrices coexisten y tienen que leerse ambas.
+   * Debajo de objetos/tripulación: la escarcha no tapa lo que hay que ver.
+   */
+  frostLayer: 1.6,
   /** RenderTexture de sombras dinámicas con oclusión (Fase 12d) — sobre el suelo/decals, DEBAJO de objetos/componentes/tripulación/paredes: oscurece el suelo, no los sprites que la proyectan (criterio de sombra top-down). */
   dynamicShadows: 1.7,
   /**

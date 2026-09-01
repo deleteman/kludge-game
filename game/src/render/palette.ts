@@ -263,6 +263,27 @@ export const UNPOWERED_SECTION_MAX_ALPHA = 0.7;
 export const UNPOWERED_SECTION_FLICKER_PERIOD_SECONDS = 1.6;
 
 /**
+ * Capa de ESCARCHA de una sección congelada (ronda 1 de playtest de 14a-2).
+ *
+ * Azul hielo claro, en el extremo OPUESTO de `UNPOWERED_SECTION_TINT` (casi
+ * negro): las dos capas pueden coincidir en la misma sección —una sala fría y
+ * a oscuras es un escenario perfectamente normal— y tienen que poder leerse las
+ * dos a la vez. Comparte familia con el tinte de las propias partículas de
+ * escarcha (0xbfe8ff) porque son el MISMO fenómeno visto de dos formas, que es
+ * justo lo contrario del caso que el principio 6 prohíbe.
+ *
+ * A diferencia de la cicatriz de energía NO parpadea: el alpha lo modula la
+ * severidad térmica, así que el brillo de la capa ya está diciendo algo. Un
+ * parpadeo encima competiría con el de la sección sin energía y volvería
+ * ilegible la superposición de las dos.
+ */
+export const FROST_LAYER_COLOR = 0xbfe8ff;
+/** En el umbral exacto (-10 °C) la escarcha ya se ve: es cuando la sala empieza a matar. */
+export const FROST_MIN_ALPHA = 0.12;
+/** En el piso del eje (-80 °C) la sala está tomada, pero sigue dejando ver lo que hay debajo. */
+export const FROST_MAX_ALPHA = 0.42;
+
+/**
  * Luz ambiental de "sección sin energía" (Fase 12a, corrección post-playtest — el texto original de la
  * fase la pedía como ejemplo de "estados de daño de fondo" y había quedado sin implementar). Violeta
  * apagado, no ámbar/rojo: es AUSENCIA de energía, no una alarma activa como la sobrecarga o el overlay
@@ -469,6 +490,16 @@ export function sectionScarFlickerAlpha(elapsedSeconds: number): number {
  * confundirse con la cicatriz de sección sin energía).
  */
 export const OVERLOADED_CONDUCTOR_LIGHT_COLOR = 0xf2d24b;
+/**
+ * Núcleo de la CHISPA, distinto del ámbar de la luz (ronda 1 de playtest de
+ * 14a-2). El operador no veía las chispas dentro del glow y sospechaba que la
+ * luz las tapaba; lo que pasaba es que compartían el tint EXACTO, así que la
+ * chispa no tenía contra qué contrastar dentro de su propia mancha de luz. Un
+ * blanco cálido, apenas desaturado hacia el mismo ámbar: se lee como el mismo
+ * fenómeno (no es un color nuevo del vocabulario) pero destaca sobre él, que es
+ * cómo se ve un arco eléctrico de verdad — núcleo blanco, halo ámbar.
+ */
+export const OVERLOADED_SPARK_CORE_COLOR = 0xfff6d8;
 // Radio ampliado (feedback de playtest): con 36px la luz apenas rebasaba las
 // chispas y no se leía como "campo de luz"; con más radio ilumina el entorno y
 // proyecta sombras de lo cercano.

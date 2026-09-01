@@ -18,7 +18,6 @@ import {
   CHAPTER_01_ANCHOR_POSITION,
   CHAPTER_01_BY_ARCHETYPE,
   CHAPTER_01_GATE_NODE_ID,
-  CHAPTER_01_OVERLOAD_INSTANCE_ID,
   CHAPTER_01_PRIMER_AVISO,
   CHAPTER_01_SEAL_INSTANCE_ID,
   CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE,
@@ -208,13 +207,15 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
     expect(crisisEvents.at(-1)).toMatchObject({ outcome: "resolved-success" });
   });
 
-  it("Fase 12a: el conductor sobrecargado sembrado del capítulo 1 (exploración) deja cicatriz real tras unos ticks en ejecución", () => {
-    // Reproduce el wiring real de contenido: el cable sembrado en
-    // `CHAPTER_01_SEEDED_COMPONENTS_BY_ARCHETYPE.exploracion` (vía
-    // `chapter01InitialShip()`) + el `scriptedOverloads` declarado en la
-    // `CrisisDefinition` del mismo arquetipo deben apuntar al MISMO
-    // `instanceId` — este test habría fallado con un typo en cualquiera de
-    // los dos lados, cosa que el chequeo de tipos solo no detecta.
+  it("ronda 1 de 14a-2: el capítulo 1 NO deja ningún conductor sobrecargado al arrancar", () => {
+    // Inverso del test de Fase 12a que vivía acá. Aquel afirmaba que el cable
+    // sembrado en `ingenieria` reventaba en los primeros ticks; ese disparo
+    // automático era justamente el falso positivo que hacía imposible
+    // playtestear la cadena térmica de 14a-2 (todo brillo ámbar al arrancar era
+    // el attrezzo, no el frío), así que el cable y su `scriptedOverloads` se
+    // retiraron. Este test ancla esa decisión de contenido: si alguien vuelve a
+    // sembrar un conductor que falla solo, el paso 2 de la prueba manual
+    // ("ningún cable brilla al arrancar") deja de ser verificable y esto avisa.
     const shipState = new MutableShipState(chapter01InitialShip());
     const componentRegistry = buildComponentCatalog().registry;
     const overloadRuntime = new MissionOverloadRuntime(
@@ -227,6 +228,6 @@ describe("Misión capítulo 1 — pipeline real (CoreLoopModeMachine + TaskSched
       overloadRuntime.tick({ dtSeconds: 1, elapsedSeconds: t });
     }
 
-    expect(shipState.get().overloadedRefs).toEqual([CHAPTER_01_OVERLOAD_INSTANCE_ID]);
+    expect(shipState.get().overloadedRefs).toEqual([]);
   });
 });

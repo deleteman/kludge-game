@@ -61,12 +61,29 @@ export interface EventDrivenEffect<K extends DomainEvent["kind"] = DomainEvent["
 }
 
 /**
+ * Superficie REAL que ocupa un fenómeno, en celdas de grid (ronda 1 de playtest
+ * de 14a-2). Opcional: un efecto puntual (una chispa, un impacto) se queda con
+ * su `position` y no necesita esto.
+ *
+ * Existe porque los tres efectos de atmósfera pintaban un fenómeno de SALA en
+ * un solo punto: un emisor en el centroide de la sección con ±10 px de
+ * dispersión, dentro de salas de decenas de celdas. El operador lo reportó como
+ * "la caída de temperatura congela una celda, debería congelar toda la
+ * sección". Se pasan las celdas y no el bounding box a propósito — el box de
+ * una sección incluye pared y pasillo ajeno, y pintaría escarcha fuera de la
+ * sala que de verdad está fría.
+ */
+export interface EffectArea {
+  readonly cells: ReadonlyArray<GridPosition>;
+}
+
+/**
  * Efecto continuo: se crea una vez (`start`) y se actualiza cada frame con el
  * estado vivo del subsistema correspondiente (`update`), hasta que se apaga
  * (`stop`) — no hay un `DomainEvent` que dispare esto.
  */
 export interface StateDrivenEffect<TState> {
-  start(scene: Phaser.Scene, position: GridPosition): void;
+  start(scene: Phaser.Scene, position: GridPosition, area?: EffectArea): void;
   update(state: TState, deltaSeconds: number): void;
   stop(): void;
 }

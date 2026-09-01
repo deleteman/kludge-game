@@ -5825,3 +5825,104 @@ el archivo, y el caso grave es `motor-pequeno`, que estaba a 0 POR DISEÑO para 
 
 SPRITES FALTANTES (avisados, con placeholder tinteable): `sistema-refrigeracion-muestras.png`,
 `tanque-muestra-criogenica.png`, `reservorio-disolvente.png`, y sigue faltando `sensor-termico-precision.png`.
+
+================================================================================
+2026-09-01 — RONDA 1 DE PLAYTEST DE 14a-2: LEGIBILIDAD DEL EJE TÉRMICO
+================================================================================
+
+QUÉ: cuatro reportes del operador tras jugar la cadena fría de 14a-2. Verificados contra el código,
+NINGUNO era un bug del motor: una mentira de la UI, dos efectos visuales que no comunican y una pieza
+sembrada sin motivo para existir. El patrón recurrente del proyecto — el modelo funciona y el jugador
+no puede verlo.
+
+BLOQUE A — EL FRÍO SE VE EN TODA LA SECCIÓN Y DUELE
+· Los TRES efectos de atmósfera (`gasLeak`, `freezing`, `heatVapor`) creaban UN emisor en la celda
+  centroide con `spreadRange(10)` — 10 píxeles, menos de una celda, dentro de salas de 30-60 celdas.
+  Un fenómeno de SALA pintado como un punto. Se arreglan los tres juntos a propósito: el defecto era
+  idéntico en los tres y arreglar solo el reportado es el patrón de "arreglar un indicador y dejar
+  rotos a los de al lado".
+  RAZÓN de que la zona sean CELDAS y no el bounding box: el box de una sección en L incluye pared y
+  pasillo ajeno, y pintaría escarcha en salas que no están frías — peor que no pintarla.
+· Intensidad escalada por severidad Y por área, unificada al criterio de `gasLeak`, que era el único
+  de los tres que ya escalaba bien. `freezing` y `heatVapor` eran on/off de tamaño fijo.
+· Capa de ESCARCHA por celda (`redrawFrostLayer`, molde de `redrawUnpoweredSectionScar`): es lo que da
+  la lectura de "toda la sala está congelada", que las partículas solas no dan. Color en el extremo
+  opuesto del de la cicatriz de energía porque las dos capas coexisten en una sala fría y a oscuras.
+· DAÑO TÉRMICO A LA TRIPULACIÓN — quinto peligro de `MissionHazardRuntime`. Hasta acá el ÚNICO
+  consumidor de la temperatura para daño era la estructura de la sección: no existía ningún camino por
+  el que la temperatura tocara a una persona, aunque el GDD lo pide desde 6.1 ("frío extremo/
+  congelación" en causas de muerte) y 11.1.
+  RAZÓN de los mordiscos discretos: es el molde de `applyVacuum`, que existe porque una fracción
+  continua × `dtSeconds` a cadencia de frame redondea a 0 y emite sangre sobre alguien inmortal. Se
+  generalizó `applyVacuum` a un único `bite()` compartido para que el bug no pueda reaparecer en el
+  llamador nuevo, y hay un test a cadencia de frame sobre el camino nuevo.
+  RITMO (decisión del operador): 10 s / 15% HP, más lento que el vacío (8 s / 20%). El vacío es el
+  peligro agudo —la sala está abierta y no hay nada que diagnosticar— y el eje térmico es nuevo para
+  el jugador y necesita ventana para leerse. ~70 s hasta morir contra ~40 s.
+  UMBRALES PROPIOS, distintos de los de la sección: -10/60 el tripulante, -40/100 la estructura,
+  -50/100 el conductor, -80/900 el clamp. RAZÓN: los de estructura describen cuándo se deforma el
+  casco y un humano no aguanta 99 °C. LA GENTE MUERE ANTES QUE EL CASCO, que es lo legible, y hay un
+  test que fija ese orden por los dos lados para que un rebalanceo no lo rompa en silencio.
+  VACÍO Y FRÍO SE ACUMULAN (decisión del operador): mapas de exposición separados, cada uno con su
+  cuenta.
+· El umbral de la escarcha pasa del de ESTRUCTURA (-40) al del TRIPULANTE (-10). 14a-2 lo había atado
+  al motor con el argumento correcto pero al umbral equivocado: con -40 la sala mataba durante 30 °C
+  enteros sin mostrar nada. Ahora VER ESCARCHA = ESTA SALA MATA, exactamente.
+· El tooltip coloreaba SOLO el lado caliente: una sala a -50 °C se leía en el mismo gris neutro que
+  una a 21. Hermano exacto del cable que no decía su estado.
+
+BLOQUE B — EL CABLE DICE LO QUE LE PASÓ
+· Estado `overloaded` en el sistema genérico de 13h, leyendo `Blueprint.overloadedRefs`. ESTO LO
+  PROMETÍA EL PLAN DE 14a-2 Y NO SE IMPLEMENTÓ: la subfase cerró con la mitad visible del acoplamiento
+  sin hacer — el motor cortaba conductores y la pieza no lo decía en ninguna parte.
+· Va ANTES que `unpowered` en la cadena de prioridad. RAZÓN: un cable cortado dentro de una sección a
+  oscuras que se anunciara como "sin energía" mandaría al jugador a mover el dial en vez de a
+  reemplazar la pieza — el aviso empujándolo al problema equivocado. Hay test en la franja donde los
+  dos predicados son ciertos.
+· El estado NO copia el guard sobre `powerDraw` de `unpowered`: un `cable-cobre` no declara consumo y
+  es justamente la pieza que este estado tiene que describir. Copiarlo lo habría dejado mudo en su
+  único caso real.
+· El aserto de no-colisión de tintes de `component-state-visuals.test.ts` se extendió a TODOS los
+  flags en vez de solo a `unpowered`, para que cubra el estado que se agregue mañana sin que nadie se
+  acuerde de venir a ampliarlo.
+
+BLOQUE C — LA CICATRIZ COMUNICA QUÉ PASÓ
+· La luz NO tapaba las chispas: está a depth `dynamicLight` (1.8) y las chispas a `effect` (7). Las
+  causas reales eran tres, y se arreglan las tres: (a) chispa y luz usaban el tint EXACTO, así que la
+  chispa no tenía contra qué contrastar dentro de su propio glow — núcleo casi blanco ahora; (b)
+  `quantity: 1` cada 240 ms con `lifespan: 200` dejaba 40 ms de cada 240 con CERO partículas vivas, o
+  sea que el efecto desaparecía a ratos — frecuencia 90 contra vida 300; (c) confinadas a ±4 px dentro
+  de un glow de 64 px de radio — ahora se reparten por el footprint real (`occupiedCells`, así que una
+  pieza rotada chispea donde de verdad está).
+· El hallazgo de la ronda previa ("se atenuaron porque el glow tapaba el campo de luz") NO se
+  reintroduce: lo que lo causaba era la DENSIDAD por píxel, no el conteo total, y repartir sobre el
+  footprint en vez de apilar en un punto la baja aunque suba la cantidad. Se mantienen además más
+  chicas que en aquella versión (scale 6 → 5).
+
+BLOQUE D — QUITAR EL FALSO POSITIVO DEL CAP. 1 (decisión del operador: retirar la pieza entera)
+· El `cable-cobre` sembrado en `ingenieria` (22,12) reventaba en el PRIMER tick de ejecución por un
+  `scriptedOverloads` de carga 9 contra capacidad 6, y encima no tenía nodo de señal (su carga
+  emergente era 0). Attrezzo de la Fase 12a para validar la iluminación.
+  RAZÓN de sacarlo: desde que `power/conductor-load.ts` deriva la carga del cableado real, ese brillo
+  ámbar permanente al arrancar hacía IMPOSIBLE distinguir la cadena térmica del attrezzo — un falso
+  positivo fijo justo encima del fenómeno que hay que playtestear.
+· El test de integración que afirmaba que el cable reventaba se INVIERTE en vez de borrarse: ahora
+  ancla que el Cap. 1 no deja ningún conductor sobrecargado al arrancar. Así el paso 2 de la prueba
+  manual ("ningún cable brilla al arrancar") queda protegido por la suite y no por la memoria de nadie.
+· `scriptedOverloads` conserva cobertura en `mission-overload-runtime.test.ts` y
+  `mission-reaction-cascade.integration.test.ts`, que lo ejercitan sobre sus propios fixtures.
+
+MÓDULO NUEVO: `game/src/particles/effects/atmosphere-effect-coverage.ts` — cuánta superficie ocupa un
+fenómeno de atmósfera y con qué densidad. Aparte de `atmosphere-state-effects.ts` (que responde "qué
+partícula es cada fenómeno") por la regla de una responsabilidad por archivo, y compartido por los tres
+efectos + las chispas de sobrecarga, que es lo que impide arreglar uno y dejar a los otros rotos. Es
+lógica pura, así que tiene test propio aunque viva en `/game`: lo que estaba mal era aritmética de
+cobertura, no pixeles, y un smoke test visual no lo habría atrapado.
+
+TESTS: 1250 en verde (164 archivos). `tsc`, `eslint` y `build` limpios.
+
+SUBFASE ABIERTA: 14a-4 en `nuevo-orden.md` — "el cableado del jugador ES el conductor". Sale de la
+pregunta del operador "¿por qué el jugador metería un cable de cobre en el mapa?", cuya respuesta
+verificada es que hoy no tiene ningún motivo: la arista que dibuja es gratis, instantánea y de
+capacidad infinita, y el rol de nodo `conductor` tiene cero lectores en producción. O sea que 14a-2
+colgó el acoplamiento térmico de una pieza que nadie tiene motivo para colocar.

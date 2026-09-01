@@ -1046,6 +1046,76 @@ Suite: `/engine` 1103 → **1135**, `/game` 86 sin cambios. `tsc` y `eslint` lim
 `tanque-muestra-criogenica.png`, `reservorio-disolvente.png` en `game/assets/sprites/components/` — y sigue
 faltando `sensor-termico-precision.png` de 14a-1.
 
+**Ronda 1 de playtest de 14a-2** ✅ CERRADA (2026-09-01) — legibilidad del eje térmico.
+
+El operador jugó la cadena fría y reportó cuatro cosas. Verificadas contra el código, ninguna era un bug del
+motor: **una mentira de la UI, dos efectos que no comunican y una pieza sin motivo para existir**. Es el patrón
+recurrente del proyecto — el modelo funciona y el jugador no puede verlo.
+
+* **El frío se ve en toda la sección y duele.** Los tres efectos de atmósfera (`gasLeak`, `freezing`,
+  `heatVapor`) creaban UN emisor en el centroide con ±10 px de dispersión, dentro de salas de 30-60 celdas: un
+  fenómeno de sala pintado como un punto. Se arreglan **los tres juntos** —arreglar solo el reportado deja a sus
+  hermanos rotos— con `emitZone` sobre las celdas REALES de la sección (nunca el bounding box, que incluye pared
+  y pasillo ajeno) e intensidad escalada por severidad y por área, unificados al criterio de `gasLeak`, que era
+  el único que ya lo hacía bien. Se suma una **capa de escarcha por celda** (molde de
+  `redrawUnpoweredSectionScar`), que es lo que da la lectura de superficie que las partículas solas no dan.
+* **Daño térmico a la tripulación** — quinto peligro de `MissionHazardRuntime`, y la primera vez que la
+  temperatura toca a una persona. El GDD lo pedía desde 6.1 y 11.1 y no existía ningún camino. Mordiscos
+  discretos (molde de `applyVacuum`, con el bug de la fracción × `dtSeconds` cubierto por test en el llamador
+  nuevo), exposición por ACTOR, 10 s / 15% HP — más lento que el vacío por decisión del operador: el vacío es el
+  peligro agudo, el eje térmico es nuevo y necesita ventana para leerse. **Umbrales propios**: la gente sufre a
+  -10/60, la estructura a -40/100, el conductor a -50/100, el clamp a -80/900 — **la gente muere antes que el
+  casco**, con un test que fija ese orden. Vacío y frío **se acumulan** (decisión del operador). Y el umbral de
+  la escarcha se ata al del tripulante: **ver escarcha = esta sala mata**.
+* **El cable dice lo que le pasó**: estado `overloaded` en el sistema genérico de 13h — el primer cobro de la
+  promesa de que agregar un estado es una consulta y una fila. Lo prometía el plan de 14a-2 y había quedado sin
+  hacer: la subfase cerró con la mitad visible del acoplamiento pendiente. Va **antes** que `unpowered` en la
+  cadena de prioridad, con test en la franja donde los dos predicados son ciertos.
+* **La cicatriz comunica**: chispa y luz usaban el tint EXACTO (por eso no se veían dentro del glow, no porque la
+  luz las tapara — están a depth 7 contra 1.8), `quantity: 1` cada 240 ms con vida 200 dejaba huecos sin ninguna
+  partícula viva, y estaban confinadas a ±4 px. Núcleo casi blanco + frecuencia por debajo de la vida +
+  dispersión sobre el footprint real. El hallazgo previo ("el glow tapaba el campo de luz") no se reintroduce
+  porque lo causaba la densidad por píxel, y repartir sobre el footprint la baja aunque suba el conteo.
+* **Falso positivo del Cap. 1 retirado** (decisión del operador): el `cable-cobre` sembrado en `ingenieria`
+  reventaba en el PRIMER tick por un `scriptedOverloads` de carga 9 contra capacidad 6, y encima no tenía nodo de
+  señal. Todo brillo ámbar al arrancar era attrezzo, lo que hacía **imposible playtestear** la cadena térmica.
+  Se quitan la pieza y el override; el test de integración que afirmaba lo contrario se **invierte** para anclar
+  la decisión. `scriptedOverloads` conserva cobertura en sus propios fixtures.
+* **El tooltip coloreaba solo el lado caliente**: una sala a -50 °C se leía en el mismo gris que una a 21.
+
+Suite: 1250 tests en verde (164 archivos). `tsc`, `eslint` y `build` limpios.
+
+##### Subfase 14a-4: El cableado del jugador ES el conductor — pendiente
+
+Abierta desde la ronda 1 de 14a-2 (decisión del operador, 2026-09-01). Sale de la pregunta *"¿por qué el jugador
+metería un cable de cobre en el mapa?"*, cuya respuesta verificada es **que hoy no tiene ningún motivo**:
+
+- El modo cableado conecta **nodo A → nodo B directamente**, ruteando por los conductos `senal` del plano
+  (`computeSignalWireRoute`), nunca a través de piezas. `assertSignalWiringReachable` valida conductos, no
+  conductores.
+- El rol de nodo `"conductor"` tiene **cero lectores en producción**: el evaluador solo bifurca en `emitter`, y un
+  `conductor` es semánticamente idéntico a un `receptor` (regla `passthrough`).
+- **La arista que dibuja el jugador es gratis, instantánea y de capacidad infinita**: no cuesta material, no ocupa
+  celdas y no se puede sobrecargar.
+
+O sea que 14a-2 colgó el acoplamiento térmico de una pieza que nadie tiene motivo para colocar — una mecánica
+correcta sin camino jugable. Alcance:
+
+- `SignalEdge` declara con qué conductor está hecha (bump de `schemaVersion` del blueprint + migración).
+- Tender un cable **consume** un `cable-cobre` / `cable-fibra-optica` / `cable-blindado-alto-amperaje` del stock,
+  y la arista hereda la `maxCapacity` de esa pieza.
+- La sobrecarga y el factor térmico se mudan del componente colocado a la **arista**, y con ellos la cicatriz
+  visual (se quema el cable dibujado, no un objeto en una celda).
+- Da casa a las dos viñetas del GDD 5.6 que hoy no la tienen: retardo de propagación según material del conductor,
+  y sobrecarga.
+
+Preguntas abiertas, a resolver antes de planificar:
+- ¿Qué pasa con las aristas de saves viejos — cobre por defecto?
+- ¿El jugador elige el cable al tender, o se usa el mejor disponible?
+- ¿Un cable quemado se puede reemplazar, y a qué coste?
+- ¿Absorbe también el `panel-electrico` que el caso de validación 2 nombra y que **no existe en el catálogo**
+  (hoy solo vive como fixture sintético en su propio test)?
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.

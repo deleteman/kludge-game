@@ -18,6 +18,8 @@ export interface InstanceStateQueries {
   ) => PhysicalComponentDefinition | undefined;
   /** `false` si el reparto de 13b no cubrió la demanda de esta instancia este tick. */
   readonly isInstancePowered: (instanceId: PlacedComponentInstance["instanceId"]) => boolean;
+  /** `true` si la pieza está en `Blueprint.overloadedRefs` — cicatriz permanente de la Fase 12a. */
+  readonly isInstanceOverloaded: (instanceId: PlacedComponentInstance["instanceId"]) => boolean;
   /** Unidades otorgadas a la sección que contiene a la pieza, para el detalle del aviso. */
   readonly sectionGrantedUnitsAt: (instance: PlacedComponentInstance) => number;
 }
@@ -37,6 +39,17 @@ export function deriveInstanceStates(
   queries: InstanceStateQueries,
 ): InstanceState[] {
   const states: InstanceState[] = [];
+
+  // ORDEN = SUBPRIORIDAD: `resolveComponentVisual` (en `/game`) muestra
+  // `states[0]`, así que lo más grave se empuja primero. Un conductor CORTADO
+  // por sobrecarga es más grave que uno sin energía: lo segundo se arregla
+  // moviendo el dial, lo primero es una cicatriz permanente (principio 5) y
+  // además explica por qué la pieza dejó de conducir. Sin este orden, un cable
+  // quemado en una sección a oscuras se anunciaría como "sin energía" y el
+  // jugador buscaría el problema donde no está.
+  if (queries.isInstanceOverloaded(instance.instanceId)) {
+    states.push({ flag: "overloaded" });
+  }
 
   // El guard sobre `powerDraw` NO es una optimización. `allocateComponentPower`
   // marca como alimentada a toda pieza sin consumo declarado (retrocompat

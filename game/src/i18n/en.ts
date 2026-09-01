@@ -71,6 +71,7 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.transfer-mode-blocked.different-substance": "That reservoir holds a different substance — purge it first.",
   "ui.floorplan.mission.no-actor-selected": "Select a crew member in the panel before acting.",
   "ui.floorplan.mission.state.unpowered": "No power",
+  "ui.floorplan.mission.state.overloaded": "Burned out by overload",
   "ui.floorplan.mission.state.needs": "needs",
   "ui.floorplan.mission.state.granted": "section grants",
   "ui.floorplan.mission.no-path": "No route to destination",

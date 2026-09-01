@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import {
   ATOMIC_COMPONENT_CATALOG,
   GRID_CELL_SIZE_PX,
+  HAZARD_PARAMETERS,
+  TEMPERATURE_FLOOR_CELSIUS,
   advanceChapterProgress,
   elementStockOf,
   resolveLcdDisplayValue,
@@ -86,6 +88,7 @@ import {
   createHeatVaporEffect,
 } from "../particles/effects/atmosphere-state-effects.js";
 import type { GasCloudState } from "../particles/effects/atmosphere-state-effects.js";
+import { thresholdSeverity } from "../particles/effects/atmosphere-effect-coverage.js";
 import { CLOUD_TINT } from "../particles/effects/hazard-effect.js";
 import { createOverloadedConductorEffect } from "../particles/effects/overloaded-conductor-effect.js";
 import type { OverloadedConductorState } from "../particles/effects/overloaded-conductor-effect.js";
@@ -121,6 +124,9 @@ import {
   STATE_ICON_STROKE_CSS,
   BREACH_MARKER_COLOR,
   BREACH_SEALED_MARKER_COLOR,
+  FROST_LAYER_COLOR,
+  FROST_MAX_ALPHA,
+  FROST_MIN_ALPHA,
   sectionScarFlickerAlpha,
   SELECTED_CELL_COLOR,
   TIMER_TEXT_COLORS,
@@ -184,6 +190,15 @@ import { renderShipStatusHud } from "../ui/widgets/ship-status-hud.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
 const CELL = GRID_CELL_SIZE_PX;
+
+/**
+ * Umbral de la capa de escarcha, atado al del DAÑO A TRIPULACIÓN y no al de la
+ * estructura de la sección (ronda 1 de playtest de 14a-2). Es la misma
+ * constante que usan las partículas de `atmosphere-state-effects.ts`, a
+ * propósito: ver escarcha significa exactamente "esta sala mata a quien esté
+ * adentro", ni un grado antes ni después.
+ */
+const FROST_ONSET_CELSIUS = HAZARD_PARAMETERS.thermal.coldOnsetCelsius;
 
 /**
  * Cada cuánto reintenta un tripulante entrar en una puerta que todavía se está
@@ -584,6 +599,8 @@ export class FloorplanScene extends Phaser.Scene {
   >();
   /** Tinte parpadeante de sección sin energía (Fase 11b, cicatriz) — redibujado cada frame, sigue parpadeando en pausa. */
   private unpoweredSectionOverlay?: Phaser.GameObjects.Graphics;
+  /** Capa de escarcha por celda de las secciones congeladas (ronda 1 de playtest de 14a-2) — redibujada cada frame, como la de arriba. */
+  private frostOverlay?: Phaser.GameObjects.Graphics;
   /** Luz ambiental de sección sin energía (Fase 12a, corrección post-playtest) — creada una vez por sección, nunca removida. */
   private readonly unpoweredSectionLights = new Map<SectionId, Phaser.GameObjects.PointLight>();
   /** Capa de sombras dinámicas con oclusión real (Fase 12d) — repintada cada frame en `update()`. */
@@ -1395,6 +1412,9 @@ export class FloorplanScene extends Phaser.Scene {
     // una marca persistente de la nave, no un efecto de la simulación.
     this.redrawUnpoweredSectionScar(time / 1000);
     this.syncUnpoweredSectionLights(time / 1000);
+    // Ídem la escarcha: la sala sigue congelada aunque el jugador pause, y en
+    // pausa es justo cuando mira el plano para decidir a quién saca de ahí.
+    this.redrawFrostLayer();
     // Estado por componente (13h ronda 3). Va acá, con las cicatrices que
     // "parpadean siempre", y NO dentro del bloque de modo `execution` de más
     // abajo: el jugador reparte energía en PAUSA, y el tinte tiene que
@@ -3322,14 +3342,22 @@ export class FloorplanScene extends Phaser.Scene {
   private initSectionAtmosphereEffects(): void {
     for (const section of this.mission.shipFloorplan.sections) {
       const position = sectionCentroidCell(section);
+      // Ronda 1 de playtest de 14a-2: además del centroide se pasan las CELDAS
+      // REALES de la sección. Los tres efectos eran fenómenos de SALA pintados
+      // en un punto —un emisor en el centroide con ±10 px de dispersión, dentro
+      // de salas de 30-60 celdas— y el operador lo reportó como "la caída de
+      // temperatura congela una celda, debería congelar toda la sección". Se
+      // arreglan los tres juntos a propósito: el defecto era idéntico en los
+      // tres y arreglar solo el que se reportó deja a sus hermanos rotos.
+      const area = { cells: section.cells };
       const gasLeak = createGasLeakEffect(this.registerParticleEmitter);
       const gasLeakSound = createGasLeakSound();
       const freezing = createFreezingEffect(this.registerParticleEmitter);
       const heatVapor = createHeatVaporEffect(this.registerParticleEmitter);
-      gasLeak.start(this, position);
+      gasLeak.start(this, position, area);
       gasLeakSound.start(this);
-      freezing.start(this, position);
-      heatVapor.start(this, position);
+      freezing.start(this, position, area);
+      heatVapor.start(this, position, area);
       this.sectionAtmosphereEffects.set(section.id, { gasLeak, gasLeakSound, freezing, heatVapor });
     }
   }
@@ -3987,6 +4015,52 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   /**
+   * Capa de ESCARCHA por celda (ronda 1 de playtest de 14a-2).
+   *
+   * El operador: "la caída de temperatura debería congelar toda la sección;
+   * ahora congela una celda". Las partículas ya se reparten por la sala entera
+   * (`sectionEmitZone`), pero por sí solas no dan la lectura de superficie: son
+   * puntos moviéndose, y lo que hay que comunicar es que **el suelo de esta sala
+   * está helado**. Es el mismo molde que `redrawUnpoweredSectionScar` y que la
+   * capa de presión del renderer — un `fillRect` por celda real de la sección,
+   * nunca su bounding box, que incluiría pared y pasillo ajeno.
+   *
+   * A diferencia de la cicatriz de energía, esto NO es permanente y no parpadea:
+   * la escarcha es un estado vivo que se va cuando la sala se templa, y su alpha
+   * dice cuán fría está. Un parpadeo acá competiría con el de la cicatriz de
+   * energía, y las dos capas pueden coincidir en la misma sección.
+   *
+   * El umbral es el del DAÑO A TRIPULACIÓN (`HAZARD_PARAMETERS.thermal`), el
+   * mismo que usan las partículas: ver escarcha significa exactamente "esta sala
+   * mata a quien esté adentro".
+   */
+  private redrawFrostLayer(): void {
+    this.frostOverlay?.destroy();
+    this.frostOverlay = undefined;
+
+    const frozen = this.mission.shipFloorplan.sections
+      .map((section) => ({
+        section,
+        temperature: this.mission.atmosphereRuntime.atmosphereOf(section.id)?.temperatureCelsius,
+      }))
+      .filter((entry) => entry.temperature !== undefined && entry.temperature <= FROST_ONSET_CELSIUS);
+    if (frozen.length === 0) {
+      return;
+    }
+
+    const graphics = this.add.graphics().setDepth(RENDER_DEPTH.frostLayer);
+    for (const { section, temperature } of frozen) {
+      const severity = thresholdSeverity(temperature!, FROST_ONSET_CELSIUS, TEMPERATURE_FLOOR_CELSIUS);
+      graphics.fillStyle(FROST_LAYER_COLOR, FROST_MIN_ALPHA + severity * (FROST_MAX_ALPHA - FROST_MIN_ALPHA));
+      for (const cell of section.cells) {
+        graphics.fillRect(cell.x * CELL, cell.y * CELL, CELL, CELL);
+      }
+    }
+    this.markAsWorldObject(graphics);
+    this.frostOverlay = graphics;
+  }
+
+  /**
    * Luz ambiental de sección sin energía (Fase 12a, corrección post-playtest —
    * ejemplo del texto original de la fase que había quedado sin implementar,
    * solo el tinte de `redrawUnpoweredSectionScar` existía). Una `PointLight`
@@ -4066,7 +4140,13 @@ export class FloorplanScene extends Phaser.Scene {
       const instance = placedById.get(instanceId);
       if (!instance) continue;
       const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
-      effect.start(this, instance.placement.position);
+      // Ronda 1 de playtest de 14a-2: las chispas se reparten por el footprint
+      // REAL de la pieza en vez de apilarse en ±4 px sobre su celda ancla. Es
+      // `occupiedCells`, el mismo cálculo que usa la colocación, así que una
+      // pieza rotada chispea donde de verdad está.
+      effect.start(this, instance.placement.position, {
+        cells: occupiedCells(instance.placement),
+      });
       this.overloadedConductorEffects.set(instanceId, effect);
     }
     // Cleanup (feedback de playtest): al desmontar el conductor (o si deja de

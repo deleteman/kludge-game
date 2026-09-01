@@ -2348,6 +2348,12 @@ export class MissionRuntime {
     return deriveInstanceStates(instance, {
       resolveDefinition: (id) => this.componentRegistry.get(id),
       isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+      // Se lee del blueprint VIVO, no de una copia: `overloadedRefs` es la
+      // cicatriz que `MissionOverloadRuntime` escribe en cuanto un conductor
+      // supera su capacidad, sea por carga del cableado o por el factor térmico
+      // de 14a-2 (un cable a -50 °C conduce menos y se corta con la misma carga
+      // que antes aguantaba).
+      isInstanceOverloaded: (instanceId) => this.blueprint.overloadedRefs.includes(instanceId),
       sectionGrantedUnitsAt: (entry) => {
         const sectionId = this.sectionIdAt(entry.placement.position);
         return sectionId ? this.powerRuntime.sectionPowerGranted(sectionId) : 0;

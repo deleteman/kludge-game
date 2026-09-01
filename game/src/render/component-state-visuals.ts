@@ -6,6 +6,7 @@ import {
   COMPONENT_WEAR_TINT,
   DOOR_STATE_COLOR,
   hexToCss,
+  OVERLOADED_CONDUCTOR_LIGHT_COLOR,
 } from "./palette.js";
 
 /**
@@ -66,6 +67,23 @@ export function stateNoticeCss(visual: ComponentStateVisual): string {
  * desambigua sin depender del color.
  */
 const STATE_VISUAL: Readonly<Record<InstanceStateFlag, ComponentStateVisual>> = {
+  /**
+   * Conductor cortado por sobrecarga (ronda 1 de 14a-2). Reusa el ÁMBAR de la
+   * cicatriz de partículas (`OVERLOADED_CONDUCTOR_LIGHT_COLOR`) a propósito: el
+   * jugador ya ve ese tono chispear sobre la pieza, y que el tinte, el glifo y
+   * el aviso del tooltip hablen el mismo color es lo que convierte tres señales
+   * sueltas en una sola lectura. Distinto de `CRISIS_WARNING_COLOR` (0xe0a33f),
+   * que es el ámbar de `wear: degradado` — el aserto de no-colisión de abajo lo
+   * fija.
+   *
+   * Va PRIMERO en `deriveInstanceStates`: una pieza cortada se anuncia como
+   * cortada aunque además esté sin energía.
+   */
+  overloaded: {
+    tint: OVERLOADED_CONDUCTOR_LIGHT_COLOR,
+    icon: "⌁",
+    noticeKey: "ui.floorplan.mission.state.overloaded",
+  },
   unpowered: {
     tint: DOOR_STATE_COLOR.unpowered,
     icon: "⚡",
