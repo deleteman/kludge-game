@@ -9,7 +9,8 @@ import {
   resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
-import type { PlacedComponentInstance, SignalEdgeId } from "engine";
+import type { PlacedComponentInstance, SignalEdge, SignalEdgeId } from "engine";
+import { isEdgeBurned } from "engine";
 import type {
   BarkEventType,
   ChemicalSubstanceId,
@@ -47,7 +48,16 @@ import {
   drawConduitMarker,
 } from "../render/floorplan-renderer.js";
 import type { ConduitPath } from "../render/conduit-path.js";
-import { computeConduitRoute, computeSignalWireRoute } from "../render/conduit-path.js";
+import { computeConduitRoute, computeSignalWireRoute, signalWireCells } from "../render/conduit-path.js";
+
+/**
+ * Cada cuánto se repinta el color de los cables por su carga (Subfase 14a-4).
+ * Es un dato de tendencia (la sala se calienta en decenas de segundos), no una
+ * animación: a 4 Hz el jugador ve el cambio como inmediato y el recorrido del
+ * grafo por arista no aparece en el presupuesto de frame.
+ */
+const SIGNAL_WIRE_COLOR_REFRESH_SECONDS = 0.25;
+import type { PixelPoint } from "../render/conduit-path.js";
 import { doorSlideAxis, easedDoorOpenness } from "../render/door-visuals.js";
 import { instanceStateLabel, resolveComponentVisual } from "../render/component-state-visuals.js";
 import { createConduitPathFlowEffect, type ConduitPathFlowState } from "../particles/effects/conduit-flow-effect.js";
@@ -56,7 +66,7 @@ import {
   conduitFlowIntensity,
   signalWireFlowIntensity,
 } from "../mission/conduit-flow-heuristics.js";
-import { renderMissionOverlay } from "../render/mission-overlay-renderer.js";
+import { drawSignalLayer, renderMissionOverlay } from "../render/mission-overlay-renderer.js";
 import { renderProjectileTokens } from "../render/projectile-renderer.js";
 import { renderTrajectoryGhost } from "../render/projectile-trajectory-renderer.js";
 import tilesetUrl from "../../assets/sprites/tiles/tileset-nave.png";
@@ -532,6 +542,8 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly conduitFlowEffects = new Map<string, StateDrivenEffect<ConduitPathFlowState>>();
   /** Efecto de flujo animado por CABLE de señal (Fase 11f.6), clave `edge.id` — ver `syncSignalWireFlowEffects`. */
   private readonly signalWireFlowEffects = new Map<SignalEdgeId, StateDrivenEffect<ConduitPathFlowState>>();
+  /** Cuenta atrás del repintado de color de cables (14a-4) — ver `refreshSignalWireColors`. */
+  private signalWireColorCooldown = 0;
 
   private readonly crewTokens = new Map<
     CrewActorId,
@@ -607,7 +619,9 @@ export class FloorplanScene extends Phaser.Scene {
   private shadowLayer?: DynamicShadowLayer;
   /** Chispas + luz de conductor sobrecargado (Fase 12a, cicatriz `overloadedRefs`) — creado una vez por instancia, nunca removido (consecuencias permanentes). */
   private readonly overloadedConductorEffects = new Map<
-    PlacedComponentInstanceId,
+    // 14a-4: la cicatriz puede ser de una pieza colocada (reservorio) o de un
+    // CABLE — desde 14a-4 el conductor es la arista, no la pieza en la celda.
+    PlacedComponentInstanceId | SignalEdgeId,
     StateDrivenEffect<OverloadedConductorState>
   >();
   /**
@@ -1132,8 +1146,25 @@ export class FloorplanScene extends Phaser.Scene {
       // existían completos pero sin llamador en misión real (solo demostrados
       // en la galería) — `MissionStructuralRuntime` es el primer emisor real.
       this.mission.failureEvents.onAny((event) => {
-        const cell = this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === event.ref)?.placement
-          .position;
+        // Subfase 14a-4: el `ref` de una sobrecarga puede ser una ARISTA (el
+        // cable del jugador, que desde 14a-4 es el conductor de verdad) y no una
+        // pieza colocada. Sin esto el evento se quedaba sin celda y el corte
+        // ocurría en silencio: ni partícula, ni estática, ni sonido posicionado.
+        const burnedEdge = this.mission.blueprint.signalGraph.edges.find((edge) => edge.id === event.ref);
+        const cell =
+          this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === event.ref)?.placement
+            .position ?? (burnedEdge ? signalWireCells(this.signalWireRouteFor(burnedEdge))[0] : undefined);
+        if (burnedEdge) {
+          // El cable pasa a dibujarse carbonizado YA: sin este redraw seguiría
+          // pintado verde hasta el próximo cambio de topología — la UI diciendo
+          // que conduce algo que el motor acaba de cortar.
+          this.redrawOverlay();
+          this.notifications?.push({
+            title: t("ui.floorplan.notification.wire-cut"),
+            lines: [t("ui.floorplan.notification.wire-cut-detail")],
+            type: "error",
+          });
+        }
         if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
         fireEventSound(this, event);
         // Estática de fósforo LOCALIZADA (capa "System Failure", roadmap
@@ -1515,6 +1546,7 @@ export class FloorplanScene extends Phaser.Scene {
     if (this.mission.coreLoop.mode === "execution") {
       this.updateConduitFlowEffects(delta / 1000);
       this.updateSignalWireFlowEffects(delta / 1000);
+      this.refreshSignalWireColors(delta / 1000);
       this.updateLedIndicators();
       this.updateDoorSprites();
       this.updateLcdDisplays(delta / 1000);
@@ -3259,6 +3291,17 @@ export class FloorplanScene extends Phaser.Scene {
       // Deuda #8 (12c.5): resolver de definición para dibujar creaciones con los
       // sprites reales de sus partes en vez del rectángulo placeholder.
       (id) => this.mission.definitionOf(id),
+      // Subfase 14a-4: el cable se pinta por lo que le está pasando — cuán
+      // cargado está y si se quemó. Los dos datos salen del motor, no de una
+      // heurística de la capa visual.
+      {
+        edgeLoadRatio: (edge) => this.mission.edgeLoadRatio(edge),
+        burnedEdgeIds: new Set(
+          this.mission.blueprint.signalGraph.edges
+            .filter((edge) => isEdgeBurned(this.mission.blueprint, edge))
+            .map((edge) => edge.id),
+        ),
+      },
     );
     this.overlayContainer = overlay.container;
     this.signalGraphics = overlay.signalGraphics;
@@ -3752,6 +3795,20 @@ export class FloorplanScene extends Phaser.Scene {
    * cable estático por los conductos `senal` (Fase 11f) — mismo camino exacto
    * que ve el jugador, la animación no puede desviarse de la línea dibujada.
    */
+  /**
+   * Recorrido en píxeles de un cable, ruteado por los conductos `senal`
+   * (Subfase 14a-4: extraído para que el flujo animado, el dibujo de la arista y
+   * la cicatriz del cable quemado usen LA MISMA ruta — tres rutas calculadas por
+   * separado se desalinean en cuanto una cambia de criterio).
+   */
+  private signalWireRouteFor(edge: SignalEdge): ReadonlyArray<PixelPoint> {
+    const nodeById = new Map(this.mission.blueprint.signalGraph.nodes.map((node) => [node.id, node]));
+    const from = nodeById.get(edge.from);
+    const to = nodeById.get(edge.to);
+    if (!from || !to) return [];
+    return computeSignalWireRoute(this.mission.shipFloorplan, this.walkableGrid, from.position, to.position);
+  }
+
   private syncSignalWireFlowEffects(): void {
     const nodeById = new Map(this.mission.blueprint.signalGraph.nodes.map((node) => [node.id, node]));
     const currentEdgeIds = new Set<SignalEdgeId>();
@@ -3761,7 +3818,7 @@ export class FloorplanScene extends Phaser.Scene {
       const from = nodeById.get(edge.from);
       const to = nodeById.get(edge.to);
       if (!from || !to) continue;
-      const path = computeSignalWireRoute(this.mission.shipFloorplan, this.walkableGrid, from.position, to.position);
+      const path = this.signalWireRouteFor(edge);
       if (path.length < 2) continue;
       const effect = createConduitPathFlowEffect(path, this.registerFlowToken);
       effect.start(this, path[0]!);
@@ -3775,12 +3832,44 @@ export class FloorplanScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Repinta la capa de señal con el estado VIVO de cada cable (Subfase 14a-4).
+   *
+   * La capacidad efectiva de un cable cae cuando su sala se calienta o se
+   * enfría, sin que el jugador toque nada y sin que cambie la topología: si el
+   * color solo se recalculara al reconstruir el overlay, un cable a punto de
+   * cortarse se seguiría viendo verde. Throttle porque es información de
+   * tendencia, no un fotograma de animación — y porque `edgeLoadRatio` recorre
+   * el grafo aguas abajo por cada arista.
+   */
+  private refreshSignalWireColors(deltaSeconds: number): void {
+    this.signalWireColorCooldown -= deltaSeconds;
+    if (this.signalWireColorCooldown > 0 || !this.signalGraphics) {
+      return;
+    }
+    this.signalWireColorCooldown = SIGNAL_WIRE_COLOR_REFRESH_SECONDS;
+    drawSignalLayer(this.signalGraphics, this.mission.blueprint, this.mission.shipFloorplan, this.walkableGrid, {
+      edgeLoadRatio: (edge) => this.mission.edgeLoadRatio(edge),
+      burnedEdgeIds: new Set(
+        this.mission.blueprint.signalGraph.edges
+          .filter((edge) => isEdgeBurned(this.mission.blueprint, edge))
+          .map((edge) => edge.id),
+      ),
+    });
+  }
+
   private updateSignalWireFlowEffects(deltaSeconds: number): void {
     const visible = this.activeFloorplanLayers.has("senal");
     for (const edge of this.mission.blueprint.signalGraph.edges) {
       const effect = this.signalWireFlowEffects.get(edge.id);
       if (!effect) continue;
-      const { active, intensity } = signalWireFlowIntensity(edge, this.mission);
+      // 14a-4: un cable quemado no conduce nada — el motor ya lo saca del grafo
+      // activo, así que su flujo animado tiene que apagarse con él. Si no, la
+      // pantalla seguiría mostrando corriente por un cable carbonizado.
+      const burned = isEdgeBurned(this.mission.blueprint, edge);
+      const { active, intensity } = burned
+        ? { active: false, intensity: 0 }
+        : signalWireFlowIntensity(edge, this.mission);
       effect.update({ active, intensity, kind: "senal", visible }, deltaSeconds);
     }
   }
@@ -4133,30 +4222,43 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private syncOverloadedConductorEffects(elapsedSeconds: number, deltaSeconds: number): void {
     const placedById = new Map(this.mission.blueprint.placedComponents.map((entry) => [entry.instanceId, entry]));
+    // Subfase 14a-4: `overloadedRefs` es heterogéneo — instancias colocadas Y
+    // aristas de señal (los cables, que son los conductores de verdad desde
+    // 14a-4). Se resuelven por separado porque un cable no tiene footprint: su
+    // "forma" es la ruta que recorre.
+    const edgeById = new Map(this.mission.blueprint.signalGraph.edges.map((edge) => [edge.id, edge]));
     const overloaded = new Set(this.mission.blueprint.overloadedRefs);
 
-    for (const instanceId of overloaded) {
-      if (this.overloadedConductorEffects.has(instanceId)) continue;
-      const instance = placedById.get(instanceId);
-      if (!instance) continue;
-      const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
+    for (const ref of overloaded) {
+      if (this.overloadedConductorEffects.has(ref)) continue;
+      const instance = placedById.get(ref as PlacedComponentInstanceId);
+      const edge = edgeById.get(ref as SignalEdgeId);
       // Ronda 1 de playtest de 14a-2: las chispas se reparten por el footprint
-      // REAL de la pieza en vez de apilarse en ±4 px sobre su celda ancla. Es
-      // `occupiedCells`, el mismo cálculo que usa la colocación, así que una
-      // pieza rotada chispea donde de verdad está.
-      effect.start(this, instance.placement.position, {
-        cells: occupiedCells(instance.placement),
-      });
-      this.overloadedConductorEffects.set(instanceId, effect);
+      // REAL en vez de apilarse en ±4 px sobre una celda ancla. Para una pieza
+      // eso es `occupiedCells` (el mismo cálculo que usa la colocación, así que
+      // una pieza rotada chispea donde de verdad está); para un cable son las
+      // celdas que ATRAVIESA su ruta — un cable quemado arde en todo su largo.
+      const cells = instance
+        ? occupiedCells(instance.placement)
+        : edge
+          ? signalWireCells(this.signalWireRouteFor(edge))
+          : undefined;
+      if (!cells || cells.length === 0) continue;
+      const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
+      effect.start(this, cells[0]!, { cells });
+      this.overloadedConductorEffects.set(ref, effect);
     }
-    // Cleanup (feedback de playtest): al desmontar el conductor (o si deja de
-    // estar sobrecargado) el efecto quedaba colgado — partículas + luz que no
-    // se iban, más un radio de luz fantasma. `stop()` destruye ambos y
-    // `pruneDeadLights` saca la luz del set de sombras.
-    for (const [instanceId, effect] of this.overloadedConductorEffects) {
-      if (overloaded.has(instanceId) && placedById.has(instanceId)) continue;
+    // Cleanup (feedback de playtest): al desmontar el conductor —o al RETIRAR el
+    // cable quemado, que es el camino de salida que agrega 14a-4— el efecto
+    // quedaba colgado: partículas + luz que no se iban, más un radio de luz
+    // fantasma. `stop()` destruye ambos y `pruneDeadLights` saca la luz del set
+    // de sombras.
+    for (const [ref, effect] of this.overloadedConductorEffects) {
+      const stillThere =
+        placedById.has(ref as PlacedComponentInstanceId) || edgeById.has(ref as SignalEdgeId);
+      if (overloaded.has(ref) && stillThere) continue;
       effect.stop();
-      this.overloadedConductorEffects.delete(instanceId);
+      this.overloadedConductorEffects.delete(ref);
     }
     for (const effect of this.overloadedConductorEffects.values()) {
       effect.update({ elapsedSeconds }, deltaSeconds);
@@ -4918,7 +5020,13 @@ export class FloorplanScene extends Phaser.Scene {
             event.kind === "task-failed"
               ? event.reason === "no-power"
                 ? "ui.floorplan.notification.task-failed-no-power"
-                : "ui.floorplan.notification.task-failed"
+                : // Subfase 14a-4: mismo criterio que `no-power` — el rechazo
+                  // del efecto (quedarse sin la pieza al completar, cablear un
+                  // par ya cableado) es accionable por el jugador, así que se
+                  // nombra en vez de caer en el "Tarea fallida" genérico.
+                  event.reason === "effect-rejected"
+                  ? "ui.floorplan.notification.task-failed-rejected"
+                  : "ui.floorplan.notification.task-failed"
               : event.kind === "task-blocked" && event.reason === "no-power"
                 ? "ui.floorplan.notification.task-blocked-no-power"
                 : "ui.floorplan.notification.task-blocked";

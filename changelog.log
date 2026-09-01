@@ -5926,3 +5926,93 @@ pregunta del operador "¿por qué el jugador metería un cable de cobre en el ma
 verificada es que hoy no tiene ningún motivo: la arista que dibuja es gratis, instantánea y de
 capacidad infinita, y el rol de nodo `conductor` tiene cero lectores en producción. O sea que 14a-2
 colgó el acoplamiento térmico de una pieza que nadie tiene motivo para colocar.
+
+================================================================================
+2026-09-01 — SUBFASE 14a-4: EL CABLEADO DEL JUGADOR ES EL CONDUCTOR
+================================================================================
+
+QUÉ: mover el conductor de la celda a la ARISTA. Tender un cable pasa a consumir una pieza real del
+stock, la arista hereda su capacidad y su comportamiento térmico, y quemarla corta la señal de verdad.
+
+POR QUÉ: la ronda 1 de playtest de 14a-2 dejó la pregunta "¿por qué el jugador metería un cable de
+cobre en el mapa?". La respuesta verificada en código era: no tiene ningún motivo. El modo cableado
+conectaba nodo A → nodo B directamente, la arista era gratis, instantánea y de capacidad infinita, y
+el rol de nodo `conductor` tenía cero lectores en producción. O sea que 14a-2 colgó todo el
+acoplamiento térmico-eléctrico de una pieza que nadie tenía razón para colocar: una mecánica correcta
+sin camino jugable.
+
+DECISIONES DEL OPERADOR (2026-09-01, ciclo de preguntas previo a planificar):
+· El jugador elige el cable SIEMPRE, con capacidad y stock a la vista. Si el juego elige solo, nunca
+  aprende que hay diferencia entre materiales.
+· Cable quemado = pieza perdida. Retirarlo no devuelve nada; retender cuesta otro conductor.
+· Todo el acoplamiento térmico se muda a la arista: sobrecarga + factor térmico + cicatriz.
+· `panel-electrico` SE DESCARTA. Preguntado qué función cumpliría, el operador respondió que si es
+  solo "el lugar por donde pasan los cables", los conductos `senal` del plano ya lo cubren. No se crea.
+· Los conductores dejan de ser componentes INSTALABLES: son otro tipo de recurso, con su propio lugar.
+
+MOTOR:
+· `SignalEdge` gana `conductorId` + `conductorWear`. La capacidad NO se persiste: se deriva del
+  catálogo en cada consulta, para no tener dos copias de la misma verdad que se desincronicen al
+  re-escalar el catálogo (ya pasó en 14a-2).
+· `blueprint.schemaVersion` 10→11 con migración tolerante: arista sin conductor → `cable-cobre` nuevo.
+  Ningún save se rechaza ni cambia de márgenes. `overloadedRefs` pasa a admitir `SignalEdgeId`.
+· `MissionOverloadRuntime` recorre ahora las ARISTAS. Una pieza `COND(E)` colocada ya NO se evalúa:
+  serían dos modelos del mismo fenómeno con dos capacidades distintas. `scriptedOverloads` sobrevive
+  intacto como override por instancia. La cadena de capacidad es la misma para los dos sujetos.
+· Temperatura de una arista: el PEOR factor entre sus dos extremos — un cable falla por su punto más
+  débil. Se usan los extremos y no la ruta completa porque el ruteo vive en `/game` y el motor no
+  importa nada de render.
+· `edgeElectricalLoad` reemplaza a `conductorElectricalLoad`, que se BORRA al quedarse sin llamadores.
+  Diferencia deliberada: la versión de arista SÍ cuenta el dueño de `edge.to` (si no, un cable con una
+  sola pieza colgada mediría 0 y nunca podría sobrecargarse).
+· Un cable quemado deja de conducir de verdad: `activeSignalEdges` lo saca del grafo que evalúa
+  `MissionSignalRuntime` Y del cálculo de carga, así que quemar un cable DESCARGA a sus vecinos. Sin
+  esto la cicatriz habría sido cosmética.
+· `CT` de los cinco conductores: hasta ahora NINGUNO lo declaraba y todos caían al default "A" — la
+  tabla de offsets térmicos existía en el código y no existía en el juego. Cobre/bobina/resistencia A,
+  blindado M, fibra B. Con esto la elección de material tiene dos ejes, no uno, y hay un test que
+  impide que vuelva a ser decorativa.
+· `wireExternalPort` rechaza cablear un par YA cableado (`SignalWiringDuplicateError`). Tapa un agujero
+  preexistente: se podían apilar N aristas idénticas, invisibles porque se dibujan una sobre otra — y
+  desde 14a-4 eso costaría N piezas por algo que el jugador cree que hizo una vez.
+· Tarea `disconnect` nueva: saca la arista y su cicatriz, y no acredita NADA al stock.
+· El cobro de una pieza se extrajo a `payComponentCost` ANTES de duplicarlo entre `install` y
+  `connect`: dos copias de una fórmula de coste son dos sitios donde arreglar el próximo bug de stock.
+
+FALLO DE TAREA POR RECHAZO DEL EFECTO (hueco encontrado auto-revisando el propio cambio):
+`TaskScheduler.completeTask` invocaba el efecto SIN try/catch, así que una excepción reventaba el tick
+entero. Existía desde la Fase 10b (`InsufficientStockError` en `install`), pero 14a-4 lo volvió trivial
+de alcanzar: encolar dos cables con una sola pieza en stock — el gate de la UI mira el stock VIVO, no
+lo que hay en cola, así que los dos pasan y el segundo se queda sin material al completarse. Ahora la
+tarea pasa a `failed` con motivo `effect-rejected` (que es exactamente para lo que existía ese estado)
+y el jugador recibe un aviso nombrado en vez de una partida colgada.
+
+JUEGO:
+· Los conductores salen del selector de instalación por PROPIEDAD (`isWiringMaterial`), no por lista de
+  ids: un conductor nuevo en el catálogo se comporta bien solo. Verificado que ningún arquetipo ni
+  capítulo siembra un `COND(E)` colocado, así que ninguna partida queda con una pieza huérfana.
+· Selector de cableado: se REUSA `install-picker-modal` (footprint pasa a opcional) en vez de construir
+  una segunda superficie para el mismo gesto. Cada fila muestra la capacidad EFECTIVA, ya con el
+  desgaste aplicado — el número contra el que el motor va a comparar, no el de catálogo.
+· El cable se pinta por su estado: verde holgado → ámbar al 75% de su capacidad → gris carbonizado.
+  Sin esto, un cable a 5/6 y uno a 1/6 se veían idénticos y la sobrecarga llegaba sin ningún aviso.
+  Los colores salen del contrato 12e, con test propio en `palette.contract.test.ts`.
+· El color se repinta con throttle (4 Hz) durante la ejecución: la capacidad efectiva baja cuando la
+  sala se calienta, sin que cambie la topología, así que un color calculado solo al reconstruir el
+  overlay habría mentido.
+· La cicatriz del cable quemado se siembra sobre las celdas que ATRAVIESA su ruta, no en un punto — la
+  misma corrección de dispersión que la ronda 1 de 14a-2 aplicó a los efectos de atmósfera. Su flujo
+  animado se apaga con él.
+· Repetir el gesto de cableado sobre un par ya cableado RETIRA el cable, sin controles nuevos.
+· El evento de sobrecarga de una arista ya no se queda sin celda: antes el corte de un cable habría
+  ocurrido en silencio (ni partícula, ni estática, ni sonido posicionado).
+
+CASO DE VALIDACIÓN 2 REESCRITO: se probaba con funciones puras y un `panel-electrico` inventado de
+`maxCapacity: 20` — una pieza que no existe en el catálogo y una escala que 14a-2 dejó obsoleta. Ahora
+corre sobre la pila real, con un cable de verdad y capacidades del catálogo.
+
+TESTS: motor 1168 (153 archivos), juego 105 (12 archivos). `tsc`, `eslint` y `build` limpios.
+
+FUERA DE ALCANCE, EXPLÍCITO: el retardo de propagación por material (GDD 5.6). `DelayBehavior` y
+`DelayRule` ya existen y su docblock promete derivar `delaySeconds` del material desde la Fase 4/5 —
+es un eje temporal nuevo, no una mudanza. Sale a subfase aparte.

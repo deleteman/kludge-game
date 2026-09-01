@@ -39,7 +39,14 @@ function optionRowLabel(option: InstallPickerOption, labels: InstallPickerLabels
 export interface InstallPickerOption {
   readonly id: ComponentId;
   readonly name: string;
-  readonly footprint: Footprint;
+  /**
+   * Celdas que ocupa al instalarse. **Opcional desde la Subfase 14a-4**: este
+   * mismo modal sirve ahora al selector de CABLEADO, y un cable no se coloca en
+   * el plano — se gasta al tender una arista. Sin huella, la línea simplemente
+   * no se dibuja; para el selector de instalación sigue siendo obligatoria de
+   * hecho (`buildInstallOptions` descarta las definiciones que no la declaran).
+   */
+  readonly footprint?: Footprint;
   readonly functional?: ReadonlyArray<FunctionalProperty>;
   readonly material?: MaterialProperties;
   /** Solo para compuestos: desglose de sus piezas atómicas. Ver `CompositionIngredient`. */
@@ -67,6 +74,13 @@ export interface InstallPickerOption {
    * motivo — nunca un botón gris mudo (CLAUDE.md). `undefined` = instalable.
    */
   readonly blocked?: "no-stock" | "missing-ingredients";
+  /**
+   * Líneas extra de ficha, ya traducidas y con sus números (Subfase 14a-4). El
+   * selector de cableado las usa para lo único que decide la elección de cable y
+   * que `functionalDescription` no puede decir, porque solo recibe el tag:
+   * capacidad EFECTIVA (ya con el desgaste aplicado) y tolerancia al calor.
+   */
+  readonly detailLines?: ReadonlyArray<string>;
 }
 
 export interface InstallPickerLabels {
@@ -334,20 +348,24 @@ function renderSelectedComponentSheet(
   // "Reservorio de agua reciclada") envuelve a 2 líneas con `wordWrap`, y esa
   // segunda línea pisaba el texto de huella. `titleText.height` ya refleja el
   // alto real tras aplicar el wrap, así que la huella se ancla debajo de eso.
-  sheet.add(
-    scene.add
-      .text(
-        x + PREVIEW_SIZE + 12,
-        titleText.y + titleText.height + 4,
-        `${labels.footprint}: ${option.footprint.width}×${option.footprint.height}`,
-        {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "12px",
-          color: LABEL_COLOR,
-        },
-      )
-      .setOrigin(0, 0),
-  );
+  // 14a-4: sin huella (un cable) no se dibuja la línea, en vez de mostrar un
+  // "Huella: undefined×undefined".
+  if (option.footprint) {
+    sheet.add(
+      scene.add
+        .text(
+          x + PREVIEW_SIZE + 12,
+          titleText.y + titleText.height + 4,
+          `${labels.footprint}: ${option.footprint.width}×${option.footprint.height}`,
+          {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "12px",
+            color: LABEL_COLOR,
+          },
+        )
+        .setOrigin(0, 0),
+    );
+  }
 
   let lineY = y + PREVIEW_SIZE + 20;
 
@@ -368,6 +386,22 @@ function renderSelectedComponentSheet(
     // alto real del texto tras `wordWrap` en vez de un `+= 26` fijo, para que
     // un warning largo no pise la sección de Composición que arranca debajo.
     lineY += warningText.height + 8;
+  }
+
+  // 14a-4: líneas ya formateadas por el llamador (capacidad efectiva, calor).
+  // Van ANTES de las funcionales porque son el dato con el que se elige.
+  for (const line of option.detailLines ?? []) {
+    const detail = scene.add
+      .text(x, lineY, line, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "12px",
+        color: LABEL_COLOR,
+        wordWrap: { width: DESCRIPTION_WIDTH },
+      })
+      .setOrigin(0, 0);
+    sheet.add(detail);
+    // Se mide el alto real, no un `+= 26`: el largo cambia con el idioma.
+    lineY += detail.height + 6;
   }
 
   for (const property of option.functional ?? []) {

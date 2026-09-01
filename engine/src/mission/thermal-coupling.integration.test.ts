@@ -20,6 +20,7 @@ import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprin
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionIntegrity } from "../integrity/section-integrity.types.js";
@@ -37,8 +38,14 @@ import type { SectionIntegrity } from "../integrity/section-integrity.types.js";
  */
 
 const SALA = "sala" as SectionId;
-const CABLE = "cable-1" as PlacedComponentInstanceId;
-const CABLE_NODE = "cable-1-cond" as SignalNodeId;
+// Subfase 14a-4: el conductor dejó de ser una pieza en una celda y pasó a ser
+// el cable que tiende el jugador. El montaje es fuente → cable troncal → chip,
+// con los LEDs colgando del chip: el troncal carga con todo lo de aguas abajo.
+const FUENTE = "fuente-1" as PlacedComponentInstanceId;
+const FUENTE_NODE = "fuente-1-em" as SignalNodeId;
+const HUB = "chip-1" as PlacedComponentInstanceId;
+const HUB_NODE = "chip-1-rec" as SignalNodeId;
+const TRONCAL = "cable-troncal" as SignalEdgeId;
 const TANQUE = "tanque-1" as PlacedComponentInstanceId;
 const ENFRIADOR = "enfriador-1" as PlacedComponentInstanceId;
 const ENFRIADOR_NODE = "enfriador-1-rec" as SignalNodeId;
@@ -103,7 +110,8 @@ function blueprintFor({ ledCount, withCryoTank, withCooler }: SceneOptions): Blu
       updatedAt: "2026-08-31T00:00:00.000Z",
     },
     placedComponents: [
-      place(CABLE, "cable-cobre", 0),
+      place(FUENTE, "fotorreceptor", 0),
+      place(HUB, "chip-circuito-generico", 1),
       ...leds.map((n) => place(`led-${n}` as PlacedComponentInstanceId, "indicador-led", n)),
       ...(withCryoTank ? [place(TANQUE, "tanque-muestra-criogenica", 8)] : []),
       ...(withCooler ? [place(ENFRIADOR, "sistema-refrigeracion-muestras", 9)] : []),
@@ -119,7 +127,8 @@ function blueprintFor({ ledCount, withCryoTank, withCooler }: SceneOptions): Blu
       : [],
     signalGraph: {
       nodes: [
-        { id: CABLE_NODE, role: "conductor" as const, position: { x: 0, y: 0 }, ownerRef: CABLE },
+        { id: FUENTE_NODE, role: "emitter" as const, position: { x: 0, y: 0 }, ownerRef: FUENTE },
+        { id: HUB_NODE, role: "receptor" as const, position: { x: 1, y: 0 }, ownerRef: HUB },
         ...leds.map((n) => ({
           id: `led-${n}-rec` as SignalNodeId,
           role: "receptor" as const,
@@ -137,11 +146,15 @@ function blueprintFor({ ledCount, withCryoTank, withCooler }: SceneOptions): Blu
             ]
           : []),
       ],
-      edges: leds.map((n) => ({
-        id: `e-${n}` as Blueprint["signalGraph"]["edges"][number]["id"],
-        from: CABLE_NODE,
-        to: `led-${n}-rec` as SignalNodeId,
-      })),
+      edges: [
+        { id: TRONCAL, from: FUENTE_NODE, to: HUB_NODE, conductorId: "cable-cobre" as ComponentId },
+        ...leds.map((n) => ({
+          id: `rama-${n}` as SignalEdgeId,
+          from: HUB_NODE,
+          to: `led-${n}-rec` as SignalNodeId,
+          conductorId: "cable-cobre" as ComponentId,
+        })),
+      ],
     },
     sectionAtmospheres: [],
     sectionIntegrity: [],
@@ -260,7 +273,7 @@ describe("integración 14a-2: nitrógeno líquido → frío → conductor degrad
     // 3) La sala cruzó el umbral de degradación y el cable se cortó SIN que la
     //    carga cambiara: el cableado es el mismo que en el paso 1.
     expect(coldest).toBeLessThan(THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius);
-    expect(shipState.get().overloadedRefs).toEqual([CABLE]);
+    expect(shipState.get().overloadedRefs).toEqual([TRONCAL]);
 
     // 4) Y la sala se recupera sola: el derrame es un evento con final, igual
     //    que el incendio de 14a-1. La cicatriz del cable, en cambio, se queda.
@@ -292,7 +305,7 @@ describe("integración 14a-2: nitrógeno líquido → frío → conductor degrad
       coldest = Math.min(coldest, temperature());
     }
     expect(coldest).toBeLessThan(THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius);
-    expect(shipState.get().overloadedRefs).toEqual([CABLE]);
+    expect(shipState.get().overloadedRefs).toEqual([TRONCAL]);
   });
 });
 

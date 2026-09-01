@@ -159,6 +159,48 @@ function resolveLeg(
   return [from, to];
 }
 
+/**
+ * Celdas que ATRAVIESA una ruta de cable, muestreando su polilínea (Subfase
+ * 14a-4).
+ *
+ * La cicatriz de un cable quemado tiene que repartirse por todo el recorrido,
+ * no apilarse en un punto: es la misma corrección que la ronda 1 de playtest de
+ * 14a-2 aplicó a los efectos de atmósfera, donde un fenómeno de sala se pintaba
+ * como una chispa en el centroide. Un cable es todavía más largo que una sala,
+ * así que el problema sería peor.
+ *
+ * Muestrea a media celda para no saltarse ninguna en las diagonales, y
+ * deduplica: el emisor reparte por celdas, no por longitud, y una celda repetida
+ * chispearía el doble.
+ */
+export function signalWireCells(route: ReadonlyArray<PixelPoint>): ReadonlyArray<GridPosition> {
+  const seen = new Set<string>();
+  const cells: GridPosition[] = [];
+  const push = (px: number, py: number) => {
+    const cell = { x: Math.floor(px / CELL), y: Math.floor(py / CELL) };
+    const key = `${cell.x},${cell.y}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    cells.push(cell);
+  };
+
+  for (let i = 0; i < route.length - 1; i += 1) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (CELL / 2)));
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      push(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    }
+  }
+  // Ruta de un solo punto (los dos nodos en la misma celda): sigue teniendo
+  // celda, y sin esto el efecto se quedaría sin ninguna.
+  if (cells.length === 0 && route.length > 0) {
+    push(route[0]!.x, route[0]!.y);
+  }
+  return cells;
+}
+
 /** Centro en píxeles de una celda transitable — misma convención con la que se dibujan nodos y tokens. */
 function cellCenterPx(cell: GridPosition): PixelPoint {
   return { x: (cell.x + 0.5) * CELL, y: (cell.y + 0.5) * CELL };

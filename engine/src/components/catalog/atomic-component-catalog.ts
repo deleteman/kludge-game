@@ -49,7 +49,14 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
       // térmico de 0.5 baja a 3, así que una carga de 4-6 es segura en
       // operación normal y solo revienta al enfriar o calentar la sección.
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 6 }],
-      material: { RE: "M", CE: "A" },
+      // `CT: "A"` desde 14a-4: el cobre conduce el calor tan bien como la
+      // electricidad, así que es el cable que primero pierde capacidad en una
+      // sala caliente (umbral 100 °C + 0 de offset). Hasta 14a-4 NINGÚN
+      // conductor declaraba `CT` y todos caían al default "A" — la tabla de
+      // `hotTriggerOffsetByThermalConductivity` existía en el código y no
+      // existía en el juego. Con esto la elección de material tiene dos ejes:
+      // cuánta carga aguanta y cuánto calor tolera.
+      material: { RE: "M", CE: "A", CT: "A" },
     },
   },
   {
@@ -57,9 +64,10 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     name: "Bobina de cobre",
     data: {
       footprint: { width: 1, height: 1 },
-      // Misma escala que `cable-cobre` (14a-2, unidades de `powerDraw`).
+      // Misma escala que `cable-cobre` (14a-2, unidades de `powerDraw`) y mismo
+      // `CT` (14a-4): es cobre, se comporta igual ante el calor.
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 6 }],
-      material: { RE: "M", CE: "A" },
+      material: { RE: "M", CE: "A", CT: "A" },
     },
     // Nota: enrollado; cuando se combina con núcleo ferromagnético + corriente → electroimán (GDD 5.2, caso 9).
   },
@@ -69,9 +77,10 @@ export const ATOMIC_COMPONENT_CATALOG: ReadonlyArray<AtomicComponentSpec> = [
     data: {
       footprint: { width: 1, height: 1 },
       // La mitad que el cable (14a-2, unidades de `powerDraw`): es el conductor
-      // "fino" del catálogo, el que revienta primero.
+      // "fino" del catálogo, el que revienta primero. `CT: "A"` (14a-4): además
+      // de fina, disipa, así que es el peor cable posible en una sala caliente.
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 3 }],
-      material: { RE: "M", CE: "A" },
+      material: { RE: "M", CE: "A", CT: "A" },
     },
     // Nota: conductor con pérdida controlada, limita corriente.
   },

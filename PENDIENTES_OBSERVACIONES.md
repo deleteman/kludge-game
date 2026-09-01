@@ -972,6 +972,12 @@ obvia. Dos evaluadas:
 - **Poblar `footprint` pieza por pieza** en los compuestos que tenga sentido colocar directo en el plano, y
   dejar fuera a los que de verdad solo se fabrican. Requiere pasar el catálogo entero con criterio de diseño.
 
+**Actualización 14a-4 (2026-09-01):** los dos cables COMPUESTOS (`cable-fibra-optica`,
+`cable-blindado-alto-amperaje`) salen de esta deuda por un camino distinto al de darles footprint: desde
+14a-4 un conductor eléctrico **no se instala en el plano**, se gasta al tender un cable, y su selector
+propio no pide footprint. O sea que dejaron de necesitarlo. El resto de la deuda sigue **ABIERTA**: quedan
+~19 compuestos invisibles, y sigue dependiendo de decidirse junto con la #43.
+
 Decidir junto con la deuda #43, no por separado.
 
 ## Deuda #43 — El selector de instalación necesita un buscador por nombre (Subfase 14a-1, ronda 1 de playtest)
@@ -1026,3 +1032,31 @@ que el Cap. 1 tiene que enseñar. Es deuda de balance asumida a cambio de poder 
 14a-2 ya está cerrada y el eje térmico validado, así que esta deuda está **lista para ejecutarse**: bajar todas
 las entradas de las dos tablas y **re-evaluar los niveles** (no solo este capítulo — el operador pidió revisar el
 nivelado en general antes de publicar).
+
+**Actualización 14a-4 (2026-09-01):** el `cable-cobre` ×4 **deja de ser stock inflado de playtest y pasa a ser
+stock de diseño**. Desde 14a-4 tender cualquier cable de señal CONSUME un conductor, así que sin cobre en el
+inventario el jugador no puede cablear nada — el capítulo 1 se volvería injugable, no austero. Al re-nivelar,
+esa fila se decide por cuántos cables debe poder tender el jugador en el capítulo, no por si sobra o falta
+para una prueba puntual. El resto de la tabla no cambia de criterio.
+
+## Decisión #45 — `panel-electrico` NO se crea como pieza (Subfase 14a-4)
+
+**Estado:** ✅ RESUELTO por decisión explícita del operador, 2026-09-01. No es deuda: se registra para que no
+se vuelva a abrir dentro de unos meses leyendo el GDD sin este contexto.
+
+El GDD §9 caso 2 ("Cortocircuito en bahía de carga") nombra un *panel eléctrico*, y hasta 14a-4 existía solo
+como **fixture sintético** en tres tests (`mission-overload-runtime.test.ts`, `mission-reaction-runtime.test.ts`,
+`case-02-cortocircuito-bahia-carga.test.ts`), con `COND(E) maxCapacity: 20` — una escala anterior al
+re-escalado de 14a-2, que dejó los conductores reales en 3/6/9/12 unidades de `powerDraw`.
+
+Preguntado qué función cumpliría como pieza real, el operador respondió: **si es solo el lugar por donde pasan
+los cables, no tiene sentido — los conductos `senal` del plano ya cumplen esa función.** Y es correcto:
+`sectionsConnectedByConduit` ya decide por dónde puede cruzar un cable, y `computeSignalWireRoute` ya lo rutea
+por ahí.
+
+Se evaluó y se descartó también la variante "nodo de derivación" (una pieza donde convergen varias aristas, con
+capacidad agregada propia). Queda anotada por si el diseño del Cap. 2 llega a pedir un tronco explícito, pero
+**no se implementa sin un caso de uso que la pida**, mismo criterio de "no construir mecanismo antes del caso de
+uso" que ya se aplicó a los payloads de tarea.
+
+El caso de validación 2 dejó de depender del fixture: ahora corre sobre un cable real con capacidad de catálogo.

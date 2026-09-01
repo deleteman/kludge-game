@@ -26,6 +26,10 @@ import {
   TIMER_TEXT_COLORS,
   SEALED_VALVE_COLOR,
   POWER_BLOCKED_FLASH_COLOR,
+  BURNED_WIRE_COLOR,
+  CONDUIT_COLORS,
+  WIRE_LOAD_WARNING_RATIO,
+  wireLoadColor,
   hexToCss,
 } from "./palette.js";
 
@@ -147,5 +151,34 @@ describe("colores de sustancia distinguibles (principio 6)", () => {
 
   it("una sustancia desconocida sin tags cae al neutro", () => {
     expect(chemicalSubstanceColor("mezcla-sin-identificar-1")).toBe(CHEMICAL_ELEMENT_FALLBACK_COLOR);
+  });
+});
+
+/**
+ * Subfase 14a-4: el cable del jugador pasa a tener estado (carga, quemado), así
+ * que entra al mismo contrato que el resto de las superficies de estado.
+ */
+describe("estado de un cable de señal (Subfase 14a-4)", () => {
+  it("un cable holgado se sigue viendo como el verde de la capa `senal`", () => {
+    // Sin esto, 14a-4 habría recoloreado toda la capa de señal de la nave por
+    // el mero hecho de agregarle un estado.
+    expect(wireLoadColor(0.1)).toBe(CONDUIT_COLORS.senal);
+    expect(wireLoadColor(undefined)).toBe(CONDUIT_COLORS.senal);
+  });
+
+  it("avisa en ámbar ANTES de reventar, no en el momento del corte", () => {
+    // Patrón 8 del checklist: un límite necesita su propia señal, y llegar al
+    // tope sin aviso previo se lee como que el juego hizo trampa.
+    expect(WIRE_LOAD_WARNING_RATIO).toBeLessThan(1);
+    expect(wireLoadColor(WIRE_LOAD_WARNING_RATIO)).toBe(CRISIS_WARNING_COLOR);
+    expect(wireLoadColor(WIRE_LOAD_WARNING_RATIO - 0.01)).toBe(CRISIS_SAFE_COLOR);
+  });
+
+  it("el cable quemado no se confunde con ningún estado del eje de crisis (principio 6)", () => {
+    for (const color of [CRISIS_SAFE_COLOR, CRISIS_WARNING_COLOR, CRISIS_FATAL_COLOR, INFO_NEUTRAL_COLOR]) {
+      expect(BURNED_WIRE_COLOR).not.toBe(color);
+    }
+    // Ni con un cable sano, que es la confusión que de verdad importa acá.
+    expect(BURNED_WIRE_COLOR).not.toBe(CONDUIT_COLORS.senal);
   });
 });

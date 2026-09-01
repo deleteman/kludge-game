@@ -819,3 +819,56 @@ describe("task-scheduler: progreso por objetivo (13f ronda 3)", () => {
     expect(scheduler.getTask(id("ir-2"))?.elapsedSeconds).toBeLessThanOrEqual(1);
   });
 });
+
+/**
+ * Subfase 14a-4. El efecto físico puede RECHAZAR una tarea al ejecutarse
+ * (`createShipTaskEffect` lanza `InsufficientStockError` desde la Fase 10b), y
+ * hasta acá esa excepción atravesaba el scheduler y reventaba el tick entero.
+ * 14a-4 lo volvió trivial de alcanzar: encolar dos cables con una sola pieza en
+ * stock — el gate de la UI mira el stock VIVO, no lo que hay en cola.
+ */
+describe("task-scheduler: el efecto rechaza la tarea al completarse (14a-4)", () => {
+  it("marca la tarea `failed` en vez de tirar el tick abajo", () => {
+    const scheduler = new TaskScheduler({
+      effect: () => {
+        throw new Error("No hay stock de \"cable-cobre\"");
+      },
+    });
+    scheduler.enqueue(
+      createCrewTask({ id: id("t"), actorId: ENGINEER, type: "connect", estimatedDurationSeconds: 1 }),
+    );
+
+    expect(() => {
+      scheduler.tick(tickOf(1));
+      scheduler.tick(tickOf(2));
+    }).not.toThrow();
+    expect(scheduler.getTask(id("t"))?.state).toBe("failed");
+    // El actor queda libre: si no, el rechazo lo dejaría ocupado para siempre.
+    expect(scheduler.getActor(ENGINEER)?.status).toBe("idle");
+  });
+
+  it("avisa con su motivo propio y con el detalle crudo para diagnóstico", () => {
+    const emitter = new EventEmitter<CoreLoopDomainEvent>();
+    const events: CoreLoopDomainEvent[] = [];
+    emitter.onAny((e) => events.push(e));
+    const scheduler = new TaskScheduler({
+      emitter,
+      effect: () => {
+        throw new Error("Ya hay un cable entre esos nodos");
+      },
+    });
+    scheduler.enqueue(
+      createCrewTask({ id: id("t"), actorId: ENGINEER, type: "connect", estimatedDurationSeconds: 1 }),
+    );
+
+    scheduler.tick(tickOf(1));
+    scheduler.tick(tickOf(2));
+
+    expect(events.find((e) => e.kind === "task-failed")).toMatchObject({ reason: "effect-rejected" });
+    expect(events.find((e) => e.kind === "task-effect-error")).toMatchObject({
+      message: "Ya hay un cable entre esos nodos",
+    });
+    // Y NO se emite `task-completed`: la tarea no hizo lo que decía hacer.
+    expect(events.find((e) => e.kind === "task-completed")).toBeUndefined();
+  });
+});

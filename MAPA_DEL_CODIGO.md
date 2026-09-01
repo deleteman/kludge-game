@@ -1784,3 +1784,63 @@
 ### `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado)
 - Retirados el `cable-cobre` sembrado en `ingenieria`, su `scriptedOverloads` y `overloadedConductorPosition`:
   reventaba en el primer tick y era un falso positivo permanente sobre la cadena térmica.
+
+## Subfase 14a-4 — El cableado del jugador ES el conductor
+
+### `engine/src/signals/edge-conductor.ts` (nuevo)
+- Punto único de dos preguntas que antes no tenían dueño: `isWiringMaterial`/`electricalConductorProperty`
+  ("¿esta pieza es material de cableado?", por PROPIEDAD `COND(E)`, nunca por lista de ids) y
+  `edgeConductorId`/`edgeConductorWear` ("¿con qué se tendió esta arista?", con el default de migración a
+  `cable-cobre` en un solo lugar). Firmas estructurales, para servir igual a un spec de catálogo que a una
+  definición del registry.
+
+### `engine/src/signals/active-signal-graph.ts` (nuevo)
+- `activeSignalEdges`/`activeSignalGraph`/`isEdgeBurned`: el grafo menos los cables quemados. Punto único
+  consumido por dos dominios que no se conocen — la evaluación de señal (deja de propagar) y el cálculo de
+  carga (se redistribuye). No le enseña al `SignalEvaluator` qué es una sobrecarga.
+
+### `engine/src/signals/signal-edge.types.ts` + `graph-traversal.ts` (modificados)
+- `SignalEdge` suma `conductorId`/`conductorWear`; la capacidad NO se persiste, se deriva del catálogo.
+- `upstreamNodes`/`downstreamNodes` aceptan el conjunto de aristas a recorrer (default: el grafo completo),
+  para poder recorrer el grafo activo sin duplicar el BFS.
+
+### `engine/src/power/conductor-load.ts` (modificado)
+- `edgeElectricalLoad` reemplaza a `conductorElectricalLoad`, borrado al quedarse sin llamadores. Cuenta el
+  dueño de `edge.to` (a diferencia de la versión por instancia) y recorre el grafo ACTIVO.
+
+### `engine/src/mission/mission-overload-runtime.ts` (modificado)
+- Recorre aristas además de instancias; una pieza `COND(E)` colocada ya no es sujeto. `edgeStatus(edge)`
+  público — la UI pregunta carga/capacidad al runtime que decide, en vez de recalcular la cadena.
+  `worstThermalFactorAlong`: manda el peor de los dos extremos, y el evento se estampa con esa sección.
+
+### `engine/src/mission/ship-task-effect.ts` (modificado)
+- `payComponentCost` extraído (compartido por `install` y `connect`); `connect` cobra ANTES de tocar el grafo;
+  case `disconnect` nuevo, que saca la arista y su cicatriz sin acreditar nada.
+
+### `engine/src/workbench/port-wiring.ts` (modificado)
+- `wireExternalPort` acepta el conductor y rechaza un par ya cableado (`SignalWiringDuplicateError`, no
+  dirigido). `/game` la distingue para ofrecer RETIRAR en vez de mostrar un error.
+
+### `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificados)
+- `completeTask` envuelve el efecto en try/catch: un rechazo pasa la tarea a `failed` con motivo
+  `effect-rejected` (+ `task-effect-error` con el mensaje crudo para diagnóstico) en vez de reventar el tick.
+
+### `game/src/mission/mission-interaction-controller.ts` (modificado)
+- `isWiringOnly` saca los conductores del selector de instalación; `buildWireOptions`/`conductorDetailLines`
+  arman el selector de cableado (capacidad EFECTIVA por fila, no la de catálogo); `confirmWireConductor`
+  encola el tendido; repetir el gesto sobre un par ya cableado encola el retiro.
+
+### `game/src/ui/widgets/install-picker-modal.ts` (modificado)
+- `footprint` pasa a opcional (un cable no se coloca) y `detailLines` permite líneas ya formateadas por el
+  llamador. El mismo modal sirve a instalación y a cableado — un solo widget para el mismo gesto.
+
+### `game/src/render/mission-overlay-renderer.ts` + `conduit-path.ts` + `palette.ts` (modificados)
+- `drawSignalLayer` extraída y exportada, para repintar solo la capa de señal; el cable se pinta por su carga
+  (`wireLoadColor`, `WIRE_LOAD_WARNING_RATIO`) y carbonizado si se quemó (`BURNED_WIRE_COLOR`).
+- `signalWireCells(route)`: celdas que ATRAVIESA un cable, para sembrar la cicatriz por todo su largo.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `signalWireRouteFor` centraliza la ruta de un cable (flujo, dibujo y cicatriz comparten la MISMA);
+  `refreshSignalWireColors` repinta el color a 4 Hz en ejecución (la capacidad efectiva baja con la
+  temperatura sin que cambie la topología); el evento de sobrecarga de una arista resuelve su celda; el flujo
+  animado de un cable quemado se apaga.

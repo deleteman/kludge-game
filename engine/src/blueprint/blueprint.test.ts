@@ -9,6 +9,7 @@ import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
+import { DEFAULT_EDGE_CONDUCTOR_ID } from "../signals/edge-conductor.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
 import type { DoorId } from "../doors/door.types.js";
@@ -71,6 +72,9 @@ function buildFixtureBlueprint(): Blueprint {
           id: "edge-ab" as SignalEdgeId,
           from: "node-a" as SignalNodeId,
           to: "node-b" as SignalNodeId,
+          // Subfase 14a-4: una arista de schemaVersion 11 sabe de qué está hecha.
+          conductorId: "cable-cobre" as ComponentId,
+          conductorWear: "nuevo" as const,
         },
       ],
     },
@@ -179,6 +183,54 @@ describe("blueprint: serialize/deserialize round-trip", () => {
 
     const restored = deserializeBlueprint(JSON.stringify(v7));
     expect(restored.powerState.dischargedSourceIds).toEqual([]);
+  });
+
+  it("rellena el conductor de las aristas al cargar un save pre-14a-4 (schema v10)", () => {
+    // Hasta 14a-4 un cable era gratis y de capacidad infinita. Una partida vieja
+    // no puede rechazarse ni quedarse sin capacidad: sus aristas pasan a ser de
+    // cobre nuevo, el conductor base del catálogo.
+    const v10 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    const edges = (v10.signalGraph as Record<string, unknown>).edges as Array<Record<string, unknown>>;
+    for (const edge of edges) {
+      delete edge.conductorId;
+      delete edge.conductorWear;
+    }
+    (v10.metadata as Record<string, unknown>).schemaVersion = 10;
+
+    const restored = deserializeBlueprint(JSON.stringify(v10));
+    expect(restored.signalGraph.edges[0]?.conductorId).toBe(DEFAULT_EDGE_CONDUCTOR_ID);
+    expect(restored.signalGraph.edges[0]?.conductorWear).toBe("nuevo");
+  });
+
+  it("respeta el conductor y el desgaste guardados en vez de pisarlos con el default", () => {
+    // El caso extremo del propio mecanismo de fallback (la lección más cara del
+    // proyecto): un default que se aplica siempre borra el dato real.
+    const blueprint = buildFixtureBlueprint();
+    const conFibra: Blueprint = {
+      ...blueprint,
+      signalGraph: {
+        ...blueprint.signalGraph,
+        edges: [
+          {
+            ...blueprint.signalGraph.edges[0]!,
+            conductorId: "cable-fibra-optica" as ComponentId,
+            conductorWear: "degradado",
+          },
+        ],
+      },
+    };
+
+    const restored = deserializeBlueprint(serializeBlueprint(conFibra));
+    expect(restored.signalGraph.edges[0]?.conductorId).toBe("cable-fibra-optica");
+    expect(restored.signalGraph.edges[0]?.conductorWear).toBe("degradado");
+  });
+
+  it("rechaza un desgaste de cable inválido", () => {
+    const roto = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    const edges = (roto.signalGraph as Record<string, unknown>).edges as Array<Record<string, unknown>>;
+    edges[0]!.conductorWear = "oxidado";
+
+    expect(() => deserializeBlueprint(JSON.stringify(roto))).toThrow(BlueprintParseError);
   });
 
   it("round-trips discharged sources (13d)", () => {

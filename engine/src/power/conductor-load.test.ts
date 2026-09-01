@@ -1,24 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { conductorElectricalLoad } from "./conductor-load.js";
+import { edgeElectricalLoad } from "./conductor-load.js";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import { declaredPowerDraw } from "./power-parameters.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
+import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 
 /**
- * Carga eléctrica derivada del cableado (Subfase 14a-2).
+ * Carga eléctrica derivada del cableado (Subfase 14a-2, mudada a la ARISTA en
+ * 14a-4).
  *
  * Contra el CATÁLOGO REAL, no fixtures sintéticos: el número que importa es el
  * `powerDraw` que las piezas declaran de verdad y la `maxCapacity` re-escalada,
- * y un fixture propio probaría mi aritmética en vez del contenido (patrón 50 de
+ * y un fixture propio probaría mi aritmética en vez del contenido (patrón 13 de
  * las lecciones de playtest — el bug de 13g solo se veía con el catálogo real).
  */
 
 const REGISTRY = buildComponentCatalog().registry;
 
-const CABLE = "cable-1" as PlacedComponentInstanceId;
-const CABLE_NODE = "cable-1-cond" as SignalNodeId;
+const FUENTE = "fuente-1" as PlacedComponentInstanceId;
+const FUENTE_NODE = "fuente-1-em" as SignalNodeId;
+/** La arista bajo prueba: sale de la fuente hacia la primera pieza colgada. */
+const WIRE = "wire-1" as SignalEdgeId;
 
 interface Piece {
   readonly instanceId: PlacedComponentInstanceId;
@@ -26,21 +30,26 @@ interface Piece {
   readonly nodeId: SignalNodeId;
 }
 
-/** Cable con `pieces` colgando aguas abajo, todas por una arista directa. */
+/**
+ * Fuente con `pieces` colgando en CADENA por aristas sucesivas: la fuente
+ * alimenta a la pieza 1 (arista `WIRE`), la pieza 1 a la 2, y así. Es el montaje
+ * que interesa — el cable de arriba carga con todo lo que cuelga debajo.
+ */
 function blueprintWith(pieces: ReadonlyArray<Piece>): Blueprint {
+  const chain = [{ nodeId: FUENTE_NODE }, ...pieces];
   return {
     metadata: {
-      schemaVersion: 5,
+      schemaVersion: 11,
       id: "fixture",
       name: "Fixture",
       engineVersion: "0.0.0",
-      createdAt: "2026-08-31T00:00:00.000Z",
-      updatedAt: "2026-08-31T00:00:00.000Z",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
     },
     placedComponents: [
       {
-        instanceId: CABLE,
-        componentDefinitionId: "cable-cobre" as ComponentId,
+        instanceId: FUENTE,
+        componentDefinitionId: "fotorreceptor" as ComponentId,
         placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
         condition: "ok",
         wear: "nuevo",
@@ -60,7 +69,7 @@ function blueprintWith(pieces: ReadonlyArray<Piece>): Blueprint {
     reservoirContents: [],
     signalGraph: {
       nodes: [
-        { id: CABLE_NODE, role: "conductor" as const, position: { x: 0, y: 0 }, ownerRef: CABLE },
+        { id: FUENTE_NODE, role: "emitter" as const, position: { x: 0, y: 0 }, ownerRef: FUENTE },
         ...pieces.map((piece, index) => ({
           id: piece.nodeId,
           role: "receptor" as const,
@@ -68,10 +77,11 @@ function blueprintWith(pieces: ReadonlyArray<Piece>): Blueprint {
           ownerRef: piece.instanceId,
         })),
       ],
-      edges: pieces.map((piece) => ({
-        id: `${CABLE_NODE}->${piece.nodeId}` as Blueprint["signalGraph"]["edges"][number]["id"],
-        from: CABLE_NODE,
+      edges: pieces.map((piece, index) => ({
+        id: (index === 0 ? WIRE : `wire-${index + 1}`) as SignalEdgeId,
+        from: chain[index]!.nodeId,
         to: piece.nodeId,
+        conductorId: "cable-cobre" as ComponentId,
       })),
     },
     sectionAtmospheres: [],
@@ -97,42 +107,57 @@ function piece(n: number, componentDefinitionId: string): Piece {
   };
 }
 
-describe("conductorElectricalLoad (14a-2: la sobrecarga emerge del cableado, no del guion)", () => {
-  it("un conductor sin nada cableado no lleva carga", () => {
-    expect(conductorElectricalLoad(blueprintWith([]), CABLE, REGISTRY)).toBe(0);
+describe("edgeElectricalLoad (14a-4: el cable del jugador es el conductor)", () => {
+  it("una arista inexistente no lleva carga", () => {
+    expect(edgeElectricalLoad(blueprintWith([]), WIRE, REGISTRY)).toBe(0);
   });
 
-  it("suma el powerDraw REAL de cada pieza colgada", () => {
+  it("cuenta la pieza que alimenta, no solo lo que hay más abajo", () => {
+    // Es la diferencia deliberada con la versión por instancia de 14a-2: si el
+    // dueño de `edge.to` no contara, un cable con una sola pieza colgada nunca
+    // podría sobrecargarse.
+    const blueprint = blueprintWith([piece(1, "indicador-led")]);
+    expect(edgeElectricalLoad(blueprint, WIRE, REGISTRY)).toBe(
+      declaredPowerDraw("indicador-led" as ComponentId),
+    );
+  });
+
+  it("suma el powerDraw REAL de toda la cadena que cuelga", () => {
     const blueprint = blueprintWith([piece(1, "indicador-led"), piece(2, "compuerta-blindada")]);
     // Derivado de la tabla, no copiado: si el balance cambia, el test sigue
-    // midiendo lo que dice medir (patrón 45).
+    // midiendo lo que dice medir.
     const expected =
       declaredPowerDraw("indicador-led" as ComponentId) +
       declaredPowerDraw("compuerta-blindada" as ComponentId);
-    expect(conductorElectricalLoad(blueprint, CABLE, REGISTRY)).toBe(expected);
+    expect(edgeElectricalLoad(blueprint, WIRE, REGISTRY)).toBe(expected);
   });
 
-  it("el conductor no se cuenta a sí mismo: COND(E) conduce, no consume", () => {
-    const withAnotherCable = blueprintWith([piece(1, "cable-cobre")]);
-    expect(conductorElectricalLoad(withAnotherCable, CABLE, REGISTRY)).toBe(0);
-  });
-
-  it("cuenta también lo que cuelga en cadena, no solo lo adyacente", () => {
-    const blueprint = blueprintWith([piece(1, "indicador-led"), piece(2, "indicador-led")]);
-    // Se re-encadena: pieza-2 pasa a colgar de pieza-1 en vez del cable.
-    const chained: Blueprint = {
-      ...blueprint,
-      signalGraph: {
-        ...blueprint.signalGraph,
-        edges: [
-          blueprint.signalGraph.edges[0]!,
-          { ...blueprint.signalGraph.edges[1]!, from: "pieza-1-rec" as SignalNodeId },
-        ],
-      },
-    };
-    expect(conductorElectricalLoad(chained, CABLE, REGISTRY)).toBe(
-      declaredPowerDraw("indicador-led" as ComponentId) * 2,
+  it("la fuente aguas arriba no pesa sobre el cable", () => {
+    // `fotorreceptor` cuelga de `edge.from`, no de `edge.to`.
+    const blueprint = blueprintWith([piece(1, "indicador-led")]);
+    expect(edgeElectricalLoad(blueprint, WIRE, REGISTRY)).toBe(
+      declaredPowerDraw("indicador-led" as ComponentId),
     );
+    expect(declaredPowerDraw("fotorreceptor" as ComponentId)).toBeGreaterThan(0);
+  });
+
+  it("un cable quemado aguas abajo DESCARGA al de arriba", () => {
+    // Consecuencia sistémica de 14a-4: la cadena de fallos se detiene sola en
+    // vez de ser una lista de eventos independientes.
+    const blueprint = blueprintWith([piece(1, "indicador-led"), piece(2, "compuerta-blindada")]);
+    const conElSegundoQuemado: Blueprint = {
+      ...blueprint,
+      overloadedRefs: ["wire-2" as SignalEdgeId],
+    };
+    expect(edgeElectricalLoad(conElSegundoQuemado, WIRE, REGISTRY)).toBe(
+      declaredPowerDraw("indicador-led" as ComponentId),
+    );
+  });
+
+  it("una arista quemada no lleva carga ella misma", () => {
+    const blueprint = blueprintWith([piece(1, "indicador-led")]);
+    const quemada: Blueprint = { ...blueprint, overloadedRefs: [WIRE] };
+    expect(edgeElectricalLoad(quemada, WIRE, REGISTRY)).toBe(0);
   });
 
   it("tolera un ciclo en el grafo (el latch del GDD 5.6) sin colgarse", () => {
@@ -144,22 +169,26 @@ describe("conductorElectricalLoad (14a-2: la sobrecarga emerge del cableado, no 
         edges: [
           ...blueprint.signalGraph.edges,
           {
-            id: "loop" as Blueprint["signalGraph"]["edges"][number]["id"],
+            id: "loop" as SignalEdgeId,
             from: "pieza-1-rec" as SignalNodeId,
-            to: CABLE_NODE,
+            to: FUENTE_NODE,
+            conductorId: "cable-cobre" as ComponentId,
           },
         ],
       },
     };
-    expect(conductorElectricalLoad(cyclic, CABLE, REGISTRY)).toBe(
-      declaredPowerDraw("indicador-led" as ComponentId),
+    // Con el lazo cerrado, la fuente pasa a estar aguas abajo del cable y sí
+    // cuenta: el recorrido es correcto, no se cuelga, y no cuenta dos veces.
+    expect(edgeElectricalLoad(cyclic, WIRE, REGISTRY)).toBe(
+      declaredPowerDraw("indicador-led" as ComponentId) +
+        declaredPowerDraw("fotorreceptor" as ComponentId),
     );
   });
 
   it("la escala del catálogo deja una franja donde SOLO la temperatura decide", () => {
     // El acoplamiento térmico solo significa algo si existe una carga que sea
-    // segura en operación normal y mortal fuera de rango (patrón 23: un umbral
-    // que colapsa contra otro número del sistema es un escritor muerto).
+    // segura en operación normal y mortal fuera de rango (un umbral que colapsa
+    // contra otro número del sistema es un escritor muerto).
     const cable = REGISTRY.get("cable-cobre" as ComponentId);
     const capacity = cable?.data.functional?.find((property) => property.tag === "COND");
     expect(capacity?.tag).toBe("COND");

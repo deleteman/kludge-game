@@ -17,7 +17,9 @@ import type {
   ChemicalSubstanceId,
   ChemicalTag,
   ComponentId,
+  ComponentWear,
   CrewActorId,
+  Footprint,
   FunctionalProperty,
   GridPosition,
   PhysicalComponentDefinition,
@@ -27,7 +29,13 @@ import type {
   SignalNodeId,
 } from "engine";
 
-import { EXTRACTION_BATCH_UNITS } from "engine";
+import {
+  DEFAULT_WEAR,
+  electricalConductorProperty,
+  EXTRACTION_BATCH_UNITS,
+  isWiringMaterial,
+  wornCapacity,
+} from "engine";
 import type { ConduitConnection, ConduitId, DoorRuntime } from "engine";
 import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
@@ -167,6 +175,14 @@ export class MissionInteractionController {
     /** Lista unificada (ronda 8): habilitados primero, bloqueados después con su motivo — ver `buildInstallOptions`. */
     readonly options: ReadonlyArray<InstallPickerOption>;
     readonly selectedIndex: number;
+    /**
+     * Presente = el modal está eligiendo CON QUÉ CABLE tender esta arista
+     * (Subfase 14a-4), no qué pieza instalar. Se reusa el mismo estado y el
+     * mismo modal a propósito: es el mismo gesto de "elegir una pieza del
+     * inventario", y duplicar la superficie habría sido dos cosas que mantener
+     * con el mismo bug de scroll que ya costó una deuda.
+     */
+    readonly wiring?: { readonly from: SignalNodeId; readonly to: SignalNodeId };
   };
   /**
    * Pieza elegida, esperando a que el jugador marque DÓNDE va (13f ronda 3).
@@ -183,7 +199,16 @@ export class MissionInteractionController {
    * "elegir un punto del mapa" desde 13e ronda 7 — mismo patrón de estado,
    * mismo ESC para cancelar, mismo botón de cancelar en la cabecera.
    */
-  private installPlacementState?: { readonly option: InstallPickerOption };
+  private installPlacementState?: {
+    readonly option: InstallPickerOption;
+    /**
+     * Resuelta al entrar en modo colocación. `InstallPickerOption.footprint` es
+     * opcional desde 14a-4 (el selector de cableado reusa el mismo tipo y un
+     * cable no ocupa celdas); acá ya no puede faltar, y tenerla resuelta evita
+     * repartir un `?? ` por los tres puntos que la consumen.
+     */
+    readonly footprint: Footprint;
+  };
   private installPickerContainer?: Phaser.GameObjects.Container;
   /** Panel scrolleable vivo de la lista del selector, para preservar su scroll entre rebuilds (deuda #2). */
   private installPickerList?: ScrollablePanel;
@@ -232,9 +257,9 @@ export class MissionInteractionController {
   installPlacementPreviewAt(
     position: GridPosition,
   ): { readonly cells: ReadonlyArray<GridPosition>; readonly valid: boolean } | undefined {
-    const option = this.installPlacementState?.option;
-    if (!option) return undefined;
-    const placement = { position, footprint: option.footprint, rotation: 0 as const };
+    const state = this.installPlacementState;
+    if (!state) return undefined;
+    const placement = { position, footprint: state.footprint, rotation: 0 as const };
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
     const valid =
       section !== undefined &&
@@ -377,7 +402,10 @@ export class MissionInteractionController {
    */
   private startInstallPlacement(option: InstallPickerOption): void {
     this.closeInstallPicker();
-    this.installPlacementState = { option };
+    // Sin huella no hay nada que colocar: `buildInstallOptions` no produce filas
+    // así, pero el tipo lo permite desde 14a-4 y el guard lo deja explícito.
+    if (!option.footprint) return;
+    this.installPlacementState = { option, footprint: option.footprint };
     this.setActionPanelContent({ kind: "idle" });
     this.callbacks.setStatus(
       t("ui.floorplan.mission.install-placement-hint").replace("{piece}", option.name),
@@ -398,10 +426,11 @@ export class MissionInteractionController {
    * `handleTransferModeClick`: nunca un rechazo mudo.
    */
   handleInstallPlacementClick(position: GridPosition): void {
-    const option = this.installPlacementState?.option;
-    if (!option || !this.selectedActorIdValue) return;
+    const state = this.installPlacementState;
+    if (!state || !this.selectedActorIdValue) return;
+    const option = state.option;
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    const placement = { position, footprint: option.footprint, rotation: 0 as const };
+    const placement = { position, footprint: state.footprint, rotation: 0 as const };
     const issues = section
       ? validateInstallation(section, this.mission.blueprint.placedComponents, placement)
       : [{ detail: t("ui.floorplan.mission.install-placement-outside") }];
@@ -413,7 +442,7 @@ export class MissionInteractionController {
     this.mission.queueInstall(
       this.selectedActorIdValue,
       option.id,
-      option.footprint,
+      state.footprint,
       position,
       option.wear,
       option.consumesRecipe,
@@ -878,6 +907,26 @@ export class MissionInteractionController {
       return;
     }
 
+    // Subfase 14a-4: repetir el gesto sobre un par YA cableado retira el cable
+    // en vez de tender un segundo encima. Es el camino de salida de la cicatriz
+    // —un cable quemado corta la señal para siempre— y de paso tapa un agujero
+    // viejo: hasta acá se podían apilar N aristas idénticas sobre los mismos dos
+    // nodos, invisibles porque se dibujan una sobre otra.
+    const existing = this.mission.blueprint.signalGraph.edges.find(
+      (edge) =>
+        (edge.from === this.wireFirstNodeId && edge.to === node.id) ||
+        (edge.from === node.id && edge.to === this.wireFirstNodeId),
+    );
+    if (existing) {
+      this.mission.queueDisconnect(this.selectedActorIdValue, existing.id);
+      this.setWireFirstNode(undefined);
+      this.wireModeValue = false;
+      this.callbacks.setStatus(t("ui.floorplan.mission.wire-removing"));
+      this.callbacks.onWireModeChanged();
+      this.callbacks.onTaskQueued();
+      return;
+    }
+
     let from: SignalNodeId;
     let to: SignalNodeId;
     try {
@@ -906,7 +955,39 @@ export class MissionInteractionController {
       return;
     }
 
-    this.mission.queueConnect(this.selectedActorIdValue, from, to);
+    // El par es cableable: ahora se elige CON QUÉ (14a-4). El cable deja de ser
+    // gratis, así que la pieza tiene que elegirla el jugador — decisión del
+    // operador: si el juego elige solo, nunca aprende que hay diferencia.
+    const options = this.buildWireOptions();
+    if (options.length === 0) {
+      // Ni una sola fila: ni siquiera bloqueada. Un modal vacío sería un
+      // callejón mudo — se dice por qué y se sale del modo.
+      this.callbacks.setStatus(t("ui.floorplan.mission.wire-no-conductor"));
+      this.setWireFirstNode(undefined);
+      return;
+    }
+    this.installPickerScrollT = 0;
+    this.installPickerState = { options, selectedIndex: 0, wiring: { from, to } };
+    this.redrawInstallPickerModal();
+    this.callbacks.setStatus("");
+  }
+
+  /** El jugador eligió el conductor: se encola el tendido y se sale del modo cableado. */
+  private confirmWireConductor(
+    wiring: { readonly from: SignalNodeId; readonly to: SignalNodeId },
+    option: InstallPickerOption,
+  ): void {
+    const actorId = this.selectedActorIdValue;
+    this.closeInstallPicker();
+    if (!actorId) {
+      this.callbacks.setStatus(t("ui.floorplan.mission.wire-mode-need-actor"));
+      return;
+    }
+    this.mission.queueConnect(actorId, wiring.from, wiring.to, {
+      conductorId: option.id,
+      conductorWear: option.wear,
+      consumeRecipe: option.consumesRecipe,
+    });
     this.setWireFirstNode(undefined);
     this.wireModeValue = false;
     this.callbacks.setStatus("");
@@ -1250,8 +1331,21 @@ export class MissionInteractionController {
    *   `"missing-ingredients"` y los nombres que faltan (`missingRecipeIngredients`).
    * - Una creación/compuesto sin footprint no es instalable (no se sabe cuánto ocupa).
    */
+  /**
+   * Subfase 14a-4: los conductores eléctricos dejan de ser instalables.
+   * Un `COND(E)` ya no es una pieza que se coloca en una celda — es el material
+   * con el que se tiende un cable, y vive en su propio selector (modo cableado).
+   * El criterio es por PROPIEDAD (`isWiringMaterial`), no por lista de ids: un
+   * conductor nuevo en el catálogo se comporta bien solo.
+   */
+  private isWiringOnly(definition: { data?: { functional?: unknown } } | undefined): boolean {
+    return isWiringMaterial(definition as never);
+  }
+
   private buildInstallOptions(): ReadonlyArray<InstallPickerOption> {
-    const atomicAvailable: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.flatMap((spec) =>
+    const atomicAvailable: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
+      (spec) => !this.isWiringOnly(spec),
+    ).flatMap((spec) =>
       this.mission.wearBucketsOf(spec.id).map((bucket) => ({
         id: spec.id,
         name: spec.name,
@@ -1263,7 +1357,7 @@ export class MissionInteractionController {
       })),
     );
     const atomicMissing: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
-      (spec) => this.mission.stockOf(spec.id) <= 0,
+      (spec) => this.mission.stockOf(spec.id) <= 0 && !this.isWiringOnly(spec),
     ).map((spec) => ({
       id: spec.id,
       name: spec.name,
@@ -1288,7 +1382,7 @@ export class MissionInteractionController {
     const compositeBlocked: InstallPickerOption[] = [];
     for (const def of this.mission.installableCatalogComposites) {
       const footprint = def.data.footprint;
-      if (!footprint) continue;
+      if (!footprint || this.isWiringOnly(def)) continue;
       // Ronda 9: sin resaltado de objetivo de misión en este contexto (válido
       // solo en el tooltip de desmontar) + marca por ingrediente puntual sin
       // stock (`missingRefs`, vacío en la rama disponible — sin efecto visual).
@@ -1325,6 +1419,102 @@ export class MissionInteractionController {
   }
 
   /**
+   * Conductores con los que se puede tender un cable (Subfase 14a-4).
+   *
+   * Misma forma que `buildInstallOptions` y el MISMO modal: el jugador ya sabe
+   * leer esa lista (una fila por bucket de desgaste, filas bloqueadas atenuadas
+   * con su motivo), y construir una segunda superficie para el mismo gesto de
+   * "elegir una pieza del inventario" habría sido dos cosas que mantener.
+   *
+   * La diferencia que importa está en `detailLines`: cada fila muestra la
+   * capacidad **efectiva** (ya con el desgaste aplicado), no la de catálogo. Es
+   * el número contra el que el motor va a comparar la carga; mostrar el otro
+   * sería que la UI mienta sobre el estado del motor.
+   */
+  private buildWireOptions(): ReadonlyArray<InstallPickerOption> {
+    const available: InstallPickerOption[] = [];
+    const blocked: InstallPickerOption[] = [];
+
+    for (const spec of ATOMIC_COMPONENT_CATALOG) {
+      if (!this.isWiringOnly(spec)) continue;
+      const buckets = this.mission.wearBucketsOf(spec.id);
+      if (buckets.length === 0) {
+        blocked.push({
+          id: spec.id,
+          name: spec.name,
+          functional: spec.data.functional,
+          material: spec.data.material,
+          detailLines: this.conductorDetailLines(spec, DEFAULT_WEAR),
+          blocked: "no-stock",
+        });
+        continue;
+      }
+      for (const bucket of buckets) {
+        available.push({
+          id: spec.id,
+          name: spec.name,
+          functional: spec.data.functional,
+          material: spec.data.material,
+          wear: bucket.wear,
+          quantity: bucket.quantity,
+          detailLines: this.conductorDetailLines(spec, bucket.wear),
+        });
+      }
+    }
+
+    for (const def of this.mission.installableCatalogComposites) {
+      if (!this.isWiringOnly(def)) continue;
+      const missingRefs = new Set(this.mission.missingRecipeIngredients(def).map(({ ref }) => ref));
+      const row: InstallPickerOption = {
+        id: def.id,
+        name: def.name,
+        functional: def.data.functional,
+        material: def.data.material,
+        composition: this.buildComposition(def, { highlightRequiredTag: false, missingRefs }),
+        detailLines: this.conductorDetailLines(def, DEFAULT_WEAR),
+        consumesRecipe: true,
+      };
+      if (this.mission.hasRecipeStockFor(def)) {
+        available.push(row);
+      } else {
+        blocked.push({ ...row, blocked: "missing-ingredients" });
+      }
+    }
+
+    return [...available, ...blocked];
+  }
+
+  /** Las dos líneas con las que se elige un cable: cuánta carga aguanta y cuánto calor tolera. */
+  private conductorDetailLines(
+    // Estructural y no `PhysicalComponentDefinition`: sirve igual para un spec
+    // del catálogo atómico que para una definición del registry — es el mismo
+    // dato mirado desde dos capas (mismo criterio que `electricalConductorProperty`).
+    definition: {
+      readonly data: {
+        readonly functional?: ReadonlyArray<FunctionalProperty>;
+        readonly material?: { readonly CT?: "A" | "M" | "B" };
+      };
+    },
+    wear: ComponentWear,
+  ): ReadonlyArray<string> {
+    const conductor = electricalConductorProperty(definition);
+    if (!conductor) return [];
+    const effective = wornCapacity(conductor.maxCapacity, wear);
+    // Un decimal: `wornCapacity` da 5.1 para un cable `usado`, y redondear a
+    // entero volvería indistinguibles dos filas que el motor sí distingue.
+    const shown = Number.isInteger(effective) ? `${effective}` : effective.toFixed(1);
+    return [
+      `${t("ui.floorplan.mission.wire-picker.capacity")}: ${shown}`,
+      // `CT` decide a partir de qué temperatura el cable pierde la mitad de su
+      // capacidad (14a-4). Sin `CT` declarado el motor asume el peor caso, así
+      // que la línea se muestra igual — nunca en blanco.
+      `${t("ui.floorplan.mission.wire-picker.heat")}: ${t(
+        `component.thermal-tolerance.${definition.data.material?.CT ?? "A"}`,
+      )}`,
+    ];
+  }
+
+  /**
    * Modal de selección de instalación (ajuste post-playtest #3): estado
    * separado del panel docked porque es un diálogo bloqueante que vive por
    * encima de TODO (`hudModal`), no un contenido más del panel lateral —
@@ -1339,8 +1529,12 @@ export class MissionInteractionController {
       state.options,
       state.selectedIndex,
       {
-        title: t("ui.floorplan.mission.inspector.install-picker-title"),
-        install: t("ui.floorplan.mission.install-modal.install"),
+        title: state.wiring
+          ? t("ui.floorplan.mission.wire-picker.title")
+          : t("ui.floorplan.mission.inspector.install-picker-title"),
+        install: state.wiring
+          ? t("ui.floorplan.mission.wire-picker.confirm")
+          : t("ui.floorplan.mission.install-modal.install"),
         cancel: t("ui.floorplan.mission.install-modal.cancel"),
         footprint: t("ui.floorplan.mission.install-modal.footprint"),
         selectHint: t("ui.floorplan.mission.install-modal.select-hint"),
@@ -1361,7 +1555,8 @@ export class MissionInteractionController {
           this.redrawInstallPickerModal();
           this.callbacks.onSelectionChanged();
         },
-        onInstall: (option) => this.startInstallPlacement(option),
+        onInstall: (option) =>
+          state.wiring ? this.confirmWireConductor(state.wiring, option) : this.startInstallPlacement(option),
         onCancel: () => this.closeInstallPicker(),
         markAsHudObject: (obj) => this.callbacks.markAsHudObject(obj),
         initialScrollT: this.installPickerScrollT,

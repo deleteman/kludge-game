@@ -782,7 +782,15 @@ export type {
 export { MissionThermalRuntime } from "./mission/mission-thermal-runtime.js";
 export type { ActiveThermalRegulatorSource } from "./mission/mission-thermal-runtime.js";
 // Subfase 14a-2: acoplamientos térmicos.
-export { conductorElectricalLoad } from "./power/conductor-load.js";
+export { edgeElectricalLoad } from "./power/conductor-load.js";
+export {
+  DEFAULT_EDGE_CONDUCTOR_ID,
+  edgeConductorId,
+  edgeConductorWear,
+  electricalConductorProperty,
+  isWiringMaterial,
+} from "./signals/edge-conductor.js";
+export { activeSignalEdges, activeSignalGraph, isEdgeBurned } from "./signals/active-signal-graph.js";
 export { downstreamNodes, upstreamNodes } from "./signals/graph-traversal.js";
 export {
   activeThermalRegulatorsBySection,

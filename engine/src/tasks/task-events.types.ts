@@ -94,7 +94,26 @@ export interface TaskFailedEvent extends DomainEventBase {
   readonly kind: "task-failed";
   readonly taskId: CrewTaskId;
   readonly actorId: CrewActorId;
-  readonly reason?: "no-power";
+  /**
+   * Subfase 14a-4: `effect-rejected` — el efecto físico rechazó la tarea al
+   * ejecutarse (sin stock al completar, cable duplicado). Antes de 14a-4 esa
+   * excepción reventaba el tick; ver `task-scheduler.ts::completeTask`.
+   */
+  readonly reason?: "no-power" | "effect-rejected";
+}
+
+/**
+ * Detalle del rechazo de un efecto (Subfase 14a-4). Va SEPARADO de
+ * `TaskFailedEvent` y no como un campo suyo porque el mensaje es texto crudo del
+ * motor, sin clave de traducción: sirve para diagnosticar en consola, no para
+ * pintarlo en la UI. El aviso que ve el jugador sale de `task-failed`, que sí
+ * está localizado.
+ */
+export interface TaskEffectErrorEvent extends DomainEventBase {
+  readonly kind: "task-effect-error";
+  readonly taskId: CrewTaskId;
+  readonly actorId: CrewActorId;
+  readonly message: string;
 }
 
 export type CoreLoopMode = "planning" | "execution";
@@ -110,4 +129,5 @@ export type CoreLoopDomainEvent =
   | TaskBlockedEvent
   | TaskCancelledEvent
   | TaskFailedEvent
+  | TaskEffectErrorEvent
   | CoreLoopModeChangedEvent;

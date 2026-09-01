@@ -1085,7 +1085,7 @@ recurrente del proyecto — el modelo funciona y el jugador no puede verlo.
 
 Suite: 1250 tests en verde (164 archivos). `tsc`, `eslint` y `build` limpios.
 
-##### Subfase 14a-4: El cableado del jugador ES el conductor — pendiente
+##### Subfase 14a-4: El cableado del jugador ES el conductor ✅ CERRADA (2026-09-01)
 
 Abierta desde la ronda 1 de 14a-2 (decisión del operador, 2026-09-01). Sale de la pregunta *"¿por qué el jugador
 metería un cable de cobre en el mapa?"*, cuya respuesta verificada es **que hoy no tiene ningún motivo**:
@@ -1109,12 +1109,44 @@ correcta sin camino jugable. Alcance:
 - Da casa a las dos viñetas del GDD 5.6 que hoy no la tienen: retardo de propagación según material del conductor,
   y sobrecarga.
 
-Preguntas abiertas, a resolver antes de planificar:
-- ¿Qué pasa con las aristas de saves viejos — cobre por defecto?
-- ¿El jugador elige el cable al tender, o se usa el mejor disponible?
-- ¿Un cable quemado se puede reemplazar, y a qué coste?
-- ¿Absorbe también el `panel-electrico` que el caso de validación 2 nombra y que **no existe en el catálogo**
-  (hoy solo vive como fixture sintético en su propio test)?
+**Preguntas cerradas con el operador antes de planificar (2026-09-01):**
+- Aristas de saves viejos → **cobre nuevo**, migración tolerante (`schemaVersion` 10→11): ningún save se
+  rechaza y ninguna partida cambia de márgenes.
+- **El jugador elige el cable siempre**, con capacidad y stock a la vista. Si el juego elige solo, nunca
+  aprende que hay diferencia entre materiales.
+- Un cable quemado **se pierde**: retirarlo no devuelve nada y retender cuesta otro conductor.
+- **`panel-electrico` descartado.** Preguntado qué función cumpliría, el operador respondió que si es solo
+  "el lugar por donde pasan los cables", los conductos `senal` del plano ya lo cubren. No se crea la pieza;
+  el caso de validación 2 se reescribió sobre un cable real en vez del fixture sintético.
+- Decisión extra del mismo ciclo: **los conductores dejan de ser componentes instalables** — son otro tipo
+  de recurso, con su propio selector.
+
+Qué entró:
+* **La arista sabe de qué está hecha**: `SignalEdge.conductorId` + `conductorWear`. La capacidad NO se
+  persiste, se deriva del catálogo — una segunda copia se habría desincronizado al re-escalar (ya pasó
+  en 14a-2). Bump 10→11 y `overloadedRefs` pasa a admitir `SignalEdgeId`.
+* **`MissionOverloadRuntime` recorre las aristas.** Una pieza `COND(E)` colocada ya no se evalúa: sería
+  el mismo fenómeno con dos capacidades. `scriptedOverloads` sobrevive intacto como override.
+  `conductorElectricalLoad` se borra al quedarse sin llamadores; lo reemplaza `edgeElectricalLoad`.
+* **La cicatriz no es cosmética**: `activeSignalEdges` saca el cable quemado del grafo que se evalúa Y
+  del cálculo de carga, así que quemar un cable **descarga a sus vecinos**.
+* **El `CT` de los cables deja de ser decorativo**: ninguno lo declaraba y todos caían al default "A",
+  o sea que la tabla de offsets térmicos existía en el código y no en el juego. Cobre/bobina/resistencia
+  A, blindado M, fibra B — la elección de material pasa a tener dos ejes, con test que lo ancla.
+* **Tarea `disconnect`** + gesto sin controles nuevos: repetir el cableado sobre un par ya cableado lo
+  retira. De paso tapa un agujero viejo — se podían apilar N aristas idénticas, invisibles.
+* **Fallo de tarea por rechazo del efecto**: `completeTask` invocaba el efecto sin try/catch y una
+  excepción reventaba el tick. Existía desde la Fase 10b, pero 14a-4 lo volvió trivial de alcanzar
+  (dos cables encolados con una pieza en stock). Ahora la tarea pasa a `failed` con motivo propio.
+* **Legibilidad**: el cable se pinta verde → ámbar (75%) → carbonizado, repintado a 4 Hz porque la
+  capacidad efectiva baja con la temperatura sin que cambie la topología; la cicatriz se siembra sobre
+  las celdas que ATRAVIESA la ruta, no en un punto; su flujo animado se apaga con él.
+
+Suite: motor **1168** (153 archivos), juego **105**. `tsc`, `eslint` y `build` limpios.
+
+**Fuera de alcance, explícito:** el retardo de propagación por material (GDD 5.6). `DelayBehavior` y
+`DelayRule` ya existen y su docblock promete derivar `delaySeconds` del material desde la Fase 4/5 — es
+un eje temporal nuevo, no una mudanza. Sale a subfase aparte.
 
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 

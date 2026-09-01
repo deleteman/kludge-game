@@ -40,6 +40,8 @@ export function taskProgressKey(task: CrewTask): string | undefined {
     }
     case "connect":
       return `connect:${payload.fromNodeId}->${payload.toNodeId}`;
+    case "disconnect":
+      return `disconnect:${payload.edgeId}`;
     case "analyze-substance":
       return `analyze-substance:${payload.substanceId}`;
     case "cut-power":

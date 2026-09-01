@@ -1,5 +1,6 @@
 import { assertBlueprintIntegrity } from "./blueprint-integrity.js";
 import { DEFAULT_WEAR, isComponentWear } from "../wear/wear.types.js";
+import { DEFAULT_EDGE_CONDUCTOR_ID } from "../signals/edge-conductor.js";
 import type { Blueprint } from "./blueprint.types.js";
 
 /**
@@ -133,6 +134,27 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     !Array.isArray(signalGraph.edges)
   ) {
     throw new BlueprintParseError("Blueprint.signalGraph must have 'nodes' and 'edges' arrays");
+  }
+
+  // schemaVersion < 11 no sabía de qué estaba hecho un cable (Subfase 14a-4):
+  // la arista era gratis y de capacidad infinita. Se rellena con cobre nuevo —
+  // el conductor base del catálogo y el único que el capítulo 1 tiene en stock,
+  // así que una partida vieja sigue jugándose con los mismos márgenes con los
+  // que se guardó, en vez de rechazarse. Ver `signals/edge-conductor.ts`.
+  for (const edge of signalGraph.edges) {
+    if (!isPlainObject(edge) || typeof edge.id !== "string") {
+      throw new BlueprintParseError("Invalid entry in Blueprint.signalGraph.edges");
+    }
+    if (edge.conductorId === undefined) {
+      (edge as { conductorId: unknown }).conductorId = DEFAULT_EDGE_CONDUCTOR_ID;
+    } else if (typeof edge.conductorId !== "string") {
+      throw new BlueprintParseError("Blueprint.signalGraph.edges[].conductorId must be a string");
+    }
+    if (edge.conductorWear === undefined) {
+      (edge as { conductorWear: unknown }).conductorWear = DEFAULT_WEAR;
+    } else if (!isComponentWear(edge.conductorWear)) {
+      throw new BlueprintParseError("Blueprint.signalGraph.edges[].conductorWear is not a ComponentWear");
+    }
   }
 
   // schemaVersion < 4 no tenía atmósfera/cicatriz de energía por sección (Fase

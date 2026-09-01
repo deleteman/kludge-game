@@ -2,6 +2,7 @@ import type { Brand } from "../shared/brand.types.js";
 import type { PlacedFootprint } from "../geometry/grid-position.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
@@ -117,6 +118,16 @@ import type { ValveSnapshot } from "../valves/valve.types.js";
  * esté sellada es una decisión que tomó el jugador (o un daño que recibió la
  * hoja), y sin persistirla el aislamiento deliberado se deshacía solo al
  * recargar la partida.
+ *
+ * Subfase 14a-4: `schemaVersion` 10→11 — `SignalEdge` gana `conductorId` y
+ * `conductorWear`: el cable que tiende el jugador pasa a estar HECHO de una
+ * pieza real, consumida del stock, y de ahí sale su capacidad. Hasta acá la
+ * arista era gratis y de capacidad infinita, y la sobrecarga colgaba de un
+ * `COND(E)` colocado en una celda que nadie tenía motivo para colocar. Con el
+ * mismo bump, `overloadedRefs` pasa a admitir `SignalEdgeId` — un cable quemado
+ * es la cicatriz que antes llevaba la pieza. Migración tolerante: una arista sin
+ * conductor se rellena con `cable-cobre` nuevo, así que ninguna partida vieja se
+ * rechaza ni cambia de comportamiento.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -197,8 +208,15 @@ export interface Blueprint {
    * `powerState.permanentlyDisconnectedSectionIds`).
    */
   readonly unpoweredSectionIds: ReadonlyArray<SectionId>;
-  /** Cicatriz de sobrecarga (Fase 12a): refs de conducto/reservorio en cortocircuito permanente, ver `MissionOverloadRuntime`. */
-  readonly overloadedRefs: ReadonlyArray<PlacedComponentInstanceId>;
+  /**
+   * Cicatriz de sobrecarga (Fase 12a): refs en cortocircuito permanente, ver
+   * `MissionOverloadRuntime`. Desde la Subfase 14a-4 la lista es HETEROGÉNEA —
+   * guarda instancias colocadas (reservorios) **y** aristas de señal (los cables
+   * que tiende el jugador, que son los conductores de verdad desde 14a-4). Los
+   * dos son `Brand<string>`, así que un `includes` sigue sirviendo para las dos
+   * preguntas; quien necesite distinguirlos consulta el grafo.
+   */
+  readonly overloadedRefs: ReadonlyArray<PlacedComponentInstanceId | SignalEdgeId>;
   /** Presupuesto de energía y prioridades del jugador (Fase 13b), ver `power/power.types.ts`. */
   readonly powerState: PowerState;
   /**

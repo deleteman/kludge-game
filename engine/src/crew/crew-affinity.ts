@@ -14,6 +14,8 @@ export type AffinityAction =
   | "dismantle"
   | "install"
   | "connect"
+  // Subfase 14a-4 — retirar un cable es el mismo trabajo eléctrico que tenderlo.
+  | "disconnect"
   | "combine"
   | "stabilize"
   | "evasive-maneuver"
@@ -42,6 +44,7 @@ export const AFFINITY_ACTION_SPECIALTY: Record<AffinityAction, CrewSpecialty> = 
   dismantle: "ingeniero",
   install: "ingeniero",
   connect: "ingeniero",
+  disconnect: "ingeniero",
   // Fabricar en la mesa es trabajo de Ingeniero (GDD 6.6 y caso 15, "según el
   // tier del Ingeniero"): componer piezas en un compuesto nuevo (Fase 11c.2).
   combine: "ingeniero",
@@ -72,6 +75,9 @@ export const AFFINITY_DURATION_MULTIPLIER: Record<AffinityAction, Record<CrewTie
   dismantle: { novato: 0.9, veterano: 0.75, experto: 0.6 },
   install: { novato: 0.9, veterano: 0.75, experto: 0.6 },
   connect: { novato: 0.9, veterano: 0.75, experto: 0.6 },
+  // 14a-4: mismos valores que `connect` — arrancar un cable es el mismo trabajo
+  // eléctrico que tenderlo, solo que más corto (ver `TASK_BASE_DURATION_SECONDS`).
+  disconnect: { novato: 0.9, veterano: 0.75, experto: 0.6 },
   combine: { novato: 0.9, veterano: 0.75, experto: 0.6 },
   stabilize: { novato: 0.85, veterano: 0.65, experto: 0.45 },
   "evasive-maneuver": { novato: 0.8, veterano: 0.6, experto: 0.4 },

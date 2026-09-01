@@ -14,6 +14,7 @@ import { NOMINAL_TEMPERATURE_CELSIUS } from "../atmosphere/thermal-parameters.js
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 
 const tickOf = (elapsed: number, dt = 1): TickContext => ({ dtSeconds: dt, elapsedSeconds: elapsed });
 
@@ -112,27 +113,32 @@ describe("MissionOverloadRuntime (Fase 12a, cicatriz de sobrecarga scripteada po
 });
 
 /**
- * Subfase 14a-2. Estos casos usan el CATÁLOGO REAL y el plano real, no el
- * fixture de arriba: lo que se prueba es que la sobrecarga emerja de piezas y
- * capacidades de verdad, y un fixture propio probaría mi aritmética (patrón 50).
+ * Subfase 14a-2, con el sujeto mudado a la ARISTA en 14a-4. Estos casos usan el
+ * CATÁLOGO REAL y el plano real, no el fixture de arriba: lo que se prueba es
+ * que la sobrecarga emerja de piezas y capacidades de verdad, y un fixture
+ * propio probaría mi aritmética en vez del contenido (patrón 13).
  */
-describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico)", () => {
+describe("MissionOverloadRuntime (14a-4: el cable del jugador es el conductor)", () => {
   const REGISTRY = buildComponentCatalog().registry;
   const SECTION = "sala" as SectionId;
-  const CABLE = "cable-1" as PlacedComponentInstanceId;
-  const CABLE_NODE = "cable-1-cond" as SignalNodeId;
+  const FUENTE = "fuente-1" as PlacedComponentInstanceId;
+  const FUENTE_NODE = "fuente-1-em" as SignalNodeId;
+  const HUB = "chip-1" as PlacedComponentInstanceId;
+  const HUB_NODE = "chip-1-rec" as SignalNodeId;
+  /** El cable troncal bajo prueba: de la fuente al chip del que cuelga todo. */
+  const TRONCAL = "cable-troncal" as SignalEdgeId;
 
   function floorplan(): ShipFloorplan {
     return {
       id: "nave-test",
       archetype: "investigacion",
       nameKey: "ship.test.name",
-      gridSize: { width: 8, height: 1 },
+      gridSize: { width: 12, height: 1 },
       sections: [
         {
           id: SECTION,
           nameKey: "section.sala",
-          cells: Array.from({ length: 8 }, (_, x) => ({ x, y: 0 })),
+          cells: Array.from({ length: 12 }, (_, x) => ({ x, y: 0 })),
         },
       ],
       conduits: [],
@@ -142,37 +148,60 @@ describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico
     };
   }
 
-  /** Un cable con `ledCount` indicadores LED colgando. */
-  function shipWith(ledCount: number): MutableShipState {
-    const base = blueprintWith(CABLE, "cable-cobre" as ComponentId);
+  /**
+   * Fuente → cable troncal → chip → `ledCount` LEDs, cada uno por su propio
+   * cable corto. Es la topología real de un montaje del jugador: un tronco que
+   * carga con TODO lo que cuelga aguas abajo, y ramas que solo llevan lo suyo.
+   * Así el único candidato a reventar es el troncal, y el test dice qué se
+   * rompió sin ambigüedad.
+   */
+  function shipWith(ledCount: number, conductorId = "cable-cobre"): MutableShipState {
+    const base = blueprintWith(FUENTE, "fotorreceptor" as ComponentId);
     const leds = Array.from({ length: ledCount }, (_, index) => index + 1);
     return new MutableShipState({
       ...base,
       placedComponents: [
         ...base.placedComponents,
+        {
+          instanceId: HUB,
+          componentDefinitionId: "chip-circuito-generico" as ComponentId,
+          placement: { position: { x: 1, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+          condition: "ok",
+          wear: "nuevo",
+        },
         ...leds.map((n) => ({
           instanceId: `led-${n}` as PlacedComponentInstanceId,
           componentDefinitionId: "indicador-led" as ComponentId,
-          placement: { position: { x: n, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 as const },
+          placement: { position: { x: n + 1, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 as const },
           condition: "ok" as const,
           wear: "nuevo" as const,
         })),
       ],
       signalGraph: {
         nodes: [
-          { id: CABLE_NODE, role: "conductor" as const, position: { x: 0, y: 0 }, ownerRef: CABLE },
+          { id: FUENTE_NODE, role: "emitter" as const, position: { x: 0, y: 0 }, ownerRef: FUENTE },
+          { id: HUB_NODE, role: "receptor" as const, position: { x: 1, y: 0 }, ownerRef: HUB },
           ...leds.map((n) => ({
             id: `led-${n}-rec` as SignalNodeId,
             role: "receptor" as const,
-            position: { x: n, y: 0 },
+            position: { x: n + 1, y: 0 },
             ownerRef: `led-${n}` as PlacedComponentInstanceId,
           })),
         ],
-        edges: leds.map((n) => ({
-          id: `e-${n}` as Blueprint["signalGraph"]["edges"][number]["id"],
-          from: CABLE_NODE,
-          to: `led-${n}-rec` as SignalNodeId,
-        })),
+        edges: [
+          {
+            id: TRONCAL,
+            from: FUENTE_NODE,
+            to: HUB_NODE,
+            conductorId: conductorId as ComponentId,
+          },
+          ...leds.map((n) => ({
+            id: `rama-${n}` as SignalEdgeId,
+            from: HUB_NODE,
+            to: `led-${n}-rec` as SignalNodeId,
+            conductorId: "cable-cobre" as ComponentId,
+          })),
+        ],
       },
     });
   }
@@ -188,10 +217,9 @@ describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico
     );
   }
 
-  it("una partida NUEVA, sin nada cableado, no revienta ningún conductor", () => {
-    // Patrón 42: el caso por defecto es el que nadie prueba. Antes de 14a-2 el
-    // runtime hacía early-return sin sujetos scripteados; ahora recorre TODO
-    // conductor instalado, así que este caso pasó a ser alcanzable.
+  it("una partida NUEVA, sin nada colgado, no revienta ningún cable", () => {
+    // El caso por defecto es el que nadie prueba: el runtime recorre TODAS las
+    // aristas en cada tick, así que este camino es el más transitado del juego.
     const shipState = shipWith(0);
     runtimeFor(shipState, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
     expect(shipState.get().overloadedRefs).toEqual([]);
@@ -200,7 +228,15 @@ describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico
   it("colgar piezas de más del cable lo revienta sin ningún guion", () => {
     const shipState = shipWith(8);
     runtimeFor(shipState, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
-    expect(shipState.get().overloadedRefs).toEqual([CABLE]);
+    expect(shipState.get().overloadedRefs).toEqual([TRONCAL]);
+  });
+
+  it("las ramas que llevan poco sobreviven al corte del tronco", () => {
+    // Consecuencia sistémica: revienta el que está sobrecargado, no la
+    // instalación entera.
+    const shipState = shipWith(8);
+    runtimeFor(shipState, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
+    expect(shipState.get().overloadedRefs).not.toContain("rama-1");
   });
 
   it("la MISMA carga es segura a temperatura nominal y mortal en frío extremo", () => {
@@ -215,7 +251,7 @@ describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico
     runtimeFor(congelada, THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius - 10).tick(
       tickOf(0),
     );
-    expect(congelada.get().overloadedRefs).toEqual([CABLE]);
+    expect(congelada.get().overloadedRefs).toEqual([TRONCAL]);
   });
 
   it("y también en calor extremo — la rama que cierra el ciclo combustión→cortocircuito", () => {
@@ -223,12 +259,74 @@ describe("MissionOverloadRuntime (14a-2: carga emergente y acoplamiento térmico
     runtimeFor(ardiendo, THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerTemperatureCelsius + 10).tick(
       tickOf(0),
     );
-    expect(ardiendo.get().overloadedRefs).toEqual([CABLE]);
+    expect(ardiendo.get().overloadedRefs).toEqual([TRONCAL]);
+  });
+
+  it("el CT del material decide: a la misma temperatura el cobre se corta y la fibra aguanta", () => {
+    // Subfase 14a-4. Hasta acá NINGÚN conductor declaraba `CT` y todos caían al
+    // default "A": la tabla de offsets existía en el código y no existía en el
+    // juego. Este test es lo que impide que vuelva a ser decorativa.
+    const cobre = shipWith(4, "cable-cobre");
+    const fibra = shipWith(4, "cable-fibra-optica");
+    // Franja elegida a partir de los propios parámetros, no un literal: por
+    // encima del umbral del cobre (offset 0) y por debajo del de la fibra.
+    const enLaFranja =
+      THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerTemperatureCelsius +
+      THERMAL_CONDUCTIVITY_PARAMETERS.hotTriggerOffsetByThermalConductivity.B / 2;
+
+    runtimeFor(cobre, enLaFranja).tick(tickOf(0));
+    runtimeFor(fibra, enLaFranja).tick(tickOf(0));
+
+    expect(cobre.get().overloadedRefs).toEqual([TRONCAL]);
+    expect(fibra.get().overloadedRefs).toEqual([]);
+  });
+
+  it("un cable desgastado revienta con una carga que el mismo cable nuevo tolera", () => {
+    const nuevo = shipWith(5);
+    runtimeFor(nuevo, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
+    expect(nuevo.get().overloadedRefs).toEqual([]);
+
+    const gastado = shipWith(5);
+    const ship = gastado.get();
+    gastado.set({
+      ...ship,
+      signalGraph: {
+        ...ship.signalGraph,
+        edges: ship.signalGraph.edges.map((edge) =>
+          edge.id === TRONCAL ? { ...edge, conductorWear: "critico" as const } : edge,
+        ),
+      },
+    });
+    runtimeFor(gastado, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
+    expect(gastado.get().overloadedRefs).toEqual([TRONCAL]);
   });
 
   it("sin lector de atmósfera se comporta como antes de 14a-2 (sin castigo silencioso)", () => {
     const shipState = shipWith(4);
     new MissionOverloadRuntime(shipState, REGISTRY, [], undefined, floorplan()).tick(tickOf(0));
     expect(shipState.get().overloadedRefs).toEqual([]);
+  });
+
+  it("una pieza COND(E) COLOCADA ya no es sujeto: el conductor es el cable", () => {
+    // Cierra el doble modelado que 14a-4 vino a eliminar. Antes esta misma nave
+    // habría evaluado el cable de la celda Y la arista, con dos capacidades
+    // distintas para el mismo fenómeno.
+    const shipState = shipWith(8);
+    const ship = shipState.get();
+    shipState.set({
+      ...ship,
+      placedComponents: [
+        ...ship.placedComponents,
+        {
+          instanceId: "cable-en-celda" as PlacedComponentInstanceId,
+          componentDefinitionId: "cable-cobre" as ComponentId,
+          placement: { position: { x: 11, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+          condition: "ok",
+          wear: "nuevo",
+        },
+      ],
+    });
+    runtimeFor(shipState, NOMINAL_TEMPERATURE_CELSIUS).tick(tickOf(0));
+    expect(shipState.get().overloadedRefs).not.toContain("cable-en-celda");
   });
 });

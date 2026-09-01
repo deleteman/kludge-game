@@ -490,6 +490,31 @@ export function sectionScarFlickerAlpha(elapsedSeconds: number): number {
  * confundirse con la cicatriz de sección sin energía).
  */
 export const OVERLOADED_CONDUCTOR_LIGHT_COLOR = 0xf2d24b;
+
+/**
+ * Estado de un CABLE de señal del jugador (Subfase 14a-4).
+ *
+ * Desde 14a-4 la arista tiene carga y capacidad, así que ya no puede pintarse
+ * toda del mismo verde de identidad de recurso: un cable al 95% y uno al 15% se
+ * veían idénticos, y la sobrecarga llegaba sin ningún aviso previo (patrones 7 y
+ * 8 del checklist de playtest — un indicador que nunca se mueve está roto, y un
+ * límite necesita su propia señal).
+ *
+ * No inventa colores: es el eje de estado canónico del contrato 12e —
+ * verde nominal → ámbar al borde → gris carbonizado cuando ya no conduce.
+ * `CONDUIT_COLORS.senal` y `CRISIS_SAFE_COLOR` son el MISMO verde, así que un
+ * cable holgado se sigue viendo exactamente como antes de 14a-4.
+ */
+export const WIRE_LOAD_WARNING_RATIO = 0.75;
+/** Gris apagado del cable quemado: ya no es un conducto, es una cicatriz. */
+export const BURNED_WIRE_COLOR = 0x5a5148;
+export const BURNED_WIRE_ALPHA = 0.7;
+
+/** Color de un cable según cuán cargado está (0..1+). Ver `WIRE_LOAD_WARNING_RATIO`. */
+export function wireLoadColor(ratio: number | undefined): number {
+  if (ratio === undefined) return CONDUIT_COLORS.senal;
+  return ratio >= WIRE_LOAD_WARNING_RATIO ? CRISIS_WARNING_COLOR : CRISIS_SAFE_COLOR;
+}
 /**
  * Núcleo de la CHISPA, distinto del ámbar de la luz (ronda 1 de playtest de
  * 14a-2). El operador no veía las chispas dentro del glow y sospechaba que la

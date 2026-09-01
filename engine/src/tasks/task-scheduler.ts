@@ -3,7 +3,7 @@ import type { EventEmitter } from "../simulation/event-emitter.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { CrewActor, CrewActorId, CrewActorStatus } from "../crew/crew-actor.types.js";
-import type { CrewTask, CrewTaskId, TaskEffect } from "./task.types.js";
+import type { CrewTask, CrewTaskId, TaskEffect, TaskEffectResult } from "./task.types.js";
 import { TERMINAL_TASK_STATES } from "./task.types.js";
 import type { CoreLoopDomainEvent, TaskBlockedEvent, TaskFailedEvent } from "./task-events.types.js";
 import type { Tickable } from "./core-loop-mode.js";
@@ -400,7 +400,39 @@ export class TaskScheduler implements Tickable {
     // recién después se notifica, para que los observadores (el redibujo del
     // overlay en `/game`) vean el estado ya mutado — si no, el objeto recién
     // instalado aparecía un evento tarde (desfase de uno, playtest #8).
-    const result = this.effect(task);
+    // El efecto puede RECHAZAR la tarea al ejecutarse, y hasta la Subfase 14a-4
+    // eso reventaba el tick entero: `createShipTaskEffect` lanza
+    // `InsufficientStockError` desde la Fase 10b, y 14a-4 agrega dos caminos más
+    // (tender un cable sin stock, cablear un par que ya está cableado) sobre un
+    // gesto MUCHO más frecuente. El caso es trivial de alcanzar: encolar dos
+    // cables con una sola pieza en stock — el gate de la UI mira el stock vivo,
+    // no lo que hay en cola, así que los dos pasan y el segundo se queda sin
+    // material recién al completarse.
+    //
+    // La tarea pasa a `failed`, que es exactamente para lo que existe ese estado
+    // ("reservado para cuando el efecto de una tarea reporte un fallo",
+    // `task.types.ts`), y el jugador se entera por el aviso de siempre en vez de
+    // por una partida colgada.
+    let result: TaskEffectResult | void;
+    try {
+      result = this.effect(task);
+    } catch (error) {
+      // `fail()` no toca una tarea en estado terminal, y acá ya está marcada
+      // `completed` (se marca antes de invocar el efecto, para que el propio
+      // efecto vea el estado final). Se la devuelve a un estado no terminal para
+      // que `fail()` haga su trabajo completo: evento, avance descartado,
+      // cascada a los dependientes y actor liberado.
+      task.state = "in-progress";
+      this.fail(task.id, "effect-rejected", ctx);
+      this.emitter?.emit({
+        kind: "task-effect-error",
+        taskId: task.id,
+        actorId: task.actorId,
+        message: (error as Error).message,
+        elapsedSeconds: ctx.elapsedSeconds,
+      });
+      return;
+    }
     this.emitter?.emit({
       kind: "task-completed",
       taskId: task.id,

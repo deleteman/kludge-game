@@ -32,6 +32,8 @@ export type TaskType =
   | "combine"
   | "install"
   | "connect"
+  // Subfase 14a-4 — retirar un cable tendido (típicamente uno quemado).
+  | "disconnect"
   | "analyze-substance"
   // Subfase 13d — tareas de ASEGURADO previas a un desmontaje peligroso.
   | "cut-power"
@@ -113,6 +115,39 @@ export interface ConnectTaskPayload {
   readonly fromNodeId: SignalNodeId;
   readonly toNodeId: SignalNodeId;
   readonly toPort?: string;
+  /**
+   * Pieza conductora con la que se tiende el cable (Subfase 14a-4). El jugador
+   * la elige en el selector de cableado, igual que elige el bucket de desgaste
+   * al instalar; de acá sale la `maxCapacity` de la arista.
+   *
+   * Opcional solo para no romper los tests unitarios que ejercitan `connect`
+   * con nodos sintéticos: sin conductor la tarea NO consume stock y la arista
+   * cae al default de migración (cobre). En juego real siempre viene.
+   */
+  readonly conductorId?: ComponentId;
+  /** Bucket de desgaste del que se toma el cable (14a-4). Ausente = `nuevo`. */
+  readonly conductorWear?: ComponentWear;
+  /**
+   * El conductor es un COMPUESTO de catálogo (fibra, blindado) y se paga con su
+   * receta en vez de con una unidad propia — mismo mecanismo y mismo flag que
+   * `InstallTaskPayload.consumeRecipe`.
+   */
+  readonly consumeRecipe?: boolean;
+}
+
+/**
+ * Retirar un cable ya tendido (Subfase 14a-4). Es el camino de salida de la
+ * cicatriz: un cable quemado corta la señal para siempre, y sin una forma de
+ * sacarlo el montaje quedaba en un callejón sin salida.
+ *
+ * **No devuelve nada al stock** (decisión del operador, 2026-09-01): la pieza se
+ * perdió en el corto. Retender cuesta otro conductor — Pilar 5 de CLAUDE.md,
+ * ninguna reparación es gratis. Por eso no comparte el camino de `dismantle`,
+ * que sí acredita.
+ */
+export interface DisconnectTaskPayload {
+  readonly kind: "disconnect";
+  readonly edgeId: SignalEdgeId;
 }
 
 /**
@@ -267,6 +302,7 @@ export type TaskPayload =
   | DismantleTaskPayload
   | InstallTaskPayload
   | ConnectTaskPayload
+  | DisconnectTaskPayload
   | AnalyzeSubstanceTaskPayload
   | CutPowerTaskPayload
   | PurgeReservoirTaskPayload

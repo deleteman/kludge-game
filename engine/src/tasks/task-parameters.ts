@@ -21,6 +21,10 @@ export const TASK_BASE_DURATION_SECONDS: Record<TaskType, number> = {
   combine: 10,
   install: 8,
   connect: 5,
+  // Subfase 14a-4: retirar un cable quemado es más rápido que tenderlo — no hay
+  // que rutear nada, solo arrancar lo que quedó. No es gratis igual: la pieza se
+  // perdió, y el tiempo es lo de menos.
+  disconnect: 3,
   "analyze-substance": 10,
   // Subfase 13d: baratas a propósito. El coste de asegurar no debe ser el
   // tiempo en sí, sino tener que PREVERLO en pausa — si costara tanto como el

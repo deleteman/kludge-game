@@ -119,7 +119,7 @@ import { sectionCentroidCell } from "../render/floorplan-renderer.js";
 // `transferBlocked`) en el contrato del panel de acciones, que es quien lo
 // convierte en texto. `import type` — se borra al compilar, sin dependencia real.
 import type { FabricatorBlockedReason } from "../ui/widgets/mission-action-panel.js";
-import { emitterCoverageCells, emitterRangeOf, PRESENCE_TRIGGER_TYPES } from "engine";
+import { emitterCoverageCells, emitterRangeOf, isEdgeBurned, PRESENCE_TRIGGER_TYPES } from "engine";
 import type {
   Blueprint,
   ChemicalSubstanceDefinition,
@@ -157,6 +157,7 @@ import type {
   SectionId,
   ShipFloorplan,
   FloorplanSection,
+  SignalEdge,
   SignalEdgeId,
   FabricatorDomain,
   FluidFlow,
@@ -195,6 +196,8 @@ type ModulatedTaskType =
   | "dismantle"
   | "install"
   | "connect"
+  // Subfase 14a-4 — retirar un cable tendido.
+  | "disconnect"
   | "combine"
   | "analyze-substance"
   // Subfase 13d — tareas de asegurado, con afinidad de Ingeniero.
@@ -2220,7 +2223,22 @@ export class MissionRuntime {
     );
   }
 
-  queueConnect(actorId: CrewActorId, fromNodeId: SignalNodeId, toNodeId: SignalNodeId): void {
+  queueConnect(
+    actorId: CrewActorId,
+    fromNodeId: SignalNodeId,
+    toNodeId: SignalNodeId,
+    /**
+     * Con qué pieza se tiende el cable (Subfase 14a-4). Opcional solo por los
+     * tests y llamadores viejos: sin conductor la tarea no consume stock y la
+     * arista cae al default de migración (cobre). El flujo real siempre lo pasa,
+     * porque el jugador lo elige en el selector de cableado.
+     */
+    conductor?: {
+      readonly conductorId: ComponentId;
+      readonly conductorWear?: ComponentWear;
+      readonly consumeRecipe?: boolean;
+    },
+  ): void {
     const nodes = this.shipState.get().signalGraph.nodes;
     const fromNode = nodes.find((node) => node.id === fromNodeId);
     const toNode = nodes.find((node) => node.id === toNodeId);
@@ -2247,8 +2265,54 @@ export class MissionRuntime {
         actorId,
         type: "connect",
         targetSectionId,
-        payload: { kind: "connect", edgeId, fromNodeId: source, toNodeId: target },
+        payload: {
+          kind: "connect",
+          edgeId,
+          fromNodeId: source,
+          toNodeId: target,
+          ...(conductor?.conductorId ? { conductorId: conductor.conductorId } : {}),
+          ...(conductor?.conductorWear ? { conductorWear: conductor.conductorWear } : {}),
+          ...(conductor?.consumeRecipe ? { consumeRecipe: true } : {}),
+        },
         estimatedDurationSeconds: this.modulatedDuration("connect", actorId),
+      }),
+    );
+  }
+
+  /**
+   * Cuán cargado está un cable respecto de su capacidad EFECTIVA, 0..1+
+   * (Subfase 14a-4). Es lo que la UI usa para pintarlo: verde holgado, ámbar al
+   * borde. Delega en `MissionOverloadRuntime.edgeStatus` — el mismo cálculo que
+   * decide si se corta, no una segunda copia de la cadena.
+   *
+   * `undefined` si el cable está quemado (ya no lleva carga: su estado es otro)
+   * o si su conductor no está en el registry.
+   */
+  edgeLoadRatio(edge: SignalEdge): number | undefined {
+    if (isEdgeBurned(this.blueprint, edge)) return undefined;
+    const status = this.overloadRuntime.edgeStatus(edge);
+    if (!status || status.capacity <= 0) return undefined;
+    return status.load / status.capacity;
+  }
+
+  /**
+   * Retirar un cable tendido (Subfase 14a-4). El tripulante va al extremo de
+   * destino, igual que para tenderlo. **No devuelve nada al stock**: la pieza se
+   * perdió — ver `DisconnectTaskPayload`.
+   */
+  queueDisconnect(actorId: CrewActorId, edgeId: SignalEdgeId): void {
+    const edge = this.shipState.get().signalGraph.edges.find((entry) => entry.id === edgeId);
+    const targetNode = this.shipState.get().signalGraph.nodes.find((node) => node.id === edge?.to);
+    const targetSectionId = targetNode && this.sectionIdAt(targetNode.position);
+    this.ensureAt(actorId, targetSectionId);
+    this.scheduler.enqueue(
+      createCrewTask({
+        id: this.nextTaskId(),
+        actorId,
+        type: "disconnect",
+        targetSectionId,
+        payload: { kind: "disconnect", edgeId },
+        estimatedDurationSeconds: this.modulatedDuration("disconnect", actorId),
       }),
     );
   }

@@ -297,7 +297,10 @@ export const GUERRA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
       // 14a-2: unidades de `powerDraw`, misma escala que el catálogo atómico
       // (`power/conductor-load.ts`). Vez y media un cable de cobre.
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 9 }],
-      material: { CE: "A", RE: "A" },
+      // `CT: "M"` desde 14a-4: el blindaje aísla algo, no tanto como la fibra
+      // (umbral 100 + 20 de offset). Es el término medio de los tres cables:
+      // más carga que el cobre, menos margen térmico que la fibra.
+      material: { CE: "A", RE: "A", CT: "M" },
     },
     recipe: {
       ingredients: [

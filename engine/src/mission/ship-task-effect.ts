@@ -9,12 +9,18 @@ import type { CrewSpecialty } from "../crew/crew-specialty.types.js";
 import type { CrewTier } from "../crew/crew-tier.types.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { RandomSource } from "../simulation/random-source.js";
-import { DEFAULT_WEAR, worsenWear } from "../wear/wear.types.js";
+import { DEFAULT_WEAR, worsenWear, type ComponentWear } from "../wear/wear.types.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
 import { wearAfterDismantle } from "../wear/dismantle-wear.js";
 import type { EntityRegistry } from "../composition/entity-registry.js";
 import { isCompositeEntity } from "../composition/composable-entity.types.js";
-import type { CrewTask, InstallTaskPayload, TaskEffect, TaskEffectResult } from "../tasks/task.types.js";
+import type {
+  CrewTask,
+  CrewTaskId,
+  InstallTaskPayload,
+  TaskEffect,
+  TaskEffectResult,
+} from "../tasks/task.types.js";
 import { deriveSignalNodes } from "../workbench/derive-signal-nodes.js";
 import { assertSignalWiringReachable, mergeInstalledSignalGraph, wireExternalPort } from "../workbench/port-wiring.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
@@ -248,45 +254,61 @@ export function createShipTaskEffect(
         return;
       }
       case "install": {
-        const definition = componentRegistry.get(payload.componentDefinitionId);
-        const wear = payload.wear ?? DEFAULT_WEAR;
-        if (definition && !isCompositeEntity(definition)) {
-          const consumed = consumeStock(atomicStock.get(), payload.componentDefinitionId, 1, wear);
-          if (!consumed) {
-            throw new InsufficientStockError(
-              `No hay stock de "${payload.componentDefinitionId}" (${wear}) para instalar (task ${task.id})`,
-            );
-          }
-          atomicStock.set(consumed);
-        } else if (definition && isCompositeEntity(definition) && payload.consumeRecipe) {
-          // Ronda 7: instalar un compuesto de catálogo directo desde
-          // "Inventario" (ej. un segundo reservorio) consume su receta, a
-          // diferencia de una creación personalizada (siempre gratis acá —
-          // ver el docblock de `consumeRecipe`). Mismo criterio estricto que
-          // el camino atómico: bucket `nuevo` sin fallback silencioso.
-          let stock = atomicStock.get();
-          for (const ingredient of definition.recipe.ingredients) {
-            const consumed = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
-            if (!consumed) {
-              throw new InsufficientStockError(
-                `No hay stock de "${ingredient.ref}" (nuevo) para instalar "${payload.componentDefinitionId}" (task ${task.id})`,
-              );
-            }
-            stock = consumed;
-          }
-          atomicStock.set(stock);
-        }
+        payComponentCost(
+          atomicStock,
+          componentRegistry,
+          payload.componentDefinitionId,
+          payload.wear ?? DEFAULT_WEAR,
+          payload.consumeRecipe ?? false,
+          `instalar`,
+          task.id,
+        );
         shipState.set(installInstance(shipState.get(), payload, componentRegistry));
         return;
       }
-      case "connect":
+      case "connect": {
         if (floorplan) {
           assertSignalWiringReachable(floorplan, shipState.get().signalGraph, payload.fromNodeId, payload.toNodeId);
         }
+        // Subfase 14a-4: tender un cable CUESTA una pieza. Se paga ANTES de
+        // tocar el grafo para que un fallo de stock deje el mundo intacto —
+        // `wireExternalPort` es lo único que muta, y si no se llega hasta ahí no
+        // queda una arista fantasma sin conductor.
+        if (payload.conductorId) {
+          payComponentCost(
+            atomicStock,
+            componentRegistry,
+            payload.conductorId,
+            payload.conductorWear ?? DEFAULT_WEAR,
+            payload.consumeRecipe ?? false,
+            `tender un cable`,
+            task.id,
+          );
+        }
         shipState.set(
-          wireExternalPort(shipState.get(), payload.edgeId, payload.fromNodeId, payload.toNodeId, payload.toPort),
+          wireExternalPort(shipState.get(), payload.edgeId, payload.fromNodeId, payload.toNodeId, payload.toPort, {
+            conductorId: payload.conductorId,
+            conductorWear: payload.conductorWear,
+          }),
         );
         return;
+      }
+      case "disconnect": {
+        // Retirar un cable (14a-4). No acredita NADA al stock: la pieza se
+        // perdió (decisión del operador). Se limpia también de `overloadedRefs`
+        // para que el id no quede colgando como cicatriz de una arista que ya no
+        // existe — si el jugador vuelve a tender ahí, el cable nuevo está sano.
+        const ship = shipState.get();
+        shipState.set({
+          ...ship,
+          signalGraph: {
+            ...ship.signalGraph,
+            edges: ship.signalGraph.edges.filter((edge) => edge.id !== payload.edgeId),
+          },
+          overloadedRefs: ship.overloadedRefs.filter((ref) => ref !== payload.edgeId),
+        });
+        return;
+      }
       case "analyze-substance":
         // Tarea de "revelar", no de mutar: no toca `shipState`/`atomicStock`.
         return { analyzedSubstanceId: payload.substanceId };
@@ -559,6 +581,63 @@ function dismantleInstance(ship: Blueprint, instanceId: PlacedComponentInstanceI
       ),
     },
   };
+}
+
+/**
+ * Cobra al stock el coste de UNA pieza (Subfase 14a-4).
+ *
+ * Estaba escrito dentro del case `"install"`; la Subfase 14a-4 necesita
+ * exactamente el mismo cobro para `"connect"` (tender un cable consume el
+ * conductor). Se extrae ANTES de duplicarlo, no después: dos copias de una
+ * fórmula de coste son dos sitios donde arreglar el próximo bug de stock, y ese
+ * patrón ya costó rondas de playtest en este proyecto.
+ *
+ * Dos caminos, sin fallback silencioso en ninguno:
+ *  - **atómico** → una unidad del bucket de desgaste pedido;
+ *  - **compuesto con `consumeRecipe`** → sus ingredientes, bucket `nuevo`
+ *    estricto. Sin el flag, un compuesto es gratis (es una creación del jugador,
+ *    que ya pagó al ensamblarla en la mesa).
+ *
+ * Lanza `InsufficientStockError` sin haber tocado el stock si falta algo: el
+ * ledger es inmutable, así que la mutación recién ocurre al final.
+ */
+function payComponentCost(
+  atomicStock: MutableAtomicStock,
+  componentRegistry: ComponentRegistry,
+  componentId: ComponentId,
+  wear: ComponentWear,
+  consumeRecipe: boolean,
+  action: string,
+  taskId: CrewTaskId,
+): void {
+  const definition = componentRegistry.get(componentId);
+  if (!definition) {
+    return;
+  }
+  if (!isCompositeEntity(definition)) {
+    const consumed = consumeStock(atomicStock.get(), componentId, 1, wear);
+    if (!consumed) {
+      throw new InsufficientStockError(
+        `No hay stock de "${componentId}" (${wear}) para ${action} (task ${taskId})`,
+      );
+    }
+    atomicStock.set(consumed);
+    return;
+  }
+  if (!consumeRecipe) {
+    return;
+  }
+  let stock = atomicStock.get();
+  for (const ingredient of definition.recipe.ingredients) {
+    const consumed = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+    if (!consumed) {
+      throw new InsufficientStockError(
+        `No hay stock de "${ingredient.ref}" (nuevo) para ${action} "${componentId}" (task ${taskId})`,
+      );
+    }
+    stock = consumed;
+  }
+  atomicStock.set(stock);
 }
 
 /**

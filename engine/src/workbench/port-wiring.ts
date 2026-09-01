@@ -4,6 +4,8 @@ import type { SignalGraph } from "../signals/signal-graph.types.js";
 import { validateSignalGraphIntegrity } from "../signals/signal-graph-integrity.js";
 import type { SignalNode, SignalNodeId } from "../signals/signal-node.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import type { ComponentId } from "../components/physical-component.types.js";
+import type { ComponentWear } from "../wear/wear.types.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { sectionsConnectedByConduit } from "../floorplan/conduit-connectivity.js";
@@ -84,6 +86,14 @@ export function exposeExternalPorts(
 export class SignalWiringUnreachableError extends WorkbenchError {}
 
 /**
+ * Ya existe un cable entre esos dos nodos (Subfase 14a-4). Subclase propia por
+ * el mismo motivo que `SignalWiringUnreachableError`: `/game` la distingue para
+ * ofrecer RETIRAR el cable existente en vez de mostrar un error — repetir el
+ * gesto sobre un par ya cableado es cómo se retira, no un accidente del jugador.
+ */
+export class SignalWiringDuplicateError extends WorkbenchError {}
+
+/**
  * Regla de MISIÓN sobre el cableado (Fase 11f, decisión del operador): un
  * cable de señal solo puede cruzar de una sección a otra si existe un camino
  * de conductos `senal` entre ellas (directo o multi-salto). Dentro de una
@@ -129,12 +139,41 @@ export function wireExternalPort(
   fromNodeId: SignalNodeId,
   toNodeId: SignalNodeId,
   toPort?: string,
+  /**
+   * De qué pieza está hecho el cable (Subfase 14a-4). Opcional: sin él la arista
+   * cae al default de migración (cobre) vía `edgeConductorId`, que es lo que
+   * necesitan los tests de grafo puro y el preview descartable de `/game`.
+   */
+  conductor?: { conductorId?: ComponentId; conductorWear?: ComponentWear },
 ): Blueprint {
   if (fromNodeId === toNodeId) {
     throw new WorkbenchError(`Cannot wire a signal node to itself: ${fromNodeId}`);
   }
 
-  const edge: SignalEdge = { id: edgeId, from: fromNodeId, to: toNodeId, toPort };
+  // Subfase 14a-4: un par ya cableado no admite un segundo cable. Antes se
+  // podían apilar N aristas idénticas sobre los mismos dos nodos —invisible en
+  // pantalla, porque se dibujan una encima de otra— y desde 14a-4 eso además
+  // costaría N piezas de stock por algo que el jugador cree que hizo una vez.
+  // No dirigido a propósito: A→B y B→A son el mismo cable físico.
+  const alreadyWired = blueprint.signalGraph.edges.some(
+    (existing) =>
+      (existing.from === fromNodeId && existing.to === toNodeId) ||
+      (existing.from === toNodeId && existing.to === fromNodeId),
+  );
+  if (alreadyWired) {
+    throw new SignalWiringDuplicateError(
+      `Ya hay un cable entre "${fromNodeId}" y "${toNodeId}": retirarlo antes de tender otro.`,
+    );
+  }
+
+  const edge: SignalEdge = {
+    id: edgeId,
+    from: fromNodeId,
+    to: toNodeId,
+    toPort,
+    ...(conductor?.conductorId ? { conductorId: conductor.conductorId } : {}),
+    ...(conductor?.conductorWear ? { conductorWear: conductor.conductorWear } : {}),
+  };
   const nextSignalGraph = {
     ...blueprint.signalGraph,
     edges: [...blueprint.signalGraph.edges, edge],

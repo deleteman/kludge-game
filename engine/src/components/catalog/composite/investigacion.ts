@@ -253,7 +253,11 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
       // 14a-2: unidades de `powerDraw`, misma escala que el catálogo atómico
       // (`power/conductor-load.ts`). El doble que un cable de cobre.
       functional: [{ tag: "COND", resourceType: "E", maxCapacity: 12 }],
-      material: { CE: "A" },
+      // `CT: "B"` desde 14a-4: vidrio y funda, mala conductividad térmica. Es el
+      // cable que sobrevive a una sala en llamas (umbral 100 + 40 de offset) —
+      // el doble de carga Y el doble de margen térmico, y por eso su receta es
+      // la más cara de las tres.
+      material: { CE: "A", CT: "B" },
     },
     recipe: {
       ingredients: [

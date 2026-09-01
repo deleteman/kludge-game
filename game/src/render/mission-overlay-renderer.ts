@@ -8,6 +8,8 @@ import type {
   PhysicalComponentDefinition,
   PlacedComponentInstanceId,
   ShipFloorplan,
+  SignalEdge,
+  SignalEdgeId,
 } from "engine";
 
 import { RENDER_DEPTH } from "./render-depths.js";
@@ -20,12 +22,14 @@ import { computeSignalWireRoute } from "./conduit-path.js";
 import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
-  CONDUIT_COLORS,
+  BURNED_WIRE_ALPHA,
+  BURNED_WIRE_COLOR,
   LABEL_COLOR,
   LED_INACTIVE_TINT,
   SECTION_FILL_COLORS,
   SIGNAL_NODE_COLORS,
   WALL_COLOR,
+  wireLoadColor,
 } from "./palette.js";
 
 /** `componentDefinitionId` del catálogo atómico (Subfase 11h) — únicos consumidos por este renderer. */
@@ -94,6 +98,18 @@ export function renderMissionOverlay(
   // que una creación (`creation-XXXX`, sin sprite propio) se dibuje con los
   // sprites reales de sus partes según su `layout`. Sin él, cae al placeholder.
   resolveDefinition?: (id: ComponentId) => PhysicalComponentDefinition | undefined,
+  /**
+   * Subfase 14a-4: estado vivo de cada cable, para pintarlo por lo que le pasa.
+   * `edgeLoadRatio` viene del MISMO cálculo que decide el corte
+   * (`MissionOverloadRuntime.edgeStatus`, vía `MissionRuntime.edgeLoadRatio`),
+   * no de una copia — es lo que evita que la UI diga "seguro" mientras el motor
+   * corta. Ausentes (llamador que no los pasa): todos los cables verdes, el
+   * comportamiento previo a 14a-4.
+   */
+  wireState?: {
+    readonly edgeLoadRatio?: (edge: SignalEdge) => number | undefined;
+    readonly burnedEdgeIds?: ReadonlySet<SignalEdgeId>;
+  },
 ): MissionOverlayRender {
   const container = scene.add.container(0, 0).setDepth(RENDER_DEPTH.objects);
   const graphics = scene.add.graphics();
@@ -232,24 +248,7 @@ export function renderMissionOverlay(
   const signalGraphics = scene.add.graphics();
   container.add(signalGraphics);
 
-  // Nodos y aristas se dibujan en el CENTRO de la celda (`+ CELL/2`), no en la
-  // esquina, para que el punto quede sobre el sprite del componente y el cable
-  // conecte de centro a centro (playtest #15). El hit-test del cableado usa la
-  // celda (`Math.floor(worldPoint/CELL)`), así que centrar es solo visual.
-  const center = (n: number): number => n * CELL + CELL / 2;
-  const nodeById = new Map(blueprint.signalGraph.nodes.map((node) => [node.id, node]));
-  // Cable en el color de la capa `senal` (Fase 11f.3) — unifica cable/conducto/capa.
-  signalGraphics.lineStyle(2, CONDUIT_COLORS.senal, 0.85);
-  for (const edge of blueprint.signalGraph.edges) {
-    const from = nodeById.get(edge.from);
-    const to = nodeById.get(edge.to);
-    if (!from || !to) continue;
-    drawSignalEdge(signalGraphics, from.position, to.position, floorplan, walkableGrid);
-  }
-  for (const node of blueprint.signalGraph.nodes) {
-    signalGraphics.fillStyle(SIGNAL_NODE_COLORS[node.role], 1);
-    signalGraphics.fillCircle(center(node.position.x), center(node.position.y), 7);
-  }
+  drawSignalLayer(signalGraphics, blueprint, floorplan, walkableGrid, wireState);
 
   return { container, signalGraphics, ledIndicatorsByInstanceId, lcdDisplaysByInstanceId, componentSpritesByInstanceId };
 }
@@ -321,4 +320,59 @@ function drawSignalEdge(
   graphics.moveTo(route[0]!.x, route[0]!.y);
   for (const point of route.slice(1)) graphics.lineTo(point.x, point.y);
   graphics.strokePath();
+}
+
+/**
+ * Dibuja la capa de señal completa (cables + nodos) sobre un `Graphics` ya
+ * existente (Subfase 14a-4).
+ *
+ * Extraída de `renderMissionOverlay` para poder REPINTARLA sola. Desde 14a-4 el
+ * color de un cable depende de su carga contra su capacidad efectiva, y esa
+ * capacidad baja cuando la sala se calienta o se enfría — sin que el jugador
+ * toque nada y sin que cambie la topología. Si el color solo se recalculara al
+ * reconstruir el overlay entero, un cable a punto de reventar se seguiría viendo
+ * verde: la UI mintiendo sobre el estado del motor, que es el error recurrente
+ * de este proyecto. Repintar solo `Graphics` es barato; reconstruir el overlay
+ * (sprites, textos, luces) no lo sería.
+ */
+export function drawSignalLayer(
+  signalGraphics: Phaser.GameObjects.Graphics,
+  blueprint: Blueprint,
+  floorplan: ShipFloorplan | undefined,
+  walkableGrid: WalkableGrid | undefined,
+  wireState?: {
+    readonly edgeLoadRatio?: (edge: SignalEdge) => number | undefined;
+    readonly burnedEdgeIds?: ReadonlySet<SignalEdgeId>;
+  },
+): void {
+  signalGraphics.clear();
+  const edgeLoadRatio = wireState?.edgeLoadRatio;
+  const burnedEdgeIds = wireState?.burnedEdgeIds;
+  // Nodos y aristas se dibujan en el CENTRO de la celda (`+ CELL/2`), no en la
+  // esquina, para que el punto quede sobre el sprite del componente y el cable
+  // conecte de centro a centro (playtest #15). El hit-test del cableado usa la
+  // celda (`Math.floor(worldPoint/CELL)`), así que centrar es solo visual.
+  const center = (n: number): number => n * CELL + CELL / 2;
+  const nodeById = new Map(blueprint.signalGraph.nodes.map((node) => [node.id, node]));
+  // Cable en el color de la capa `senal` (Fase 11f.3) — unifica cable/conducto/capa.
+  // Subfase 14a-4: el color deja de ser fijo. Un cable tiene carga y capacidad,
+  // y tiene que AVISAR antes de reventar; uno quemado se ve carbonizado y no se
+  // confunde con uno sano. El `lineStyle` pasa a fijarse por arista.
+  for (const edge of blueprint.signalGraph.edges) {
+    const from = nodeById.get(edge.from);
+    const to = nodeById.get(edge.to);
+    if (!from || !to) continue;
+    const burned = burnedEdgeIds?.has(edge.id) ?? false;
+    if (burned) {
+      // Más fino y apagado: dejó de ser un conducto, es una cicatriz.
+      signalGraphics.lineStyle(1, BURNED_WIRE_COLOR, BURNED_WIRE_ALPHA);
+    } else {
+      signalGraphics.lineStyle(2, wireLoadColor(edgeLoadRatio?.(edge)), 0.85);
+    }
+    drawSignalEdge(signalGraphics, from.position, to.position, floorplan, walkableGrid);
+  }
+  for (const node of blueprint.signalGraph.nodes) {
+    signalGraphics.fillStyle(SIGNAL_NODE_COLORS[node.role], 1);
+    signalGraphics.fillCircle(center(node.position.x), center(node.position.y), 7);
+  }
 }

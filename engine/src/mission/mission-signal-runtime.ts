@@ -6,7 +6,8 @@ import type { SignalDomainEvent } from "../signals/signal-events.types.js";
 import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { SignalGraphState } from "../signals/signal-state.types.js";
 import type { SignalNode, SignalNodeId } from "../signals/signal-node.types.js";
-import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import { activeSignalGraph } from "../signals/active-signal-graph.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
@@ -73,7 +74,11 @@ export interface SignalOutputReader {
 export class MissionSignalRuntime implements Tickable, SignalOutputReader {
   private evaluator: SignalEvaluator<PlacedComponentInstanceId>;
   private state: SignalGraphState;
+  /** Grafo ACTIVO (sin cables quemados) — es el que evalúa. */
   private graph: SignalGraph<PlacedComponentInstanceId>;
+  /** Los dos insumos de los que deriva `graph`, para detectar cambios por referencia. */
+  private rawGraph: SignalGraph<PlacedComponentInstanceId>;
+  private overloadedRefs: Blueprint["overloadedRefs"];
   private nodeById: Map<SignalNodeId, SignalNode<PlacedComponentInstanceId>>;
 
   constructor(
@@ -83,7 +88,9 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
     private readonly powerScars?: PowerScarSource,
     private readonly instancePower?: InstancePowerSource,
   ) {
-    this.graph = shipState.get().signalGraph;
+    this.rawGraph = shipState.get().signalGraph;
+    this.overloadedRefs = shipState.get().overloadedRefs;
+    this.graph = activeSignalGraph(shipState.get());
     this.evaluator = new SignalEvaluator(this.graph, this.emitter);
     this.state = this.evaluator.createState();
     this.nodeById = new Map(this.graph.nodes.map((node) => [node.id, node]));
@@ -142,15 +149,26 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
    * nuevo reseteara todos los latches de la nave, un efecto invisible y
    * absurdo para el jugador. Los nodos que desaparecen se llevan su memoria
    * con ellos — eso sí es una consecuencia real de desmontar (principio 5).
+   *
+   * Subfase 14a-4: el evaluador recibe el grafo **activo**, sin los cables
+   * quemados (`signals/active-signal-graph.ts`). Un cortocircuito con
+   * `failureMode: "cut"` significa literalmente que el cable dejó de conducir;
+   * sin esto la cicatriz sería cosmética y la señal seguiría pasando por un
+   * cable carbonizado. Por eso la lista de quemados entra en la comparación de
+   * "¿cambió la topología?": quemar un cable ES un cambio de topología.
    */
   private syncGraph(): void {
-    const current = this.shipState.get().signalGraph;
-    if (current === this.graph) {
+    const blueprint = this.shipState.get();
+    const current = blueprint.signalGraph;
+    if (current === this.rawGraph && blueprint.overloadedRefs === this.overloadedRefs) {
       return;
     }
-    this.graph = current;
-    this.nodeById = new Map(current.nodes.map((node) => [node.id, node]));
-    this.evaluator = new SignalEvaluator(current, this.emitter);
+    this.rawGraph = current;
+    this.overloadedRefs = blueprint.overloadedRefs;
+    const active = activeSignalGraph(blueprint);
+    this.graph = active;
+    this.nodeById = new Map(active.nodes.map((node) => [node.id, node]));
+    this.evaluator = new SignalEvaluator(active, this.emitter);
     const preserved = this.evaluator.createState();
     for (const [nodeId, nodeState] of this.state) {
       if (preserved.has(nodeId)) {

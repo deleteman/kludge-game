@@ -12,6 +12,7 @@ import { UnanalyzedSubstanceError } from "../reservoir/substance-composition.js"
 import { createPhysicalComponentFactory } from "../components/physical-component-factory.js";
 import { MapEntityRegistry } from "../composition/entity-registry.js";
 import { nameAndRegisterCreation } from "../workbench/creation-naming.js";
+import { SignalWiringDuplicateError } from "../workbench/port-wiring.js";
 import type { WorkbenchPieceId } from "../workbench/workbench-state.types.js";
 import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { CrewTaskId } from "../tasks/task.types.js";
@@ -191,6 +192,174 @@ describe("createShipTaskEffect", () => {
     expect(shipState.get().signalGraph.edges).toEqual([
       { id: "e1" as SignalEdgeId, from: fromId, to: toId, toPort: undefined },
     ]);
+  });
+
+  /**
+   * Subfase 14a-4: tender un cable CUESTA una pieza. Contra el catálogo REAL
+   * (patrón 13): el camino de compuesto depende de que `cable-fibra-optica`
+   * tenga receta de verdad, y un fixture sintético probaría mi aritmética.
+   */
+  describe("connect consume el conductor del stock (14a-4)", () => {
+    const FROM = "from" as SignalNodeId;
+    const TO = "to" as SignalNodeId;
+    const REGISTRY = buildComponentCatalog().registry;
+
+    function scene() {
+      return new MutableShipState(
+        fixtureShip({
+          placedComponents: [
+            {
+              instanceId: "a" as PlacedComponentInstanceId,
+              componentDefinitionId: "fotorreceptor" as ComponentId,
+              placement: { position: { x: 0, y: 0 }, footprint: { width: 1, height: 1 }, rotation: 0 },
+              condition: "ok",
+              wear: "nuevo",
+            },
+          ],
+          signalGraph: {
+            nodes: [
+              { id: FROM, role: "emitter", position: { x: 0, y: 0 }, ownerRef: "a" as PlacedComponentInstanceId },
+              { id: TO, role: "receptor", position: { x: 1, y: 0 }, ownerRef: "a" as PlacedComponentInstanceId },
+            ],
+            edges: [],
+          },
+        }),
+      );
+    }
+
+    function connectTask(payload: Record<string, unknown>) {
+      return createCrewTask({
+        id: "t1" as CrewTaskId,
+        actorId: ACTOR,
+        type: "connect",
+        payload: {
+          kind: "connect",
+          edgeId: "e1" as SignalEdgeId,
+          fromNodeId: FROM,
+          toNodeId: TO,
+          ...payload,
+        } as never,
+      });
+    }
+
+    it("descuenta una unidad del bucket de desgaste elegido", () => {
+      const shipState = scene();
+      const stock = new MutableAtomicStock({
+        ["cable-cobre" as ComponentId]: { nuevo: 2, usado: 1 },
+      });
+      createShipTaskEffect(shipState, REGISTRY, stock)(
+        connectTask({ conductorId: "cable-cobre" as ComponentId, conductorWear: "usado" }),
+      );
+
+      // El bucket vaciado desaparece: es cómo lo deja `consumeStock`.
+      expect(stock.get()["cable-cobre" as ComponentId]).toEqual({ nuevo: 2 });
+      expect(shipState.get().signalGraph.edges[0]).toMatchObject({
+        conductorId: "cable-cobre",
+        conductorWear: "usado",
+      });
+    });
+
+    it("un conductor COMPUESTO se paga con su receta", () => {
+      const shipState = scene();
+      const fibra = REGISTRY.get("cable-fibra-optica" as ComponentId);
+      // Derivado de la receta real, no copiado: si cambia el contenido, el test
+      // sigue midiendo lo que dice medir.
+      const ingredientes = fibra && "recipe" in fibra ? fibra.recipe.ingredients : [];
+      expect(ingredientes.length).toBeGreaterThan(0);
+      const stock = new MutableAtomicStock(
+        Object.fromEntries(ingredientes.map((i) => [i.ref, { nuevo: i.quantity }])),
+      );
+
+      createShipTaskEffect(shipState, REGISTRY, stock)(
+        connectTask({ conductorId: "cable-fibra-optica" as ComponentId, consumeRecipe: true }),
+      );
+
+      for (const ingrediente of ingredientes) {
+        expect(stock.get()[ingrediente.ref]?.nuevo ?? 0).toBe(0);
+      }
+      expect(shipState.get().signalGraph.edges[0]).toMatchObject({
+        conductorId: "cable-fibra-optica",
+      });
+    });
+
+    it("sin stock lanza y NO deja una arista fantasma en el grafo", () => {
+      // El caso extremo del mecanismo: si el cobro fallara después de cablear,
+      // quedaría un cable gratis e infinito — exactamente lo que 14a-4 elimina.
+      const shipState = scene();
+      const stock = new MutableAtomicStock({});
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+
+      expect(() => effect(connectTask({ conductorId: "cable-cobre" as ComponentId }))).toThrow(
+        InsufficientStockError,
+      );
+      expect(shipState.get().signalGraph.edges).toEqual([]);
+    });
+
+    it("cablear el mismo par dos veces se rechaza en vez de cobrar dos piezas", () => {
+      const shipState = scene();
+      const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { nuevo: 2 } });
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+
+      effect(connectTask({ conductorId: "cable-cobre" as ComponentId }));
+      expect(() =>
+        effect(
+          createCrewTask({
+            id: "t2" as CrewTaskId,
+            actorId: ACTOR,
+            type: "connect",
+            // Al revés a propósito: A→B y B→A son el mismo cable físico.
+            payload: {
+              kind: "connect",
+              edgeId: "e2" as SignalEdgeId,
+              fromNodeId: TO,
+              toNodeId: FROM,
+              conductorId: "cable-cobre" as ComponentId,
+            } as never,
+          }),
+        ),
+      ).toThrow(SignalWiringDuplicateError);
+      expect(shipState.get().signalGraph.edges).toHaveLength(1);
+    });
+
+    it("disconnect retira el cable y NO devuelve nada al stock", () => {
+      const shipState = scene();
+      const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { nuevo: 1 } });
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+      effect(connectTask({ conductorId: "cable-cobre" as ComponentId }));
+      expect(stock.get()["cable-cobre" as ComponentId]?.nuevo ?? 0).toBe(0);
+
+      effect(
+        createCrewTask({
+          id: "t2" as CrewTaskId,
+          actorId: ACTOR,
+          type: "disconnect",
+          payload: { kind: "disconnect", edgeId: "e1" as SignalEdgeId },
+        }),
+      );
+
+      expect(shipState.get().signalGraph.edges).toEqual([]);
+      // La pieza se perdió en el corto: retender cuesta otra (Pilar 5).
+      expect(stock.get()["cable-cobre" as ComponentId]?.nuevo ?? 0).toBe(0);
+    });
+
+    it("disconnect limpia también la cicatriz, para que el cable nuevo nazca sano", () => {
+      const shipState = scene();
+      const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { nuevo: 1 } });
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+      effect(connectTask({ conductorId: "cable-cobre" as ComponentId }));
+      shipState.set({ ...shipState.get(), overloadedRefs: ["e1" as SignalEdgeId] });
+
+      effect(
+        createCrewTask({
+          id: "t2" as CrewTaskId,
+          actorId: ACTOR,
+          type: "disconnect",
+          payload: { kind: "disconnect", edgeId: "e1" as SignalEdgeId },
+        }),
+      );
+
+      expect(shipState.get().overloadedRefs).toEqual([]);
+    });
   });
 
   it("install derives signal nodes from the definition's functional properties (11c.0)", () => {
