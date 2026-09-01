@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  actuatorEmitterInputs,
+  actuatorOutputNodeId,
   allEmittersActive,
+  blocksPathing,
   buildComponentCatalog,
   doorSignalOutput,
   instantiateDoorSeeds,
@@ -151,18 +154,27 @@ function mountChain(options: { wired?: boolean; poweredDoor?: boolean } = {}) {
   const shipState = new MutableShipState(blueprint);
 
   let actors: GridPosition[] = [];
+  // Contenedor mutable declarado antes que el runtime de señales porque la
+  // cebolla de emisores lo consulta perezosamente: la salida de la puerta sale
+  // de su estado REAL (14a-4 ronda 1), y el runtime de puertas todavía no
+  // existe en este punto. Mismo patrón que usa `MissionRuntime` en producción.
+  const doorRuntimeRef: { current?: MissionDoorRuntime } = {};
   const signalRuntime = new MissionSignalRuntime(
     shipState,
     // La base es `allEmittersActive`, LA MISMA que produccion (13g ronda 1).
     // Con un mapa vacio como base, todo emisor que `motionAwareEmitterInputs`
     // no sepa resolver sale `false` en el test y `true` en el juego: el test no
     // podia fallar aunque el bug estuviera puesto.
-    motionAwareEmitterInputs(
+    actuatorEmitterInputs(
       shipState,
-      () => actors,
-      { isBlocked: () => false },
-      REGISTRY,
-      allEmittersActive(shipState),
+      (instanceId) => doorRuntimeRef.current?.isActuatorActive(instanceId),
+      motionAwareEmitterInputs(
+        shipState,
+        () => actors,
+        { isBlocked: () => false },
+        REGISTRY,
+        allEmittersActive(shipState),
+      ),
     ),
   );
   const isInstancePowered = (instanceId: PlacedComponentInstanceId): boolean =>
@@ -182,6 +194,7 @@ function mountChain(options: { wired?: boolean; poweredDoor?: boolean } = {}) {
         ),
     },
   });
+  doorRuntimeRef.current = doorRuntime;
   doorRuntime.syncInstalledDoors(doorInstances);
 
   /** Un tick del core loop, en el MISMO orden que `MissionRuntime`: señales y después puertas. */
@@ -200,12 +213,19 @@ function mountChain(options: { wired?: boolean; poweredDoor?: boolean } = {}) {
     return elapsed;
   };
 
+  const doorReceptor = shipState
+    .get()
+    .signalGraph.nodes.find((node) => node.ownerRef === DOOR_INSTANCE && node.role === "receptor")!;
+
   return {
     doorRuntime,
     run,
     moveActorsTo: (positions: GridPosition[]) => {
       actors = positions;
     },
+    /** Salida de señal de la puerta (14a-4 ronda 1): lo que emite hacia la cadena. */
+    doorOutputNode: actuatorOutputNodeId(doorReceptor.id),
+    outputOf: (nodeId: SignalNodeId) => signalRuntime.outputOf(nodeId),
   };
 }
 
@@ -254,6 +274,79 @@ describe("cadena fotorreceptor → puerta (13h, ronda 2 de playtest)", () => {
     moveActorsTo([{ x: 0, y: 0 }]);
     run(4);
     expect(doorRuntime.doorById(DOOR)?.state).toBe("open");
+  });
+
+  /**
+   * Ronda 1 de playtest de 14a-4. El reporte: "cableo la puerta de la bodega al
+   * fotorreceptor, mi tripulante queda encerrado, traigo a otro para activar el
+   * sensor, la puerta se abre — y el de adentro sigue sin poder salir".
+   *
+   * El bug vivía en el CRUCE de dos sistemas que estaban bien por separado: la
+   * puerta se abría de verdad (esta misma cadena, ya cubierta) y el pathfinding
+   * la seguía viendo como pared porque `blocksPathing` miraba `mode` y no
+   * `state`. Por eso el caso va acá, sobre la cadena real, y no solo como
+   * unitario del predicado.
+   */
+  it("una puerta ABIERTA por señal deja de ser obstáculo para el pathfinding", () => {
+    const { doorRuntime, run, moveActorsTo } = mountChain();
+
+    // Cerrada por señal (nadie a la vista): es un obstáculo real y el aviso de
+    // "sin ruta" es información honesta.
+    moveActorsTo([]);
+    const elapsed = run(4);
+    const cerrada = doorRuntime.doorById(DOOR)!;
+    expect(cerrada.state).toBe("closed");
+    expect(blocksPathing(cerrada)).toBe(true);
+    expect(doorRuntime.blocksPathingAt(THRESHOLD)).toBe(true);
+
+    // Llega el segundo tripulante y el sensor abre la puerta: el umbral tiene
+    // que volverse transitable en el acto, o el de adentro queda encerrado por
+    // una puerta que está abierta delante suyo.
+    moveActorsTo([{ x: 0, y: 0 }]);
+    run(4, elapsed);
+    const abierta = doorRuntime.doorById(DOOR)!;
+    expect(abierta.state).toBe("open");
+    expect(abierta.mode).toBe("override");
+    expect(blocksPathing(abierta)).toBe(false);
+    expect(doorRuntime.blocksPathingAt(THRESHOLD)).toBe(false);
+  });
+
+  /**
+   * Ronda 1 de playtest de 14a-4 — pedido del operador: "las puertas deberían
+   * poder emitir señal también; cada vez que un ACT se activa debería emitir".
+   *
+   * Lo que este test ancla no es que emita, sino QUÉ emite: el estado real, no
+   * la orden. La cadena corre sobre la puerta sembrada de siempre, con
+   * `actuatorEmitterInputs` en la cebolla, igual que producción.
+   */
+  it("la puerta emite cuando está REALMENTE abierta, no cuando se lo ordenan", () => {
+    const { doorRuntime, run, moveActorsTo, outputOf, doorOutputNode } = mountChain();
+
+    // Cerrada: no emite.
+    moveActorsTo([]);
+    const elapsed = run(4);
+    expect(doorRuntime.doorById(DOOR)?.state).toBe("closed");
+    expect(outputOf(doorOutputNode)).toBe(false);
+
+    // Abierta de verdad: emite, y eso es lo que puede gobernar a la siguiente
+    // pieza de la cadena.
+    moveActorsTo([{ x: 0, y: 0 }]);
+    run(4, elapsed);
+    expect(doorRuntime.doorById(DOOR)?.state).toBe("open");
+    expect(outputOf(doorOutputNode)).toBe(true);
+  });
+
+  it("una puerta SIN MOTOR no emite, aunque la señal le esté ordenando abrirse", () => {
+    // El caso que separa "estado real" de "orden": el sensor ve al actor y el
+    // cable lleva la orden, pero la hoja no se mueve. Si la salida repitiera la
+    // orden, encadenar dispararía con la puerta cerrada delante.
+    const { doorRuntime, run, moveActorsTo, outputOf, doorOutputNode } = mountChain({
+      poweredDoor: false,
+    });
+    moveActorsTo([{ x: 0, y: 0 }]);
+    run(4);
+    expect(doorRuntime.doorById(DOOR)?.state).not.toBe("open");
+    expect(outputOf(doorOutputNode)).toBe(false);
   });
 
   it("la puerta reacciona en el MISMO tick, sin arrastrar la señal del anterior", () => {

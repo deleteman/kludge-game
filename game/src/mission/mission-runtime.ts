@@ -119,7 +119,20 @@ import { sectionCentroidCell } from "../render/floorplan-renderer.js";
 // `transferBlocked`) en el contrato del panel de acciones, que es quien lo
 // convierte en texto. `import type` — se borra al compilar, sin dependencia real.
 import type { FabricatorBlockedReason } from "../ui/widgets/mission-action-panel.js";
-import { emitterCoverageCells, emitterRangeOf, isEdgeBurned, PRESENCE_TRIGGER_TYPES } from "engine";
+import type { SignalTooltipInfo } from "../ui/widgets/mission-tooltip.js";
+import {
+  activeSignalEdges,
+  actuatorEmitterInputs,
+  downstreamNodes,
+  edgeConductorWear,
+  emitterCoverageCells,
+  isActuatorOutputNode,
+  emitterRangeOf,
+  isEdgeBurned,
+  PRESENCE_TRIGGER_TYPES,
+  seedActuatorOutputNodes,
+  wornCapacity,
+} from "engine";
 import type {
   Blueprint,
   ChemicalSubstanceDefinition,
@@ -454,6 +467,12 @@ export class MissionRuntime {
       ComponentId,
       PhysicalComponentDefinition
     >;
+    // Ronda 1 de playtest de 14a-4: los nodos de señal viven en el save y se
+    // derivan al INSTALAR, no al cargar. Sin esta siembra, toda puerta de una
+    // partida ya empezada se quedaría sin su nodo de salida y la mecánica de
+    // "el ACT emite" sería invisible justo para quien ya está jugando. Es
+    // idempotente y devuelve el mismo blueprint si no hay nada que sembrar.
+    this.shipState.set(seedActuatorOutputNodes(this.shipState.get(), this.componentRegistry));
     this.powerRuntime = new MissionPowerRuntime(
       this.shipState,
       this.shipFloorplan,
@@ -488,12 +507,23 @@ export class MissionRuntime {
       this.componentRegistry,
       withMotion,
     );
-    this.emitterInputs = temperatureAwareEmitterInputs(
+    const withTemperature = temperatureAwareEmitterInputs(
       this.shipState,
       this.shipFloorplan,
       atmosphereOf,
       this.componentRegistry,
       withPressure,
+    );
+    // Ronda 1 de playtest de 14a-4: la salida de señal de un actuador. Va al
+    // FINAL de la cebolla y lee el estado REAL del mundo (una puerta trabada o
+    // sin motor no emite, aunque la señal le ordene abrirse). `doorRuntime`
+    // todavía no existe en este punto del constructor, así que se consulta por
+    // callback perezoso en vez de capturarlo — el mismo motivo por el que el
+    // resto de la cebolla toma funciones y no valores.
+    this.emitterInputs = actuatorEmitterInputs(
+      this.shipState,
+      (instanceId) => this.doorRuntime?.isActuatorActive(instanceId),
+      withTemperature,
     );
     // Fase 13b: `powerRuntime` reemplaza el objeto inline de `PowerScarSource`
     // (antes leía `unpoweredSectionIds` directo) y además gatea por instancia
@@ -2288,6 +2318,98 @@ export class MissionRuntime {
    * `undefined` si el cable está quemado (ya no lleva carga: su estado es otro)
    * o si su conductor no está en el registry.
    */
+  /**
+   * Carga, capacidad efectiva y capacidad NOMINAL de un cable (14a-4 ronda 1).
+   * La nominal es la que tendría sin el factor térmico: es lo que permite al
+   * tooltip decir "la sala te está bajando la capacidad" en vez de mostrar un
+   * número más chico que el del catálogo sin explicar por qué.
+   */
+  edgeStatusOf(
+    edge: SignalEdge,
+  ): { readonly load: number; readonly capacity: number; readonly nominalCapacity: number } | undefined {
+    const status = this.overloadRuntime.edgeStatus(edge);
+    if (!status) return undefined;
+    return {
+      load: status.load,
+      capacity: status.capacity,
+      nominalCapacity: wornCapacity(status.conductor.maxCapacity, edgeConductorWear(edge)),
+    };
+  }
+
+  /**
+   * Papel de una pieza en el montaje de señal (14a-4 ronda 1): qué gobierna,
+   * quién la gobierna, y si emite su estado hacia la cadena.
+   *
+   * Todo derivado del grafo vivo en el momento de la consulta. `undefined` si la
+   * pieza no participa del grafo — así el tooltip de una plancha metálica no
+   * gana tres líneas vacías.
+   */
+  signalRoleOf(instanceId: PlacedComponentInstanceId): SignalTooltipInfo | undefined {
+    const blueprint = this.blueprint;
+    const own = blueprint.signalGraph.nodes.filter((node) => node.ownerRef === instanceId);
+    if (own.length === 0) return undefined;
+    const ownIds = new Set(own.map((node) => node.id));
+    const edges = activeSignalEdges(blueprint);
+
+    // Lo que cuelga de sus salidas: se suma el powerDraw de las piezas alcanzadas
+    // por CADA cable que sale de la pieza, sin contarlas dos veces si dos cables
+    // llegan a la misma.
+    const driven = new Set<PlacedComponentInstanceId>();
+    let hasOutgoing = false;
+    for (const edge of edges) {
+      if (!ownIds.has(edge.from)) continue;
+      hasOutgoing = true;
+      for (const nodeId of downstreamNodes(blueprint, edge.to, edges)) {
+        const owner = blueprint.signalGraph.nodes.find((node) => node.id === nodeId)?.ownerRef;
+        if (owner && owner !== instanceId) driven.add(owner);
+      }
+    }
+
+    // Quién la gobierna: el origen del primer cable que entra. Con varios, se
+    // nombra uno y basta — la lista completa es el grafo, no un tooltip.
+    const incoming = edges.find((edge) => ownIds.has(edge.to));
+    const sourceNode =
+      incoming && blueprint.signalGraph.nodes.find((node) => node.id === incoming.from);
+    const sourceInstance =
+      sourceNode && blueprint.placedComponents.find((entry) => entry.instanceId === sourceNode.ownerRef);
+
+    const actuatorOutput = own.find((node) => node.role === "emitter" && isActuatorOutputNode(node.id));
+    return {
+      ...(hasOutgoing
+        ? {
+            drives: {
+              count: driven.size,
+              load: [...driven].reduce(
+                (total, ref) => total + this.instancePowerDraw(ref),
+                0,
+              ),
+            },
+          }
+        : {}),
+      ...(sourceNode
+        ? {
+            governedBy: {
+              name:
+                (sourceInstance && this.definitionOf(sourceInstance.componentDefinitionId)?.name) ??
+                sourceNode.ownerRef,
+              active: this.signalRuntime.outputOf(sourceNode.id),
+            },
+          }
+        : {}),
+      // Solo si la pieza tiene salida de actuador Y alguien la está escuchando:
+      // decir "emite: no" en cada puerta sin cablear sería ruido en toda la nave.
+      ...(actuatorOutput && edges.some((edge) => edge.from === actuatorOutput.id)
+        ? { emitting: this.signalRuntime.outputOf(actuatorOutput.id) }
+        : {}),
+    };
+  }
+
+  /** `powerDraw` declarado de una instancia colocada, 0 si no consume. */
+  private instancePowerDraw(instanceId: PlacedComponentInstanceId): number {
+    const instance = this.blueprint.placedComponents.find((entry) => entry.instanceId === instanceId);
+    return instance ? (this.definitionOf(instance.componentDefinitionId)?.data.powerDraw ?? 0) : 0;
+  }
+
   edgeLoadRatio(edge: SignalEdge): number | undefined {
     if (isEdgeBurned(this.blueprint, edge)) return undefined;
     const status = this.overloadRuntime.edgeStatus(edge);

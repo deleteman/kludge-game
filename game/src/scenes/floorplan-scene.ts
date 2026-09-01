@@ -544,6 +544,13 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly signalWireFlowEffects = new Map<SignalEdgeId, StateDrivenEffect<ConduitPathFlowState>>();
   /** Cuenta atrás del repintado de color de cables (14a-4) — ver `refreshSignalWireColors`. */
   private signalWireColorCooldown = 0;
+  /**
+   * Qué cable pasa por cada celda (14a-4 ronda 1), para el tooltip de cable.
+   * Se reconstruye en `redrawOverlay` porque solo cambia con la topología, y
+   * usa `signalWireCells` — la MISMA función que siembra la cicatriz, así que el
+   * tooltip y las chispas nunca discrepan sobre por dónde pasa el cable.
+   */
+  private wireByCell = new Map<string, SignalEdgeId>();
 
   private readonly crewTokens = new Map<
     CrewActorId,
@@ -805,6 +812,10 @@ export class FloorplanScene extends Phaser.Scene {
         onWireSelectionChanged: () => this.updateWireHighlights(),
         onTransferModeChanged: () => this.updateTransferMode(),
         onInstallPlacementChanged: () => this.updateInstallPlacementMode(),
+        // 14a-4 ronda 1: el tooltip de cable. La escena es la única que sabe
+        // rutear un cable (necesita la grilla transitable), así que resuelve
+        // ella la consulta y el controller solo pregunta.
+        wireAtCell: (cell) => this.wireByCell.get(`${cell.x},${cell.y}`),
       },
     );
 
@@ -1063,7 +1074,12 @@ export class FloorplanScene extends Phaser.Scene {
       // Las herramientas de dev se sirven ANTES que la interacción de juego: la
       // tecla ya armó la intención, el click solo elige dónde.
       if (this.handleDevTargetClick(cell)) return;
-      this.interaction.handleMapClick(cell);
+      // El punto de mundo va además de la celda (14a-4 ronda 1): el modo
+      // cableado elige el NODO más cercano en píxeles, porque desde que un `ACT`
+      // expone entrada y salida hay dos nodos en la misma celda y la celda sola
+      // ya no los distingue.
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      this.interaction.handleMapClick(cell, { x: world.x, y: world.y });
     });
 
     // Zoom con la rueda sobre la zona de mapa (playtest #13), anclado al cursor.
@@ -1546,11 +1562,15 @@ export class FloorplanScene extends Phaser.Scene {
     if (this.mission.coreLoop.mode === "execution") {
       this.updateConduitFlowEffects(delta / 1000);
       this.updateSignalWireFlowEffects(delta / 1000);
-      this.refreshSignalWireColors(delta / 1000);
       this.updateLedIndicators();
       this.updateDoorSprites();
       this.updateLcdDisplays(delta / 1000);
     }
+    // 14a-4 ronda 1: el color de los cables se repinta TAMBIÉN en pausa. Estaba
+    // dentro del bloque de "execution" junto a las animaciones, pero no es una
+    // animación: es estado. La pausa es justo donde el jugador cablea y compara
+    // montajes, así que congelarlo ahí era congelar la única lectura que tiene.
+    this.refreshSignalWireColors(delta / 1000);
     // HUD de estado permanente + panel de acciones flotante (Subfase 11g):
     // el HUD se auto-throttlea por cambio de valor; el panel flotante debe
     // reposicionarse cada frame para seguir la celda seleccionada mientras
@@ -1992,17 +2012,27 @@ export class FloorplanScene extends Phaser.Scene {
     // rama de piezas — que también puede llevar atmósfera y brecha. Con el
     // aviso de energía adentro se habría visto enseguida: bajar el dial no
     // apagaría el aviso hasta mover el mouse de celda.
-    const atmosphereKey = content.atmosphere
-      ? `${Math.round(content.atmosphere.pressureKpa)}:${content.atmosphere.trend}:${content.atmosphere.vacuum}` +
+    // 14a-4 ronda 1: el tooltip de un CABLE no lleva atmósfera ni brecha, pero sí
+    // carga viva — su propia firma va más abajo.
+    const atmosphere = content.kind === "wire" ? undefined : content.atmosphere;
+    const atmosphereKey = atmosphere
+      ? `${Math.round(atmosphere.pressureKpa)}:${atmosphere.trend}:${atmosphere.vacuum}` +
         // 14a-1: sin la temperatura en la clave, el tooltip abierto sobre una
         // sección que se calienta seguiría mostrando el valor del primer frame.
-        `:${Math.round(content.atmosphere.temperatureCelsius)}:${content.atmosphere.heating}`
+        `:${Math.round(atmosphere.temperatureCelsius)}:${atmosphere.heating}`
       : "";
     const statesKey =
       content.kind === "instance"
         ? (content.states ?? []).map((state) => `${state.flag}:${state.required}/${state.available}`).join(",")
         : "";
-    const redrawKey = `${atmosphereKey}|${content.breach?.sealed ?? ""}|${statesKey}`;
+    // La carga de un cable cambia sin que el mouse se mueva (cuelgan una pieza
+    // más aguas abajo, la sala se calienta): sin esto el tooltip abierto se
+    // quedaría con el número del primer frame, que es la misma clase de mentira
+    // que 14a-1 arregló con la temperatura.
+    const wireKey =
+      content.kind === "wire" ? `${content.load}/${Math.round(content.capacity * 10)}:${content.burned}` : "";
+    const breachKey = content.kind === "wire" ? "" : (content.breach?.sealed ?? "");
+    const redrawKey = `${atmosphereKey}|${breachKey}|${statesKey}|${wireKey}`;
     if (
       !this.tooltip ||
       this.tooltipCell?.x !== cell.x ||
@@ -2026,6 +2056,31 @@ export class FloorplanScene extends Phaser.Scene {
         sectionBreach: (sealed) =>
           t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
         instanceState: (state) => instanceStateLabel(state),
+        // 14a-4 ronda 1. `t()` no interpola, así que los números se componen
+        // acá — mismo criterio que el resto de las líneas con valores.
+        signalDrives: ({ count, load }) =>
+          `${t("ui.floorplan.mission.tooltip.signal-drives")}: ${count} · ${load} ${t(
+            "ui.floorplan.mission.tooltip.signal-demand",
+          )}`,
+        signalGovernedBy: ({ name, active }) =>
+          `${t("ui.floorplan.mission.tooltip.signal-governed-by")}: ${name} (${t(
+            active
+              ? "ui.floorplan.mission.tooltip.signal-active"
+              : "ui.floorplan.mission.tooltip.signal-inactive",
+          )})`,
+        signalEmitting: (emitting) =>
+          `${t("ui.floorplan.mission.tooltip.signal-emitting")}: ${t(
+            emitting
+              ? "ui.floorplan.mission.tooltip.signal-active"
+              : "ui.floorplan.mission.tooltip.signal-inactive",
+          )}`,
+        wireLoad: (load, capacity) =>
+          `${t("ui.floorplan.mission.tooltip.wire-load")}: ${load} / ${
+            Number.isInteger(capacity) ? capacity : capacity.toFixed(1)
+          }`,
+        wireOverloadWarning: t("ui.floorplan.mission.tooltip.wire-overload-warning"),
+        wireBurned: t("ui.floorplan.mission.tooltip.wire-burned"),
+        wireThermallyDerated: t("ui.floorplan.mission.tooltip.wire-thermal"),
       }).setDepth(RENDER_DEPTH.hudContent);
       this.markAsHudObject(this.tooltip);
       this.tooltipCell = cell;
@@ -3303,6 +3358,7 @@ export class FloorplanScene extends Phaser.Scene {
         ),
       },
     );
+    this.rebuildWireCellIndex();
     this.overlayContainer = overlay.container;
     this.signalGraphics = overlay.signalGraphics;
     this.ledIndicators = overlay.ledIndicatorsByInstanceId;
@@ -3807,6 +3863,20 @@ export class FloorplanScene extends Phaser.Scene {
     const to = nodeById.get(edge.to);
     if (!from || !to) return [];
     return computeSignalWireRoute(this.mission.shipFloorplan, this.walkableGrid, from.position, to.position);
+  }
+
+  /** Índice celda→cable para el tooltip (14a-4 ronda 1). Ver `wireByCell`. */
+  private rebuildWireCellIndex(): void {
+    const index = new Map<string, SignalEdgeId>();
+    for (const edge of this.mission.blueprint.signalGraph.edges) {
+      for (const cell of signalWireCells(this.signalWireRouteFor(edge))) {
+        // Sin pisar: si dos cables comparten celda gana el primero. Preferible a
+        // un tooltip que parpadea entre dos cables según el orden de iteración.
+        const key = `${cell.x},${cell.y}`;
+        if (!index.has(key)) index.set(key, edge.id);
+      }
+    }
+    this.wireByCell = index;
   }
 
   private syncSignalWireFlowEffects(): void {

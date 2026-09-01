@@ -19,6 +19,7 @@ import {
   hasComponentSprite,
 } from "./component-sprite-registry.js";
 import { computeSignalWireRoute } from "./conduit-path.js";
+import { layoutSignalNodes, SIGNAL_NODE_RADIUS_PX } from "./signal-node-layout.js";
 import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
@@ -348,11 +349,10 @@ export function drawSignalLayer(
   signalGraphics.clear();
   const edgeLoadRatio = wireState?.edgeLoadRatio;
   const burnedEdgeIds = wireState?.burnedEdgeIds;
-  // Nodos y aristas se dibujan en el CENTRO de la celda (`+ CELL/2`), no en la
-  // esquina, para que el punto quede sobre el sprite del componente y el cable
-  // conecte de centro a centro (playtest #15). El hit-test del cableado usa la
-  // celda (`Math.floor(worldPoint/CELL)`), así que centrar es solo visual.
-  const center = (n: number): number => n * CELL + CELL / 2;
+  // Nodos y aristas se dibujan en el CENTRO de la celda, no en la esquina, para
+  // que el punto quede sobre el sprite del componente y el cable conecte de
+  // centro a centro (playtest #15). Desde 14a-4 ronda 1 el centro de un NODO lo
+  // resuelve `layoutSignalNodes`, que además separa los que comparten celda.
   const nodeById = new Map(blueprint.signalGraph.nodes.map((node) => [node.id, node]));
   // Cable en el color de la capa `senal` (Fase 11f.3) — unifica cable/conducto/capa.
   // Subfase 14a-4: el color deja de ser fijo. Un cable tiene carga y capacidad,
@@ -371,8 +371,12 @@ export function drawSignalLayer(
     }
     drawSignalEdge(signalGraphics, from.position, to.position, floorplan, walkableGrid);
   }
-  for (const node of blueprint.signalGraph.nodes) {
-    signalGraphics.fillStyle(SIGNAL_NODE_COLORS[node.role], 1);
-    signalGraphics.fillCircle(center(node.position.x), center(node.position.y), 7);
+  // 14a-4 ronda 1: los nodos que comparten celda se reparten en abanico en vez
+  // de dibujarse uno encima de otro. Desde que un `ACT` expone entrada y salida,
+  // toda puerta de 1 celda tiene dos — y antes solo se veía (y se clickeaba) el
+  // primero. El reparto es el MISMO que usa el hit-test del modo cableado.
+  for (const positioned of layoutSignalNodes(blueprint.signalGraph.nodes)) {
+    signalGraphics.fillStyle(SIGNAL_NODE_COLORS[positioned.role], 1);
+    signalGraphics.fillCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX);
   }
 }

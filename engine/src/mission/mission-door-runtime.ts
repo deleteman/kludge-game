@@ -6,7 +6,7 @@ import type { CrewActorId } from "../crew/crew-actor.types.js";
 import type { MagneticFieldIntensity } from "../kinetics/magnetic-field.js";
 import type { StructuralResistanceLevel } from "../properties/material.types.js";
 import type { PhysicalComponentDefinition } from "../components/physical-component.types.js";
-import type { PlacedComponentInstance } from "../blueprint/blueprint.types.js";
+import type { PlacedComponentInstance, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
 import { effectiveResistance } from "../wear/effective-resistance.js";
@@ -435,6 +435,27 @@ export class MissionDoorRuntime implements Tickable {
 
   allDoors(): readonly DoorRuntime[] {
     return [...this.doorsById.values()];
+  }
+
+  /**
+   * ¿La puerta de esta instancia está REALMENTE abierta? (Subfase 14a-4, ronda 1
+   * de playtest). Es el lector que alimenta la salida de señal de un `ACT`
+   * (`actuatorEmitterInputs`): lo que emite una puerta es su estado, **no la
+   * orden que la gobierna** — una trabada o sin motor no emite aunque la señal
+   * le esté diciendo que se abra.
+   *
+   * `undefined` si la instancia no es una puerta: quien pregunta no sabe de
+   * antemano qué clase de actuador tiene delante, y colapsar "no es una puerta"
+   * con "está cerrada" haría que el día que otro actuador aprenda a reportar su
+   * estado, este método mintiera sobre él.
+   */
+  isActuatorActive(instanceId: PlacedComponentInstanceId): boolean | undefined {
+    for (const door of this.doorsById.values()) {
+      if (door.instanceId === instanceId) {
+        return door.state === "open" || door.state === "destroyed";
+      }
+    }
+    return undefined;
   }
 
   /**

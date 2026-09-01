@@ -25,13 +25,17 @@ import type {
   PhysicalComponentDefinition,
   PlacedComponentInstance,
   PlacedComponentInstanceId,
+  SignalEdge,
   SignalEdgeId,
   SignalNodeId,
 } from "engine";
 
 import {
   DEFAULT_WEAR,
+  edgeConductorId,
+  edgeConductorWear,
   electricalConductorProperty,
+  isEdgeBurned,
   EXTRACTION_BATCH_UNITS,
   isWiringMaterial,
   wornCapacity,
@@ -51,6 +55,7 @@ import {
   type SubstanceDetailLine,
 } from "../ui/widgets/mission-action-panel.js";
 import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
+import { layoutSignalNodes, signalNodeAtPoint } from "../render/signal-node-layout.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { SectionAtmosphereTooltip, TooltipContent } from "../ui/widgets/mission-tooltip.js";
 import {
@@ -126,6 +131,13 @@ export interface MissionInteractionCallbacks {
    * footprint. Mismo criterio que `onTransferModeChanged`.
    */
   readonly onInstallPlacementChanged: () => void;
+  /**
+   * Qué CABLE pasa por esta celda (14a-4 ronda 1). Lo resuelve la escena y no
+   * el controller porque el ruteo de un cable necesita la grilla transitable y
+   * la cámara — y porque la escena ya lo calcula para el flujo animado y la
+   * cicatriz: tres cálculos separados se desalinearían.
+   */
+  readonly wireAtCell?: (cell: GridPosition) => SignalEdgeId | undefined;
 }
 
 /**
@@ -584,6 +596,29 @@ export class MissionInteractionController {
         // en cuanto el jugador mueve el dial de energía, y un valor horneado
         // sería la UI mintiendo sobre el motor.
         states: this.mission.instanceStates(instance),
+        // 14a-4 ronda 1: el papel de la pieza en el montaje de señal. Es lo que
+        // contesta "¿por qué ese cable se puso ámbar?" desde el lado del
+        // emisor, que hasta acá no decía absolutamente nada.
+        signal: this.mission.signalRoleOf(instance.instanceId),
+      };
+    }
+    // Un CABLE bajo el cursor (14a-4 ronda 1). Va DESPUÉS de las piezas: si el
+    // cable cruza por encima de una, gana la pieza — es el objeto que el jugador
+    // cree estar señalando.
+    const edge = this.wireAtCell(position);
+    if (edge) {
+      const status = this.mission.edgeStatusOf(edge);
+      const conductorId = edgeConductorId(edge);
+      return {
+        kind: "wire",
+        name: this.mission.definitionOf(conductorId)?.name ?? conductorId,
+        wear: edgeConductorWear(edge),
+        load: status?.load ?? 0,
+        capacity: status?.capacity ?? 0,
+        burned: isEdgeBurned(this.mission.blueprint, edge),
+        // La capacidad efectiva es menor que la de catálogo × desgaste: la sala
+        // la está degradando. Sin decirlo, el número parece un bug.
+        thermallyDerated: status !== undefined && status.capacity < status.nominalCapacity - 1e-6,
       };
     }
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
@@ -616,15 +651,20 @@ export class MissionInteractionController {
     return atmosphere;
   }
 
-  /** Click sobre una celda del plano, ya resuelta en coordenadas de mundo por `FloorplanScene`. */
-  handleMapClick(position: GridPosition): void {
+  /**
+   * Click sobre una celda del plano, ya resuelta en coordenadas de mundo por
+   * `FloorplanScene`. `worldPoint` (14a-4 ronda 1) es el píxel exacto: solo lo
+   * usa el modo cableado, que desde que un `ACT` expone entrada y salida tiene
+   * dos nodos por celda y necesita elegir el más cercano al cursor.
+   */
+  handleMapClick(position: GridPosition, worldPoint?: { readonly x: number; readonly y: number }): void {
     if (this.installPickerOpen) return;
     if (this.installPlacementState) {
       this.handleInstallPlacementClick(position);
       return;
     }
     if (this.wireModeValue) {
-      this.handleWireModeClick(position);
+      this.handleWireModeClick(position, worldPoint);
       return;
     }
     if (this.transferModeState) {
@@ -666,6 +706,18 @@ export class MissionInteractionController {
         conduitId: conduit.id,
         name: t("ui.floorplan.mission.inspector.conduit-name"),
         ...this.conduitLiveState(conduit.id),
+      });
+    } else if (this.wireAtCell(position)) {
+      // 14a-4 ronda 1: seleccionar un cable ofrece retirarlo. Va DESPUÉS del
+      // conducto físico por el mismo criterio que el tooltip — el conducto es
+      // parte del plano y el cable pasa por encima.
+      const edge = this.wireAtCell(position)!;
+      const conductorId = edgeConductorId(edge);
+      this.setActionPanelContent({
+        kind: "wire",
+        edgeId: edge.id,
+        name: this.mission.definitionOf(conductorId)?.name ?? conductorId,
+        burned: isEdgeBurned(this.mission.blueprint, edge),
       });
     } else {
       // Celda vacía: se marca y nada más (13f ronda 4). Ya no queda ninguna
@@ -874,16 +926,35 @@ export class MissionInteractionController {
     };
   }
 
+  /** Cable que pasa por esta celda (14a-4 ronda 1). Lo resuelve la escena, ver `wireAtCell`. */
+  private wireAtCell(position: GridPosition): SignalEdge | undefined {
+    const edgeId = this.callbacks.wireAtCell?.(position);
+    return edgeId
+      ? this.mission.blueprint.signalGraph.edges.find((entry) => entry.id === edgeId)
+      : undefined;
+  }
+
   private findInstanceAtCell(position: GridPosition): PlacedComponentInstance | undefined {
     return this.mission.blueprint.placedComponents.find((instance) =>
       occupiedCells(instance.placement).some((cell) => cell.x === position.x && cell.y === position.y),
     );
   }
 
-  private handleWireModeClick(position: GridPosition): void {
-    const node = this.mission.blueprint.signalGraph.nodes.find(
-      (candidate) => candidate.position.x === position.x && candidate.position.y === position.y,
-    );
+  private handleWireModeClick(
+    position: GridPosition,
+    worldPoint?: { readonly x: number; readonly y: number },
+  ): void {
+    // 14a-4 ronda 1: se elige el nodo más cercano al PÍXEL, no el primero de la
+    // celda. Con dos nodos por celda (entrada y salida de un actuador) buscar
+    // por celda devolvía siempre el mismo y el otro era inalcanzable. Sin punto
+    // de mundo (llamador viejo o test) cae al criterio anterior.
+    const positioned = layoutSignalNodes(this.mission.blueprint.signalGraph.nodes);
+    const hit = worldPoint ? signalNodeAtPoint(positioned, worldPoint.x, worldPoint.y) : undefined;
+    const node = hit
+      ? this.mission.blueprint.signalGraph.nodes.find((candidate) => candidate.id === hit.id)
+      : this.mission.blueprint.signalGraph.nodes.find(
+          (candidate) => candidate.position.x === position.x && candidate.position.y === position.y,
+        );
     if (!node) return;
     // Feedback sonoro al clickear un nodo en modo cableado (12c.7, PENDIENTES obs #6).
     this.scene.sound.play(pickSoundKey(AUDIO_KEYS.mapCellSelect), { volume: 0.4 });
@@ -1143,6 +1214,9 @@ export class MissionInteractionController {
         idleMessage: t("ui.floorplan.mission.inspector.idle-message"),
         instanceTitle: (name, condition) => `${name} — ${condition}`,
         dismantle: t("ui.floorplan.mission.inspector.dismantle"),
+        removeWire: t("ui.floorplan.mission.remove-wire"),
+        wireRemoveHealthy: t("ui.floorplan.mission.remove-wire-healthy"),
+        wireRemoveBurned: t("ui.floorplan.mission.remove-wire-burned"),
         hazardWarning: (kind) => t(`ui.floorplan.mission.inspector.hazard.${kind}`),
         breachWarning: (sealed) =>
           sealed
@@ -1223,6 +1297,12 @@ export class MissionInteractionController {
         onSetValve: (conduitId, targetAperture) => {
           if (!this.selectedActorIdValue) return;
           this.mission.queueSetValve(this.selectedActorIdValue, conduitId, targetAperture);
+          this.callbacks.onTaskQueued();
+        },
+        onRemoveWire: (edgeId) => {
+          if (!this.selectedActorIdValue) return;
+          this.mission.queueDisconnect(this.selectedActorIdValue, edgeId);
+          this.setActionPanelContent({ kind: "idle" });
           this.callbacks.onTaskQueued();
         },
         onDismantle: (instanceId) => {

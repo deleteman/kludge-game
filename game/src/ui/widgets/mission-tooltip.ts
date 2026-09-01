@@ -13,8 +13,10 @@ import {
   COMPONENT_CONDITION_TINT,
   COMPONENT_WEAR_CSS,
   CRISIS_FATAL_CSS,
+  CRISIS_SAFE_CSS,
   CRISIS_WARNING_CSS,
   LABEL_COLOR,
+  WIRE_LOAD_WARNING_RATIO,
 } from "../../render/palette.js";
 import { stateNoticeCss, visualForState } from "../../render/component-state-visuals.js";
 import { renderCompositionLines } from "./composition-list.js";
@@ -56,6 +58,33 @@ export type TooltipContent =
        * el widget arma la línea con la tabla de estados y el detalle numérico.
        */
       readonly states?: ReadonlyArray<InstanceState>;
+      /**
+       * Qué gobierna esta pieza y quién la gobierna (14a-4, ronda 1 de
+       * playtest). El operador cableó siete consumidores a un fotorreceptor y
+       * reportó: "el emisor que tiene 7 receptores no dice nada, los receptores
+       * no dicen nada". Sin esto, un cable que vira a ámbar es un color sin
+       * causa visible en ninguna parte de la UI.
+       */
+      readonly signal?: SignalTooltipInfo;
+    }
+  | {
+      /**
+       * Un CABLE de señal bajo el cursor (14a-4, ronda 1 de playtest). Hasta acá
+       * un cable no tenía tooltip: era el único elemento del plano con estado
+       * propio —carga, capacidad, desgaste, quemado— y ninguna forma de leerlo.
+       */
+      readonly kind: "wire";
+      /** Nombre del conductor con el que se tendió, ej. "Cable de cobre". */
+      readonly name: string;
+      readonly wear: ComponentWear;
+      /** Demanda que atraviesa el cable, en unidades de `powerDraw`. */
+      readonly load: number;
+      /** Capacidad EFECTIVA (catálogo × desgaste × factor térmico), la que usa el motor. */
+      readonly capacity: number;
+      /** El cable ya se quemó: no conduce y hay que retirarlo. */
+      readonly burned: boolean;
+      /** La sección lo está degradando por frío o calor ahora mismo. */
+      readonly thermallyDerated: boolean;
     }
   | {
       readonly kind: "section";
@@ -70,6 +99,19 @@ export type TooltipContent =
       /** Brecha de casco EN ESTA CELDA. Heredado del panel de celda vacía, que dejó de existir en la ronda 4. */
       readonly breach?: { readonly sealed: boolean };
     };
+
+/**
+ * El papel de una pieza en el montaje de señal (14a-4, ronda 1 de playtest).
+ * Todo derivado en el momento del hover, como el resto del tooltip.
+ */
+export interface SignalTooltipInfo {
+  /** Cuántas piezas cuelgan de sus salidas, y cuánta demanda suman. */
+  readonly drives?: { readonly count: number; readonly load: number };
+  /** Quién la gobierna y si la señal está llegando AHORA. `undefined` = sin cable. */
+  readonly governedBy?: { readonly name: string; readonly active: boolean };
+  /** Esta pieza EMITE su estado hacia la cadena (un actuador cableado como origen). */
+  readonly emitting?: boolean;
+}
 
 export interface SectionAtmosphereTooltip {
   readonly pressureKpa: number;
@@ -108,6 +150,20 @@ export interface MissionTooltipLabels {
    * síntoma sin dar la salida: lo que le sirve al jugador es cuánto le falta.
    */
   readonly instanceState: (state: InstanceState) => string;
+  /** "Gobierna 7 piezas · 9 de demanda" (14a-4 ronda 1). */
+  readonly signalDrives: (drives: { readonly count: number; readonly load: number }) => string;
+  /** "Gobernada por: Fotorreceptor (señal activa)". */
+  readonly signalGovernedBy: (governedBy: { readonly name: string; readonly active: boolean }) => string;
+  /** "Emite señal: sí/no" — la salida de un actuador hacia la cadena. */
+  readonly signalEmitting: (emitting: boolean) => string;
+  /** "Carga: 5 / 6". */
+  readonly wireLoad: (load: number, capacity: number) => string;
+  /** Qué pasa si la carga supera la capacidad. */
+  readonly wireOverloadWarning: string;
+  /** "Quemado: no conduce. Retiralo para recuperar el hueco." */
+  readonly wireBurned: string;
+  /** "La temperatura de la sala le baja la capacidad a la mitad." */
+  readonly wireThermallyDerated: string;
 }
 
 /**
@@ -259,8 +315,62 @@ export function renderMissionTooltip(
           color: stateNoticeCss(visual),
         });
       }
+      // Papel en el montaje de señal (14a-4 ronda 1). Va junto a los estados y
+      // antes de la atmósfera: el jugador que pasa el mouse por el
+      // fotorreceptor está preguntando por el cableado, no por el aire.
+      const signal = content.signal;
+      if (signal?.drives) {
+        lines.push({ text: `⌁ ${labels.signalDrives(signal.drives)}`, color: LABEL_COLOR });
+      }
+      if (signal?.governedBy) {
+        lines.push({
+          text: `⌁ ${labels.signalGovernedBy(signal.governedBy)}`,
+          // Verde solo cuando la señal está LLEGANDO: es un estado activo, no
+          // una etiqueta. Sin esa distinción, "gobernada por el sensor" se lee
+          // igual con la puerta abierta que cerrada.
+          color: signal.governedBy.active ? CRISIS_SAFE_CSS : LABEL_COLOR,
+        });
+      }
+      if (signal?.emitting !== undefined) {
+        lines.push({
+          text: `⌁ ${labels.signalEmitting(signal.emitting)}`,
+          color: signal.emitting ? CRISIS_SAFE_CSS : LABEL_COLOR,
+        });
+      }
     }
-    if (content.atmosphere) {
+
+    // Cable de señal (14a-4 ronda 1). Es el elemento del plano con más estado
+    // propio y el último que no tenía forma de leerse: el operador vio un cable
+    // virar a ámbar sin ninguna manera de saber por qué ni qué implicaba.
+    if (content.kind === "wire") {
+      if (content.burned) {
+        lines.push({ text: `✖ ${labels.wireBurned}`, color: CRISIS_FATAL_CSS });
+      } else {
+        // El número exacto, no solo el color: en una topología en estrella el
+        // color puede quedarse quieto para siempre y aun así el jugador
+        // necesita saber cuánto margen le queda.
+        const ratio = content.capacity > 0 ? content.load / content.capacity : 0;
+        lines.push({
+          text: `⌁ ${labels.wireLoad(content.load, content.capacity)}`,
+          color: ratio >= WIRE_LOAD_WARNING_RATIO ? CRISIS_WARNING_CSS : LABEL_COLOR,
+        });
+        // La consecuencia EN PALABRAS: un umbral sin su consecuencia es un
+        // número que no significa nada.
+        lines.push({ text: `• ${labels.wireOverloadWarning}`, color: LABEL_COLOR });
+      }
+      if (content.wear !== "nuevo") {
+        lines.push({
+          text: `• ${labels.wearTag(content.wear)}`,
+          color: COMPONENT_WEAR_CSS[content.wear] ?? TAG_CATEGORY_CSS.material,
+        });
+      }
+      // Por qué la capacidad es más baja de lo que dice el catálogo: sin esta
+      // línea, un cable degradado por la temperatura parece un bug de números.
+      if (content.thermallyDerated) {
+        lines.push({ text: `• ${labels.wireThermallyDerated}`, color: CRISIS_WARNING_CSS });
+      }
+    }
+    if (content.kind !== "wire" && content.atmosphere) {
       lines.push({
         text: `• ${labels.sectionPressure(content.atmosphere.pressureKpa)}`,
         color: LABEL_COLOR,
@@ -304,10 +414,11 @@ export function renderMissionTooltip(
         lines.push({ text: `• ${labels.sectionHeating}`, color: CRISIS_WARNING_CSS });
       }
     }
-    if (content.breach) {
+    const breach = content.kind === "wire" ? undefined : content.breach;
+    if (breach) {
       lines.push({
-        text: `${content.breach.sealed ? "✔" : "⚠"} ${labels.sectionBreach(content.breach.sealed)}`,
-        color: content.breach.sealed ? LABEL_COLOR : CRISIS_FATAL_CSS,
+        text: `${breach.sealed ? "✔" : "⚠"} ${labels.sectionBreach(breach.sealed)}`,
+        color: breach.sealed ? LABEL_COLOR : CRISIS_FATAL_CSS,
       });
     }
     for (const { text, color } of lines) {

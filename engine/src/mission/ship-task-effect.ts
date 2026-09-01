@@ -22,6 +22,7 @@ import type {
   TaskEffectResult,
 } from "../tasks/task.types.js";
 import { deriveSignalNodes } from "../workbench/derive-signal-nodes.js";
+import { edgeConductorId, edgeConductorWear } from "../signals/edge-conductor.js";
 import { assertSignalWiringReachable, mergeInstalledSignalGraph, wireExternalPort } from "../workbench/port-wiring.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
@@ -294,20 +295,44 @@ export function createShipTaskEffect(
         return;
       }
       case "disconnect": {
-        // Retirar un cable (14a-4). No acredita NADA al stock: la pieza se
-        // perdió (decisión del operador). Se limpia también de `overloadedRefs`
-        // para que el id no quede colgando como cicatriz de una arista que ya no
+        // Retirar un cable (14a-4). Se limpia también de `overloadedRefs` para
+        // que el id no quede colgando como cicatriz de una arista que ya no
         // existe — si el jugador vuelve a tender ahí, el cable nuevo está sano.
         const ship = shipState.get();
+        const edge = ship.signalGraph.edges.find((entry) => entry.id === payload.edgeId);
+        const burned = ship.overloadedRefs.includes(payload.edgeId);
+        // Ronda 1 de playtest de 14a-4: un cable SANO vuelve al stock un escalón
+        // más gastado; uno QUEMADO se pierde entero. La decisión original ("la
+        // pieza se pierde") era sobre el cable quemado, y colapsar los dos casos
+        // dejaba al jugador sin ninguna forma de re-rutear un montaje: cada
+        // experimento costaba material que no se podía recuperar.
+        //
+        // El desgaste es lo que impide que cablear sea reversible sin coste
+        // (Pilar 5): re-rutear se paga en vida útil, no en material.
+        if (edge && !burned) {
+          const recovered = worsenWear(edgeConductorWear(edge));
+          atomicStock.set(creditStock(atomicStock.get(), edgeConductorId(edge), 1, recovered));
+        }
         shipState.set({
           ...ship,
           signalGraph: {
             ...ship.signalGraph,
-            edges: ship.signalGraph.edges.filter((edge) => edge.id !== payload.edgeId),
+            edges: ship.signalGraph.edges.filter((entry) => entry.id !== payload.edgeId),
           },
           overloadedRefs: ship.overloadedRefs.filter((ref) => ref !== payload.edgeId),
         });
-        return;
+        return edge && !burned
+          ? {
+              obtained: [
+                {
+                  componentId: edgeConductorId(edge),
+                  quantity: 1,
+                  wear: worsenWear(edgeConductorWear(edge)),
+                  degraded: true,
+                },
+              ],
+            }
+          : undefined;
       }
       case "analyze-substance":
         // Tarea de "revelar", no de mutar: no toca `shipState`/`atomicStock`.

@@ -6016,3 +6016,87 @@ TESTS: motor 1168 (153 archivos), juego 105 (12 archivos). `tsc`, `eslint` y `bu
 FUERA DE ALCANCE, EXPLÍCITO: el retardo de propagación por material (GDD 5.6). `DelayBehavior` y
 `DelayRule` ya existen y su docblock promete derivar `delaySeconds` del material desde la Fase 4/5 —
 es un eje temporal nuevo, no una mudanza. Sale a subfase aparte.
+
+================================================================================
+2026-09-01 — SUBFASE 14a-4, RONDA 1 DE PLAYTEST
+================================================================================
+
+El operador jugó el cableado real —fotorreceptor a varias puertas de la bodega— y reportó cuatro cosas.
+Verificadas contra el código: un bug heredado de 13h, una mecánica que funciona y que el juego no
+explica en ningún lado, una acción que existe y es invisible, y una pieza de diseño que el motor casi
+soportaba ya. El hilo común es el de siempre: el modelo funciona y el jugador no puede verlo.
+
+── 1. LA PUERTA ABIERTA QUE NO DEJABA PASAR (bug real, de 13h) ─────────────────
+"Cableo la puerta de la bodega al fotorreceptor, mi tripulante queda encerrado, traigo a otro para
+activar el sensor, la puerta se abre — y el de adentro sigue sin poder salir."
+
+`blocksPathing` (`doors/door.types.ts`) devolvía `door.mode === "override"` y NUNCA miraba
+`door.state`. Una puerta abierta por señal queda `state: "open"` + `mode: "override"`, así que el
+pathfinding la trataba como pared. Su propio docblock decía "cerrada por un override de señal": la
+intención estaba escrita y el código decía otra cosa. Era el ÚNICO de los tres predicados de puerta que
+ignoraba el estado — `blocksPassage` (al lado) y `isDoorwayHeldClosed` (en la escena) sí lo miran, y por
+eso render y planificación discrepaban justo en ese cruce.
+
+Fix: una hoja abierta —o abriéndose— nunca es obstáculo, la gobierne quien la gobierne. El test que
+faltaba era el CRUCE de dos que sí estaban cubiertos ("cerrada por señal" y "abierta en auto"); ahora
+está la tabla completa, más el caso end-to-end sobre la cadena real (sensor → cable → puerta →
+pathfinding), porque el bug vivía entre dos sistemas que estaban bien por separado.
+
+── 2. "EL CABLE SIEMPRE VERDE… Y AHORA ÁMBAR, PERO NO SÉ POR QUÉ" ──────────────
+El color funcionaba: en una estrella (un sensor → N puertas) cada cable lleva SOLO su puerta, 2 de 6 =
+33%, y el umbral de aviso está en 75%. Al colgar el 7º consumidor viró a ámbar. Lo que no existía era la
+explicación — palabras textuales del operador: "el emisor que tiene 7 receptores no dice nada, los
+receptores no dicen nada, el cable no tiene tooltip. No hay nada que muestre al jugador nada útil".
+
+* **Tooltip de cable** (`kind: "wire"`): conductor, desgaste, `carga X / Y` con la capacidad EFECTIVA
+  —la que devuelve el propio `MissionOverloadRuntime.edgeStatus`, no una segunda copia— y la
+  consecuencia EN PALABRAS. Un umbral sin su consecuencia es un número que no significa nada. Si la
+  sala le está bajando la capacidad, lo dice: sin esa línea, el número parece un bug.
+* **Líneas de señal en el tooltip de pieza**: qué gobierna y cuánta demanda suma (el lado del emisor,
+  que es donde se contesta "¿por qué se puso ámbar?"), quién la gobierna y si la señal llega AHORA.
+* **El color se repinta también en pausa.** Estaba dentro del bloque de `execution` junto a las
+  animaciones, pero no es una animación: es estado, y la pausa es justo donde se cablea.
+* La firma de redibujo del tooltip incluye la carga: sin eso, un tooltip abierto se quedaba con el
+  número del primer frame — la misma clase de mentira que 14a-1 arregló con la temperatura.
+
+── 3. "¿CÓMO RETIRO UN CABLE SANO?" ───────────────────────────────────────────
+No había forma visible. El gesto existía (volver a marcar los dos extremos) pero se agregó sin ningún
+indicio en pantalla y solo se mencionaba en el aviso del cable quemado. **Una acción invisible es una
+acción que no existe.**
+
+* Seleccionar una celda por la que pasa un cable abre el panel con **"Retirar cable"**, diciendo ANTES
+  de apretar qué se lleva el jugador. El gesto de los dos extremos sobrevive como atajo.
+* **Un cable SANO vuelve al stock un escalón más gastado**; uno QUEMADO se sigue perdiendo entero. La
+  decisión original ("la pieza se pierde") era sobre el cable quemado, y colapsar los dos casos dejaba
+  al jugador sin ninguna forma de re-rutear: cada experimento costaba material irrecuperable. Ahora
+  re-rutear se paga en vida útil, no en material (Pilar 5 intacto).
+* Stock de `cable-cobre` del Cap. 1: 4 → **9**. Es la lección que el capítulo tiene que enseñar;
+  quedarse sin material a mitad enseña frustración, no economía.
+
+── 4. "LAS PUERTAS DEBERÍAN PODER EMITIR SEÑAL" ───────────────────────────────
+El motor ya propagaba la salida de cualquier nodo y `outputOf` ya la exponía: el único que lo impedía
+era `orientSignalWiring`, que rechaza receptor→receptor y además invierte la arista si el primer click
+cae en un receptor. No existía ninguna combinación de clicks que produjera un cable SALIENDO de una
+puerta.
+
+* Un `ACT` deriva ahora **dos** nodos: el receptor que lo gobierna y un **emisor de salida**. Su id se
+  deriva del receptor y no consume un índice más — si lo consumiera, habría corrido los ids de los nodos
+  posteriores de la misma pieza y toda arista guardada que apuntara a uno de ellos habría quedado
+  huérfana al cargar la partida.
+* **Lo que emite es el estado REAL, no la orden** (decisión del operador): una puerta trabada o sin
+  motor NO emite aunque la señal le esté ordenando abrirse. Encadenar "cuando ESTA puerta se abrió →
+  hacé aquello" solo sirve si la señal describe el mundo. Lo resuelve `actuatorEmitterInputs`, un
+  eslabón más de la cebolla de emisores.
+* **Actuadores sin runtime del que leer** (motor, válvula) se resuelven a `false` en vez de caer en el
+  fail-open de `allEmittersActive`, que los dejaría disparados para siempre — la deuda #40 otra vez.
+* **Partidas ya empezadas**: los nodos viven en el save y se derivan al INSTALAR, no al cargar, así que
+  toda puerta existente se habría quedado sin salida y la mecánica sería invisible justo para quien ya
+  está jugando. `seedActuatorOutputNodes` la siembra al arrancar la misión (idempotente, y devuelve el
+  mismo blueprint por identidad si no hay nada que hacer, para no reconstruir el evaluador de gusto).
+* **Dos nodos en la misma celda**: una puerta de 1 celda tendría entrada y salida superpuestas, y el
+  click buscaba por CELDA — el segundo nodo habría sido inalcanzable. `signal-node-layout.ts` los
+  reparte en abanico y el hit-test elige el más cercano en píxeles. Arregla de paso a
+  `torreta-automatizada` y `dron-reconocimiento`, que ya tenían `EM` + `ACT` y un nodo oculto desde
+  siempre (limitación que el docblock de `derive-signal-nodes.ts` ya admitía).
+
+TESTS: motor 1189 (156 archivos), juego 113 (13 archivos). `tsc`, `eslint` y `build` limpios.

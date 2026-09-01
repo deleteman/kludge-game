@@ -192,5 +192,30 @@ describe("reglas de gobierno de puertas (13h)", () => {
       expect(blocksPassage(abierta)).toBe(false);
       expect(blocksPathing(abierta)).toBe(false);
     });
+
+    // Ronda 1 de playtest de 14a-4. El caso que faltaba era justo el CRUCE de
+    // dos que sí estaban cubiertos ("cerrada por señal" y "abierta en auto"):
+    // una puerta que la señal mantiene ABIERTA. `blocksPathing` miraba solo
+    // `mode`, así que la trataba como pared y el tripulante encerrado en la
+    // bodega no podía salir por una puerta visiblemente abierta.
+    it("ABIERTA por señal no bloquea: es el caso que dejaba a un tripulante encerrado", () => {
+      const abiertaPorSenal = door({ state: "open", mode: "override", overrideSource: "signal" });
+      expect(blocksPassage(abiertaPorSenal)).toBe(false);
+      expect(blocksPathing(abiertaPorSenal)).toBe(false);
+    });
+
+    it("abierta por un override de TAREA tampoco bloquea", () => {
+      // Mismo cruce, otra fuente: dejar una puerta abierta a propósito no puede
+      // convertirla en un muro para el propio jugador que la abrió.
+      expect(blocksPathing(door({ state: "open", mode: "override", overrideSource: "task" }))).toBe(false);
+    });
+
+    it("abriéndose no bloquea: estará abierta para cuando el tripulante llegue", () => {
+      expect(blocksPathing(door({ state: "opening", mode: "override", overrideSource: "signal" }))).toBe(false);
+    });
+
+    it("cerrándose por override SÍ bloquea: va camino a cerrada", () => {
+      expect(blocksPathing(door({ state: "closing", mode: "override", overrideSource: "signal" }))).toBe(true);
+    });
   });
 });

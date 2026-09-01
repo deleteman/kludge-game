@@ -57,8 +57,13 @@ describe("instantiateDoorSeeds (13h, ronda 1 de playtest)", () => {
     // El reporte #5 del playtest era exactamente esto: las puertas no aparecían
     // en modo cableado porque no tenían nodo. El nodo sale del `ACT` de la
     // compuerta (`derive-signal-nodes.ts`), no de una lista especial.
-    expect(seeded.signalNodes).toHaveLength(plan.doors.length);
-    expect(seeded.signalNodes.every((node) => node.role === "receptor")).toBe(true);
+    // 14a-4 ronda 1: cada puerta trae DOS nodos — el receptor que la gobierna y
+    // el emisor que reporta si está realmente abierta, para poder encadenar.
+    const receptores = seeded.signalNodes.filter((node) => node.role === "receptor");
+    expect(receptores).toHaveLength(plan.doors.length);
+    expect(seeded.signalNodes.filter((node) => node.role === "emitter")).toHaveLength(
+      plan.doors.length,
+    );
 
     const owners = new Set(seeded.components.map((instance) => instance.instanceId));
     expect(seeded.signalNodes.every((node) => owners.has(node.ownerRef))).toBe(true);

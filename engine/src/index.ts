@@ -791,6 +791,9 @@ export {
   isWiringMaterial,
 } from "./signals/edge-conductor.js";
 export { activeSignalEdges, activeSignalGraph, isEdgeBurned } from "./signals/active-signal-graph.js";
+export { actuatorEmitterInputs, type ActuatorActivityReader } from "./mission/actuator-emitter-input-source.js";
+export { seedActuatorOutputNodes } from "./mission/seed-actuator-output-nodes.js";
+export { actuatorOutputNodeId, isActuatorOutputNode } from "./workbench/derive-signal-nodes.js";
 export { downstreamNodes, upstreamNodes } from "./signals/graph-traversal.js";
 export {
   activeThermalRegulatorsBySection,

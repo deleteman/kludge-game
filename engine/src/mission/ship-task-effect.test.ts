@@ -321,14 +321,19 @@ describe("createShipTaskEffect", () => {
       expect(shipState.get().signalGraph.edges).toHaveLength(1);
     });
 
-    it("disconnect retira el cable y NO devuelve nada al stock", () => {
+    /**
+     * Ronda 1 de playtest de 14a-4. La decisión original ("la pieza se pierde")
+     * era sobre el cable QUEMADO; colapsar los dos casos dejaba al jugador sin
+     * ninguna forma de re-rutear un montaje sin pagar material nuevo.
+     */
+    it("retirar un cable SANO lo devuelve al stock un escalón más gastado", () => {
       const shipState = scene();
       const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { nuevo: 1 } });
       const effect = createShipTaskEffect(shipState, REGISTRY, stock);
       effect(connectTask({ conductorId: "cable-cobre" as ComponentId }));
       expect(stock.get()["cable-cobre" as ComponentId]?.nuevo ?? 0).toBe(0);
 
-      effect(
+      const result = effect(
         createCrewTask({
           id: "t2" as CrewTaskId,
           actorId: ACTOR,
@@ -338,8 +343,53 @@ describe("createShipTaskEffect", () => {
       );
 
       expect(shipState.get().signalGraph.edges).toEqual([]);
-      // La pieza se perdió en el corto: retender cuesta otra (Pilar 5).
+      // Vuelve, pero no como nuevo: re-rutear se paga en vida útil (Pilar 5).
       expect(stock.get()["cable-cobre" as ComponentId]?.nuevo ?? 0).toBe(0);
+      expect(stock.get()["cable-cobre" as ComponentId]?.usado ?? 0).toBe(1);
+      // Y lo reporta, para que salga el toast de "obtenido" como al desmontar.
+      expect(result?.obtained).toEqual([
+        { componentId: "cable-cobre", quantity: 1, wear: "usado", degraded: true },
+      ]);
+    });
+
+    it("retirar un cable QUEMADO no devuelve nada: eso sigue igual", () => {
+      const shipState = scene();
+      const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { nuevo: 1 } });
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+      effect(connectTask({ conductorId: "cable-cobre" as ComponentId }));
+      shipState.set({ ...shipState.get(), overloadedRefs: ["e1" as SignalEdgeId] });
+
+      const result = effect(
+        createCrewTask({
+          id: "t2" as CrewTaskId,
+          actorId: ACTOR,
+          type: "disconnect",
+          payload: { kind: "disconnect", edgeId: "e1" as SignalEdgeId },
+        }),
+      );
+
+      expect(shipState.get().signalGraph.edges).toEqual([]);
+      // Ni un bucket con unidades: el cable se perdió en el corto.
+      expect(Object.values(stock.get()["cable-cobre" as ComponentId] ?? {})).toEqual([]);
+      expect(result?.obtained).toBeUndefined();
+    });
+
+    it("un cable ya degradado no se recupera infinitamente: `critico` es el piso", () => {
+      // El caso extremo del mecanismo que acabo de agregar: sin tope, tender y
+      // retirar en bucle sería una fuente infinita de cable.
+      const shipState = scene();
+      const stock = new MutableAtomicStock({ ["cable-cobre" as ComponentId]: { critico: 1 } });
+      const effect = createShipTaskEffect(shipState, REGISTRY, stock);
+      effect(connectTask({ conductorId: "cable-cobre" as ComponentId, conductorWear: "critico" }));
+      effect(
+        createCrewTask({
+          id: "t2" as CrewTaskId,
+          actorId: ACTOR,
+          type: "disconnect",
+          payload: { kind: "disconnect", edgeId: "e1" as SignalEdgeId },
+        }),
+      );
+      expect(stock.get()["cable-cobre" as ComponentId]?.critico ?? 0).toBe(1);
     });
 
     it("disconnect limpia también la cicatriz, para que el cable nuevo nazca sano", () => {

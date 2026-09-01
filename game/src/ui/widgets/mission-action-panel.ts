@@ -10,6 +10,7 @@ import type {
   MaterialProperties,
   PlacedComponentInstanceId,
   ConduitId,
+  SignalEdgeId,
   DoorId,
   DoorMode,
   DoorOverrideSource,
@@ -157,6 +158,19 @@ export type ActionPanelContent =
       readonly pressureB: number;
     }
   | {
+      /**
+       * Un CABLE de señal seleccionado (14a-4, ronda 1 de playtest). El gesto de
+       * retirarlo existía —volver a marcar sus dos extremos— pero sin ningún
+       * indicio en pantalla: el operador preguntó directamente "¿cómo retiro un
+       * cable sano?". Una acción invisible es una acción que no existe.
+       */
+      readonly kind: "wire";
+      readonly edgeId: SignalEdgeId;
+      readonly name: string;
+      /** Un cable quemado se pierde al retirarlo; uno sano vuelve con desgaste. */
+      readonly burned: boolean;
+    }
+  | {
       readonly kind: "substance";
       readonly substanceId: ChemicalSubstanceId;
       readonly name: string;
@@ -299,6 +313,12 @@ export interface ActionPanelLabels {
   readonly setValve: (opening: boolean) => string;
   /** Diferencia de presión entre los dos lados — es lo que dice si vale la pena cerrar. */
   readonly conduitPressure: (a: number, b: number) => string;
+  /** Botón "Retirar cable" (14a-4 ronda 1). */
+  readonly removeWire: string;
+  /** Qué se recupera al retirar un cable sano. */
+  readonly wireRemoveHealthy: string;
+  /** …y qué NO se recupera de uno quemado. */
+  readonly wireRemoveBurned: string;
   /** "Cerrar" (deselección manual, fix de playtest 11e — ver doc de la función). */
   readonly close: string;
 }
@@ -334,6 +354,8 @@ export interface ActionPanelCallbacks {
   readonly onForceDoor: (doorId: DoorId) => void;
   readonly onRepairDoor: (doorId: DoorId) => void;
   readonly onSetValve: (conduitId: ConduitId, targetAperture: number) => void;
+  /** Retirar el cable seleccionado (14a-4 ronda 1). */
+  readonly onRemoveWire: (edgeId: SignalEdgeId) => void;
 }
 
 /**
@@ -865,6 +887,34 @@ export function renderMissionActionPanel(
         fontSize: "11px",
         enabled: hasSelectedActor,
         onClick: () => callbacks.onSetValve(conduit.conduitId, opening ? 1 : 0),
+      }),
+    );
+    flowY += 36;
+    claim(flowY);
+  } else if (content.kind === "wire") {
+    const wire = content;
+    // Qué se lleva el jugador al retirarlo, ANTES de que apriete: retirar un
+    // cable quemado no devuelve nada, y descubrirlo después sería exactamente la
+    // clase de sorpresa que el proyecto viene evitando.
+    const costText = scene.add
+      .text(width / 2, flowY, wire.burned ? labels.wireRemoveBurned : labels.wireRemoveHealthy, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: wire.burned ? CRISIS_WARNING_CSS : LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(costText);
+    flowY += costText.height + 8;
+
+    container.add(
+      createKenneyButton(scene, width / 2, flowY + 15, labels.removeWire, {
+        width: width - 40,
+        height: 30,
+        fontSize: "11px",
+        enabled: hasSelectedActor,
+        onClick: () => callbacks.onRemoveWire(wire.edgeId),
       }),
     );
     flowY += 36;

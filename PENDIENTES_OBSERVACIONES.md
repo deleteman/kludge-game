@@ -1039,6 +1039,12 @@ inventario el jugador no puede cablear nada — el capítulo 1 se volvería inju
 esa fila se decide por cuántos cables debe poder tender el jugador en el capítulo, no por si sobra o falta
 para una prueba puntual. El resto de la tabla no cambia de criterio.
 
+**Actualización ronda 1 de playtest de 14a-4 (2026-09-01):** `cable-cobre` sube a **9** — el operador se quedó
+sin cable a mitad del capítulo. Junto con eso, retirar un cable SANO ahora lo devuelve al stock un escalón más
+gastado, así que la presión sobre esta fila baja: re-rutear ya no consume material nuevo. Al re-nivelar, medir
+el número contra "cuántos montajes distintos debe poder intentar el jugador antes de quedarse sin nada", no
+contra el conteo de cables de un montaje.
+
 ## Decisión #45 — `panel-electrico` NO se crea como pieza (Subfase 14a-4)
 
 **Estado:** ✅ RESUELTO por decisión explícita del operador, 2026-09-01. No es deuda: se registra para que no

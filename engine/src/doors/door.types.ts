@@ -121,6 +121,15 @@ export function blocksPassage(door: DoorRuntime): boolean {
  *
  * Los proyectiles y la línea de visión siguen usando `blocksPassage`: para una
  * bala, una puerta cerrada aunque sea funcional sí es una pared.
+ *
+ * **Ronda 1 de playtest de 14a-4**: faltaba mirar el ESTADO. El texto de arriba
+ * dice "cerrada por un override" y el código decía "cualquier override", así que
+ * una puerta que la señal mantiene ABIERTA (`state: "open"` + `mode:
+ * "override"`) se trataba como pared: el jugador cableaba la puerta de la
+ * bodega, la abría con el sensor, y el tripulante de adentro seguía sin poder
+ * salir. Era el único de los tres predicados de puerta que ignoraba `state`
+ * (`blocksPassage` acá al lado y `isDoorwayHeldClosed` en la escena sí lo
+ * miran), y por eso render y planificación discrepaban justo en ese cruce.
  */
 export function blocksPathing(door: DoorRuntime): boolean {
   if (door.state === "destroyed") {
@@ -128,6 +137,12 @@ export function blocksPathing(door: DoorRuntime): boolean {
   }
   if (door.state === "jammed") {
     return true;
+  }
+  // Una hoja abierta —o abriéndose, que estará abierta para cuando el
+  // tripulante llegue— no es obstáculo, la gobierne quien la gobierne. Solo
+  // después de descartarla tiene sentido preguntar quién manda sobre la puerta.
+  if (door.state === "open" || door.state === "opening") {
+    return false;
   }
   return door.mode === "override";
 }

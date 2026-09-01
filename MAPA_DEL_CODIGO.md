@@ -1844,3 +1844,48 @@
   `refreshSignalWireColors` repinta el color a 4 Hz en ejecución (la capacidad efectiva baja con la
   temperatura sin que cambie la topología); el evento de sobrecarga de una arista resuelve su celda; el flujo
   animado de un cable quemado se apaga.
+
+## Subfase 14a-4 — Ronda 1 de playtest
+
+### `engine/src/doors/door.types.ts` (modificado)
+- `blocksPathing` mira el ESTADO antes que el modo: una hoja abierta o abriéndose no es obstáculo, la
+  gobierne quien la gobierne. Era el único de los tres predicados de puerta que ignoraba `state`, y por
+  eso una puerta abierta por señal dejaba al tripulante encerrado.
+
+### `engine/src/workbench/derive-signal-nodes.ts` (modificado)
+- Un `ACT` deriva receptor **y** emisor de salida. `actuatorOutputNodeId`/`isActuatorOutputNode`: el id
+  del emisor se deriva del receptor y no consume índice, para no correr los ids de los nodos posteriores
+  (una arista guardada que apuntara a uno de ellos habría quedado huérfana).
+
+### `engine/src/mission/actuator-emitter-input-source.ts` (nuevo)
+- `actuatorEmitterInputs`: eslabón de la cebolla de `EmitterInputSource` que resuelve las salidas de
+  actuador contra el estado REAL del mundo (`ActuatorActivityReader`). Un actuador sin lector se
+  resuelve a `false`, nunca al fail-open de `allEmittersActive` (deuda #40).
+
+### `engine/src/mission/seed-actuator-output-nodes.ts` (nuevo)
+- `seedActuatorOutputNodes`: siembra las salidas que falten en una partida ya empezada, re-derivando con
+  `deriveSignalNodes` en vez de deducir qué receptor vino del `ACT`. Idempotente y preserva identidad.
+
+### `engine/src/mission/mission-door-runtime.ts` + `ship-task-effect.ts` (modificados)
+- `isActuatorActive(instanceId)`: el lector de estado real para la salida de señal de una puerta.
+- `disconnect` acredita el conductor un escalón más gastado, salvo que la arista esté quemada.
+
+### `game/src/render/signal-node-layout.ts` (nuevo)
+- `layoutSignalNodes` / `signalNodeAtPoint`: reparto en abanico de los nodos que comparten celda y
+  hit-test por el más cercano en píxeles. Compartido por el dibujo y por el modo cableado a propósito —
+  dos cálculos separados se desincronizan.
+
+### `game/src/ui/widgets/mission-tooltip.ts` + `mission-action-panel.ts` (modificados)
+- `TooltipContent` gana `kind: "wire"` (carga/capacidad efectiva, desgaste, quemado, degradación
+  térmica) y `SignalTooltipInfo` en la variante `instance` (qué gobierna, quién la gobierna, si emite).
+- `ActionPanelContent` gana `kind: "wire"` con "Retirar cable" y el coste dicho por adelantado.
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- `signalRoleOf(instanceId)` y `edgeStatusOf(edge)` (con capacidad NOMINAL además de la efectiva, para
+  poder explicar por qué el número es más chico que el del catálogo); `actuatorEmitterInputs` al final
+  de la cebolla de emisores y `seedActuatorOutputNodes` al construir el runtime.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `wireByCell` + `rebuildWireCellIndex` (índice celda→cable para el tooltip, con `signalWireCells`, la
+  misma función que siembra la cicatriz); `refreshSignalWireColors` sale del gate de ejecución; el click
+  pasa el punto de mundo además de la celda, para el hit-test por nodo más cercano.

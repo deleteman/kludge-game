@@ -91,7 +91,11 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // encendido".
   "motor-pequeno": { nuevo: 2 },
   "tubo-rigido": { nuevo: 4 },
-  "cable-cobre": { nuevo: 4 },
+  // Ronda 1 de playtest de 14a-4: 4 → 9. El jugador se quedó sin cable a mitad
+  // de la lección que el capítulo tiene que enseñar. Desde 14a-4 CADA cable de
+  // señal consume una pieza, así que esta fila ya no es stock de prueba: es lo
+  // que decide cuántos montajes puede intentar. Ver deuda #44.
+  "cable-cobre": { nuevo: 9 },
 } as AtomicPartsStock;
 
 /**

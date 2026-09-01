@@ -1148,6 +1148,34 @@ Suite: motor **1168** (153 archivos), juego **105**. `tsc`, `eslint` y `build` l
 `DelayRule` ya existen y su docblock promete derivar `delaySeconds` del material desde la Fase 4/5 — es
 un eje temporal nuevo, no una mudanza. Sale a subfase aparte.
 
+###### Ronda 1 de playtest de 14a-4 ✅ CERRADA (2026-09-01)
+
+El operador cableó un fotorreceptor a varias puertas de la bodega. Cuatro reportes; ninguno era el
+acoplamiento en sí, que funcionó:
+
+* **Bug de 13h que el cableado volvió alcanzable**: `blocksPathing` miraba `door.mode` y no
+  `door.state`, así que una puerta ABIERTA por señal seguía siendo pared para el pathfinding y dejaba
+  al tripulante encerrado. Era el único de los tres predicados de puerta que ignoraba el estado, y su
+  propio docblock ya describía la regla correcta. El test que faltaba era el CRUCE de dos casos que sí
+  estaban cubiertos.
+* **"El cable no explica nada"**: el color funciona (en estrella cada cable lleva 2 de 6; al colgar el
+  7º consumidor viró a ámbar), pero no había *ninguna* lectura. Entra el **tooltip de cable** (carga
+  contra capacidad efectiva, desgaste, la consecuencia en palabras, y por qué la sala se la baja) y las
+  **líneas de señal en el tooltip de pieza** (qué gobierna y cuánta demanda suma; quién la gobierna y si
+  la señal llega ahora). El color además se repinta en **pausa**, que es donde se cablea.
+* **Retirar un cable era invisible**: el gesto existía sin ningún indicio en pantalla. Ahora hay acción
+  en el panel, y un cable **sano vuelve al stock un escalón más gastado** — la decisión de "la pieza se
+  pierde" era sobre el cable QUEMADO, y colapsar los dos casos dejaba sin salida al re-ruteo. Stock de
+  `cable-cobre` del Cap. 1: 4 → **9**.
+* **Los ACT emiten señal** (pedido del operador). Un `ACT` deriva ahora receptor + **emisor de salida**,
+  y lo que emite es el **estado REAL** —una puerta trabada o sin motor no emite— resuelto por
+  `actuatorEmitterInputs`. Se siembran las salidas faltantes al arrancar, o la mecánica habría sido
+  invisible para las partidas ya empezadas; y los dos nodos de una puerta de 1 celda se reparten en
+  abanico con hit-test por el más cercano, que de paso destapa el nodo oculto que
+  `torreta-automatizada` y `dron-reconocimiento` arrastraban desde siempre.
+
+Suite: motor **1189** (156 archivos), juego **113**. `tsc`, `eslint` y `build` limpios.
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.
