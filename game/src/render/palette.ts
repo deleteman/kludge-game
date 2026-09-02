@@ -522,9 +522,45 @@ export const UNSIGNALED_COMPONENT_TINT = 0xa07de0;
  * cable holgado se sigue viendo exactamente como antes de 14a-4.
  */
 export const WIRE_LOAD_WARNING_RATIO = 0.75;
-/** Gris apagado del cable quemado: ya no es un conducto, es una cicatriz. */
+/**
+ * Cable quemado: ya no es un conducto, es una cicatriz.
+ *
+ * Ronda 3 de playtest de 14a-4: el alfa sube de 0.7 a 0.95 y el trazo pasa a
+ * dibujarse ENTRECORTADO al mismo grosor que un cable sano (`dashedPolyline`).
+ * A 1 px con alfa 0.7, y debajo de la luz ámbar de su propia cicatriz, el
+ * operador lo describió como que **el cable desapareció**. "Invisible" se lee
+ * como "no está", y sin recorrido visible el jugador no puede ir a retirarlo —
+ * que es la única salida de la cicatriz. Entrecortado se lee ROTO, que es la
+ * lectura que hacía falta y es distinta de ausente.
+ */
 export const BURNED_WIRE_COLOR = 0x5a5148;
-export const BURNED_WIRE_ALPHA = 0.7;
+export const BURNED_WIRE_ALPHA = 0.95;
+/**
+ * Arco eléctrico de un cable quemado (14a-4, ronda 3 de playtest), en reemplazo
+ * de la luz de la cicatriz: ver `particles/effects/electric-arc-effect.ts`.
+ *
+ * No inventa color — usa `OVERLOADED_SPARK_CORE_COLOR`, el mismo núcleo casi
+ * blanco de las chispas de la cicatriz. Es la misma familia de "esto es
+ * eléctrico y está mal", y unificarla es lo que hace que las dos señales se lean
+ * como un solo fenómeno en vez de dos cosas distintas encima del mismo cable.
+ *
+ * La cadencia es ESPORÁDICA a propósito (decisión del operador): con varios
+ * cables quemados a la vez, un arco cada medio segundo sería el mismo ruido
+ * visual que la luz que se acaba de sacar.
+ */
+export const ARC_MIN_INTERVAL_SECONDS = 2;
+export const ARC_MAX_INTERVAL_SECONDS = 4;
+/** Cuánto dura visible un arco. Corto: es una descarga, no una lámpara. */
+export const ARC_FLASH_MS = 150;
+export const ARC_BOLT_WIDTH_PX = 2;
+export const ARC_BOLT_ALPHA = 0.95;
+/** Vértices intermedios del rayo y cuánto se desvían de la recta. */
+export const ARC_BOLT_SEGMENTS = 5;
+export const ARC_BOLT_JAGGEDNESS_PX = 5;
+
+/** Guion y hueco del trazo de un cable quemado, en píxeles. */
+export const BURNED_WIRE_DASH_PX = 6;
+export const BURNED_WIRE_GAP_PX = 5;
 
 /** Color de un cable según cuán cargado está (0..1+). Ver `WIRE_LOAD_WARNING_RATIO`. */
 export function wireLoadColor(ratio: number | undefined): number {

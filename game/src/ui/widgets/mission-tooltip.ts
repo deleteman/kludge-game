@@ -119,6 +119,17 @@ export interface SignalTooltipInfo {
   readonly governedBy?: { readonly name: string; readonly active: boolean };
   /** Esta pieza EMITE su estado hacia la cadena (un actuador cableado como origen). */
   readonly emitting?: boolean;
+  /**
+   * Cuántos cables quemados tocan esta pieza — entrantes Y salientes (14a-4,
+   * ronda 3 de playtest). Ausente o 0 = su cableado está sano.
+   *
+   * La pieza NO está rota, y por eso no gana glifo ni tinte: gana una línea.
+   * El operador quemó el tronco `fotorreceptor → chip`, vio la cicatriz encima
+   * del chip y no tuvo desde dónde confirmar qué se había roto — "el tooltip
+   * del fotorreceptor no muestra nada mal con él", que era correcto y aun así
+   * lo dejaba sin camino hacia la causa.
+   */
+  readonly burnedWires?: number;
 }
 
 export interface SectionAtmosphereTooltip {
@@ -166,6 +177,8 @@ export interface MissionTooltipLabels {
   }) => string;
   /** Qué pasa cuando la demanda supera lo que el emisor sostiene. */
   readonly signalOverloadedEmitter: string;
+  /** "1 cable quemado conectado a esta pieza" — la pieza está sana, su cableado no. */
+  readonly signalBurnedWires: (count: number) => string;
   /** "Gobernada por: Fotorreceptor (señal activa)". */
   readonly signalGovernedBy: (governedBy: { readonly name: string; readonly active: boolean }) => string;
   /** "Emite señal: sí/no" — la salida de un actuador hacia la cadena. */
@@ -362,6 +375,16 @@ export function renderMissionTooltip(
           // una etiqueta. Sin esa distinción, "gobernada por el sensor" se lee
           // igual con la puerta abierta que cerrada.
           color: signal.governedBy.active ? CRISIS_SAFE_CSS : LABEL_COLOR,
+        });
+      }
+      // El cableado roto de una pieza SANA. Va en rojo de fallo y en último
+      // lugar entre las líneas de señal: es lo más grave que se puede decir de
+      // su montaje, y lo que el jugador está buscando cuando mira una pieza que
+      // dejó de responder.
+      if (signal?.burnedWires) {
+        lines.push({
+          text: `✖ ${labels.signalBurnedWires(signal.burnedWires)}`,
+          color: CRISIS_FATAL_CSS,
         });
       }
       if (signal?.emitting !== undefined) {

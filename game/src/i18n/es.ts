@@ -72,6 +72,11 @@ export const ES: Readonly<Record<string, string>> = {
   // "de demanda" deja de ser un sufijo y pasa a encabezar el par X / Y.
   "ui.floorplan.mission.tooltip.signal-demand": "demanda",
   "ui.floorplan.mission.tooltip.signal-pieces": "piezas",
+  // Ronda 3 de playtest de 14a-4: la pieza está SANA, su cableado no. Sin
+  // glifo sobre el sprite a propósito — un símbolo en la pieza volvería a
+  // decir "esta pieza está rota", que es la confusión que la ronda elimina.
+  "ui.floorplan.mission.tooltip.signal-burned-wire": "cable quemado conectado (no conduce)",
+  "ui.floorplan.mission.tooltip.signal-burned-wires": "cables quemados conectados (no conducen)",
   "ui.floorplan.mission.tooltip.signal-emitter-overloaded":
     "No da abasto: las piezas de menor prioridad se quedan sin señal. Desconectá alguna o intercalá un chip.",
   "ui.floorplan.mission.tooltip.wire-load-explained":

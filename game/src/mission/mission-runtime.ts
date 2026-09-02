@@ -124,6 +124,7 @@ import type { SignalTooltipInfo } from "../ui/widgets/mission-tooltip.js";
 import {
   activeSignalEdges,
   actuatorEmitterInputs,
+  burnedWiresTouching,
   edgeConductorWear,
   emitterCoverageCells,
   isActuatorOutputNode,
@@ -2389,6 +2390,12 @@ export class MissionRuntime {
     const sourceInstance =
       sourceNode && blueprint.placedComponents.find((entry) => entry.instanceId === sourceNode.ownerRef);
 
+    // Cables quemados que TOCAN esta pieza (14a-4 ronda 3). La cuenta vive en el
+    // motor (`burnedWiresTouching`) porque es lógica de grafo con un caso borde
+    // real —`overloadedRefs` es heterogéneo— y acá adentro no habría podido
+    // testearse: esta clase está acoplada a la escena.
+    const burnedWires = burnedWiresTouching(blueprint, instanceId);
+
     const actuatorOutput = own.find((node) => node.role === "emitter" && isActuatorOutputNode(node.id));
     return {
       ...(hasOutgoing
@@ -2409,6 +2416,7 @@ export class MissionRuntime {
       ...(actuatorOutput && edges.some((edge) => edge.from === actuatorOutput.id)
         ? { emitting: this.signalRuntime.outputOf(actuatorOutput.id) }
         : {}),
+      ...(burnedWires > 0 ? { burnedWires } : {}),
     };
   }
 

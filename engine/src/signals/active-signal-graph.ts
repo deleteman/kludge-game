@@ -44,3 +44,36 @@ export function isEdgeBurned(blueprint: Blueprint, edge: SignalEdge): boolean {
 export function activeSignalGraph(blueprint: Blueprint): SignalGraph<PlacedComponentInstanceId> {
   return { nodes: blueprint.signalGraph.nodes, edges: activeSignalEdges(blueprint) };
 }
+
+/**
+ * Cuántos cables QUEMADOS tocan a una pieza, entrantes y salientes (14a-4,
+ * ronda 3 de playtest).
+ *
+ * Existe porque una pieza perfectamente sana necesita poder decir que su
+ * cableado no lo está. El operador quemó el tronco `fotorreceptor → chip`, vio
+ * la cicatriz encima del chip y no tuvo desde dónde confirmar qué se había
+ * roto: *"el tooltip del fotorreceptor no muestra nada mal con él"* — correcto,
+ * porque no le pasaba nada, y aun así lo dejaba sin camino hacia la causa.
+ *
+ * **Las dos direcciones importan.** Ese tronco era saliente del fotorreceptor y
+ * ENTRANTE del chip, y el chip fue justo la pieza que pareció rota: contar solo
+ * salientes habría dejado mudo al caso reportado.
+ *
+ * Recorre `signalGraph.edges` y no `activeSignalEdges` a propósito: ese conjunto
+ * es precisamente el que EXCLUYE los quemados, que son los que hay que contar.
+ */
+export function burnedWiresTouching(
+  blueprint: Blueprint,
+  instanceId: PlacedComponentInstanceId,
+): number {
+  const ownNodeIds = new Set(
+    blueprint.signalGraph.nodes.filter((node) => node.ownerRef === instanceId).map((node) => node.id),
+  );
+  if (ownNodeIds.size === 0) return 0;
+  let count = 0;
+  for (const edge of blueprint.signalGraph.edges) {
+    if (!ownNodeIds.has(edge.from) && !ownNodeIds.has(edge.to)) continue;
+    if (isEdgeBurned(blueprint, edge)) count += 1;
+  }
+  return count;
+}

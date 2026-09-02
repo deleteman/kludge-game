@@ -791,7 +791,12 @@ export {
   electricalConductorProperty,
   isWiringMaterial,
 } from "./signals/edge-conductor.js";
-export { activeSignalEdges, activeSignalGraph, isEdgeBurned } from "./signals/active-signal-graph.js";
+export {
+  activeSignalEdges,
+  activeSignalGraph,
+  burnedWiresTouching,
+  isEdgeBurned,
+} from "./signals/active-signal-graph.js";
 // Triaje de fan-out de señal (14a-4 ronda 2): una salida sostiene una demanda limitada.
 export { allocateEmitterFanout } from "./signals/emitter-fanout.js";
 export { MissionFanoutRuntime } from "./mission/mission-fanout-runtime.js";

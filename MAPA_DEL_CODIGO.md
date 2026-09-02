@@ -1934,3 +1934,33 @@
   mismo camino; línea fantasma con flecha en `pointermove`; aro de carga en el nodo emisor
   (`nodeLoadRatio`, canal separado del color de rol); el resalte de nodos pasa a usar
   `layoutSignalNodes` en vez del centro de celda.
+
+---
+
+# Subfase 14a-4 — Ronda 3 de playtest (2026-09-02)
+
+### `game/src/render/conduit-path.ts` (modificado, + `conduit-path.test.ts` nuevo)
+- `signalWireBodyCells` — las celdas del cable SIN sus extremos, para que su cicatriz no se pinte
+  encima de las piezas que une. `signalWireCells` se queda para el índice del tooltip: divergencia
+  deliberada, documentada en `wireByCell`.
+- `polylineMidpoint` — punto medio POR LONGITUD (no vértice del medio); ancla del fogonazo del corte.
+- `dashedPolyline` — segmentos de un trazo entrecortado, acumulando el patrón entre tramos para que
+  los guiones sigan las esquinas.
+- `arcTargetsNear` — paredes y celdas ocupadas cerca de un punto. Pura porque su modo de fallo es
+  invisible (arcos al vacío, o ninguno nunca).
+
+### `game/src/particles/effects/electric-arc-effect.ts` (nuevo)
+- Arco de un cable quemado, en reemplazo de la luz de la cicatriz. Direccional y transitorio, sin
+  ningún efecto de dominio.
+
+### `game/src/particles/effects/overloaded-conductor-effect.ts` (modificado)
+- `withLight`: la cicatriz de un CABLE la apaga; la de una pieza colocada la conserva.
+
+### `engine/src/signals/active-signal-graph.ts` (modificado, + test nuevo)
+- `burnedWiresTouching(blueprint, instanceId)`: cables quemados entrantes y salientes de una pieza.
+  En el motor y no en `MissionRuntime` para poder testearse.
+
+### `game/src/scenes/floorplan-scene.ts` + `mission-tooltip.ts` + `mission-runtime.ts` (modificados)
+- Cicatriz sobre el cuerpo del cable y sin luz; arcos por cable quemado (`electricArcEffects`,
+  `arcTargetsFrom`); fogonazo/estática al punto medio (`burnedEdgeCenterCell`); línea de cable
+  quemado en el tooltip de la pieza (`SignalTooltipInfo.burnedWires`), sin glifo.

@@ -6148,3 +6148,45 @@ demanda` no se entendía. Verificado: los tres números estaban BIEN. El problem
   consecuencia en palabras; el tooltip de cable explica de dónde sale su carga.
 
 TESTS: motor 1207 (155 archivos), juego 122 (13 archivos). `tsc`, `eslint` y `build` limpios.
+
+================================================================================
+2026-09-02 — Subfase 14a-4, RONDA 3 DE PLAYTEST: la cicatriz sobre el sujeto correcto
+================================================================================
+
+RAZÓN: el operador quemó el tronco `fotorreceptor → chip` y reportó que "el chip comenzó a brillar
+como si estuviera roto, el cable que los une desapareció, pero sigo viendo junto al fotorreceptor el
+aviso de que el cable está quemado".
+
+Los tres síntomas eran UN bug con UNA causa, y el motor no tenía nada que ver: en `overloadedRefs`
+entra el id de la ARISTA, y el chip no tenía tinte, glifo ni estado. `signalWireCells` muestrea
+`step = 0` y `step = steps`, o sea que incluye las celdas de los DOS extremos — exactamente donde
+están las piezas — y todo lo que dibuja un cable quemado se apoyaba en esa lista.
+
+* **`signalWireBodyCells`**: las celdas del cable MENOS sus extremos. La usan la cicatriz persistente
+  y, vía `polylineMidpoint`, el fogonazo y la estática del corte, que hasta acá se anclaban en
+  `signalWireCells(...)[0]` — la celda del emisor, así que el corte ocurría dentro del sensor. Un
+  cable corto sin cuerpo cae al punto medio: nunca se queda sin cicatriz, que sería peor que
+  atribuirla mal.
+* **Se va la luz de la cicatriz de un cable** (`createOverloadedConductorEffect` gana `withLight`).
+  Pedido literal del operador: "sacale la luz, eso oculta todo lo demás". No es una excepción
+  arbitraria — una pieza es un punto y el glow describe su volumen; un cable es una LÍNEA y una luz
+  puntual en uno de sus extremos no describe nada. Una pieza colocada la conserva.
+* **`electric-arc-effect.ts`** (nuevo, idea del operador en reemplazo de la luz): cada 2-4 s un rayo
+  quebrado de ~150 ms desde una celda al azar del cuerpo del cable hacia una pared o pieza cercana.
+  Dice lo mismo que la luz y arregla lo que la luz hacía mal: es DIRECCIONAL y transitorio, se ve
+  nacer en el cable. Puramente visual — no emite eventos, no toca el motor, no daña (decisión
+  explícita: "por ahora no tiene sentido que sea dañino"). Los blancos incluyen las piezas de los
+  extremos, también por decisión del operador; lo que mantiene limpia la lectura es que la pieza no
+  gana ningún tinte ni glifo por recibir un arco. `arcTargetsNear` queda pura y testeada porque su
+  modo de fallo es invisible: sin blanco, el efecto simplemente no aparecería nunca.
+* **`dashedPolyline`** y el cable quemado a 2 px (el grosor de uno sano) con alfa 0.95. Era 1 px al
+  70 % debajo de su propia luz ámbar: "invisible" se lee como "no está", y sin recorrido visible el
+  jugador no puede ir a retirarlo, que es la única salida de la cicatriz. El patrón se acumula entre
+  tramos para que los guiones sigan las esquinas en vez de cortar en recto sobre ellas.
+* **`burnedWiresTouching`** (motor): cuántos cables quemados tocan una pieza, ENTRANTES y salientes.
+  Las dos direcciones importan — el tronco era saliente del fotorreceptor y entrante del chip, que
+  fue justo la pieza que pareció rota. Vive en `/engine` y no dentro de `MissionRuntime` para poder
+  testearse: esa clase está acoplada a la escena. Sin glifo sobre el sprite (decisión del operador):
+  un símbolo en la pieza volvería a decir "esta pieza está rota".
+
+TESTS: motor 1213 (156 archivos), juego 139 (14 archivos). `tsc`, `eslint` y `build` limpios.

@@ -19,13 +19,15 @@ import {
   ensureComponentPlaceholderTexture,
   hasComponentSprite,
 } from "./component-sprite-registry.js";
-import { computeSignalWireRoute } from "./conduit-path.js";
+import { computeSignalWireRoute, dashedPolyline } from "./conduit-path.js";
 import { layoutSignalNodes, SIGNAL_NODE_RADIUS_PX } from "./signal-node-layout.js";
 import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
   BURNED_WIRE_ALPHA,
   BURNED_WIRE_COLOR,
+  BURNED_WIRE_DASH_PX,
+  BURNED_WIRE_GAP_PX,
   LABEL_COLOR,
   LED_INACTIVE_TINT,
   SECTION_FILL_COLORS,
@@ -310,17 +312,28 @@ function drawSignalEdge(
   to: GridPosition,
   floorplan: ShipFloorplan | undefined,
   walkableGrid: WalkableGrid | undefined,
+  /**
+   * Trazo ENTRECORTADO (14a-4, ronda 3 de playtest): así se dibuja un cable
+   * quemado. Un trazo continuo pero apagado se leía como "no hay cable"; roto
+   * y al mismo grosor que uno sano se lee como lo que es, y deja ver por dónde
+   * iba — que es lo que el jugador necesita para ir a retirarlo.
+   */
+  dashed = false,
 ): void {
   const center = (n: number): number => n * CELL + CELL / 2;
-  if (!floorplan) {
-    graphics.lineBetween(center(from.x), center(from.y), center(to.x), center(to.y));
-    return;
-  }
+  const fallback = [
+    { x: center(from.x), y: center(from.y) },
+    { x: center(to.x), y: center(to.y) },
+  ];
   // `computeSignalWireRoute` devuelve PÍXELES (Fase 11f.2), con el marcador del
   // conducto como vértice exacto — se dibuja directo, sin re-centrar.
-  const route = computeSignalWireRoute(floorplan, walkableGrid, from, to);
-  if (route.length < 2) {
-    graphics.lineBetween(center(from.x), center(from.y), center(to.x), center(to.y));
+  const routed = floorplan ? computeSignalWireRoute(floorplan, walkableGrid, from, to) : [];
+  const route = routed.length >= 2 ? routed : fallback;
+
+  if (dashed) {
+    for (const [a, b] of dashedPolyline(route, BURNED_WIRE_DASH_PX, BURNED_WIRE_GAP_PX)) {
+      graphics.lineBetween(a.x, a.y, b.x, b.y);
+    }
     return;
   }
   graphics.beginPath();
@@ -375,12 +388,15 @@ export function drawSignalLayer(
     if (!from || !to) continue;
     const burned = burnedEdgeIds?.has(edge.id) ?? false;
     if (burned) {
-      // Más fino y apagado: dejó de ser un conducto, es una cicatriz.
-      signalGraphics.lineStyle(1, BURNED_WIRE_COLOR, BURNED_WIRE_ALPHA);
+      // Ronda 3 de playtest: MISMO grosor que un cable sano, pero entrecortado.
+      // Hasta acá era 1 px al 70% de alfa, y debajo de la luz de su propia
+      // cicatriz el operador reportó que "el cable desapareció" — invisible se
+      // lee como ausente, y sin recorrido no hay forma de ir a retirarlo.
+      signalGraphics.lineStyle(2, BURNED_WIRE_COLOR, BURNED_WIRE_ALPHA);
     } else {
       signalGraphics.lineStyle(2, wireLoadColor(edgeLoadRatio?.(edge)), 0.85);
     }
-    drawSignalEdge(signalGraphics, from.position, to.position, floorplan, walkableGrid);
+    drawSignalEdge(signalGraphics, from.position, to.position, floorplan, walkableGrid, burned);
   }
   // 14a-4 ronda 1: los nodos que comparten celda se reparten en abanico en vez
   // de dibujarse uno encima de otro. Desde que un `ACT` expone entrada y salida,

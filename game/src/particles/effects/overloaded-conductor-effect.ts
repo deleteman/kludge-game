@@ -37,10 +37,33 @@ export interface OverloadedConductorState {
   readonly elapsedSeconds: number;
 }
 
+/**
+ * Ronda 3 de playtest de 14a-4: la luz pasa a ser OPCIONAL, y la cicatriz de un
+ * **cable** la apaga.
+ *
+ * No es una excepción arbitraria: son dos sujetos de forma distinta. Una pieza
+ * es un punto, y el glow de 64 px describe su volumen. Un cable es una LÍNEA, y
+ * una luz puntual anclada en uno de sus extremos no describe nada — solo tapa.
+ * Peor: ese extremo es la celda de una pieza, así que el operador vio "el chip
+ * brillando como si estuviera roto" cuando el chip estaba perfectamente sano y
+ * lo quemado era la arista. Su pedido fue literal: "sacale la luz, eso oculta
+ * todo lo demás".
+ *
+ * Lo que ocupa su lugar en un cable es `electric-arc-effect.ts`, que dice lo
+ * mismo (esto está eléctricamente roto) pero de forma DIRECCIONAL: se ve nacer
+ * en el cable, así que no tiñe lo que tenga debajo.
+ */
+export interface OverloadedConductorOptions {
+  /** `false` para la cicatriz de un cable. Por defecto `true` (una pieza colocada). */
+  readonly withLight?: boolean;
+}
+
 export function createOverloadedConductorEffect(
   onEmitterCreated?: ParticleEmitterHook,
   onLightCreated?: LightHook,
+  options: OverloadedConductorOptions = {},
 ): StateDrivenEffect<OverloadedConductorState> {
+  const withLight = options.withLight ?? true;
   let scene: EffectScene | undefined;
   let px = 0;
   let py = 0;
@@ -99,6 +122,7 @@ export function createOverloadedConductorEffect(
         });
         onEmitterCreated?.(emitter);
       }
+      if (!withLight) return;
       if (!light) {
         light = createDynamicLight(
           scene,

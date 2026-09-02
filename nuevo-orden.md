@@ -1220,6 +1220,41 @@ diseño:
 
 Suite: motor **1207** (155 archivos), juego **122** (13 archivos). `tsc`, `eslint` y `build` limpios.
 
+###### Ronda 3 de playtest de 14a-4 ✅ CERRADA (2026-09-02)
+
+El operador confirmó que el fan-out, el relé y el tronco funcionan. Al **quemar el tronco
+`fotorreceptor → chip`** encontró que no hay forma de saber qué se rompió: *"el chip comenzó a brillar
+como si estuviera roto, el cable que los une desapareció, pero sigo viendo junto al fotorreceptor el
+aviso de que el cable está quemado"*.
+
+**Un solo bug, una sola causa, y el motor no tenía nada que ver**: en `overloadedRefs` entra el id de
+la ARISTA y el chip no tenía tinte, glifo ni estado. Era la cicatriz correcta pintada sobre el sujeto
+equivocado. `signalWireCells` muestrea `step = 0` y `step = steps`, o sea que **incluye las celdas de
+los dos extremos** — justo donde están las piezas — y todo lo que dibuja un cable quemado se apoyaba
+en esa lista.
+
+* **La cicatriz pasa al CUERPO del cable** (`signalWireBodyCells`, sin los extremos), y el fogonazo y
+  la estática del corte al **punto medio por longitud** en vez de `signalWireCells(...)[0]`, que era
+  literalmente la celda del emisor. Un cable corto sin cuerpo cae al punto medio: nunca se queda sin
+  cicatriz.
+* **Se va la luz de la cicatriz de un cable** (pedido del operador: "eso oculta todo lo demás"). Un
+  glow puntual de 64 px describe el volumen de una PIEZA; sobre una línea no describe nada, solo tapa
+  — y encima estaba anclado en la celda de una pieza. Una pieza colocada la conserva.
+* **En su lugar, arcos eléctricos** (idea del operador): cada 2-4 s una descarga corta sale de una
+  celda al azar del cable hacia una pared o pieza cercana. Dice lo mismo que la luz y resuelve lo que
+  la luz hacía mal — es **direccional y transitorio**, se ve nacer en el cable. **Puramente visual**:
+  no emite eventos, no toca el motor, no daña. Sin blanco cerca no dibuja nada; nunca dispara al vacío.
+* **El cable quemado se ve ROTO, no ausente**: trazo entrecortado (`dashedPolyline`) al mismo grosor
+  que uno sano. Era 1 px al 70 % de alfa debajo de su propia luz ámbar — "invisible" se lee como "no
+  está", y sin recorrido visible no hay forma de ir a retirarlo, que es la única salida de la cicatriz.
+* **Las piezas de los extremos lo dicen en su tooltip** (`burnedWiresTouching`, en el motor para poder
+  testearlo): *"1 cable quemado conectado (no conduce)"*, contando **entrantes y salientes** — el
+  tronco era saliente del sensor y ENTRANTE del chip, que fue la pieza que pareció rota. Sin glifo
+  sobre el sprite, por decisión del operador: un símbolo en la pieza volvería a decir "esta pieza está
+  rota".
+
+Suite: motor **1213** (156 archivos), juego **139** (14 archivos). `tsc`, `eslint` y `build` limpios.
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.

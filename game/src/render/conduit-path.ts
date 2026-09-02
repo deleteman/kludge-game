@@ -273,3 +273,164 @@ function simplifyCollinear(points: readonly GridPosition[]): readonly GridPositi
   result.push(points[points.length - 1]!);
   return result;
 }
+
+/**
+ * Celdas del CUERPO de un cable: las que atraviesa, **menos las de sus dos
+ * extremos** (14a-4, ronda 3 de playtest).
+ *
+ * Por qué existe. Todo lo que dibuja un cable quemado —la cicatriz persistente,
+ * el fogonazo del corte, la estática local— se apoyaba en `signalWireCells`, que
+ * muestrea `step = 0` y `step = steps` y por lo tanto incluye las celdas de los
+ * dos extremos: exactamente donde están las piezas que el cable une. El operador
+ * quemó el tronco `fotorreceptor → chip` y reportó que **el chip empezó a
+ * brillar como si estuviera roto**. No lo estaba: el motor atribuye el corte a
+ * la ARISTA (en `overloadedRefs` entra el id de la arista, no el de la pieza) y
+ * el chip no tenía tinte, glifo ni estado. Era la cicatriz correcta pintada
+ * sobre el sujeto equivocado.
+ *
+ * `signalWireCells` se queda como está y sigue siendo la de siempre para el
+ * índice celda→cable del tooltip: ahí excluir extremos abriría huecos muertos, y
+ * el solape con una pieza ya lo resuelve la precedencia de `tooltipContentAt`
+ * (gana la pieza, que es el objeto que el jugador cree estar señalando).
+ *
+ * **Cable corto** (los dos extremos adyacentes, sin cuerpo): se cae a la celda
+ * del punto medio de la polilínea. Nunca devuelve vacío mientras haya ruta —
+ * mismo criterio que el caso de un solo punto que `signalWireCells` ya
+ * contemplaba: un cable sin cicatriz sería un corte invisible.
+ */
+export function signalWireBodyCells(route: ReadonlyArray<PixelPoint>): ReadonlyArray<GridPosition> {
+  const all = signalWireCells(route);
+  if (all.length > 2) {
+    return all.slice(1, -1);
+  }
+  const midpoint = polylineMidpoint(route);
+  return midpoint ? [{ x: Math.floor(midpoint.x / CELL), y: Math.floor(midpoint.y / CELL) }] : [];
+}
+
+/**
+ * Punto medio de una polilínea POR LONGITUD (no el vértice del medio), o
+ * `undefined` si la ruta está vacía. Es dónde se ancla el fogonazo y la estática
+ * de un corte: la ronda 1 los anclaba en `signalWireCells(...)[0]`, o sea en la
+ * celda del emisor, así que el corte parecía ocurrir dentro del sensor.
+ */
+export function polylineMidpoint(route: ReadonlyArray<PixelPoint>): PixelPoint | undefined {
+  if (route.length === 0) return undefined;
+  if (route.length === 1) return route[0];
+  const lengths: number[] = [];
+  let total = 0;
+  for (let i = 0; i < route.length - 1; i += 1) {
+    const length = Math.hypot(route[i + 1]!.x - route[i]!.x, route[i + 1]!.y - route[i]!.y);
+    lengths.push(length);
+    total += length;
+  }
+  let remaining = total / 2;
+  for (let i = 0; i < lengths.length; i += 1) {
+    const length = lengths[i]!;
+    if (remaining <= length || i === lengths.length - 1) {
+      const t = length === 0 ? 0 : remaining / length;
+      const a = route[i]!;
+      const b = route[i + 1]!;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    remaining -= length;
+  }
+  return route[route.length - 1];
+}
+
+/**
+ * Parte una polilínea en los segmentos "encendidos" de un trazo entrecortado
+ * (14a-4, ronda 3 de playtest).
+ *
+ * Un cable quemado se dibujaba a 1 px en un gris oscuro al 70% de alfa, debajo
+ * de la luz ámbar de su propia cicatriz: el operador lo describió como que **el
+ * cable desapareció**. "Invisible" se lee como "no está", y sin recorrido
+ * visible el jugador no puede ir a retirarlo — que es la única salida de la
+ * cicatriz. Entrecortado y al mismo grosor que uno sano se lee ROTO, que es
+ * distinto de ausente.
+ *
+ * Recorre la polilínea acumulando distancia, así que los guiones **siguen las
+ * esquinas** en vez de cortar en recto sobre ellas. Es la razón de que sea una
+ * función aparte y con test: es aritmética de recorrido, no pixeles.
+ */
+export function dashedPolyline(
+  route: ReadonlyArray<PixelPoint>,
+  dashPx: number,
+  gapPx: number,
+): ReadonlyArray<readonly [PixelPoint, PixelPoint]> {
+  const segments: Array<readonly [PixelPoint, PixelPoint]> = [];
+  if (route.length < 2 || dashPx <= 0 || gapPx <= 0) return segments;
+
+  // Posición dentro del patrón guion+hueco, conservada de un tramo al siguiente
+  // para que una esquina no reinicie el dibujo (dos guiones pegados en cada
+  // vértice se leerían como un engrosamiento, no como un patrón).
+  let cursor = 0;
+  const period = dashPx + gapPx;
+
+  for (let i = 0; i < route.length - 1; i += 1) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length === 0) continue;
+    const at = (distance: number): PixelPoint => ({
+      x: a.x + ((b.x - a.x) * distance) / length,
+      y: a.y + ((b.y - a.y) * distance) / length,
+    });
+
+    let travelled = 0;
+    while (travelled < length) {
+      const phase = cursor % period;
+      const remainingInPhase = phase < dashPx ? dashPx - phase : period - phase;
+      const step = Math.min(remainingInPhase, length - travelled);
+      if (phase < dashPx) {
+        segments.push([at(travelled), at(travelled + step)]);
+      }
+      travelled += step;
+      cursor += step;
+    }
+  }
+  return segments;
+}
+
+/**
+ * Celdas cercanas contra las que un cable quemado puede descargar un arco
+ * (14a-4, ronda 3 de playtest): paredes y celdas ocupadas por una pieza.
+ *
+ * Reemplaza a la luz de la cicatriz, que el operador pidió sacar porque "oculta
+ * todo lo demás" — un glow de 64 px anclado en un punto sobre una pieza. El arco
+ * dice lo mismo (esto está eléctricamente roto) pero es **direccional**: se ve
+ * nacer en el cable, así que atribuye el fallo al cable en vez de teñir lo que
+ * tenga debajo.
+ *
+ * Pura y con test propio porque su modo de fallo es INVISIBLE: si devolviera
+ * siempre vacío, el efecto simplemente no aparecería nunca y nadie lo notaría
+ * hasta un playtest; si devolviera celdas vacías, el arco saldría al aire.
+ *
+ * Devolver una lista y no un blanco elegido deja el azar afuera, que es lo que
+ * la hace testeable.
+ */
+export function arcTargetsNear(
+  origin: GridPosition,
+  radiusCells: number,
+  walkableGrid: WalkableGrid | undefined,
+  occupiedCells: ReadonlySet<string>,
+): ReadonlyArray<GridPosition> {
+  const targets: GridPosition[] = [];
+  for (let dx = -radiusCells; dx <= radiusCells; dx += 1) {
+    for (let dy = -radiusCells; dy <= radiusCells; dy += 1) {
+      if (dx === 0 && dy === 0) continue;
+      const cell = { x: origin.x + dx, y: origin.y + dy };
+      if (Math.hypot(dx, dy) > radiusCells) continue;
+      const isWall = walkableGrid
+        ? cell.x >= 0 &&
+          cell.y >= 0 &&
+          cell.x < walkableGrid.width &&
+          cell.y < walkableGrid.height &&
+          !walkableGrid.isWalkable(cell.x, cell.y)
+        : false;
+      if (isWall || occupiedCells.has(`${cell.x},${cell.y}`)) {
+        targets.push(cell);
+      }
+    }
+  }
+  return targets;
+}

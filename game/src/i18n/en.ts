@@ -70,6 +70,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.signal-drives": "Drives",
   "ui.floorplan.mission.tooltip.signal-demand": "demand",
   "ui.floorplan.mission.tooltip.signal-pieces": "pieces",
+  "ui.floorplan.mission.tooltip.signal-burned-wire": "burned wire attached (not conducting)",
+  "ui.floorplan.mission.tooltip.signal-burned-wires": "burned wires attached (not conducting)",
   "ui.floorplan.mission.tooltip.signal-emitter-overloaded":
     "Over capacity: the lowest-priority pieces lose signal. Disconnect one or insert a chip.",
   "ui.floorplan.mission.tooltip.wire-load-explained":

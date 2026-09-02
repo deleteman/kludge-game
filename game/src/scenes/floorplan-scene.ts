@@ -48,7 +48,14 @@ import {
   drawConduitMarker,
 } from "../render/floorplan-renderer.js";
 import type { ConduitPath } from "../render/conduit-path.js";
-import { computeConduitRoute, computeSignalWireRoute, signalWireCells } from "../render/conduit-path.js";
+import {
+  arcTargetsNear,
+  computeConduitRoute,
+  computeSignalWireRoute,
+  polylineMidpoint,
+  signalWireBodyCells,
+  signalWireCells,
+} from "../render/conduit-path.js";
 
 /**
  * Cada cuánto se repinta el color de los cables por su carga (Subfase 14a-4).
@@ -57,6 +64,12 @@ import { computeConduitRoute, computeSignalWireRoute, signalWireCells } from "..
  * grafo por arista no aparece en el presupuesto de frame.
  */
 const SIGNAL_WIRE_COLOR_REFRESH_SECONDS = 0.25;
+/**
+ * Radio, en celdas, dentro del cual un cable quemado busca contra qué descargar
+ * un arco (14a-4 ronda 3). Corto a propósito: una descarga que cruza media nave
+ * no se lee como "este cable está arcando" sino como un rayo sin origen.
+ */
+const ARC_TARGET_RADIUS_CELLS = 2;
 import type { PixelPoint } from "../render/conduit-path.js";
 import { doorSlideAxis, easedDoorOpenness } from "../render/door-visuals.js";
 import {
@@ -108,6 +121,8 @@ import type { GasCloudState } from "../particles/effects/atmosphere-state-effect
 import { thresholdSeverity } from "../particles/effects/atmosphere-effect-coverage.js";
 import { CLOUD_TINT } from "../particles/effects/hazard-effect.js";
 import { createOverloadedConductorEffect } from "../particles/effects/overloaded-conductor-effect.js";
+import { createElectricArcEffect } from "../particles/effects/electric-arc-effect.js";
+import type { ElectricArcState } from "../particles/effects/electric-arc-effect.js";
 import type { OverloadedConductorState } from "../particles/effects/overloaded-conductor-effect.js";
 import { createDynamicLight } from "../particles/effects/dynamic-light.js";
 import type {
@@ -553,9 +568,16 @@ export class FloorplanScene extends Phaser.Scene {
   private signalWireColorCooldown = 0;
   /**
    * Qué cable pasa por cada celda (14a-4 ronda 1), para el tooltip de cable.
-   * Se reconstruye en `redrawOverlay` porque solo cambia con la topología, y
-   * usa `signalWireCells` — la MISMA función que siembra la cicatriz, así que el
-   * tooltip y las chispas nunca discrepan sobre por dónde pasa el cable.
+   * Se reconstruye en `redrawOverlay` porque solo cambia con la topología.
+   *
+   * Usa `signalWireCells` (el recorrido COMPLETO), mientras que la cicatriz usa
+   * `signalWireBodyCells` (sin los extremos) desde la ronda 3. La divergencia es
+   * deliberada y las dos derivan del mismo recorrido: el tooltip quiere poder
+   * responder en cualquier celda por la que pase el cable —excluir los extremos
+   * abriría huecos muertos, y el solape con una pieza ya lo resuelve la
+   * precedencia de `tooltipContentAt`, que hace ganar a la pieza—; la cicatriz,
+   * en cambio, NO puede pintarse encima de las piezas que el cable une, o se lee
+   * como que la pieza es la que está rota.
    */
   private wireByCell = new Map<string, SignalEdgeId>();
 
@@ -637,6 +659,15 @@ export class FloorplanScene extends Phaser.Scene {
     // CABLE — desde 14a-4 el conductor es la arista, no la pieza en la celda.
     PlacedComponentInstanceId | SignalEdgeId,
     StateDrivenEffect<OverloadedConductorState>
+  >();
+  /**
+   * Arcos eléctricos de los cables quemados (14a-4, ronda 3 de playtest), en
+   * reemplazo de la luz que la cicatriz de un cable dejó de tener. Solo para
+   * ARISTAS: una pieza colocada conserva su glow, que ahí sí describe el objeto.
+   */
+  private readonly electricArcEffects = new Map<
+    PlacedComponentInstanceId | SignalEdgeId,
+    StateDrivenEffect<ElectricArcState>
   >();
   /**
    * Overlay de alerta de pantalla completa. Fase 12a lo hizo un rectángulo
@@ -1190,9 +1221,14 @@ export class FloorplanScene extends Phaser.Scene {
         // pieza colocada. Sin esto el evento se quedaba sin celda y el corte
         // ocurría en silencio: ni partícula, ni estática, ni sonido posicionado.
         const burnedEdge = this.mission.blueprint.signalGraph.edges.find((edge) => edge.id === event.ref);
+        // Ronda 3 de playtest de 14a-4: el punto MEDIO del cable, no
+        // `signalWireCells(...)[0]` — que era la celda del emisor, así que el
+        // fogonazo y la estática del corte ocurrían dentro del sensor. Junto con
+        // la cicatriz sobre el cuerpo, es lo que deja de culpar a las piezas de
+        // los extremos por algo que le pasó a la arista.
         const cell =
           this.mission.blueprint.placedComponents.find((entry) => entry.instanceId === event.ref)?.placement
-            .position ?? (burnedEdge ? signalWireCells(this.signalWireRouteFor(burnedEdge))[0] : undefined);
+            .position ?? (burnedEdge ? this.burnedEdgeCenterCell(burnedEdge) : undefined);
         if (burnedEdge) {
           // El cable pasa a dibujarse carbonizado YA: sin este redraw seguiría
           // pintado verde hasta el próximo cambio de topología — la UI diciendo
@@ -2091,6 +2127,12 @@ export class FloorplanScene extends Phaser.Scene {
             Number.isFinite(capacity) ? capacity : "∞"
           }`,
         signalOverloadedEmitter: t("ui.floorplan.mission.tooltip.signal-emitter-overloaded"),
+        signalBurnedWires: (count) =>
+          `${count} ${t(
+            count === 1
+              ? "ui.floorplan.mission.tooltip.signal-burned-wire"
+              : "ui.floorplan.mission.tooltip.signal-burned-wires",
+          )}`,
         signalGovernedBy: ({ name, active }) =>
           `${t("ui.floorplan.mission.tooltip.signal-governed-by")}: ${name} (${t(
             active
@@ -3982,6 +4024,18 @@ export class FloorplanScene extends Phaser.Scene {
     return computeSignalWireRoute(this.mission.shipFloorplan, this.walkableGrid, from.position, to.position);
   }
 
+  /**
+   * Celda del punto MEDIO de un cable (14a-4 ronda 3): dónde se ancla el
+   * fogonazo y la estática de su corte.
+   *
+   * Por longitud de recorrido y no por vértice del medio (`polylineMidpoint`),
+   * para que en un cable que dobla una esquina no caiga sobre el codo.
+   */
+  private burnedEdgeCenterCell(edge: SignalEdge): GridPosition | undefined {
+    const midpoint = polylineMidpoint(this.signalWireRouteFor(edge));
+    return midpoint ? { x: Math.floor(midpoint.x / CELL), y: Math.floor(midpoint.y / CELL) } : undefined;
+  }
+
   /** Índice celda→cable para el tooltip (14a-4 ronda 1). Ver `wireByCell`. */
   private rebuildWireCellIndex(): void {
     const index = new Map<string, SignalEdgeId>();
@@ -4432,15 +4486,38 @@ export class FloorplanScene extends Phaser.Scene {
       // eso es `occupiedCells` (el mismo cálculo que usa la colocación, así que
       // una pieza rotada chispea donde de verdad está); para un cable son las
       // celdas que ATRAVIESA su ruta — un cable quemado arde en todo su largo.
+      //
+      // Ronda 3 de playtest de 14a-4: para un CABLE son las celdas de su CUERPO,
+      // sin las de los dos extremos. `signalWireCells` las incluía, y esas son
+      // justo las celdas donde están las piezas que el cable une: el operador
+      // quemó el tronco y reportó "el chip comenzó a brillar como si estuviera
+      // roto". El chip estaba sano — era la cicatriz correcta pintada sobre el
+      // sujeto equivocado.
       const cells = instance
         ? occupiedCells(instance.placement)
         : edge
-          ? signalWireCells(this.signalWireRouteFor(edge))
+          ? signalWireBodyCells(this.signalWireRouteFor(edge))
           : undefined;
       if (!cells || cells.length === 0) continue;
-      const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight);
+      // Y sin LUZ si es un cable: un glow puntual sobre una línea no describe
+      // nada, solo tapa ("eso oculta todo lo demás", operador). Lo reemplazan
+      // los arcos de abajo, que son direccionales.
+      const effect = createOverloadedConductorEffect(this.registerParticleEmitter, this.registerLight, {
+        withLight: instance !== undefined,
+      });
       effect.start(this, cells[0]!, { cells });
       this.overloadedConductorEffects.set(ref, effect);
+
+      // Arco eléctrico, solo para cables (pedido del operador en reemplazo de la
+      // luz). Puramente visual: no emite eventos ni daña a nadie.
+      if (edge) {
+        const arc = createElectricArcEffect((graphics) => {
+          graphics.setDepth(RENDER_DEPTH.effect);
+          this.markAsWorldObject(graphics);
+        });
+        arc.start(this, cells[0]!);
+        this.electricArcEffects.set(ref, arc);
+      }
     }
     // Cleanup (feedback de playtest): al desmontar el conductor —o al RETIRAR el
     // cable quemado, que es el camino de salida que agrega 14a-4— el efecto
@@ -4453,10 +4530,40 @@ export class FloorplanScene extends Phaser.Scene {
       if (overloaded.has(ref) && stillThere) continue;
       effect.stop();
       this.overloadedConductorEffects.delete(ref);
+      this.electricArcEffects.get(ref)?.stop();
+      this.electricArcEffects.delete(ref);
     }
     for (const effect of this.overloadedConductorEffects.values()) {
       effect.update({ elapsedSeconds }, deltaSeconds);
     }
+    for (const [ref, arc] of this.electricArcEffects) {
+      const edge = edgeById.get(ref as SignalEdgeId);
+      if (!edge) continue;
+      // Los orígenes se recalculan por tick y no se congelan al arrancar: el
+      // ruteo de un cable depende de las puertas, que se abren y se cierran.
+      const origins = signalWireBodyCells(this.signalWireRouteFor(edge));
+      arc.update({ origins, targetsFor: (cell) => this.arcTargetsFrom(cell) }, deltaSeconds);
+    }
+  }
+
+  /**
+   * Contra qué puede descargar un arco desde `cell` (14a-4 ronda 3): paredes y
+   * celdas ocupadas por una pieza. Los extremos del cable son blanco válido
+   * (decisión del operador) — lo que evita que se lea como "la pieza está rota"
+   * es que el arco es transitorio y sale del cable, y que la pieza no gana
+   * ningún tinte ni glifo por recibirlo.
+   *
+   * El conjunto de celdas ocupadas se arma acá y no dentro del efecto para que
+   * `arcTargetsNear` se quede pura y testeable.
+   */
+  private arcTargetsFrom(cell: GridPosition): ReadonlyArray<GridPosition> {
+    const occupied = new Set<string>();
+    for (const instance of this.mission.blueprint.placedComponents) {
+      for (const occupiedCell of occupiedCells(instance.placement)) {
+        occupied.add(`${occupiedCell.x},${occupiedCell.y}`);
+      }
+    }
+    return arcTargetsNear(cell, ARC_TARGET_RADIUS_CELLS, this.walkableGrid, occupied);
   }
 
   /**
