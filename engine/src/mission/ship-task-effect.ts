@@ -37,6 +37,7 @@ import type { MutableShipState } from "./mutable-ship-state.js";
 import type { ValveRuntime } from "../valves/valve-runtime.js";
 import type { MissionDoorRuntime } from "./mission-door-runtime.js";
 import { consumeStock, creditStock } from "../inventory/inventory-ledger.js";
+import { componentStockCost } from "../inventory/component-stock-cost.js";
 import type { MutableAtomicStock } from "../inventory/mutable-atomic-stock.js";
 import { creditElementList } from "../inventory/element-ledger.js";
 import { deriveInitialReservoirContents } from "../reservoir/initial-reservoir-contents.js";
@@ -617,11 +618,10 @@ function dismantleInstance(ship: Blueprint, instanceId: PlacedComponentInstanceI
  * fórmula de coste son dos sitios donde arreglar el próximo bug de stock, y ese
  * patrón ya costó rondas de playtest en este proyecto.
  *
- * Dos caminos, sin fallback silencioso en ninguno:
- *  - **atómico** → una unidad del bucket de desgaste pedido;
- *  - **compuesto con `consumeRecipe`** → sus ingredientes, bucket `nuevo`
- *    estricto. Sin el flag, un compuesto es gratis (es una creación del jugador,
- *    que ya pagó al ensamblarla en la mesa).
+ * **Qué cuesta** ya no se decide acá: lo resuelve `componentStockCost`
+ * (`inventory/component-stock-cost.ts`), extraído en la ronda 4c porque la
+ * reserva de la cola necesita el MISMO cálculo sin cobrarlo. Esta función se
+ * queda con lo que solo ella hace: cobrarlo y rechazar si no alcanza.
  *
  * Lanza `InsufficientStockError` sin haber tocado el stock si falta algo: el
  * ledger es inmutable, así que la mutación recién ocurre al final.
@@ -635,29 +635,16 @@ function payComponentCost(
   action: string,
   taskId: CrewTaskId,
 ): void {
-  const definition = componentRegistry.get(componentId);
-  if (!definition) {
-    return;
-  }
-  if (!isCompositeEntity(definition)) {
-    const consumed = consumeStock(atomicStock.get(), componentId, 1, wear);
-    if (!consumed) {
-      throw new InsufficientStockError(
-        `No hay stock de "${componentId}" (${wear}) para ${action} (task ${taskId})`,
-      );
-    }
-    atomicStock.set(consumed);
-    return;
-  }
-  if (!consumeRecipe) {
-    return;
-  }
   let stock = atomicStock.get();
-  for (const ingredient of definition.recipe.ingredients) {
-    const consumed = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+  for (const line of componentStockCost(componentRegistry, componentId, wear, consumeRecipe)) {
+    const consumed = consumeStock(stock, line.ref, line.quantity, line.wear);
     if (!consumed) {
+      // El mensaje distingue "no tengo la pieza" de "no tengo un ingrediente
+      // de la receta de esta pieza": son dos problemas distintos para el jugador.
       throw new InsufficientStockError(
-        `No hay stock de "${ingredient.ref}" (nuevo) para ${action} "${componentId}" (task ${taskId})`,
+        line.ref === componentId
+          ? `No hay stock de "${componentId}" (${line.wear}) para ${action} (task ${taskId})`
+          : `No hay stock de "${line.ref}" (${line.wear}) para ${action} "${componentId}" (task ${taskId})`,
       );
     }
     stock = consumed;

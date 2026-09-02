@@ -415,6 +415,10 @@ export type {
   TaskSchedulerOptions,
 } from "./tasks/task-scheduler.js";
 
+// Reservas derivadas de la cola viva (ronda 4c de 14a-4) — nunca se persisten.
+export { reservedCells, reservedCellKey, reservedStock } from "./tasks/queued-reservations.js";
+export type { ReservationTaskSource } from "./tasks/queued-reservations.js";
+
 // Eventos de dominio del core loop (Observer → Fase 8)
 export type {
   CoreLoopDomainEvent,
@@ -649,6 +653,8 @@ export {
   consumeStock,
   creditStock,
 } from "./inventory/inventory-ledger.js";
+export { componentStockCost, stockCostKey } from "./inventory/component-stock-cost.js";
+export type { StockCostLine } from "./inventory/component-stock-cost.js";
 
 // Desgaste por instancia (Subfase 13c, dominio `wear/`).
 export type { ComponentWear } from "./wear/wear.types.js";

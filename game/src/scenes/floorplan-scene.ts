@@ -220,6 +220,7 @@ import {
   type QueueCancelHit,
 } from "../ui/widgets/crew-queue-panel.js";
 import { buildQueueRows, type QueueRowInput } from "../ui/queue-rows.js";
+import { renderQueuedInstallGhosts } from "../render/queued-install-ghosts.js";
 import { ActiveTaskVisuals } from "../mission/active-task-visuals.js";
 import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
@@ -735,6 +736,13 @@ export class FloorplanScene extends Phaser.Scene {
    * una única celda (`selectedCell`), mismo comportamiento de siempre.
    */
   private selectedHighlightCells: Phaser.GameObjects.Rectangle[] = [];
+  /**
+   * Fantasmas de las instalaciones encoladas (ronda 4c de 14a-4). Se redibujan
+   * enteros junto con la cola: son los mismos datos vistos en dos sitios, y
+   * dejarlos con ciclos de vida distintos es lo que produjo la ronda 4b (una
+   * cancelación que cambiaba el motor y no tocaba la pantalla).
+   */
+  private queuedInstallGhosts: Phaser.GameObjects.GameObject[] = [];
   /** Tooltip con el nombre de la pieza/zona bajo el cursor (playtest #14); objeto de HUD, sigue al puntero en coords de pantalla. */
   private tooltip?: Phaser.GameObjects.Container;
   /** Celda cuyo contenido ya está pintado en `tooltip` — evita redibujar en cada `pointermove` dentro de la misma celda. */
@@ -3429,6 +3437,20 @@ export class FloorplanScene extends Phaser.Scene {
   // --- Panel de cola de tareas -------------------------------------------
 
   /**
+   * Fantasmas de las instalaciones encoladas (ronda 4c de 14a-4): dónde va a
+   * quedar cada pieza pedida, sin tener que recordarlo. Destruye y redibuja
+   * entero, mismo patrón que `updateSelectedHighlight`.
+   */
+  private redrawQueuedInstallGhosts(): void {
+    for (const object of this.queuedInstallGhosts) object.destroy();
+    this.queuedInstallGhosts = [
+      ...renderQueuedInstallGhosts(this, this.mission.queuedInstallGhosts(), (object) =>
+        this.markAsWorldObject(object),
+      ),
+    ];
+  }
+
+  /**
    * Etiqueta corta traducida por `TaskType` (fix de playtest de Fase 11e):
    * antes la cola mostraba el `TaskType` crudo (`"analyze-substance"`), el más
    * largo de todos — de punta a punta con el nombre del actor y la sección,
@@ -3446,6 +3468,10 @@ export class FloorplanScene extends Phaser.Scene {
    * lo resuelve la escena por hit-test, no vive en las filas.
    */
   private redrawQueuePanel(): void {
+    // Ronda 4c: el mapa y la cola muestran lo MISMO (qué tareas hay vivas), así
+    // que se redibujan en el mismo sitio. Colgarlo de un evento propio dejaría
+    // dos verdades que pueden divergir — el defecto de fondo de la ronda 4b.
+    this.redrawQueuedInstallGhosts();
     const selectedId = this.interaction.selectedActorId;
     const entries: QueueRowInput<CrewTask>[] = [];
     this.mission.activeCrew.forEach((actor, index) => {

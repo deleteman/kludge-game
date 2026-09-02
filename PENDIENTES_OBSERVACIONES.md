@@ -85,13 +85,23 @@
    que auto-arranca) suscribe `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN` para forzar `this.scale.refresh()` en
    ambas transiciones, por si el recálculo automático de `FIT` no dispara solo.
 
-8. Se pueden encolar 2 o más tripulantes para instalar la misma pieza (de la cual solo hay una copia) y cuando se le da "play", luego de que el primero termina la instalación, el juego da un error al querer instalar la pieza que ya no está en stock.
-   → **Subfase 14d, Bloque 1 (primer ítem: es el único crash de esta lista).** Verificado en el triaje: es peor
-   que "da un error" — `queueInstall` (`game/src/mission/mission-runtime.ts`) no reserva stock al encolar,
-   `ship-task-effect.ts` lanza `InsufficientStockError` al completar, y `TaskScheduler.completeTask` invoca el
-   efecto **sin try/catch**, así que la excepción rompe el tick de la misión. El filtro `"no-stock"` del selector
-   (`mission-interaction-controller.ts`) mira el stock actual sin descontar lo ya encolado. Fix en dos capas:
-   descontar lo encolado al ofrecer el ítem + degradar la tarea a `failed` con notificación en vez de propagar.
+8. ✅ RESUELTO (Subfase 14a-4 + su ronda 4c). Se pueden encolar 2 o más tripulantes para instalar la misma pieza (de la cual solo hay una copia) y cuando se le da "play", luego de que el primero termina la instalación, el juego da un error al querer instalar la pieza que ya no está en stock.
+   Verificado en el triaje: era peor que "da un error" — `queueInstall` (`game/src/mission/mission-runtime.ts`)
+   no reservaba stock al encolar, `ship-task-effect.ts` lanzaba `InsufficientStockError` al completar, y
+   `TaskScheduler.completeTask` invocaba el efecto **sin try/catch**, así que la excepción rompía el tick de la
+   misión. El filtro `"no-stock"` del selector miraba el stock actual sin descontar lo ya encolado.
+   Resuelto en las dos capas previstas, en dos momentos distintos:
+   - **Segunda capa (14a-4)**: `TaskScheduler.completeTask` envuelve el efecto y degrada la tarea a `failed`
+     con motivo propio y notificación, en vez de propagar la excepción por el tick de la misión.
+   - **Primera capa (14a-4, ronda 4c de playtest)**: la cola viva reserva celdas y stock
+     (`engine/src/tasks/queued-reservations.ts`, derivado de las tareas y NUNCA persistido — descontar al
+     encolar haría perder material al guardar, porque `toUpdatedSave` no guarda tareas). El selector consulta
+     `MissionRuntime.availableStockOfWear` en vez del stock crudo: con todo comprometido la fila queda
+     bloqueada con motivo PROPIO (`queue-reserved`, "comprometida por la cola"), mostrando igual el stock real
+     y el desglose reservadas/disponibles — "sin stock" habría mandado al jugador a buscar algo que ya tiene.
+     El escenario exacto del reporte (dos tripulantes, una sola unidad) queda cubierto por test en
+     `game/src/mission/mission-runtime.test.ts`.
+   Quitada del Bloque 1 de la Subfase 14d, que era donde estaba asignada.
 
 9. cambiar de idioma no afecta todos los strings, hay botones de la UI que no cambian el idioma.
    → **Subfase 14d, Bloque 1** el subconjunto que expone la demo (menú, pantallas de selección, HUD de misión);

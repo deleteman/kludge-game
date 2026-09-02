@@ -10,6 +10,7 @@ import {
   sectionContainingCell,
   SignalWiringDirectionError,
   SignalWiringUnreachableError,
+  reservedCellKey,
   validateInstallation,
   wireExternalPort,
 } from "engine";
@@ -279,11 +280,41 @@ export class MissionInteractionController {
     const state = this.installPlacementState;
     if (!state) return undefined;
     const placement = { position, footprint: state.footprint, rotation: 0 as const };
+    return {
+      cells: occupiedCells(placement),
+      valid: this.installIssuesAt(position, state.footprint).length === 0,
+    };
+  }
+
+  /**
+   * Por qué NO se puede instalar acá, en palabras. Un solo predicado para el
+   * fantasma bajo el cursor y para el click que encola: si cada uno decidiera
+   * por su cuenta, el jugador podría ver verde y que el click no haga nada.
+   *
+   * Tres motivos, en orden de "qué mirar primero": fuera del plano, choca con
+   * algo colocado, o la celda **ya está pedida por una instalación encolada**
+   * (ronda 4c). El tercero es nuevo: una reserva no es un hecho del `Blueprint`
+   * —la pieza todavía no está— sino de la COLA, así que no vive en
+   * `validateInstallation` (que es geometría contra el plano) sino acá.
+   */
+  private installIssuesAt(
+    position: GridPosition,
+    footprint: Footprint,
+  ): ReadonlyArray<{ readonly detail: string }> {
+    const placement = { position, footprint, rotation: 0 as const };
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    const valid =
-      section !== undefined &&
-      validateInstallation(section, this.mission.blueprint.placedComponents, placement).length === 0;
-    return { cells: occupiedCells(placement), valid };
+    if (!section) {
+      return [{ detail: t("ui.floorplan.mission.install-placement-outside") }];
+    }
+    const issues = validateInstallation(
+      section,
+      this.mission.blueprint.placedComponents,
+      placement,
+    ) as ReadonlyArray<{ readonly detail: string }>;
+    if (issues.length > 0) return issues;
+    const reserved = this.mission.reservedCells();
+    const taken = occupiedCells(placement).some((cell) => reserved.has(reservedCellKey(cell)));
+    return taken ? [{ detail: t("ui.floorplan.mission.install-placement-reserved") }] : [];
   }
 
   /**
@@ -448,11 +479,7 @@ export class MissionInteractionController {
     const state = this.installPlacementState;
     if (!state || !this.selectedActorIdValue) return;
     const option = state.option;
-    const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    const placement = { position, footprint: state.footprint, rotation: 0 as const };
-    const issues = section
-      ? validateInstallation(section, this.mission.blueprint.placedComponents, placement)
-      : [{ detail: t("ui.floorplan.mission.install-placement-outside") }];
+    const issues = this.installIssuesAt(position, state.footprint);
     if (issues.length > 0) {
       this.scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.3 });
       this.callbacks.setStatus(issues.map((issue) => issue.detail).join(" / "));
@@ -1454,20 +1481,52 @@ export class MissionInteractionController {
     return isWiringMaterial(definition as never);
   }
 
+  /**
+   * Desglose de una reserva de la cola, o `undefined` si no hay ninguna
+   * (ronda 4c de 14a-4).
+   *
+   * La fila sigue mostrando el stock REAL (`×3`): esconder piezas que existen
+   * sería que la UI mienta sobre el estado del motor, el mismo criterio con el
+   * que 13c decidió no colapsar los buckets de desgaste en un solo número. Lo
+   * que cambia es que la ficha explica el reparto —cuántas están comprometidas
+   * y cuántas quedan— porque "×3" y "no podés instalarla" solo se entienden
+   * juntos.
+   */
+  private reservationDetailLine(componentId: ComponentId, wear: ComponentWear): string | undefined {
+    const reserved = this.mission.reservedStockOfWear(componentId, wear);
+    if (reserved <= 0) return undefined;
+    return t("ui.floorplan.mission.install-modal.reserved-breakdown")
+      .replace("{reserved}", String(reserved))
+      .replace("{available}", String(this.mission.availableStockOfWear(componentId, wear)));
+  }
+
   private buildInstallOptions(): ReadonlyArray<InstallPickerOption> {
-    const atomicAvailable: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
-      (spec) => !this.isWiringOnly(spec),
-    ).flatMap((spec) =>
-      this.mission.wearBucketsOf(spec.id).map((bucket) => ({
-        id: spec.id,
-        name: spec.name,
-        footprint: spec.data.footprint,
-        functional: spec.data.functional,
-        material: spec.data.material,
-        wear: bucket.wear,
-        quantity: bucket.quantity,
-      })),
-    );
+    const atomicAvailable: InstallPickerOption[] = [];
+    // Comprometido entero por la cola: la pieza existe, pero cada unidad ya
+    // tiene dueño. Va con las bloqueadas y con su motivo propio, no con las
+    // instalables (encolar una más es el crash de la observación 8).
+    const atomicReserved: InstallPickerOption[] = [];
+    for (const spec of ATOMIC_COMPONENT_CATALOG) {
+      if (this.isWiringOnly(spec)) continue;
+      for (const bucket of this.mission.wearBucketsOf(spec.id)) {
+        const detail = this.reservationDetailLine(spec.id, bucket.wear);
+        const row: InstallPickerOption = {
+          id: spec.id,
+          name: spec.name,
+          footprint: spec.data.footprint,
+          functional: spec.data.functional,
+          material: spec.data.material,
+          wear: bucket.wear,
+          quantity: bucket.quantity,
+          ...(detail ? { detailLines: [detail] } : {}),
+        };
+        if (this.mission.availableStockOfWear(spec.id, bucket.wear) > 0) {
+          atomicAvailable.push(row);
+        } else {
+          atomicReserved.push({ ...row, blocked: "queue-reserved" });
+        }
+      }
+    }
     const atomicMissing: InstallPickerOption[] = ATOMIC_COMPONENT_CATALOG.filter(
       (spec) => this.mission.stockOf(spec.id) <= 0 && !this.isWiringOnly(spec),
     ).map((spec) => ({
@@ -1517,7 +1576,7 @@ export class MissionInteractionController {
           functional: def.data.functional,
           material: def.data.material,
           composition: this.buildComposition(def, { highlightRequiredTag: false, missingRefs }),
-          blocked: "missing-ingredients",
+          blocked: this.recipeBlockReason(def),
         });
       }
     }
@@ -1526,8 +1585,25 @@ export class MissionInteractionController {
       ...creationOptions,
       ...compositeAvailable,
       ...atomicMissing,
+      ...atomicReserved,
       ...compositeBlocked,
     ];
+  }
+
+  /**
+   * ¿Este compuesto no se puede armar porque FALTA un ingrediente, o porque la
+   * cola ya se los comprometió? (ronda 4c). Si cada faltante está explicado por
+   * una reserva, la pieza existe y la salida es cancelar una tarea, no salir a
+   * conseguir material — decirle "faltan ingredientes" lo mandaría a buscar
+   * algo que ya tiene en la bodega.
+   */
+  private recipeBlockReason(
+    definition: PhysicalComponentDefinition,
+  ): "missing-ingredients" | "queue-reserved" {
+    const missing = this.mission.missingRecipeIngredients(definition);
+    const allExplainedByQueue =
+      missing.length > 0 && missing.every((entry) => entry.missing <= entry.reserved);
+    return allExplainedByQueue ? "queue-reserved" : "missing-ingredients";
   }
 
   /**
@@ -1562,15 +1638,26 @@ export class MissionInteractionController {
         continue;
       }
       for (const bucket of buckets) {
-        available.push({
+        // Mismo criterio que el selector de instalación (ronda 4c): dos cables
+        // encolados llegan al mismo doble cobro que dos piezas.
+        const reservation = this.reservationDetailLine(spec.id, bucket.wear);
+        const row: InstallPickerOption = {
           id: spec.id,
           name: spec.name,
           functional: spec.data.functional,
           material: spec.data.material,
           wear: bucket.wear,
           quantity: bucket.quantity,
-          detailLines: this.conductorDetailLines(spec, bucket.wear),
-        });
+          detailLines: [
+            ...this.conductorDetailLines(spec, bucket.wear),
+            ...(reservation ? [reservation] : []),
+          ],
+        };
+        if (this.mission.availableStockOfWear(spec.id, bucket.wear) > 0) {
+          available.push(row);
+        } else {
+          blocked.push({ ...row, blocked: "queue-reserved" });
+        }
       }
     }
 
@@ -1589,7 +1676,7 @@ export class MissionInteractionController {
       if (this.mission.hasRecipeStockFor(def)) {
         available.push(row);
       } else {
-        blocked.push({ ...row, blocked: "missing-ingredients" });
+        blocked.push({ ...row, blocked: this.recipeBlockReason(def) });
       }
     }
 
@@ -1656,6 +1743,7 @@ export class MissionInteractionController {
         compositionTitle: t("ui.floorplan.mission.composition-title"),
         blockedNoStock: t("ui.floorplan.mission.install-modal.blocked-no-stock"),
         blockedMissingIngredients: t("ui.floorplan.mission.install-modal.blocked-missing-ingredients"),
+        blockedQueueReserved: t("ui.floorplan.mission.install-modal.blocked-queue-reserved"),
       },
       {
         onSelect: (index) => {

@@ -1085,7 +1085,7 @@ recurrente del proyecto — el modelo funciona y el jugador no puede verlo.
 
 Suite: 1250 tests en verde (164 archivos). `tsc`, `eslint` y `build` limpios.
 
-##### Subfase 14a-4: El cableado del jugador ES el conductor ✅ CERRADA (2026-09-01)
+##### Subfase 14a-4: El cableado del jugador ES el conductor ✅ CERRADA (2026-09-02, tras 6 rondas de playtest)
 
 Abierta desde la ronda 1 de 14a-2 (decisión del operador, 2026-09-01). Sale de la pregunta *"¿por qué el jugador
 metería un cable de cobre en el mapa?"*, cuya respuesta verificada es **que hoy no tiene ningún motivo**:
@@ -1318,6 +1318,56 @@ material al guardar**.
 
 Suite: motor **1214** (156 archivos), juego **163** (17 archivos). `tsc`, `eslint` y `build` limpios.
 
+###### Ronda 4c de playtest de 14a-4 ✅ CERRADA (2026-09-02)
+
+Lo que la 4a dejó pendiente al partirse en dos: el fantasma que el operador había pedido
+(*"ver dónde quedarán las piezas sin usar la memoria"*) y las reservas que hacían falta debajo.
+`queueInstall` **encolaba sin comprometer nada**, así que dos tareas podían pedir la misma celda o
+la misma última unidad y nada lo decía hasta que la segunda se ejecutaba.
+
+* **La reserva se deriva de la cola viva y NO se persiste**, la restricción que fijó el diseño:
+  `toUpdatedSave` no guarda tareas, así que descontar al encolar haría **perder material al
+  guardar**. `queued-reservations.ts` (nuevo, puro) lee las tareas y devuelve celdas y stock
+  comprometidos; se recalcula en cada consulta, sin caché — una caché de esto es la misma clase de
+  bug que 14a-4 evitó al no persistir la capacidad de las aristas.
+* **Reserva `pending`, `in-progress` y `blocked`.** Una tarea bloqueada **sigue** reservando: está
+  viva y puede desbloquearse. Es el caso que el operador señaló al abrir el diseño ("hay formas de
+  colgar tareas que nunca se ejecuten"), y la salida es cancelarla —lo que las rondas 4a/4b hicieron
+  descubrible— no una caducidad automática que libere material a espaldas del jugador. El predicado
+  de "viva" es `TERMINAL_TASK_STATES`, el MISMO que filtra la cola dibujada: lo que se ve y lo que se
+  reserva no pueden discrepar.
+* **`componentStockCost` extraído de `payComponentCost`.** La fórmula de coste decidía Y cobraba en
+  el mismo sitio; la reserva necesitaba el cálculo sin la mutación. Una sola definición de "qué
+  cuesta" con dos lectores (cobrar y reservar) — una segunda copia habría sido dos sitios donde
+  arreglar el próximo bug de stock, el patrón que este proyecto ya pagó en rondas anteriores.
+* **La celda reservada se rechaza como una ocupada**: `installIssuesAt` (predicado único para el
+  fantasma bajo el cursor y para el click que encola — decidir por separado dejaría ver verde y que
+  el click no haga nada) suma el tercer motivo. **No** entra en `validateInstallation`: una reserva
+  es un hecho de la COLA, no del `Blueprint`, y meterla ahí obligaría a pasarle tareas a una función
+  de geometría.
+* **El selector muestra el stock REAL y explica el reparto** (decisión del operador): la fila sigue
+  diciendo `×3` —esconder piezas que existen sería mentir sobre el motor, mismo criterio con que 13c
+  se negó a colapsar los buckets de desgaste— y la ficha desglosa `2 reservadas por la cola · 1
+  disponible`. Con 0 disponibles la fila queda bloqueada con **motivo propio**, `queue-reserved`, no
+  reciclando `no-stock`: la pieza existe, y "sin stock" mandaría al jugador a buscar algo que ya
+  tiene. Vale igual para los conductores (dos cables encolados llegan al mismo doble cobro) y para
+  los compuestos, donde `missingRecipeIngredients` distingue "falta" de "reservado" porque son dos
+  problemas con dos salidas distintas.
+* **El fantasma reusa el vocabulario visual, no inventa uno**: trazo entrecortado (`dashedPolyline`,
+  el de la cicatriz de cable de la ronda 3) más el sprite atenuado, ámbar si la tarea está bloqueada
+  y más opaco al pasar a `in-progress`. Contornea **cada celda ocupada**, no el rectángulo
+  envolvente. Va en `RENDER_DEPTH.queuedGhost` (1.9), **debajo** de `objects`: un plan nunca puede
+  tapar un estado real del motor.
+* **Un solo sitio de redibujo**: `redrawQueuedInstallGhosts` cuelga de `redrawQueuePanel`, porque el
+  mapa y la cola muestran el mismo dato. Colgarlo de un evento propio dejaría dos verdades que pueden
+  divergir — el defecto de fondo que la ronda 4b tuvo que arreglar.
+
+**Cierra la observación 8** de `PENDIENTES_OBSERVACIONES.md` (crash por doble encolado de la última
+unidad): su segunda capa —que el efecto no reviente el tick— ya la había cerrado 14a-4, y ésta cierra
+la primera. Sale del Bloque 1 de la Subfase 14d.
+
+Suite: motor **1234** (158 archivos), juego **169** (17 archivos). `tsc`, `eslint` y `build` limpios.
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.
@@ -1364,13 +1414,10 @@ código durante el triaje, así que la subfase no arranca a ciegas.
 
 **Bloque 1 — Bugs con causa raíz confirmada y fix acotado** (no requieren decisión de diseño):
 
-* **Doble encolado de la última unidad rompe el tick (Obs 8) — máxima severidad, es el único crash de la
-  lista.** `queueInstall` (`game/src/mission/mission-runtime.ts`) solo encola, no reserva stock; al completar,
-  `ship-task-effect.ts` lanza `InsufficientStockError` y `TaskScheduler.completeTask` invoca el efecto **sin
-  try/catch**, así que la excepción sube por el tick de la misión. El filtro `"no-stock"` del selector
-  (`mission-interaction-controller.ts`) mira el stock actual sin descontar las tareas `install` ya encoladas.
-  Fix en dos capas (mismo criterio de defensa en profundidad que la ronda 6 de 13e): descontar lo encolado al
-  ofrecer el ítem **y** que el scheduler degrade la tarea a `failed` con notificación en vez de propagar.
+* ~~**Doble encolado de la última unidad rompe el tick (Obs 8).**~~ ✅ **RESUELTO fuera de esta subfase**, en
+  las dos capas que el triaje había previsto: la segunda (que `TaskScheduler.completeTask` degrade la tarea a
+  `failed` en vez de propagar la excepción) la cerró **14a-4**; la primera (descontar lo encolado al ofrecer
+  el ítem) la cerró la **ronda 4c de 14a-4** con la reserva derivada de la cola. Ya no hay nada que hacer acá.
 
 * **Clicks del panel de capas atraviesan al mapa (Obs 11).** `installTopmostOnlyInput` (ronda 4 de 13e) no
   cubre este caso: desempata entre objetos interactivos, y el mapa no es uno — se resuelve por el

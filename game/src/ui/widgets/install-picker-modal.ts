@@ -73,7 +73,14 @@ export interface InstallPickerOption {
    * receta completa siguen apareciendo en la lista, deshabilitados, con el
    * motivo — nunca un botón gris mudo (CLAUDE.md). `undefined` = instalable.
    */
-  readonly blocked?: "no-stock" | "missing-ingredients";
+  /**
+   * `"queue-reserved"` (ronda 4c de 14a-4) es un motivo PROPIO y no un
+   * `"no-stock"` reciclado: la pieza existe, está comprometida por tareas ya
+   * encoladas. Son dos problemas con dos salidas distintas —conseguir la pieza
+   * vs. cancelar una tarea— y decir "sin stock" mandaría al jugador a buscar
+   * algo que ya tiene.
+   */
+  readonly blocked?: "no-stock" | "missing-ingredients" | "queue-reserved";
   /**
    * Líneas extra de ficha, ya traducidas y con sus números (Subfase 14a-4). El
    * selector de cableado las usa para lo único que decide la elección de cable y
@@ -103,6 +110,8 @@ export interface InstallPickerLabels {
    * varias líneas y pisar la sección de Composición (fix de solape).
    */
   readonly blockedMissingIngredients: string;
+  /** Ronda 4c: la pieza existe pero la cola ya la comprometió entera. */
+  readonly blockedQueueReserved: string;
 }
 
 const MODAL_WIDTH = 720;
@@ -372,7 +381,12 @@ function renderSelectedComponentSheet(
   // Motivo de bloqueo (ronda 8): mismo ámbar de aviso que el resto de la UI
   // usa para "esto está bloqueado y por qué" — no un color nuevo.
   if (option.blocked) {
-    const reason = option.blocked === "no-stock" ? labels.blockedNoStock : labels.blockedMissingIngredients;
+    const reason =
+      option.blocked === "no-stock"
+        ? labels.blockedNoStock
+        : option.blocked === "queue-reserved"
+          ? labels.blockedQueueReserved
+          : labels.blockedMissingIngredients;
     const warningText = scene.add
       .text(x, lineY, `⚠ ${reason}`, {
         fontFamily: `${UI_FONT_FAMILY}, sans-serif`,

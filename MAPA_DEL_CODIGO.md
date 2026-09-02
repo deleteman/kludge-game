@@ -2004,3 +2004,49 @@
 ### `game/src/ui/queue-rows.ts` (modificado)
 - Filtra los tres estados terminales antes de resolver los padres: un dependiente cuya dependencia se
   canceló pasa a raíz con su motivo, en vez de colgar de una fila que ya no se dibuja.
+
+## Subfase 14a-4 — ronda 4c de playtest (el fantasma de lo encolado y sus reservas)
+
+### `engine/src/inventory/component-stock-cost.ts` (nuevo, con test)
+- `componentStockCost(registry, id, wear, consumeRecipe)` — QUÉ cuesta materializar una pieza, puro y
+  sin mirar el stock: atómico → 1 del bucket pedido; compuesto con receta → sus ingredientes en
+  `nuevo`; compuesto sin el flag → gratis. Extraído de `payComponentCost`, que decidía y cobraba en el
+  mismo sitio; la reserva necesitaba el cálculo sin la mutación. `stockCostKey(ref, wear)` es la clave
+  de agregación por bucket.
+
+### `engine/src/tasks/queued-reservations.ts` (nuevo, puro, con test)
+- `reservedCells(tasks)` y `reservedStock(tasks, costOf)` — qué tiene comprometido la cola VIVA
+  (`pending`/`in-progress`/`blocked`, vía `TERMINAL_TASK_STATES`, el mismo predicado que filtra la cola
+  dibujada). Solo `install` ocupa celdas; `install` y `connect` reservan stock. Nunca se persiste.
+
+### `engine/src/mission/ship-task-effect.ts` (modificado)
+- `payComponentCost` consume `componentStockCost` en vez de bifurcar por su cuenta; conserva los dos
+  mensajes de `InsufficientStockError` (falta la pieza vs. falta un ingrediente de su receta).
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- Puerta única a las reservas: `reservedCells()`, `reservedStockOfWear`, `availableStockOfWear`,
+  `queuedInstallGhosts()`. Sin caché, recalculado por consulta. `hasRecipeStockFor` y
+  `missingRecipeIngredients` pasan a medir contra el DISPONIBLE, y este último devuelve además
+  `reserved` para poder distinguir "falta" de "está comprometida".
+
+### `game/src/mission/mission-interaction-controller.ts` (modificado)
+- `installIssuesAt(position, footprint)` — predicado ÚNICO de "por qué no se puede instalar acá",
+  compartido por el fantasma bajo el cursor y por el click que encola; suma el motivo "celda ya pedida
+  por una instalación encolada". `reservationDetailLine` y `recipeBlockReason` alimentan el desglose y
+  el bloqueo `queue-reserved` en los dos selectores (instalación y cableado).
+
+### `game/src/render/queued-install-ghosts.ts` (nuevo)
+- `renderQueuedInstallGhosts(scene, ghosts, onCreated?)` — sprite atenuado (o el placeholder tinteable
+  del registro) más contorno entrecortado por celda con `dashedPolyline`. Ámbar si la tarea está
+  bloqueada, más opaco en `in-progress`. Depth `queuedGhost` (1.9), debajo de `objects`.
+
+### `game/src/render/render-depths.ts` (modificado)
+- `queuedGhost: 1.9` — entre la luz persistente y los objetos colocados: un plan no puede tapar un
+  estado real del motor.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `redrawQueuedInstallGhosts()` colgado de `redrawQueuePanel()`: mapa y cola muestran el mismo dato y
+  se redibujan en el mismo sitio, para que no puedan divergir.
+
+### `game/src/ui/widgets/install-picker-modal.ts` (modificado)
+- `blocked` admite `"queue-reserved"` y `InstallPickerLabels` gana `blockedQueueReserved`.

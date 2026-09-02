@@ -49,6 +49,13 @@ export const RENDER_DEPTH = {
    * `floorplan-scene.ts`.
    */
   dynamicLight: 1.8,
+  /**
+   * Fantasma de una instalación ENCOLADA (ronda 4c de 14a-4): dónde va a quedar
+   * una pieza que todavía no está. Justo DEBAJO de `objects` (2) a propósito —
+   * un plan nunca puede tapar un estado real del motor, y si el fantasma se
+   * solapara con una pieza colocada tiene que ganar la pieza.
+   */
+  queuedGhost: 1.9,
   /** Tile layer "objects" (containerizada en el base) y overlay de componentes colocados (top-level): encima del suelo, debajo de paredes. */
   objects: 2,
   /**

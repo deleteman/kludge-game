@@ -239,6 +239,10 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-modal.select-hint": "Select a component from the list to see its details.",
   "ui.floorplan.mission.install-modal.blocked-no-stock": "No stock available.",
   "ui.floorplan.mission.install-modal.blocked-missing-ingredients": "Missing parts to build it.",
+  "ui.floorplan.mission.install-modal.blocked-queue-reserved":
+    "Committed to the queue: cancel a task to free it.",
+  "ui.floorplan.mission.install-modal.reserved-breakdown":
+    "{reserved} reserved by the queue · {available} available",
 
   "ui.floorplan.mission.composition-title": "Composition",
   "ui.floorplan.mission.composition-no-stock": "no stock",
@@ -259,6 +263,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-placement-hint":
     "Mark where {piece} goes: green = fits, red = does not. ESC to cancel.",
   "ui.floorplan.mission.install-placement-outside": "Outside any ship section",
+  "ui.floorplan.mission.install-placement-reserved":
+    "That cell is already claimed by a queued installation",
   "ui.floorplan.notification.no-crew-left": "No surviving crew left",
   "ui.floorplan.notification.crew-dead": "{name} is dead",
   "ui.floorplan.notification.crew-dead-detail": "Their queued tasks were cancelled.",

@@ -133,6 +133,11 @@ import {
   PRESENCE_TRIGGER_TYPES,
   seedActuatorOutputNodes,
   wornCapacity,
+  componentStockCost,
+  reservedCells,
+  reservedStock,
+  stockCostKey,
+  TERMINAL_TASK_STATES,
 } from "engine";
 import type {
   Blueprint,
@@ -144,6 +149,7 @@ import type {
   CrewActor,
   CrewActorId,
   CrewDomainEvent,
+  CrewTask,
   CrewTaskId,
   CrisisDefinition,
   CrisisDomainEvent,
@@ -176,7 +182,10 @@ import type {
   FabricatorDomain,
   FluidFlow,
   SignalNodeId,
+  StockCostLine,
   SubstanceCompositionContext,
+  PlacedFootprint,
+  TaskState,
   TrajectoryPreviewStep,
 } from "engine";
 
@@ -1965,6 +1974,75 @@ export class MissionRuntime {
     return stockOf(this.atomicStock.get(), componentId);
   }
 
+  // --- Reservas de la cola (ronda 4c de 14a-4) ------------------------------
+  //
+  // Encolar una tarea COMPROMETE stock y celdas sin descontarlos: la reserva se
+  // deriva de la cola viva y nunca se persiste (`toUpdatedSave` no guarda
+  // tareas, así que descontar al encolar haría PERDER material al guardar). Se
+  // recalcula en cada consulta, sin caché: la cola cambia por eventos y una
+  // caché desincronizada es exactamente la clase de bug que 14a-4 evitó al no
+  // persistir la capacidad de las aristas.
+
+  /** Todas las tareas vivas y muertas de todos los tripulantes activos — el filtro por estado lo hace el motor. */
+  private allQueuedTasks(): ReadonlyArray<CrewTask> {
+    return this.activeCrew.flatMap((actor) => [...this.scheduler.queueFor(actor.id)]);
+  }
+
+  /** El MISMO cálculo de coste que cobra el efecto al completar (`payComponentCost`), ligado al registry de esta misión. */
+  private readonly costOf = (
+    componentId: ComponentId,
+    wear: ComponentWear,
+    consumeRecipe: boolean,
+  ): ReadonlyArray<StockCostLine> =>
+    componentStockCost(this.componentRegistry, componentId, wear, consumeRecipe);
+
+  /** Celdas del plano ya pedidas por una instalación encolada, y por qué tarea. */
+  reservedCells(): ReadonlyMap<string, CrewTaskId> {
+    return reservedCells(this.allQueuedTasks());
+  }
+
+  /** Unidades de un bucket concreto comprometidas por la cola (0 si ninguna). */
+  reservedStockOfWear(componentId: ComponentId, wear: ComponentWear): number {
+    return reservedStock(this.allQueuedTasks(), this.costOf).get(stockCostKey(componentId, wear)) ?? 0;
+  }
+
+  /**
+   * Unidades que el jugador puede comprometer AHORA: lo que hay en el bucket
+   * menos lo que la cola ya pidió, con piso en 0. Es el número contra el que el
+   * selector decide si una fila se puede clickear; el que MUESTRA sigue siendo
+   * el stock real, para no esconder piezas que sí existen.
+   */
+  availableStockOfWear(componentId: ComponentId, wear: ComponentWear): number {
+    const reserved = this.reservedStockOfWear(componentId, wear);
+    return Math.max(0, stockOfWear(this.atomicStock.get(), componentId, wear) - reserved);
+  }
+
+  /**
+   * Instalaciones encoladas que el mapa debe dibujar como fantasma (ronda 4c):
+   * dónde va a quedar cada pieza sin tener que recordarlo. Se resuelve acá y no
+   * en la escena para que el render no vuelva a recorrer el scheduler ni tenga
+   * que saber qué estado de tarea sigue vivo.
+   */
+  queuedInstallGhosts(): ReadonlyArray<{
+    readonly taskId: CrewTaskId;
+    readonly componentDefinitionId: ComponentId;
+    readonly placement: PlacedFootprint;
+    readonly state: TaskState;
+  }> {
+    return this.allQueuedTasks().flatMap((task) =>
+      !TERMINAL_TASK_STATES.has(task.state) && task.payload?.kind === "install"
+        ? [
+            {
+              taskId: task.id,
+              componentDefinitionId: task.payload.componentDefinitionId,
+              placement: task.payload.placement,
+              state: task.state,
+            },
+          ]
+        : [],
+    );
+  }
+
   /** Todo compuesto conocido por el registry de esta misión (catálogo + creaciones ya registradas) — pestaña "Catálogo" del picker. */
   get knownCompositeDefinitions(): ReadonlyArray<PhysicalComponentDefinition> {
     return this.componentRegistry.all().filter(isCompositeEntity);
@@ -1986,16 +2064,21 @@ export class MissionRuntime {
   }
 
   /**
-   * ¿Hay stock (bucket `nuevo`, sin fallback — mismo criterio estricto que
-   * `consumeStock`) de TODOS los ingredientes de la receta de este compuesto?
-   * Gatea qué compuestos de catálogo aparecen en "Inventario": mostrarlo sin
-   * poder pagarlo sería mentirle al jugador sobre lo que puede instalar.
+   * ¿Hay stock DISPONIBLE (bucket `nuevo`, sin fallback — mismo criterio
+   * estricto que `consumeStock`) de TODOS los ingredientes de la receta de este
+   * compuesto? Gatea qué compuestos de catálogo aparecen en "Inventario":
+   * mostrarlo sin poder pagarlo sería mentirle al jugador sobre lo que puede
+   * instalar.
+   *
+   * Disponible = stock − reservado por la cola (ronda 4c): dos compuestos
+   * encolados que comparten un ingrediente se cobran los dos al ejecutarse, y
+   * antes de esta ronda los dos se ofrecían como si el ingrediente alcanzara.
    */
   hasRecipeStockFor(definition: PhysicalComponentDefinition): boolean {
     if (!isCompositeEntity(definition)) return false;
-    const stock = this.atomicStock.get();
     return definition.recipe.ingredients.every(
-      (ingredient) => stockOfWear(stock, ingredient.ref, DEFAULT_WEAR) >= ingredient.quantity,
+      (ingredient) =>
+        this.availableStockOfWear(ingredient.ref, DEFAULT_WEAR) >= ingredient.quantity,
     );
   }
 
@@ -2006,16 +2089,26 @@ export class MissionRuntime {
    * instalación, deshabilitado, explicando QUÉ falta (nunca un botón gris
    * mudo, CLAUDE.md). `[]` si la receta ya está completa o la definición no
    * es un compuesto.
+   *
+   * `missing` se mide contra el DISPONIBLE (ronda 4c) y `reserved` dice cuánto
+   * de ese faltante lo tiene comprometido la cola: "no tengo la pieza" y "la
+   * tengo prometida a otra tarea" son dos problemas distintos con dos salidas
+   * distintas (conseguirla vs. cancelar una tarea), y colapsarlos en un solo
+   * número dejaría al jugador buscando una pieza que ya tiene.
    */
   missingRecipeIngredients(
     definition: PhysicalComponentDefinition,
-  ): ReadonlyArray<{ readonly ref: ComponentId; readonly missing: number }> {
+  ): ReadonlyArray<{
+    readonly ref: ComponentId;
+    readonly missing: number;
+    readonly reserved: number;
+  }> {
     if (!isCompositeEntity(definition)) return [];
-    const stock = this.atomicStock.get();
     return definition.recipe.ingredients
       .map((ingredient) => ({
         ref: ingredient.ref,
-        missing: ingredient.quantity - stockOfWear(stock, ingredient.ref, DEFAULT_WEAR),
+        missing: ingredient.quantity - this.availableStockOfWear(ingredient.ref, DEFAULT_WEAR),
+        reserved: this.reservedStockOfWear(ingredient.ref, DEFAULT_WEAR),
       }))
       .filter((entry) => entry.missing > 0);
   }

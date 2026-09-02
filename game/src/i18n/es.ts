@@ -252,6 +252,10 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-modal.select-hint": "Seleccioná un componente de la lista para ver su ficha.",
   "ui.floorplan.mission.install-modal.blocked-no-stock": "Sin stock disponible.",
   "ui.floorplan.mission.install-modal.blocked-missing-ingredients": "Faltan piezas para fabricarlo.",
+  "ui.floorplan.mission.install-modal.blocked-queue-reserved":
+    "Comprometida por la cola: cancelá una tarea para liberarla.",
+  "ui.floorplan.mission.install-modal.reserved-breakdown":
+    "{reserved} reservadas por la cola · {available} disponibles",
 
   "ui.floorplan.mission.composition-title": "Composición",
   "ui.floorplan.mission.composition-no-stock": "sin stock",
@@ -272,6 +276,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.install-placement-hint":
     "Marcá dónde va {piece}: verde = entra, rojo = no. ESC para cancelar.",
   "ui.floorplan.mission.install-placement-outside": "Fuera de cualquier sección de la nave",
+  "ui.floorplan.mission.install-placement-reserved":
+    "Esa celda ya está pedida por una instalación encolada",
   "ui.floorplan.notification.no-crew-left": "No queda tripulación con vida",
   "ui.floorplan.notification.crew-dead": "{name} ha muerto",
   "ui.floorplan.notification.crew-dead-detail": "Sus tareas encoladas quedaron canceladas.",

@@ -6262,3 +6262,65 @@ PENDIENTE (ronda 4c, era la 4b): fantasma de lo encolado + reserva de celda y de
 cerrado: la reserva se DERIVA de la cola viva y nunca se persiste.
 
 TESTS: motor 1214 (156 archivos), juego 163 (17 archivos). `tsc`, `eslint` y `build` limpios.
+
+================================================================================
+2026-09-02 — Subfase 14a-4, ronda 4c de playtest: el fantasma de lo encolado y
+             las reservas derivadas de la cola. CIERRA la subfase 14a-4.
+================================================================================
+
+POR QUÉ: lo que la ronda 4a dejó pendiente al partirse en dos. El pedido original
+del operador era ver dónde van a quedar las piezas encoladas "sin usar la
+memoria"; verificarlo destapó que `queueInstall` ENCOLA SIN COMPROMETER NADA, así
+que dos tareas podían pedir la misma celda o la misma última unidad del stock y
+nada lo decía hasta que la segunda se ejecutaba. Es la causa raíz de la
+observación 8 (dos tripulantes instalando la única pieza que hay).
+
+QUÉ SE HIZO:
+* **`engine/src/tasks/queued-reservations.ts`** (nuevo, puro, con test): qué tiene
+  comprometido la cola viva, en celdas y en stock. Se DERIVA de las tareas y nunca
+  se persiste — `toUpdatedSave` no guarda tareas, así que descontar al encolar
+  haría perder material al guardar. Sin caché: la cola cambia por eventos y una
+  caché desincronizada es la misma clase de bug que 14a-4 evitó al no persistir la
+  capacidad de las aristas.
+* **Reservan `pending`, `in-progress` y `blocked`.** Una bloqueada SIGUE
+  reservando: está viva y puede desbloquearse. Es el riesgo que el operador
+  señaló al plantear el diseño ("tareas que nunca se ejecutan dejarían stock
+  reservado"), y la salida es cancelarla —que las rondas 4a/4b hicieron
+  descubrible y visible—, no una caducidad automática que libere material a
+  espaldas del jugador. El predicado de "viva" es `TERMINAL_TASK_STATES`, el mismo
+  que filtra la cola dibujada: lo que se ve y lo que se reserva no pueden discrepar.
+* **`componentStockCost` extraído de `payComponentCost`** (`engine/src/inventory/`):
+  la fórmula de coste decidía Y cobraba en el mismo sitio, y la reserva necesitaba
+  el cálculo sin la mutación. Una sola definición de "qué cuesta" con dos lectores
+  — una segunda copia habrían sido dos sitios donde arreglar el próximo bug de
+  stock, el patrón que este proyecto ya pagó en rondas anteriores.
+* **La celda reservada se rechaza como una ocupada**: `installIssuesAt` es ahora el
+  predicado ÚNICO del fantasma bajo el cursor y del click que encola (si cada uno
+  decidiera por su cuenta, el jugador podría ver verde y que el click no haga
+  nada). NO entra en `validateInstallation`: una reserva es un hecho de la COLA, no
+  del `Blueprint`, y meterla ahí obligaría a pasarle tareas a una función de
+  geometría.
+* **El selector muestra el stock REAL y explica el reparto** (decisión del
+  operador): la fila sigue diciendo `×3` —esconder piezas que existen sería mentir
+  sobre el estado del motor, mismo criterio con que 13c se negó a colapsar los
+  buckets de desgaste— y la ficha desglosa "2 reservadas por la cola · 1
+  disponible". Con 0 disponibles queda bloqueada con motivo PROPIO
+  (`queue-reserved`), no reciclando `no-stock`: la pieza existe, y "sin stock"
+  mandaría al jugador a buscar algo que ya tiene. Vale igual para conductores y
+  para compuestos (`missingRecipeIngredients` distingue "falta" de "reservado").
+* **El fantasma reusa el vocabulario visual en vez de inventar uno**: trazo
+  entrecortado (`dashedPolyline`, el de la cicatriz de cable de la ronda 3) más
+  sprite atenuado; ámbar si la tarea está bloqueada, más opaco en `in-progress`;
+  contorno por CADA celda ocupada, no del rectángulo envolvente. Depth
+  `queuedGhost` (1.9), DEBAJO de `objects`: un plan nunca puede tapar un estado
+  real del motor.
+* **Un solo sitio de redibujo**: `redrawQueuedInstallGhosts` cuelga de
+  `redrawQueuePanel`, porque mapa y cola muestran el mismo dato. Colgarlo de un
+  evento propio dejaría dos verdades que pueden divergir — el defecto de fondo que
+  la ronda 4b tuvo que arreglar.
+
+CIERRA la observación 8 de PENDIENTES_OBSERVACIONES.md (su segunda capa ya la
+había cerrado 14a-4; ésta cierra la primera) y la saca del Bloque 1 de la 14d.
+
+TESTS: motor 1234 (158 archivos), juego 169 (17 archivos). `tsc`, `eslint` y
+`build` limpios.
