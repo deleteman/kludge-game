@@ -1284,11 +1284,39 @@ monta el fantasma y las reservas encima.
   que la ronda 2 ya había tenido con `Gobierna: 7 · 8 de demanda`. "consumo" es la palabra que el
   sistema de energía ya usa.
 
-**Pendiente, ronda 4b**: fantasma de las instalaciones encoladas + reserva de celda y de stock, con el
-diseño ya cerrado — la reserva se **deriva** de la cola viva y nunca se persiste, porque
-`toUpdatedSave` no guarda tareas y descontar al encolar haría **perder material al guardar**.
+Suite: motor **1214** (156 archivos), juego **154** (16 archivos). `tsc`, `eslint` y `build` limpios.
 
-Suite: motor **1214** (156 archivos), juego **153** (16 archivos). `tsc`, `eslint` y `build` limpios.
+###### Ronda 4b de playtest de 14a-4 ✅ CERRADA (2026-09-02)
+
+Tres reportes sobre la cancelación que la ronda 4a acababa de hacer descubrible, y **los tres eran el
+mismo defecto**: cancelar cambiaba el estado del motor y no tocaba nada de lo que ya estaba en
+pantalla. El motor hacía bien su parte —la pieza no se instalaba— así que el fallo era enteramente de
+la capa visual, donde una cancelación **no se distinguía de no haber cancelado**.
+
+* **La fila cancelada se quedaba en la cola.** `redrawQueuePanel` filtraba solo `completed`, así que
+  una tarea borrada seguía ahí con la barra en cero y el operador la leyó como "no pasó nada". El
+  filtro pasa a `buildQueueRows` y cubre los tres estados terminales; corre **antes** de resolver los
+  padres, para que el dependiente que queda bloqueado pase a raíz y muestre su motivo en vez de colgar
+  de una fila que ya no se dibuja.
+* **El tripulante terminaba el viaje cancelado.** `chainHops` era una cadena de tweens irreversible:
+  se lanzaba en `task-started` y no había forma de alcanzarla. Gana un `shouldContinue` que se
+  consulta antes de cada salto. Corta **entre saltos, no a mitad de uno**, para que el token siempre
+  aterrice en el centro de una celda y nunca dentro de una pared ni cruzando una puerta.
+* **Las partículas de una instalación cancelada seguían** hasta agotar el tiempo estimado de una tarea
+  que ya no existía. Ahora se `stop()` (no se destruyen: las que están en vuelo terminan su vida, y
+  `spawnBurst` ya tiene programada la destrucción del emisor).
+
+**`mission/active-task-visuals.ts`** (nuevo, con test): registro de "cómo se apaga el visual de esta
+tarea". Los tres síntomas tenían la misma causa, así que el arreglo es uno solo — cada visual registra
+su apagador y el manejador de `task-cancelled`/`task-failed`/`task-blocked` lo invoca sin saber de qué
+visual se trata. Al **completar** se olvida sin apagar: la animación tiene que terminar sola.
+
+**Pendiente, ronda 4c** (era la 4b antes de este reporte): fantasma de las instalaciones encoladas +
+reserva de celda y de stock, con el diseño ya cerrado — la reserva se **deriva** de la cola viva y
+nunca se persiste, porque `toUpdatedSave` no guarda tareas y descontar al encolar haría **perder
+material al guardar**.
+
+Suite: motor **1214** (156 archivos), juego **163** (17 archivos). `tsc`, `eslint` y `build` limpios.
 
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 

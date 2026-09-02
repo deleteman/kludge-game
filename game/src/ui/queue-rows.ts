@@ -1,3 +1,4 @@
+import { TERMINAL_TASK_STATES } from "engine";
 import type { BlockingReason, CrewTask, CrewTaskId } from "engine";
 
 import type { UnifiedQueueTask } from "./widgets/crew-queue-panel.js";
@@ -32,6 +33,13 @@ export interface QueueRowInput<T extends QueueRowSource> {
  * debajo de su dependencia**, con `depth: 1`.
  *
  * Reglas y por qué:
+ * - Una tarea en estado TERMINAL (completada, cancelada o fallida) **no se
+ *   dibuja**. La cola es la lista de lo que va a pasar, no un historial: el
+ *   operador canceló una tarea, la vio quedarse en su fila con la barra en
+ *   cero y concluyó que borrar no hacía nada (ronda 4b de playtest). El filtro
+ *   corre ANTES de resolver los padres, así que un dependiente cuya
+ *   dependencia se acaba de cancelar pasa a raíz y muestra su propio motivo de
+ *   bloqueo en vez de colgar de una fila fantasma.
  * - Se respeta el orden de encolado para las raíces. La cola es cronológica y
  *   reordenarla por otro criterio rompería la lectura de "qué pasa primero".
  * - Una tarea cuya dependencia **no está en la lista** (ya se completó y se
@@ -44,9 +52,10 @@ export interface QueueRowInput<T extends QueueRowSource> {
  *   función no tiene por qué confiar en eso para no colgarse.
  */
 export function buildQueueRows<T extends QueueRowSource>(
-  entries: ReadonlyArray<QueueRowInput<T>>,
+  allEntries: ReadonlyArray<QueueRowInput<T>>,
   blockReasonOf: (taskId: CrewTaskId) => BlockingReason | undefined,
 ): ReadonlyArray<UnifiedQueueTask> {
+  const entries = allEntries.filter((entry) => !TERMINAL_TASK_STATES.has(entry.task.state));
   const present = new Set(entries.map((entry) => entry.task.id));
   const childrenByParent = new Map<CrewTaskId, QueueRowInput<T>[]>();
   const roots: QueueRowInput<T>[] = [];

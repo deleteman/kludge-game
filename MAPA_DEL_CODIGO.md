@@ -1988,3 +1988,19 @@
 ### `game/src/scenes/floorplan-scene.ts` (modificado)
 - `buildQueueRows` alimenta la cola; `queueCancelHitAt` distingue click derecho (fila entera) de
   izquierdo (solo la "×"); `updateQueueCancelHover` resalta el botón bajo el cursor.
+
+## Subfase 14a-4 — ronda 4b de playtest (cancelar tenía que verse)
+
+### `game/src/mission/active-task-visuals.ts` (nuevo)
+- Registro `taskId → cómo se apaga su visual`. `register`/`stop`/`forget`. Fuera de la escena y sin
+  Phaser para tener test propio: un apagador que no se invoca es exactamente lo que no se ve al
+  revisar código.
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `chainHops` gana `shouldContinue`, consultado antes de cada salto (corta entre saltos, nunca a
+  mitad de uno); `travelCrewToken` y `fireFabricationEffect` registran su apagador; los eventos
+  `task-cancelled`/`task-failed`/`task-blocked` lo invocan y `task-completed` lo olvida.
+
+### `game/src/ui/queue-rows.ts` (modificado)
+- Filtra los tres estados terminales antes de resolver los padres: un dependiente cuya dependencia se
+  canceló pasa a raíz con su motivo, en vez de colgar de una fila que ya no se dibuja.

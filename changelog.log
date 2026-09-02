@@ -6229,3 +6229,36 @@ reserva se DERIVA de la cola viva y nunca se persiste — `toUpdatedSave` no gua
 descontar al encolar haría perder material al guardar.
 
 TESTS: motor 1214 (156 archivos), juego 153 (16 archivos). `tsc`, `eslint` y `build` limpios.
+
+================================================================================
+2026-09-02 — 14a-4 ronda 4b de playtest: cancelar tenía que VERSE
+================================================================================
+
+QUÉ REPORTÓ EL OPERADOR: tres cosas, sobre la cancelación que la ronda 4a acababa de hacer
+descubrible. (1) Borrar una tarea no la sacaba de la lista, "la deja ahí reseteada". (2) Cancelar un
+movimiento no detenía al tripulante: terminaba de caminar hasta el destino igual. (3) Cancelar una
+instalación dejaba la animación corriendo hasta el final, aunque al terminar no se instalaba nada.
+
+POR QUÉ: los tres son EL MISMO defecto. Cancelar cambiaba el estado del motor y no tocaba nada de lo
+que ya estaba en pantalla. `task-started` lanzaba los visuales —la cadena de saltos, las partículas—
+y los soltaba sin guardar ninguna referencia, así que detenerlos no era difícil: era imposible. El
+motor hacía bien su parte (la pieza NO se instalaba), y aun así en pantalla la cancelación no había
+ocurrido. Arreglar solo el que más molesta habría dejado a sus hermanos rotos con la misma causa.
+
+QUÉ SE HIZO:
+* **`mission/active-task-visuals.ts`** (nuevo, con test): registro de "cómo se apaga el visual de esta
+  tarea". Cada visual registra su apagador; el manejador de `task-cancelled`/`task-failed`/
+  `task-blocked` lo invoca sin saber de qué visual se trata. Al COMPLETAR se olvida sin apagar — la
+  cadena ya llegó y las partículas se agotan solas; cortarlas ahí arruinaría el último instante de la
+  acción, que es justo cuando el jugador mira el resultado.
+* **`chainHops`** gana `shouldContinue`, consultado antes de cada salto. Corta entre saltos y no a
+  mitad de uno: el token siempre aterriza en el centro de una celda, nunca en una pared ni cruzando
+  una puerta, y `update()` deriva la celda del actor de esa posición visual.
+* **`buildQueueRows`** filtra los tres estados terminales (antes la escena filtraba solo `completed`).
+  El filtro corre ANTES de resolver los padres, así que el dependiente que queda bloqueado pasa a raíz
+  y muestra su propio motivo, en vez de sangrarse bajo una fila que ya no se dibuja.
+
+PENDIENTE (ronda 4c, era la 4b): fantasma de lo encolado + reserva de celda y de stock. Diseño ya
+cerrado: la reserva se DERIVA de la cola viva y nunca se persiste.
+
+TESTS: motor 1214 (156 archivos), juego 163 (17 archivos). `tsc`, `eslint` y `build` limpios.

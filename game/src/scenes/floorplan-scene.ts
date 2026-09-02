@@ -220,6 +220,7 @@ import {
   type QueueCancelHit,
 } from "../ui/widgets/crew-queue-panel.js";
 import { buildQueueRows, type QueueRowInput } from "../ui/queue-rows.js";
+import { ActiveTaskVisuals } from "../mission/active-task-visuals.js";
 import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
 import { renderFloorplanLayerTogglePanel } from "../ui/widgets/floorplan-layer-toggle-panel.js";
@@ -622,6 +623,12 @@ export class FloorplanScene extends Phaser.Scene {
    * completar (`tween.once("complete", ...)`), nunca por el chequeo de modo.
    */
   private readonly activeHopTweens = new Set<Phaser.Tweens.Tween>();
+
+  /**
+   * Cómo se apaga el visual de cada tarea en curso (ronda 4b de playtest de
+   * 14a-4). Sin esto, cancelar no podía detener lo que ya estaba animándose.
+   */
+  private readonly taskVisuals = new ActiveTaskVisuals();
 
   /** Tokens visuales de enemigo (Fase 11d.3) — sin contenido de capítulo todavía (11d.4), así que arranca vacío en misión real. */
   private readonly enemyTokens = new Map<EnemyActorId, EnemyToken>();
@@ -3443,7 +3450,9 @@ export class FloorplanScene extends Phaser.Scene {
     const entries: QueueRowInput<CrewTask>[] = [];
     this.mission.activeCrew.forEach((actor, index) => {
       for (const task of this.mission.scheduler.queueFor(actor.id)) {
-        if (task.state === "completed") continue;
+        // El filtro de estados terminales lo aplica `buildQueueRows` (ronda 4b):
+        // tiene que correr antes de resolver los padres para que un dependiente
+        // huérfano pase a raíz en vez de colgar de una fila que ya no se dibuja.
         entries.push({
           task,
           row: {
@@ -4890,7 +4899,14 @@ export class FloorplanScene extends Phaser.Scene {
       return;
     }
     const perHopMs = Math.max(60, (durationSeconds * 1000) / waypoints.length);
-    this.chainHops(token, waypoints, perHopMs, this.cadenceForActor(actorId));
+    // Ronda 4b: el viaje queda cancelable. La bandera la baja el registro de
+    // visuales al cancelar/fallar el `go-to`, y la cadena la lee antes de cada
+    // salto — el tripulante se queda en la celda donde estaba al cancelar.
+    let travelling = true;
+    this.taskVisuals.register(goToTaskId, () => {
+      travelling = false;
+    });
+    this.chainHops(token, waypoints, perHopMs, this.cadenceForActor(actorId), 0, CREW_SIGNATURE, () => travelling);
   }
 
   /** Cadencia de salto según el HP VIVO del actor (herido bajo el umbral, `crew-hp-to-cadence.ts`). */
@@ -5035,8 +5051,20 @@ export class FloorplanScene extends Phaser.Scene {
     cadence: HopCadence = "normal",
     index = 0,
     signature: JumpSignature = CREW_SIGNATURE,
+    /**
+     * Ronda 4b de playtest de 14a-4: se consulta ANTES de cada salto y el viaje
+     * se abandona si devuelve `false`. Es lo que deja al tripulante donde está
+     * al cancelarle el movimiento — antes la cadena era irreversible y llegaba
+     * a destino igual, con la tarea ya cancelada.
+     *
+     * Se corta entre saltos y no a mitad de uno a propósito: el token siempre
+     * aterriza en el centro de una celda, nunca dentro de una pared ni a medio
+     * cruzar una puerta, y `update()` sincroniza su celda desde esa posición.
+     */
+    shouldContinue?: () => boolean,
   ): void {
     if (index >= waypoints.length) return;
+    if (shouldContinue && !shouldContinue()) return;
     const next = waypoints[index]!;
     // Subfase 13h (ronda 1 de playtest): si el próximo salto ENTRA en la celda
     // de una puerta que todavía no terminó de abrirse, el actor espera frente a
@@ -5049,7 +5077,7 @@ export class FloorplanScene extends Phaser.Scene {
     // esperar es solo dejar que la puerta termine su trabajo.
     if (this.isDoorwayHeldClosed(next)) {
       this.time.delayedCall(DOOR_WAIT_RETRY_MS, () =>
-        this.chainHops(token, waypoints, perHopMs, cadence, index, signature),
+        this.chainHops(token, waypoints, perHopMs, cadence, index, signature, shouldContinue),
       );
       return;
     }
@@ -5072,7 +5100,9 @@ export class FloorplanScene extends Phaser.Scene {
       baseScaleOf(token),
     );
     this.trackHopTween(tween);
-    tween.once("complete", () => this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature));
+    tween.once("complete", () =>
+      this.chainHops(token, waypoints, perHopMs, cadence, index + 1, signature, shouldContinue),
+    );
   }
 
   /**
@@ -5251,7 +5281,12 @@ export class FloorplanScene extends Phaser.Scene {
    * pudiera resolver. Marca los emisores como objetos de mundo y les fija la
    * profundidad (doble cámara).
    */
-  private fireFabricationEffect(type: CrewTask["type"], task: CrewTask | undefined, actorId: CrewActorId): void {
+  private fireFabricationEffect(
+    type: CrewTask["type"],
+    task: CrewTask | undefined,
+    actorId: CrewActorId,
+    taskId: CrewTaskId,
+  ): void {
     if (type !== "install" && type !== "dismantle") return;
     const cell = (task ? this.taskTargetCell(task) : undefined) ?? this.crewTokenCell(actorId);
     if (!cell) return;
@@ -5264,6 +5299,12 @@ export class FloorplanScene extends Phaser.Scene {
       emitter.setDepth(RENDER_DEPTH.effect);
       this.markAsWorldObject(emitter);
     }
+    // Ronda 4b: cancelar corta la emisión en el acto. Solo `stop()` — destruir
+    // acá mataría las partículas ya en vuelo de golpe, y `spawnBurst` ya tiene
+    // programada la destrucción del emisor cuando se apaguen.
+    this.taskVisuals.register(taskId, () => {
+      for (const emitter of emitters) emitter.stop();
+    });
   }
 
   // --- Eventos de dominio ---------------------------------------------------
@@ -5271,6 +5312,9 @@ export class FloorplanScene extends Phaser.Scene {
   private handleCoreLoopEvent(event: CoreLoopDomainEvent): void {
     switch (event.kind) {
       case "task-completed": {
+        // Se OLVIDA sin apagar: la cadena de saltos ya llegó y las partículas se
+        // agotan solas — cortarlas acá arruinaría el último instante de la acción.
+        this.taskVisuals.forget(event.taskId);
         // `crewState.currentCell` se sincroniza cada frame en `update()`
         // (fix post-11d.4) a partir de la posición VISUAL del token, no acá.
         // El movimiento ahora se anima al ARRANCAR el `go-to` (ver
@@ -5375,7 +5419,12 @@ export class FloorplanScene extends Phaser.Scene {
           // Partículas de la acción (instalar/desmontar) MIENTRAS se lleva a cabo
           // (playtest #12): emisión continua durante la duración de la tarea, no
           // un burst al terminar.
-          this.fireFabricationEffect(event.type, this.mission.scheduler.getTask(event.taskId), event.actorId);
+          this.fireFabricationEffect(
+            event.type,
+            this.mission.scheduler.getTask(event.taskId),
+            event.actorId,
+            event.taskId,
+          );
           // Bark al EMPEZAR una acción asignada ("me pongo con esto").
           this.barkForActor(event.actorId, "dangerous-task");
         }
@@ -5387,6 +5436,13 @@ export class FloorplanScene extends Phaser.Scene {
       case "task-blocked":
       case "task-cancelled":
       case "task-failed": {
+        // Ronda 4b de playtest: la tarea dejó de existir, así que su trabajo
+        // visual también para. Sin esto el tripulante terminaba de caminar al
+        // destino de un `go-to` cancelado y las chispas de una instalación
+        // cancelada seguían hasta agotar su tiempo estimado — el motor ya no
+        // instalaba nada, pero en pantalla la cancelación no había pasado.
+        // También en `task-blocked`: una tarea bloqueada a mitad no sigue.
+        this.taskVisuals.stop(event.taskId);
         // Solo una tarea FALLIDA da bark ("no salió"); bloqueo/cancelación no.
         if (event.kind === "task-failed") this.barkForActor(event.actorId, "failure");
         // Notificación de tarea fallida/bloqueada (12c.7) — la cancelación es

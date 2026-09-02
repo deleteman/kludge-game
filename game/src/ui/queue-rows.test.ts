@@ -126,6 +126,36 @@ describe("buildQueueRows", () => {
     expect(new Set(idsOf(rows)).size).toBe(3);
   });
 
+  it("una tarea cancelada NO se dibuja", () => {
+    // El reporte de la ronda 4b: el operador borró una tarea y la fila se quedó
+    // ahí con la barra en cero, así que concluyó que cancelar no hacía nada.
+    const rows = buildQueueRows(
+      [entry("mover", { state: "cancelled" }), entry("otra")],
+      noReasons,
+    );
+    expect(idsOf(rows)).toEqual(["otra"]);
+  });
+
+  it("tampoco se dibujan las completadas ni las fallidas", () => {
+    const rows = buildQueueRows(
+      [entry("a", { state: "completed" }), entry("b", { state: "failed" }), entry("c")],
+      noReasons,
+    );
+    expect(idsOf(rows)).toEqual(["c"]);
+  });
+
+  it("cancelado el padre, el dependiente bloqueado pasa a RAÍZ con su motivo", () => {
+    // Es la fila que le queda al jugador para entender por qué no va a pasar
+    // nada; sangrada bajo una fila que ya no se dibuja, no se entendería.
+    const rows = buildQueueRows(
+      [entry("mover", { state: "cancelled" }), entry("instalar", { dependsOn: ["mover"], state: "blocked" })],
+      () => "dependency-cancelled",
+    );
+    expect(idsOf(rows)).toEqual(["instalar"]);
+    expect(rows[0]?.depth).toBe(0);
+    expect(rows[0]?.blockReason).toBe("dependency-cancelled");
+  });
+
   it("una lista vacía no revienta", () => {
     expect(buildQueueRows([], noReasons)).toEqual([]);
   });
