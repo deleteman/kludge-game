@@ -1964,3 +1964,27 @@
 - Cicatriz sobre el cuerpo del cable y sin luz; arcos por cable quemado (`electricArcEffects`,
   `arcTargetsFrom`); fogonazo/estática al punto medio (`burnedEdgeCenterCell`); línea de cable
   quemado en el tooltip de la pieza (`SignalTooltipInfo.burnedWires`), sin glifo.
+
+---
+
+# Subfase 14a-4 — Ronda 4a de playtest (2026-09-02)
+
+### `game/src/mission/mission-runtime.ts` (modificado, + `mission-runtime.test.ts` nuevo)
+- `ensureAt` devuelve el id del `go-to` que encoló, y los 16 sitios que la llaman lo declaran como
+  `dependsOn`. Es el llamador que le faltaba al bloqueo por dependencia desde la Fase 10.
+- El test existe porque `MissionRuntime` no importa Phaser: su constructor solo toma un save.
+
+### `engine/src/tasks/task-scheduler.ts` (modificado)
+- `blockReasonFor(taskId)`: expone `lastBlockReason`, que no tenía salida. Sin lógica nueva.
+
+### `game/src/ui/queue-rows.ts` (nuevo)
+- `buildQueueRows`: orden y anidado de la cola. Pura y testeada — un árbol mal ordenado miente sobre
+  qué espera a qué, y el widget de la cola tiene por contrato "solo dibuja".
+
+### `game/src/ui/widgets/crew-queue-panel.ts` (modificado)
+- `UnifiedQueueTask` gana `depth` y `blockReason`; sangría, conector `└`, bloqueadas en ámbar con su
+  motivo, y botón de cancelar con caja propia (`rowXMin`/`rowXMax` para el click derecho).
+
+### `game/src/scenes/floorplan-scene.ts` (modificado)
+- `buildQueueRows` alimenta la cola; `queueCancelHitAt` distingue click derecho (fila entera) de
+  izquierdo (solo la "×"); `updateQueueCancelHover` resalta el botón bajo el cursor.

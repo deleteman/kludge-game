@@ -329,6 +329,19 @@ export class TaskScheduler implements Tickable {
     return this.tasksById.get(id);
   }
 
+  /**
+   * Por qué está bloqueada una tarea, o `undefined` si no lo está (ronda 4a de
+   * playtest de 14a-4).
+   *
+   * El dato ya se mantenía en `lastBlockReason` y no tenía salida: la UI podía
+   * ver el estado `blocked` pero no el motivo, así que una tarea bloqueada para
+   * siempre por una dependencia cancelada se veía igual que una esperando su
+   * turno. Sin lógica nueva — solo se expone lo que ya se calcula.
+   */
+  blockReasonFor(id: CrewTaskId): BlockingReason | undefined {
+    return this.lastBlockReason.get(id);
+  }
+
   /** `false` para un actor dado de baja: no tiene sentido encolarle nada (13f ronda 2). */
   canAcceptTasks(id: CrewActorId): boolean {
     return !this.isDead(id);

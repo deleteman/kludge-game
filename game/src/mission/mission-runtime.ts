@@ -1217,16 +1217,22 @@ export class MissionRuntime {
     return this.crewState.isAlive(actorId);
   }
 
-  private queueGoTo(actorId: CrewActorId, targetSectionId: SectionId, targetCell?: GridPosition): void {
+  private queueGoTo(
+    actorId: CrewActorId,
+    targetSectionId: SectionId,
+    targetCell?: GridPosition,
+  ): CrewTaskId {
+    const id = this.nextTaskId();
     this.scheduler.enqueue(
       createCrewTask({
-        id: this.nextTaskId(),
+        id,
         actorId,
         type: "go-to",
         targetSectionId,
         targetCell,
       }),
     );
+    return id;
   }
 
   /**
@@ -1243,23 +1249,47 @@ export class MissionRuntime {
     return true;
   }
 
-  private ensureAt(actorId: CrewActorId, targetSectionId: SectionId | undefined): void {
+  /**
+   * Asegura que el tripulante esté (o vaya a estar) en la sección donde va a
+   * trabajar, y **devuelve el id del `go-to` que encoló** — `undefined` si ya
+   * iba a estar ahí y no hizo falta ninguno.
+   *
+   * Ronda 4a de playtest de 14a-4: ese id existe para que la acción que viene
+   * detrás lo declare como `dependsOn`. Hasta acá no lo devolvía y nadie
+   * enlazaba nada: la relación entre "andá allá" y "hacé esto" era puro orden
+   * FIFO, así que **cancelar el movimiento no impedía la acción** — el
+   * tripulante se quedaba donde estaba y la pieza se instalaba igual, en una
+   * sección a la que nunca llegó.
+   *
+   * El mecanismo para evitarlo estaba entero y sin usar desde la Fase 10:
+   * `resolveBlockingReason` distingue "esperando" de "dependencia cancelada" y
+   * `cascadeDependents` propaga el bloqueo. Solo faltaba el llamador.
+   */
+  private ensureAt(
+    actorId: CrewActorId,
+    targetSectionId: SectionId | undefined,
+  ): CrewTaskId | undefined {
     if (targetSectionId === undefined) {
-      return;
+      return undefined;
     }
     if (this.plannedSectionFor(actorId) !== targetSectionId) {
-      this.queueGoTo(actorId, targetSectionId);
+      return this.queueGoTo(actorId, targetSectionId);
     }
+    return undefined;
   }
 
   queueDismantle(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
     const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
     const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "dismantle",
         targetSectionId,
         payload: { kind: "dismantle", instanceId },
@@ -1388,11 +1418,15 @@ export class MissionRuntime {
    * garantiza que corra antes.
    */
   queueCutPower(actorId: CrewActorId, sectionId: SectionId): void {
-    this.ensureAt(actorId, sectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, sectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "cut-power",
         targetSectionId: sectionId,
         payload: { kind: "cut-power", sectionId },
@@ -1417,11 +1451,15 @@ export class MissionRuntime {
     // Se opera desde el lado del conducto donde ya esté (o pueda llegar) el
     // tripulante; `a` es la sección de referencia, igual que en el resto de las
     // tareas con dos lados.
-    this.ensureAt(actorId, conduit.a);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, conduit.a);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "set-valve",
         targetSectionId: conduit.a,
         payload: { kind: "set-valve", conduitId, targetAperture, sectionId: conduit.a },
@@ -1441,12 +1479,16 @@ export class MissionRuntime {
     if (!door) {
       return;
     }
-    this.ensureAt(actorId, door.a);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, door.a);
     const base = this.doorRuntime.forceDurationSeconds(doorId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "force-door",
         targetSectionId: door.a,
         payload: { kind: "force-door", doorId, sectionId: door.a },
@@ -1461,11 +1503,15 @@ export class MissionRuntime {
     if (!door) {
       return;
     }
-    this.ensureAt(actorId, door.a);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, door.a);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "repair-door",
         targetSectionId: door.a,
         payload: { kind: "repair-door", doorId, sectionId: door.a },
@@ -1482,7 +1528,10 @@ export class MissionRuntime {
   queuePurgeReservoir(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
     const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
     const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     const taskId = this.nextTaskId();
     // Purgar también mueve fluido (13e): la tarea de asegurado de 13d gana
     // representación en la capa `fluido` sin cambiar su comportamiento.
@@ -1496,6 +1545,7 @@ export class MissionRuntime {
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "purge-reservoir",
         targetSectionId,
         payload: { kind: "purge-reservoir", instanceId, sectionId: targetSectionId },
@@ -1526,11 +1576,15 @@ export class MissionRuntime {
   queueDischargeSource(actorId: CrewActorId, instanceId: PlacedComponentInstanceId): void {
     const instance = this.shipState.get().placedComponents.find((entry) => entry.instanceId === instanceId);
     const targetSectionId = instance && this.sectionIdAt(instance.placement.position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "discharge-source",
         targetSectionId,
         payload: { kind: "discharge-source", instanceId },
@@ -1771,13 +1825,17 @@ export class MissionRuntime {
   ): void {
     const targetSectionId = this.sectionIdOfInstance(fromInstanceId);
     const toSectionId = this.sectionIdOfInstance(toInstanceId);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     const taskId = this.nextTaskId();
     this.declareFluidFlow(taskId, targetSectionId, toSectionId, amount);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "transfer-substance",
         targetSectionId,
         // Ronda 11: gatea AMBOS extremos, no solo el origen — trasvasar
@@ -1799,7 +1857,10 @@ export class MissionRuntime {
     sectionId: SectionId,
     amount: number,
   ): void {
-    this.ensureAt(actorId, sectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, sectionId);
     const taskId = this.nextTaskId();
     const fromSectionId = this.sectionIdOfInstance(fromInstanceId);
     this.declareFluidFlow(taskId, fromSectionId, sectionId, amount);
@@ -1807,6 +1868,7 @@ export class MissionRuntime {
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "apply-substance",
         targetSectionId: sectionId,
         // Ronda 11: mismo criterio que transferir — gatea la sección de
@@ -1827,13 +1889,17 @@ export class MissionRuntime {
     amount: number,
   ): void {
     const targetSectionId = this.sectionIdOfInstance(instanceId);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     const taskId = this.nextTaskId();
     this.declareFluidFlow(taskId, targetSectionId, undefined, amount);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "extract-elements",
         targetSectionId,
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
@@ -1976,11 +2042,15 @@ export class MissionRuntime {
     // (`plannedSectionFor`), que era correcto cuando la mesa era un botón
     // global del header — pero anula el sentido de haberla puesto en el plano.
     const targetSectionId = this.workstationSectionFor(actorId, stationInstanceId);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "combine",
         targetSectionId,
         // Ronda 11: fabricar SÍ gatea por energía — la estación química opera
@@ -2117,11 +2187,15 @@ export class MissionRuntime {
     const targetSectionId = location
       ? this.sectionIdOfInstance(location.instanceId)
       : this.plannedSectionFor(actorId);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "analyze-substance",
         targetSectionId,
         powerSectionIds: targetSectionId ? [targetSectionId] : undefined,
@@ -2185,11 +2259,15 @@ export class MissionRuntime {
     }
     // Ídem `queueFabrication`: la síntesis ocurre EN la estación química.
     const targetSectionId = this.workstationSectionFor(actorId, stationInstanceId);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: taskId,
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "combine",
         targetSectionId,
         // Ronda 11: mismo criterio que `queueFabrication` — la estación gatea.
@@ -2241,12 +2319,16 @@ export class MissionRuntime {
     consumeRecipe?: boolean,
   ): void {
     const targetSectionId = this.sectionIdAt(position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     const instanceId = `install-${Date.now()}-${this.taskCounter}` as PlacedComponentInstanceId;
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "install",
         targetSectionId,
         payload: {
@@ -2296,12 +2378,16 @@ export class MissionRuntime {
       targetNode = fromNode;
     }
     const targetSectionId = targetNode && this.sectionIdAt(targetNode.position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     const edgeId = `edge-${Date.now()}-${this.taskCounter}` as SignalEdgeId;
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "connect",
         targetSectionId,
         payload: {
@@ -2456,11 +2542,15 @@ export class MissionRuntime {
     const edge = this.shipState.get().signalGraph.edges.find((entry) => entry.id === edgeId);
     const targetNode = this.shipState.get().signalGraph.nodes.find((node) => node.id === edge?.to);
     const targetSectionId = targetNode && this.sectionIdAt(targetNode.position);
-    this.ensureAt(actorId, targetSectionId);
+    // Ronda 4a de 14a-4: la acción DEPENDE del movimiento que la precede, así
+    // que cancelarlo la bloquea en vez de dejar que se ejecute donde el
+    // tripulante nunca llegó. Ver `ensureAt`.
+    const moveTaskId = this.ensureAt(actorId, targetSectionId);
     this.scheduler.enqueue(
       createCrewTask({
         id: this.nextTaskId(),
         actorId,
+        ...(moveTaskId ? { dependsOn: [moveTaskId] } : {}),
         type: "disconnect",
         targetSectionId,
         payload: { kind: "disconnect", edgeId },

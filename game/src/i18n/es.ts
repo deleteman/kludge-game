@@ -72,6 +72,10 @@ export const ES: Readonly<Record<string, string>> = {
   // "de demanda" deja de ser un sufijo y pasa a encabezar el par X / Y.
   "ui.floorplan.mission.tooltip.signal-demand": "demanda",
   "ui.floorplan.mission.tooltip.signal-pieces": "piezas",
+  // Ronda 4a: reemplaza a "demanda X / Y", que se leía como dos cifras de
+  // demanda. "consumo" es la palabra del sistema de energía, ya aprendida.
+  "ui.floorplan.mission.tooltip.signal-consumption": "consumo",
+  "ui.floorplan.mission.tooltip.signal-of": "de",
   // Ronda 3 de playtest de 14a-4: la pieza está SANA, su cableado no. Sin
   // glifo sobre el sprite a propósito — un símbolo en la pieza volvería a
   // decir "esta pieza está rota", que es la confusión que la ronda elimina.
@@ -149,6 +153,13 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.hud.substances-button": "Sustancias ({count})",
   "ui.floorplan.lcd.no-data": "SIN DATO",
   "ui.floorplan.lcd.pressure-unit": "kPa",
+  // Ronda 4a de playtest de 14a-4: por qué una tarea está bloqueada. Sin esto,
+  // una bloqueada PARA SIEMPRE (dependencia cancelada) se veía igual que una
+  // esperando su turno, y no había forma de encontrarla para barrerla.
+  "ui.floorplan.mission.block-reason.awaiting-dependency": "espera a la anterior",
+  "ui.floorplan.mission.block-reason.dependency-cancelled": "bloqueada: cancelaste de la que dependía",
+  "ui.floorplan.mission.block-reason.dependency-failed": "bloqueada: falló de la que dependía",
+  "ui.floorplan.mission.block-reason.no-power": "bloqueada: la sección no tiene energía",
   "ui.floorplan.mission.empty-queue": "— sin tareas —",
   "ui.floorplan.mission.queue.task-label.go-to": "Yendo a sección",
   "ui.floorplan.mission.queue.task-label.dismantle": "Desmontando",

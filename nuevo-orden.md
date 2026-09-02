@@ -1255,6 +1255,41 @@ en esa lista.
 
 Suite: motor **1213** (156 archivos), juego **139** (14 archivos). `tsc`, `eslint` y `build` limpios.
 
+###### Ronda 4a de playtest de 14a-4 ✅ CERRADA (2026-09-02)
+
+El operador pidió un fantasma para las instalaciones encoladas ("para ver dónde quedarán las piezas
+sin usar la memoria"). Verificarlo destapó que **planificar en serie no era seguro**, y al plantear la
+reserva de stock que hacía falta, el operador señaló el riesgo: *"hay formas de colgar tareas y que
+nunca se ejecuten; con este nuevo modelo esas tareas dejarían reservadas piezas del stock
+indefinidamente"*. Verificar ESO destapó el bug de fondo. Se partió en dos: 4a arregla la cola, 4b
+monta el fantasma y las reservas encima.
+
+* **Las dependencias entre tareas no existían.** `ensureAt` encolaba un `go-to` antes de cada acción
+  con sitio y **nunca pasaba `dependsOn`**: la relación era puro orden FIFO. O sea que cancelar el
+  movimiento **no impedía la acción** — el tripulante se quedaba donde estaba y la pieza se instalaba
+  igual, en una sección a la que nunca llegó. El mecanismo para evitarlo (`resolveBlockingReason`,
+  `cascadeDependents`) estaba entero y testeado desde la Fase 10, **sin un solo llamador**. Enlazado en
+  los 16 sitios que llaman a `ensureAt`.
+* **El motivo del bloqueo, expuesto** (`blockReasonFor`): el dato vivía en `lastBlockReason`, privado
+  y sin salida, así que una tarea bloqueada PARA SIEMPRE se veía igual que una esperando su turno.
+* **La cola muestra el árbol**: `buildQueueRows` (pura, con test) coloca cada dependiente debajo de su
+  dependencia con sangría y conector, y las bloqueadas van con borde ámbar y su motivo en la fila. Sin
+  eso, cancelar un movimiento parecía inocuo.
+* **Cancelar, con dos caminos y feedback en ambos.** La "×" existía en cada fila desde siempre y el
+  operador no sabía que se podía cancelar nada: era un glifo de 14 px que al clickearse no producía
+  **ninguna** señal. Ahora tiene caja propia, resaltado al pasar por encima y sonido — y además el
+  **click derecho sobre cualquier punto de la fila** cancela.
+* **`demanda 7 / 8` → `6 piezas · consumo 7 de 8`.** Son tres unidades distintas (piezas, consumo,
+  capacidad) y la barra no lo decía: el operador la leyó como dos cifras de demanda, el mismo tropiezo
+  que la ronda 2 ya había tenido con `Gobierna: 7 · 8 de demanda`. "consumo" es la palabra que el
+  sistema de energía ya usa.
+
+**Pendiente, ronda 4b**: fantasma de las instalaciones encoladas + reserva de celda y de stock, con el
+diseño ya cerrado — la reserva se **deriva** de la cola viva y nunca se persiste, porque
+`toUpdatedSave` no guarda tareas y descontar al encolar haría **perder material al guardar**.
+
+Suite: motor **1214** (156 archivos), juego **153** (16 archivos). `tsc`, `eslint` y `build` limpios.
+
 ##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.

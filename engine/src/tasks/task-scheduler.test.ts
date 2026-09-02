@@ -255,6 +255,68 @@ describe("task-scheduler: cancellation and cascade (GDD §4.5)", () => {
     expect(scheduler.getTask(id("combine"))?.state).toBe("blocked");
   });
 
+  /**
+   * Ronda 4a de playtest de 14a-4: el motivo del bloqueo no tenía salida. La UI
+   * veía el estado `blocked` pero no el porqué, así que una tarea bloqueada
+   * PARA SIEMPRE (dependencia cancelada) se veía igual que una esperando su
+   * turno — y con eso era imposible encontrarla para barrerla.
+   */
+  it("blockReasonFor expone el motivo mientras dura, y solo mientras dura", () => {
+    // Dos actores: el scheduler solo evalúa la tarea ACTIVA de cada uno, así que
+    // con ambas en la misma cola la dependiente ni se miraría hasta que la otra
+    // terminara — y no habría bloqueo que observar.
+    const scheduler = new TaskScheduler();
+    scheduler.registerActor({
+      id: ENGINEER,
+      name: "Ríos",
+      specialty: "ingeniero",
+      tier: "novato",
+      trait: "estoico",
+      hp: 100,
+      maxHp: 100,
+      status: "idle",
+    });
+    scheduler.registerActor({
+      id: MEDIC,
+      name: "Vela",
+      specialty: "medico",
+      tier: "novato",
+      trait: "estoico",
+      hp: 100,
+      maxHp: 100,
+      status: "idle",
+    });
+    scheduler.enqueue(
+      createCrewTask({ id: id("mover"), actorId: ENGINEER, type: "go-to", estimatedDurationSeconds: 5 }),
+    );
+    scheduler.enqueue(
+      createCrewTask({
+        id: id("instalar"),
+        actorId: MEDIC,
+        type: "install",
+        estimatedDurationSeconds: 1,
+        dependsOn: [id("mover")],
+      }),
+    );
+
+    // Sin evaluar todavía: nadie está bloqueado.
+    expect(scheduler.blockReasonFor(id("instalar"))).toBeUndefined();
+
+    scheduler.tick(tickOf(1));
+    // Esperando su turno: bloqueo NORMAL, no un cadáver.
+    expect(scheduler.blockReasonFor(id("instalar"))).toBe("awaiting-dependency");
+
+    scheduler.cancel(id("mover"), tickOf(1));
+    scheduler.tick(tickOf(2));
+    // Ahora sí, y es permanente: es el que hay que poder ver y barrer.
+    expect(scheduler.blockReasonFor(id("instalar"))).toBe("dependency-cancelled");
+
+    // Al cancelar la propia tarea, el motivo se va con ella — si quedara, la
+    // cola seguiría mostrando el aviso de una fila que ya no existe.
+    scheduler.cancel(id("instalar"), tickOf(3));
+    expect(scheduler.blockReasonFor(id("instalar"))).toBeUndefined();
+  });
+
   it("cancelling an already-completed task is a no-op", () => {
     const scheduler = new TaskScheduler();
     scheduler.enqueue(

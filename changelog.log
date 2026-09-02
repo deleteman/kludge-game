@@ -6190,3 +6190,42 @@ están las piezas — y todo lo que dibuja un cable quemado se apoyaba en esa li
   un símbolo en la pieza volvería a decir "esta pieza está rota".
 
 TESTS: motor 1213 (156 archivos), juego 139 (14 archivos). `tsc`, `eslint` y `build` limpios.
+
+================================================================================
+2026-09-02 — Subfase 14a-4, RONDA 4a: la cola dice qué depende de qué
+================================================================================
+
+RAZÓN: el operador pidió un fantasma para las instalaciones encoladas, y al plantear la reserva de
+stock que hacía falta para que planificar en serie fuera seguro, señaló el riesgo real: "hay formas de
+colgar tareas y que nunca se ejecuten; con este nuevo modelo esas tareas dejarían reservadas piezas
+del stock indefinidamente". Verificar esa preocupación destapó el bug de fondo.
+
+* **Las dependencias entre tareas no existían.** `ensureAt` encolaba un `go-to` antes de cada acción
+  con sitio y nunca pasaba `dependsOn`: la relación era puro orden FIFO por tripulante. Cancelar el
+  movimiento NO impedía la acción — la pieza se instalaba igual, en una sección a la que el tripulante
+  nunca llegó. El mecanismo para evitarlo (`resolveBlockingReason`, `cascadeDependents`,
+  `linkDependency`) estaba entero y testeado desde la Fase 10 y SIN UN SOLO LLAMADOR. `ensureAt` pasa
+  a devolver el id del `go-to` y los 16 sitios que la llaman lo declaran como `dependsOn`.
+  Anclado con un test que se verificó que FALLA sin el arreglo (la pieza se instala igual), más el
+  camino feliz, que es el que protege de haber roto las 16 acciones de una sola vez.
+* **`TaskScheduler.blockReasonFor`**: el motivo vivía en `lastBlockReason`, privado y sin salida. La
+  UI veía `blocked` pero no el porqué, así que una tarea bloqueada PARA SIEMPRE por una dependencia
+  cancelada se veía igual que una esperando su turno — imposible de encontrar para barrerla.
+* **`ui/queue-rows.ts`** (nuevo, puro y con test): coloca cada dependiente inmediatamente debajo de su
+  dependencia con `depth`. Pura porque su modo de fallo es silencioso — un orden equivocado dibuja un
+  árbol que MIENTE sobre qué espera a qué, y eso no lo atrapa ningún smoke test visual. Además el
+  widget de la cola tiene por contrato "solo dibuja".
+* **La cola**: sangría por `depth`, conector `└`, borde ámbar del contrato 12e en las bloqueadas y su
+  motivo en el texto de la fila.
+* **Cancelar, con feedback**: la "×" pasa de un glifo de 14 px sin ninguna respuesta a un botón con
+  caja, resaltado al hover y sonido; y el CLICK DERECHO sobre cualquier punto de la fila cancela. El
+  operador no sabía que se podía cancelar nada — la affordance estaba y faltaba la confirmación.
+* **`demanda 7 / 8` → `6 piezas · consumo 7 de 8`**: son tres unidades distintas y la barra no lo
+  decía. Segunda vez que la misma línea confunde (la ronda 2 ya lo había tenido con "Gobierna: 7 · 8
+  de demanda"). "consumo" es la palabra que el sistema de energía ya usa.
+
+PENDIENTE (ronda 4b): fantasma de lo encolado + reserva de celda y de stock. Diseño ya cerrado: la
+reserva se DERIVA de la cola viva y nunca se persiste — `toUpdatedSave` no guarda tareas, así que
+descontar al encolar haría perder material al guardar.
+
+TESTS: motor 1214 (156 archivos), juego 153 (16 archivos). `tsc`, `eslint` y `build` limpios.

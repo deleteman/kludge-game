@@ -214,7 +214,12 @@ import { getCrtIntensity, getFlickerIntensity, hydrateCrtSettings } from "../ren
 import { getShadowIntensity, hydrateShadowSettings } from "../render/shadows/shadow-settings.js";
 import { firePhosphorStatic } from "../particles/effects/phosphor-static-effect.js";
 import { NotificationCenter } from "../ui/widgets/notification-center.js";
-import { renderCrewQueue, type CrewQueueHandle, type UnifiedQueueTask } from "../ui/widgets/crew-queue-panel.js";
+import {
+  renderCrewQueue,
+  type CrewQueueHandle,
+  type QueueCancelHit,
+} from "../ui/widgets/crew-queue-panel.js";
+import { buildQueueRows, type QueueRowInput } from "../ui/queue-rows.js";
 import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
 import { renderFloorplanLayerTogglePanel } from "../ui/widgets/floorplan-layer-toggle-panel.js";
@@ -441,6 +446,8 @@ export class FloorplanScene extends Phaser.Scene {
   /** Cola unificada de tareas (playtest #16b) — objetos planos + hit-test a nivel de escena. */
   private queuePanel?: CrewQueueHandle;
   private queueScrollY = 0;
+  /** Resaltado del botón de cancelar bajo el cursor (14a-4 ronda 4a). */
+  private queueCancelHover?: Phaser.GameObjects.Rectangle;
   /** Tira horizontal de tripulantes bajo el mapa — selección por hit-test a nivel de escena. */
   private crewStrip?: CrewStripHandle;
   /** HUD de estado permanente de la nave (Subfase 11g) — redibujado solo cuando el snapshot agregado cambia (`shipStatusRedrawKey`). */
@@ -1096,6 +1103,7 @@ export class FloorplanScene extends Phaser.Scene {
         this.hideTooltip();
         return;
       }
+      this.updateQueueCancelHover(pointer);
       this.updateHoverHighlight(pointer);
       this.updateTooltip(pointer);
       this.updateCursor(pointer);
@@ -1899,18 +1907,81 @@ export class FloorplanScene extends Phaser.Scene {
   }
 
   /** Cancelar tarea por hit-test sobre el "×" de una fila de la cola. Devuelve `true` si consumió. */
+  /**
+   * Cancelar una tarea desde la cola. Ronda 4a de playtest de 14a-4: dos
+   * caminos y feedback en los dos.
+   *
+   * La "×" existía desde siempre y el operador no sabía que se podía cancelar
+   * nada — era un glifo chico que al clickearse no producía **ninguna** señal
+   * perceptible. Ahora el botón se ve, suena al usarse, y además el **click
+   * derecho sobre cualquier punto de la fila** hace lo mismo, para no tener que
+   * apuntar a un blanco chico en una lista scrolleada.
+   */
   private handleQueueCancelClick(pointer: Phaser.Input.Pointer): boolean {
     if (!this.queuePanel || !this.isOverQueue(pointer)) return false;
-    // Coord de contenido = pantalla menos el tope de la caja + el scroll aplicado.
-    const localY = pointer.y - this.queuePanel.contentTop + this.queueScrollY;
-    const hit = this.queuePanel.cancelHitAreas.find(
-      (a) => localY >= a.yTop && localY <= a.yBottom && pointer.x >= a.xMin && pointer.x <= a.xMax,
-    );
+    const hit = this.queueCancelHitAt(pointer);
     if (hit) {
+      this.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied), { volume: 0.35 });
       this.mission.scheduler.cancel(hit.taskId, { dtSeconds: 0, elapsedSeconds: this.mission.coreLoop.elapsed });
       this.redrawQueuePanel();
+      this.updateQueueCancelHover(pointer);
     }
     return true;
+  }
+
+  /**
+   * Qué fila cancelaría este puntero, o `undefined`. Con el botón derecho vale
+   * la fila ENTERA; con el izquierdo, solo la caja de la "×" — así el click
+   * izquierdo sobre una fila sigue siendo libre para lo que haga falta después.
+   */
+  private queueCancelHitAt(pointer: Phaser.Input.Pointer): QueueCancelHit | undefined {
+    if (!this.queuePanel) return undefined;
+    // Coord de contenido = pantalla menos el tope de la caja + el scroll aplicado.
+    const localY = pointer.y - this.queuePanel.contentTop + this.queueScrollY;
+    const wholeRow = pointer.rightButtonReleased() || pointer.rightButtonDown();
+    return this.queuePanel.cancelHitAreas.find(
+      (a) =>
+        localY >= a.yTop &&
+        localY <= a.yBottom &&
+        pointer.x >= (wholeRow ? a.rowXMin : a.xMin) &&
+        pointer.x <= (wholeRow ? a.rowXMax : a.xMax),
+    );
+  }
+
+  /**
+   * Resaltado del botón de cancelar bajo el cursor. Es la otra mitad de "la
+   * acción existe": sin nada que responda al acercarse, el botón se lee como
+   * decoración. Un solo rectángulo reposicionado, no uno por fila.
+   */
+  private updateQueueCancelHover(pointer: Phaser.Input.Pointer): void {
+    if (!this.queueCancelHover) {
+      this.queueCancelHover = this.add
+        .rectangle(0, 0, 10, 10, CRISIS_FATAL_COLOR, 0.45)
+        .setOrigin(0, 0)
+        .setDepth(RENDER_DEPTH.hudContent + 1)
+        .setVisible(false);
+      this.markAsHudObject(this.queueCancelHover);
+    }
+    const hover = this.queueCancelHover;
+    // Solo sobre la "×" (geometría del botón), aunque el click derecho acepte
+    // toda la fila: resaltar la fila entera se confundiría con seleccionarla.
+    const hit =
+      this.queuePanel && this.isOverQueue(pointer)
+        ? this.queuePanel.cancelHitAreas.find((a) => {
+            const localY = pointer.y - this.queuePanel!.contentTop + this.queueScrollY;
+            return (
+              localY >= a.yTop && localY <= a.yBottom && pointer.x >= a.xMin && pointer.x <= a.xMax
+            );
+          })
+        : undefined;
+    if (!hit) {
+      hover.setVisible(false);
+      return;
+    }
+    hover
+      .setPosition(hit.xMin, hit.yTop + this.queuePanel!.contentTop - this.queueScrollY)
+      .setSize(hit.xMax - hit.xMin, hit.yBottom - hit.yTop)
+      .setVisible(true);
   }
 
   // --- Resaltado de hover -------------------------------------------------
@@ -2120,10 +2191,15 @@ export class FloorplanScene extends Phaser.Scene {
         // Ronda 2 de playtest: con denominador. `Gobierna: 7 · 8 de demanda`
         // eran dos números correctos que no se comparaban contra nada; el
         // operador lo reportó tal cual ("no entiendo los dos números").
+        // Ronda 4a: `demanda 7 / 8` se leía como dos cifras de demanda. Son
+        // tres unidades distintas —piezas, consumo, capacidad— y la barra no lo
+        // decía. "consumo" es además la palabra que el sistema de energía ya
+        // usa (un LED consume 1, una compuerta 2), así que trae un modelo
+        // mental aprendido en vez de estrenar "demanda".
         signalDrives: ({ count, load, capacity }) =>
-          `${t("ui.floorplan.mission.tooltip.signal-drives")} ${count} ${t(
-            "ui.floorplan.mission.tooltip.signal-pieces",
-          )} · ${t("ui.floorplan.mission.tooltip.signal-demand")} ${load} / ${
+          `${count} ${t("ui.floorplan.mission.tooltip.signal-pieces")} · ${t(
+            "ui.floorplan.mission.tooltip.signal-consumption",
+          )} ${load} ${t("ui.floorplan.mission.tooltip.signal-of")} ${
             Number.isFinite(capacity) ? capacity : "∞"
           }`,
         signalOverloadedEmitter: t("ui.floorplan.mission.tooltip.signal-emitter-overloaded"),
@@ -3364,24 +3440,31 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private redrawQueuePanel(): void {
     const selectedId = this.interaction.selectedActorId;
-    const tasks: UnifiedQueueTask[] = [];
+    const entries: QueueRowInput<CrewTask>[] = [];
     this.mission.activeCrew.forEach((actor, index) => {
       for (const task of this.mission.scheduler.queueFor(actor.id)) {
         if (task.state === "completed") continue;
-        tasks.push({
-          taskId: task.id,
-          actorIndex: index,
-          actorName: actor.name,
-          label: task.targetSectionId
-            ? `${this.taskTypeLabel(task.type)} → ${task.targetSectionId}`
-            : this.taskTypeLabel(task.type),
-          state: task.state,
-          estimatedDurationSeconds: task.estimatedDurationSeconds,
-          elapsedSeconds: task.elapsedSeconds,
-          selected: actor.id === selectedId,
+        entries.push({
+          task,
+          row: {
+            taskId: task.id,
+            actorIndex: index,
+            actorName: actor.name,
+            label: task.targetSectionId
+              ? `${this.taskTypeLabel(task.type)} → ${task.targetSectionId}`
+              : this.taskTypeLabel(task.type),
+            state: task.state,
+            estimatedDurationSeconds: task.estimatedDurationSeconds,
+            elapsedSeconds: task.elapsedSeconds,
+            selected: actor.id === selectedId,
+          },
         });
       }
     });
+    // Ronda 4a de 14a-4: el orden y el anidado los decide una función pura
+    // (`buildQueueRows`), no la escena ni el widget — un árbol que miente sobre
+    // qué espera a qué no lo atrapa ningún smoke test visual.
+    const tasks = buildQueueRows(entries, (taskId) => this.mission.scheduler.blockReasonFor(taskId));
 
     if (this.queuePanel) {
       this.queuePanel.container.destroy(true);
@@ -3395,6 +3478,7 @@ export class FloorplanScene extends Phaser.Scene {
       QUEUE_PANEL_HEIGHT,
       tasks,
       t("ui.floorplan.mission.empty-queue"),
+      (reason) => t(`ui.floorplan.mission.block-reason.${reason}`),
     );
     this.queuePanel.container.setDepth(RENDER_DEPTH.hudContent);
     this.markAsHudObject(this.queuePanel.container);

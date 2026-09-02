@@ -1,7 +1,15 @@
 import type Phaser from "phaser";
-import type { CrewTaskId, TaskState } from "engine";
+import type { BlockingReason, CrewTaskId, TaskState } from "engine";
 import { UI_FONT_FAMILY } from "../fonts.js";
-import { CREW_TOKEN_COLORS, LABEL_COLOR, SELECTED_CELL_COLOR } from "../../render/palette.js";
+import {
+  CREW_TOKEN_COLORS,
+  CRISIS_FATAL_COLOR,
+  CRISIS_FATAL_CSS,
+  CRISIS_WARNING_COLOR,
+  CRISIS_WARNING_CSS,
+  LABEL_COLOR,
+  SELECTED_CELL_COLOR,
+} from "../../render/palette.js";
 
 /** Una tarea aplanada de la cola UNIFICADA (todos los tripulantes en una sola lista). */
 export interface UnifiedQueueTask {
@@ -13,6 +21,17 @@ export interface UnifiedQueueTask {
   readonly estimatedDurationSeconds: number;
   readonly elapsedSeconds: number;
   readonly selected: boolean;
+  /**
+   * Nivel de anidado (ronda 4a de playtest de 14a-4): 0 = tarea raíz, 1 = tarea
+   * que DEPENDE de la de arriba. Lo calcula `ui/queue-rows.ts`; el widget solo
+   * lo dibuja, como el resto de su contrato.
+   *
+   * Existe porque cancelar un movimiento bloquea la acción que lo seguía, y sin
+   * ver la relación esa cancelación parecía inocua.
+   */
+  readonly depth: number;
+  /** Por qué está bloqueada, si lo está. `undefined` en cualquier otro estado. */
+  readonly blockReason?: BlockingReason;
 }
 
 export interface QueueCancelHit {
@@ -22,6 +41,9 @@ export interface QueueCancelHit {
   /** Coords de PANTALLA (la cola no scrollea horizontal). */
   readonly xMin: number;
   readonly xMax: number;
+  /** Extremos de la FILA entera (14a-4 ronda 4a): el click derecho cancela desde cualquier punto. */
+  readonly rowXMin: number;
+  readonly rowXMax: number;
   readonly taskId: CrewTaskId;
 }
 
@@ -40,7 +62,15 @@ const ROW_HEIGHT = 26;
 const ROW_GAP = 4;
 const PADDING = 8;
 const CHIP_SIZE = 10;
-const CANCEL_HIT_WIDTH = 22;
+/**
+ * Ronda 4a de playtest de 14a-4: de 22 a 34 px. El operador no sabía que se
+ * podían cancelar tareas — la "×" existía en cada fila desde siempre, pero era
+ * un blanco chico que además no daba NINGUNA señal al clickearse. Una acción
+ * sin confirmación es indistinguible de una que no existe.
+ */
+const CANCEL_HIT_WIDTH = 34;
+/** Sangría por nivel de anidado (una tarea que depende de la de arriba). */
+const DEPTH_INDENT_PX = 14;
 /** Ancho reservado para el sufijo de tiempo ("99.9s" en el peor caso, a 10px). */
 const TIME_WIDTH = 34;
 
@@ -78,6 +108,8 @@ export function renderCrewQueue(
   height: number,
   tasks: ReadonlyArray<UnifiedQueueTask>,
   emptyQueueLabel: string,
+  /** Texto del motivo de bloqueo (14a-4 ronda 4a). El widget no traduce: recibe la función. */
+  blockReasonLabel?: (reason: BlockingReason) => string,
 ): CrewQueueHandle {
   const container = scene.add.container(0, 0);
 
@@ -111,17 +143,45 @@ export function renderCrewQueue(
   let rowY = 0;
   for (const task of tasks) {
     const color = CREW_TOKEN_COLORS[task.actorIndex % CREW_TOKEN_COLORS.length]!;
+    // Ronda 4a de 14a-4: sangría por nivel de anidado. `depth > 0` = esta tarea
+    // DEPENDE de la de arriba, así que cancelar aquella la bloquea — la
+    // consecuencia que antes era invisible y que el operador descubrió a la
+    // mala.
+    const indent = task.depth * DEPTH_INDENT_PX;
+    const rowWidth = contentWidth - indent;
 
     const bg = scene.add
-      .rectangle(0, rowY, contentWidth, ROW_HEIGHT, color, task.selected ? 0.28 : 0.14)
+      .rectangle(indent, rowY, rowWidth, ROW_HEIGHT, color, task.selected ? 0.28 : 0.14)
       .setOrigin(0, 0);
     if (task.selected) bg.setStrokeStyle(1, SELECTED_CELL_COLOR, 0.8);
     rowsContainer.add(bg);
 
+    // Conector con la fila de la que depende: sin él la sangría se lee como una
+    // decoración, no como una relación.
+    if (task.depth > 0) {
+      rowsContainer.add(
+        scene.add
+          .text(indent - DEPTH_INDENT_PX + 3, rowY + ROW_HEIGHT / 2, "└", {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "11px",
+            color: LABEL_COLOR,
+          })
+          .setOrigin(0, 0.5),
+      );
+    }
+
+    // Bloqueada: borde ámbar del contrato 12e (escalable, no fatal — se resuelve
+    // cancelándola) y su MOTIVO en el propio texto de la fila. Sin esto una
+    // tarea bloqueada para siempre se veía igual que una esperando su turno,
+    // que es lo que la hacía imposible de encontrar.
+    if (task.state === "blocked") {
+      bg.setStrokeStyle(1, CRISIS_WARNING_COLOR, 0.9);
+    }
+
     // Chip del color del tripulante (liga con el dot del mapa y el retrato).
     rowsContainer.add(
       scene.add
-        .rectangle(6, rowY + ROW_HEIGHT / 2, CHIP_SIZE, CHIP_SIZE, color, 1)
+        .rectangle(indent + 6, rowY + ROW_HEIGHT / 2, CHIP_SIZE, CHIP_SIZE, color, 1)
         .setOrigin(0.5)
         .setStrokeStyle(1, 0x0a0a0f, 1),
     );
@@ -133,15 +193,24 @@ export function renderCrewQueue(
     // sin avisar). Ahora el tiempo vive en un `Text` propio, anclado a la
     // derecha, así un nombre/label largo trunca ACÁ (visible, "…" implícito
     // por el corte de línea) sin volverse a comer el tiempo.
+    // Con motivo de bloqueo, el motivo REEMPLAZA al nombre del tripulante: es lo
+    // accionable, y la fila no da para las dos cosas sin volver a comerse el
+    // tiempo (el bug de Fase 11e que este `Text` ya arrastra documentado).
+    const blockedLabel = task.blockReason ? blockReasonLabel?.(task.blockReason) : undefined;
     rowsContainer.add(
       scene.add
-        .text(18, rowY + ROW_HEIGHT / 2, `${task.actorName} · ${task.label}`, {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "10px",
-          color: LABEL_COLOR,
-          wordWrap: { width: contentWidth - 18 - TIME_WIDTH - CANCEL_HIT_WIDTH },
-          maxLines: 1,
-        })
+        .text(
+          indent + 18,
+          rowY + ROW_HEIGHT / 2,
+          blockedLabel ? `${task.label} · ${blockedLabel}` : `${task.actorName} · ${task.label}`,
+          {
+            fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+            fontSize: "10px",
+            color: blockedLabel ? CRISIS_WARNING_CSS : LABEL_COLOR,
+            wordWrap: { width: rowWidth - 18 - TIME_WIDTH - CANCEL_HIT_WIDTH },
+            maxLines: 1,
+          },
+        )
         .setOrigin(0, 0.5),
     );
 
@@ -155,21 +224,44 @@ export function renderCrewQueue(
         .setOrigin(1, 0.5),
     );
 
-    // "×" de cancelar (visual); el hit lo resuelve la escena.
+    // Botón de cancelar. Ronda 4a: caja propia además del glifo, y los dos más
+    // grandes. Antes era una "×" de 14 px suelta sobre el fondo de la fila — el
+    // operador ni sabía que se podía cancelar. El resaltado al pasar por encima
+    // lo pone la escena sobre `cancelHitAreas`, que ya conoce la geometría.
     rowsContainer.add(
       scene.add
-        .text(contentWidth - 10, rowY + ROW_HEIGHT / 2, "×", {
+        .rectangle(
+          contentWidth - CANCEL_HIT_WIDTH,
+          rowY + 3,
+          CANCEL_HIT_WIDTH,
+          ROW_HEIGHT - 6,
+          CRISIS_FATAL_COLOR,
+          0.18,
+        )
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, CRISIS_FATAL_COLOR, 0.5),
+    );
+    rowsContainer.add(
+      scene.add
+        .text(contentWidth - CANCEL_HIT_WIDTH / 2, rowY + ROW_HEIGHT / 2, "×", {
           fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "14px",
-          color: LABEL_COLOR,
+          fontSize: "17px",
+          color: CRISIS_FATAL_CSS,
         })
-        .setOrigin(1, 0.5),
+        .setOrigin(0.5),
     );
     cancelHitAreas.push({
       yTop: rowY,
       yBottom: rowY + ROW_HEIGHT,
       xMin: contentLeft + contentWidth - CANCEL_HIT_WIDTH,
       xMax: contentLeft + contentWidth,
+      /**
+       * Ronda 4a: la fila ENTERA también cancela, con click derecho. La "×" es
+       * el camino descubrible; el click derecho es el cómodo, para no tener que
+       * apuntar a un blanco chico en una lista scrolleada.
+       */
+      rowXMin: contentLeft + indent,
+      rowXMax: contentLeft + contentWidth,
       taskId: task.taskId,
     });
 
