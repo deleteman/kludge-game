@@ -7,8 +7,8 @@ agent: Explore
  
 Objetivo: producir un mapa de arquitectura ACTUALIZADO y CONCISO, no una relectura completa del repositorio. El resultado debe poder leerse en menos de un minuto.
  
-1. Si existe `MAPA_DEL_CODIGO.md` en la raíz del proyecto, léelo primero. Es la fuente de verdad de lo que ya se sabe del código — no lo redescubras desde cero.
-2. Lee `ORDEN_DE_TRABAJO.md` (solo la sección de fase activa, no el historial de fases cerradas) para saber qué sigue y qué dominios del GDD toca.
+1. `MAPA_DEL_CODIGO.md` es la fuente de verdad de lo que ya se sabe del código — no lo redescubras desde cero. **Léelo por sección, no entero**: está agrupado por carpeta con un `## ` por dominio, así que primero `grep -n "^## "` para ver el índice y después lee solo las secciones que toca la fase que sigue.
+2. Lee `ORDEN_DE_TRABAJO.md` (solo la sección de fase activa; las cerradas están en `docs/historial/` y no se leen) para saber qué sigue y qué dominios del GDD toca.
 3. Compara: ¿qué módulos relevantes a la fase que sigue NO están cubiertos en `MAPA_DEL_CODIGO.md`, o pueden haber cambiado desde la última actualización del mapa? Explora SOLO esos, no el repo entero.
 4. Para cada módulo a explorar: usa Glob para ubicarlo, Grep para encontrar sus exportaciones públicas principales (clases/funciones/tipos), y lee completo solo el archivo que resulte claramente central para la fase que sigue. Evita leer archivos completos "por si acaso".
 5. Corre la suite de tests y reporta el estado base (qué pasa, qué falla) antes de tocar nada.

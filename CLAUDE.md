@@ -35,12 +35,7 @@ Documentación de referencia (leer antes de tocar el sistema correspondiente):
 - Localización: español e inglés desde el MVP. No hardcodear strings de UI ni de barks de tripulación directamente en el código — usar un sistema de claves de traducción desde el principio.
 - pip no aplica (proyecto Node/TS). Para paquetes npm, instalar normalmente; verificar disponibilidad antes de asumir una librería instalada.
 - **Arte**: sprites/tiles estáticos vienen de packs de pixel art externos (GDD 11.0), no se generan por código ni se pide a Claude que "dibuje" pixel art detallado. Lo que sí es código: partículas, flujo en conductos, movimiento por salto, iluminación, y el tinte en runtime para adaptar sprites genéricos al código de color por recurso.
-- **Cuando falte un sprite**: si una implementación requiere un asset visual que no existe todavía en el proyecto, no usar un placeholder en silencio y seguir — avisar explícitamente en la respuesta (qué sprite falta, para qué componente/entidad del GDD) e indicar la ruta exacta donde se espera que se coloque, siguiendo esta convención de carpetas en `/game/assets/sprites/`:
-  - `tiles/` — suelo, paredes, elementos del plano fijo.
-  - `components/<id-del-componente>.png` — un archivo por componente físico del catálogo (7.2-7.6), nombrado con el mismo id usado en los datos.
-  - `crew/` — base de tripulantes/enemigos (antes del tinte/personalización por código).
-  - `ui/` — chrome de paneles, iconos, bordes.
-  Mientras el sprite no exista, usar una textura placeholder generada por código (rectángulo de color sólido con el tag/id como texto) para no bloquear el desarrollo — nunca dejarlo como un `TODO` sin señalar.
+- **Cuando falte un sprite**: no usar un placeholder en silencio. Avisar explícitamente en la respuesta (qué sprite falta, para qué componente del GDD, y la ruta exacta donde va) y mientras tanto usar la textura placeholder generada por código — nunca un `TODO` sin señalar. Carpetas en `/game/assets/sprites/`: `tiles/` (plano fijo), `components/<id-del-componente>.png` (uno por componente, con el mismo id de los datos), `crew/`, `ui/`.
 
 ## Estándares de desarrollo, arquitectura y testeo
 
@@ -66,10 +61,13 @@ Cada vez que inicies el proceso de implementación, seguirás estos pasos **sin 
 2. Planificar la implementación (si ya no vienes con un plan de implementación dado), para esta planificación utiliza los criterios aprendidos del feedback del operador en `feedback-aprender-del-patron-de-playtest`.
 3. Solicitar al operador humano cualquier dato que no tengas claro, **debes minimizar tus assumptions al minimo** y preguntar antes de implementar nada.
 4. Implementar la tarea actual siguiendo las guías definidas en este y otros documentos.
-5. Cuando termines con la actividad actual, actualizar el archivo `ORDEN_DE_TRABAJO.md` marcando la tarea como cerrad.
-6. Mantendras un log de cambios en `changelog.log` en donde registraras la fecha del cambio, el detalle de lo que hicisite y la razón.
-7. Al cerrar cualquier fase o sub-fase, actualizar MAPA_DEL_CODIGO.md con los módulos nuevos o modificados — una línea por módulo, no un changelog. Es un paso de cierre, no opcional.
-8. al cerrar cualquier fase o sub-fase de iteracion, actualiza los criterios de diseño que tienes en `feedback-aprender-del-patron-de-playtest` a partir de lo que yo te doy como feedback del playtest para evitar esos problemas a futuro.
+5. Cuando termines con la actividad actual, actualizar `ORDEN_DE_TRABAJO.md` marcando la tarea como cerrada. Al cerrarla, mover el CUERPO de la subfase a `docs/historial/subfases-11-13-cerradas.md` y dejar solo su título con ✅ CERRADA y la fecha.
+6. Registrar el cambio (fecha, detalle, razón) en el changelog de su fase, `docs/changelog/fase-NN.log`. Se escribe con un **append por shell** (`cat >> ... <<'EOF'`), nunca con una edición de archivo: un append no obliga a leer el archivo entero antes de escribir.
+7. Al cerrar cualquier fase o sub-fase, actualizar `MAPA_DEL_CODIGO.md`: por cada módulo tocado se **ACTUALIZA su entrada existente**; solo se crea una entrada nueva si el módulo no estaba. Nunca una segunda entrada para el mismo archivo — el mapa dice qué existe hoy, el historial vive en el changelog. Es un paso de cierre, no opcional.
+8. Al cerrar cualquier fase o sub-fase de iteración, incorporar el feedback de playtest: el patrón nuevo se agrega SIEMPRE a `docs/PATRONES_PLAYTEST.md` (al final, y a su índice por eje); la memoria `feedback-aprender-del-patron-de-playtest` solo se toca si el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
+9. Los ítems de `PENDIENTES_OBSERVACIONES.md` que se resuelvan se marcan ✅ RESUELTO **y se mueven** a `docs/historial/pendientes-resueltos.md` en el mismo cambio.
+
+El skill `/cerrar-subfase` ejecuta los pasos 5 a 9 en una pasada con el método barato de cada uno.
 
 
 
@@ -78,6 +76,8 @@ Cada vez que inicies el proceso de implementación, seguirás estos pasos **sin 
 - Antes de delegar la exploración de un archivo a un subagente, decidir si el siguiente paso ya es editarlo. Si sí, leerlo directamente — delegar y luego releer el mismo archivo paga el costo dos veces. Los subagentes de exploración son para responder una pregunta puntual, no un paso previo a una edición ya decidida.
 - Al explorar varios archivos relacionados que se van a sintetizar en un mismo plan, agrupar en 2-3 agentes de alcance más amplio en vez de uno por archivo — cada spawn tiene overhead fijo de contexto frío y no comparte hallazgos con los demás.
 - Antes de leer un archivo completo para un cambio puntual (un método, una propiedad), usar Grep para localizar la región exacta y leer solo esa parte. Reservar la lectura completa para cambios que de verdad tocan el archivo de forma amplia.
+- `MAPA_DEL_CODIGO.md` se lee **por sección de carpeta**, no entero: está agrupado por dominio con un `## ` por carpeta. Lo mismo con `ORDEN_DE_TRABAJO.md`, del que solo se lee la fase activa.
+- Los archivos de `docs/historial/`, `docs/changelog/` y `docs/PATRONES_PLAYTEST.md` **no se leen salvo pedido explícito** o cuando se necesita un dato puntual — para eso, Grep. Son archivo, no contexto de trabajo.
 
 ## Qué NO hacer
 

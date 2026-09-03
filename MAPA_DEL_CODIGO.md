@@ -1,2113 +1,496 @@
 # Mapa del código
 
-Índice de módulos por dominio — una línea por módulo, actualizado al cerrar cada fase o sub-fase. No es un changelog (eso vive en `changelog.log`); acá solo qué existe y para qué.
-
-## `engine/src/enemies/` (Fase 11d.1)
-
-- `enemy-actor.types.ts` — `EnemyActor`: posición por celda, arquetipo (`armored`/`agile`), referencia a arma de catálogo, state machine de estado.
-- `enemy-route.types.ts` — `ScriptedRoute`/`RouteWaypoint`: ruta scripteada determinista por capítulo (celda + tiempo de arribo).
-- `route-progression.ts` — `cellAtElapsedSeconds`: resuelve la celda de un enemigo dado el tiempo de misión transcurrido (snap discreto, sin interpolar).
-- `weapon-damage.ts` — `weaponDamageSeverity`: traduce `ActuatorProperty.power`/`cadence` a severidad cualitativa de daño.
-- `combat-rule.ts` + `rules/melee-adjacency-rule.ts` + `rules/ranged-proximity-rule.ts` + `rules/combat-rule-registry.ts` — Strategy de rango de combate (cuerpo a cuerpo vs. a distancia), mismo molde que `crisis/crisis-rule.ts`.
-- `enemy-attack-resolver.ts` — `resolveEnemyAttack`: orquesta arma + reglas + `applyCrewDamage`, sin mutar estado.
-- `enemy-events.types.ts` — eventos de dominio (`enemy-advanced`/`enemy-attacked`/`enemy-defeated`), agregados a `DomainEvent`.
-
-## `engine/src/crew/` (modificado, Fase 11d.1)
-
-- `crew-actor.types.ts` — `CrewActor` gana `currentCell?: GridPosition` (posición por celda opcional, compartida con `EnemyActor`).
-- `crew-events.types.ts` — `CrewDamageCause` gana la causa `"enemy-attack"`.
-
-## `engine/src/components/catalog/composite/guerra.ts` (modificado, Fase 11d.1)
-
-- Nuevo componente `garra-de-abordaje` — arma cuerpo a cuerpo de referencia (solo `ACT`, sin `EM`), en contraste con `torreta-automatizada` (`EM`+`ACT`, a distancia).
-
-## `engine/src/mission/` (modificado, Fase 11d.2)
-
-- `mutable-enemy-state.ts` — `MutableEnemyState`: espejo de `MutableCrewState` (get/set/all) para el estado vivo de enemigos.
-- `enemy-threat-runtime.ts` — `EnemyThreatRuntime` (`Tickable`): avanza rutas y resuelve ataques de enemigo contra la tripulación en cada tick de misión, con cooldown por arma.
-- `mission-projectile-world.ts` — `occupantAt` ahora resuelve también contra `crew`/`enemies` opcionales (antes solo componentes colocados) — cierra el punto 4 de `PENDIENTES_OBSERVACIONES.md`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 11d.2)
-
-- `EnemyThreatRuntime` instanciado y registrado en `coreLoop` (tras `crisisRuntime`, antes de señales/proyectiles); expone `enemyState`/`enemyEvents`; pasa `crewState`/`enemyState` a `MissionProjectileWorld`.
-
-## `game/src/particles/effects/crew-death-effect.ts` (modificado, Fase 11d.2)
-
-- `weaponStrike` — variante mínima de partículas para `cause: "enemy-attack"` (placeholder, distinción por arquetipo/arma diferida a Fase 11d.3).
-
-## `game/src/enemies/enemy-tokens.ts` (nuevo, Fase 11d.3; modificado, fix post-11d.4)
-
-- `createEnemyToken`/`flashEnemyAttack`/`destroyEnemyToken` — token visual de enemigo (rectángulo placeholder por archetipo, distinto de los círculos de tripulación).
-- `enemyJumpSignature` — firma de salto por archetipo, para que `floorplan-scene.ts` la use al encadenar hops celda a celda. `hopEnemyToken` (salto directo A→B) quedó como fallback sin grilla transitable, ya no es el camino principal.
-
-## `game/src/render/render-depths.ts` (modificado, Fase 11d.3)
-
-- Nueva capa `enemyEntity: 4.2`, junto a `crewEntity`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 11d.3 + 11d.4 + fix post-11d.4)
-
-- `enemyTokens`, `initEnemyTokens()`, `handleEnemyEvent()` — Observer sobre `mission.enemyEvents` (avance/ataque/derrota de enemigo).
-- `travelEnemyToken()`/`enemySegmentDurationMs()` (fix post-11d.4) — encadenan un hop por celda (mismo mecanismo que `travelCrewToken`) repartiendo la duración real del tramo de ruta, en vez del salto directo A→B que se veía como teletransporte. `chainHops` generalizado para aceptar cualquier `HopTarget`/`JumpSignature`, no solo tripulación.
-- `update()` (fix post-11d.4, 2da y 3ra ronda) — sincroniza `crewState.currentCell` Y `currentSectionId` CADA FRAME desde la posición visual real del token de tripulación (`sectionContainingCell`), en vez del modelo por-tarea del scheduler (que solo actualiza sección al COMPLETAR un `go-to`, nunca durante un paso visual por una sección de tránsito).
-
-## `engine/src/enemies/campaign/chapter-02-enemy-seed.ts` (nuevo, Fase 11d.4; retocado, fix post-11d.4 2da ronda)
-
-- `CHAPTER_02_INTRUSO` + `CHAPTER_02_INTRUSO_ROUTE` — primer `EnemyActor`/`ScriptedRoute` de contenido real, capítulo 2, arquetipo exploración. `ENEMY_SEED_BY_CHAPTER_ID` — análogo a `CHAPTER_SEED_BY_ID` pero para enemigos. Ritmo de `arrivalSeconds` recalibrado a ~0.33s/celda tras playtest.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 11d.4 + fix post-11d.4)
-
-- Resuelve `ENEMY_SEED_BY_CHAPTER_ID` por `chapterProgress.currentChapterId`; ancla `crewState.currentCell` al centroide de sección solo como valor inicial de arranque (se corrige en el primer frame vía `floorplan-scene.ts::update()`) y lo persiste en `toUpdatedSave`.
-- `enemyRoutes` (fix post-11d.4) — expone la `ScriptedRoute` de cada enemigo para que `floorplan-scene.ts` calcule la duración real de cada tramo al animar.
-
-## `engine/src/chemistry/reaction/` (modificado, Fase 11e)
-
-- `unidentified-mixture-factory.ts` — el id de una "Mezcla sin identificar" pasa de un literal fijo (`reaction:unidentified`) a uno determinístico por unión ordenada de tags (incluye nivel para `TOX`/`CORR`); dos mezclas con distinto conjunto de tags ya no colisionan en el registro.
-- `mixture-hazard-preview.ts` (nuevo) — `deriveMixtureHazardPreview`: función pura que deriva el radio de combustión (según O2 de sección) y los segundos por nivel de degradación estructural de una mezcla, reutilizando las constantes ya existentes de `reaction-parameters.ts` sin inventar física nueva.
-
-## `engine/src/tasks/` + `engine/src/mission/ship-task-effect.ts` + `engine/src/crew/crew-affinity.ts` (modificado, Fase 11e)
-
-- Nuevo `TaskType`/`TaskPayload` `"analyze-substance"` ("Analizar Sustancia") + `TaskEffectResult.analyzedSubstanceId`, con su caso en `ship-task-effect.ts` (tarea de "revelar", no muta `shipState`/`atomicStock`) y reenvío en `TaskCompletedEvent`.
-- `crew-affinity.ts` — `"analyze-substance"` afín a especialidad `"medico"` (GDD: "identifica la composición más rápido"), sin gate duro — cualquier especialidad puede ejecutarla, solo cambia la duración.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 11e)
-
-- `queueAnalyzeSubstance`/`isSubstanceAnalyzed`/`hazardPreviewFor` — estado "analizada" durable en un `Set` (re-consultado en cada render, no un evento de un solo uso); `hazardPreviewFor` recalcula en vivo contra el O2 real de la sección indicada.
-
-## `game/src/ui/widgets/mission-action-panel.ts` + `game/src/mission/mission-interaction-controller.ts` (modificado, Fase 11e)
-
-- Nueva variante `"substance"` de `ActionPanelContent` (ficha + botón "Analizar sustancia") y lista de sustancias sintetizadas en el estado idle (`createKenneyList`) — primer consumidor real de `MissionRuntime.availableSubstances` (punto 9 de `PENDIENTES_OBSERVACIONES.md`, sin consumidor desde la Fase 11c.3).
-- `mission-interaction-controller.ts::buildSubstanceDetailLines`/`selectSubstance`/`refreshActionPanel` (público, llamado por `floorplan-scene.ts` en cada `task-completed` no-`go-to`).
-
-## `game/src/render/conduit-path.ts` (nuevo, Fase 11f)
-
-- `computeConduitPaths(floorplan, walkableGrid?)` — polilínea de cada conducto entre los centroides de sus dos secciones, vía `findPath`/`WalkableGrid` (reusa el pathfinding de tripulación de `crew/floorplan-pathfinding.ts`), simplificada a tramos rectos. Fallback a línea recta de 2 puntos sin `WalkableGrid`.
-
-## `game/src/mission/conduit-flow-heuristics.ts` (nuevo, Fase 11f / 11f.6)
-
-- `conduitFlowIntensity`/`computeSectionSignalActivity` — intensidad/actividad de flujo por conducto FÍSICO derivada de datos reales del motor (presión, `unpoweredSectionIds`, `signalGraph`+`outputOf`), nunca inventada; `fluido` reutiliza el booleano de energía de `electrico` a falta de un dato de caudal real (deuda técnica, `PENDIENTES_OBSERVACIONES.md` #10). Fase 11f.6: `signalWireFlowIntensity(edge, mission)` — mismo criterio pero para un `SignalEdge` (cable que arma el jugador): activo si `outputOf(edge.from)`, por NODO en vez de por sección.
-
-## `game/src/render/floorplan-renderer.ts` (modificado, Fase 11f)
-
-- `FloorplanRender` gana `conduitLayers` (un `Graphics` por `FloorplanLayerId`, exportado junto a `FLOORPLAN_LAYER_IDS`) y `conduitPaths`; `renderFloorplan` gana un 3er parámetro opcional `walkableGrid`. `drawConduit` descompuesto en `drawConduitLine` (polilínea nueva) + `drawConduitMarker` (círculo/válvula sellada de siempre).
-
-## `game/src/particles/effects/conduit-flow-effect.ts` (modificado, Fase 11f / 11f.4 / 11f.5 / 11f.6)
-
-- `createConduitPathFlowEffect(path, onTokenCreated?)` — Fase 11f.5: reescrito de emisor-por-segmento a "tokens viajeros" (`Image` con posición manual sobre la polilínea completa vía `cumulativeLengths`/`pointAtDistance`, no `ParticleEmitter`). 2 `FlowStream` simultáneos por conducto (path directo + invertido) cubren ambos extremos como origen; cada token tiene cabeza + 2 fantasmas de estela (offset de distancia fijo) y fade en los extremos; velocidad fijada al spawnear (el token en tránsito termina su viaje aunque el conducto se apague). El hook `FlowTokenHook` registra cada `Image` con la cámara de mundo (11f.3). `createConduitFlowEffect` (punto fijo, demo de galería) y `createFlowEmitter`/`flowFrequency`/`flowQuantity` (fix 11f.4: config de emisión completo, setters puntuales en vez de `setConfig`) siguen siendo el emisor-rocío de siempre, sin cambios. Fase 11f.6: `HEAD_SIZE_PX`/`GHOST_SIZES_PX` subidos (10/7→18/13/9, se perdían contra el fondo); `ConduitPathFlowState.visible` — el toggle de capa fuerza el alpha final a 0 (oculto real, no solo atenuado) sin pausar el spawn/avance interno.
-
-## `game/src/ui/widgets/floorplan-layer-toggle-panel.ts` (nuevo, Fase 11f)
-
-- `renderFloorplanLayerTogglePanel` — 5 botones de toggle (`createKenneyButton`+`setButtonHighlighted`), uno por `FloorplanLayerId` (4 `ConduitKind` reales + `"estructural"` placeholder).
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 11f / 11f.6 / 11f.7)
-
-- Botón "Capas" en el header abre/cierra un panel flotante (mismo patrón que `toggleObjectivesPanel`). `toggleFloorplanLayer`/`applyLayerAlpha` atenúan la línea estática (`CONDUIT_LAYER_INACTIVE_ALPHA`, `palette.ts`); el flujo animado en cambio se OCULTA por completo vía `ConduitPathFlowState.visible` (11f.6, no comparte el mismo factor de atenuación). `initConduitFlowEffects`/`updateConduitFlowEffects` arrancan y actualizan un `createConduitPathFlowEffect` por conducto FÍSICO. `walkableGrid` ahora se extrae antes de `renderFloorplan` (antes al revés). Fase 11f.6: `signalWireFlowEffects`/`syncSignalWireFlowEffects`/`updateSignalWireFlowEffects` — mismo patrón pero uno por `SignalEdge` (cable dinámico del jugador, clave `edge.id`), sincronizado en `create()` y tras cada `redrawOverlay()`. Fase 11f.7: `updateConduitFlowEffects`/`updateSignalWireFlowEffects` en el `update()` principal ahora solo corren dentro de `coreLoop.mode === "execution"` (antes corrían siempre) — los tokens en viaje se congelan en pausa, igual que proyectiles/atmósfera.
-
-## `engine/src/floorplan/conduit-connectivity.ts` (nuevo, Fase 11f.1)
-
-- `sectionsConnectedByConduit`/`findConduitRoute` — BFS sobre el grafo de secciones donde las aristas son conductos de un `kind` dado (multi-salto). Base de la mecánica de cableado restringido; `findConduitRoute` (devuelve la secuencia de conductos) la reusa el render del cable en `/game`.
-
-## `engine/src/workbench/port-wiring.ts` (modificado, Fase 11f.1)
-
-- `assertSignalWiringReachable(floorplan, graph, from, to)` + `SignalWiringUnreachableError` — regla de misión: un cable de señal solo cruza de sección a sección si hay camino de conductos `senal`. Vive aparte de `wireExternalPort` (operación pura de grafo) porque necesita geometría.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, Fase 11f.1)
-
-- `createShipTaskEffect` gana un 4º parámetro OPCIONAL `floorplan`; el caso `connect` valida `assertSignalWiringReachable` cuando se lo inyectan (el `MissionRuntime` real siempre lo pasa; opcional para no romper los tests unitarios).
-
-## `game/src/render/conduit-path.ts` (modificado, Fase 11f.1)
-
-- `computeSignalWireRoute` (rutea un cable de señal por los pasamuros de los conductos `senal` del cruce, vía `findConduitRoute`) + `routeThroughWaypoints` (helper compartido factorizado de `computeConduitPaths`).
-
-## `game/src/render/mission-overlay-renderer.ts` (modificado, Fase 11f.1)
-
-- El cable de señal se dibuja ruteado por conductos cuando cruza secciones (`drawSignalEdge`), no en recta; `renderMissionOverlay` gana `floorplan?`/`walkableGrid?`. Cierra la Observación #1.
-
-## `game/src/render/conduit-path.ts` (reescrito, Fase 11f.2)
-
-- Ruteo en espacio de PÍXELES (`PixelPoint`) con el marcador del conducto como vértice exacto; el cruce de pared usa celdas de aproximación transitables (`nearestSectionCell`) en vez de redondear el conducto a celda. `buildRoutedPath` (multi-salto vía `findConduitRoute`) reemplaza a `routeThroughWaypoints`. `computeConduitPaths`/`computeSignalWireRoute` devuelven `PixelPoint[]`. Corrige el desfasaje línea/marcador y que el cable cruzara por la puerta en vez del conducto.
-
-## `engine/src/ship-status/` (nuevo, Fase 11g)
-
-- `ship-status.types.ts` — `ShipStatusLevel` (`nominal`/`warning`/`critical`), `ShipStatusIndicator` (`level`+`fraction`), `ShipStatusSnapshot` (atmósfera/soporte vital/integridad de casco/energía).
-- `ship-status-aggregation.ts` — `fractionToLevel` (corte de 3 niveles, mismo criterio que `hpBarColor` de `crew-strip.ts`) + `aggregateAtmosphere`/`aggregateLifeSupport`/`aggregateHullIntegrity`/`aggregateEnergy`: agregación a NIVEL DE NAVE con criterio "peor sección/componente gana", reutilizando umbrales ya existentes (`REACTION_PARAMETERS.toxicity`, `RE_ORDER`) — ningún umbral nuevo.
-- `ship-status-runtime.ts` — `ShipStatusQuery`: consulta pull-based (no `Tickable`), mismos colaboradores que `MissionStructuralRuntime` (`MutableShipState`, `ShipFloorplan`, `MissionAtmosphereRuntime`, registries de componentes/químicos).
-
-## `game/src/ui/widgets/ship-status-hud.ts` (nuevo, Fase 11g)
-
-- `renderShipStatusHud` — HUD de estado permanente: 4 filas (atmósfera/soporte vital/integridad de casco/energía) con barra de color por fracción (`healthFractionColor`, `palette.ts`) + parpadeo en `critical` (`sectionScarFlickerAlpha`) + botón "Sustancias (N)".
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 11g)
-
-- `ShipStatusQuery` instanciado junto a `atmosphereRuntime`/`structuralRuntime`; expone `get shipStatus(): ShipStatusSnapshot` (pull-based, se recalcula en cada lectura).
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, Fase 11g)
-
-- El panel de acciones deja de ser DOCKED permanente: `hasContextualSelection` (reemplaza el chequeo `idle` disperso), `openSubstancesList()` (nuevo contenido `substances-list`, antes embebido en `idle`), `repositionActionPanel(point)` (reposiciona el `Container` ya construido, llamado cada frame por la escena). `redrawActionPanel` ya no monta nada en estado `idle`. `MissionInteractionGeometry` pierde `actionPanelX/Y` (el panel flota, no tiene posición fija).
-
-## `game/src/ui/widgets/mission-action-panel.ts` (reescrito, Fase 11g)
-
-- `renderMissionActionPanel` se construye en origen LOCAL (0,0) en vez de coordenadas absolutas — el llamador reposiciona el `Container` devuelto vía `setPosition()`. Nuevo contenido `ActionPanelContent.kind === "substances-list"` (antes vivía embebido en `idle`); `idle` ya no renderiza la lista de sustancias, solo mensaje corto.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 11g)
-
-- `redrawShipStatusHud()` — monta/redibuja el HUD permanente en el espacio que antes ocupaba el panel docked, con throttle por cambio de valor (redibuja siempre si algún indicador está `critical`, para animar el parpadeo). `updateActionPanelAnchor()` — convierte la celda seleccionada a coordenadas de pantalla (inversa de `cameras.main.getWorldPoint`) y reposiciona el panel flotante cada frame; sin celda (abierto desde el botón "Sustancias"), usa una posición fija dedicada (`SUBSTANCES_PANEL_POSITION`) en vez del clamp de seguimiento de celda. `isOverFixedUi` gana un chequeo de `actionPanelBounds` (el panel flotante puede estar sobre el mapa, a diferencia del docked).
-
-## `game/src/render/palette.ts` (modificado, Fase 11g)
-
-## `engine/src/components/catalog/atomic-component-catalog.ts` + `engine/src/properties/functional.types.ts` (modificados, Fase 11h)
-
-- 3 piezas atómicas nuevas: Indicador LED (1×1, `REC`, feedback binario), Pantalla LCD (2×1, `REC`, muestra valor real vía `lcd-display-value.ts`), Sensor de Presión (1×1, `EM`/`triggerType: "pressure"`). `functional.types.ts` documenta la sub-categoría conceptual "actuador de salida de información" (LED/LCD no producen trabajo físico, solo visualizan estado) sin agregar un tag nuevo al esquema.
-
-## `game/src/render/mission-overlay-renderer.ts` (modificado, Fase 11h)
-
-- Expone `ledIndicatorsByInstanceId`/(texto LCD por instancia): sprites/texto propios fuera del `graphics` bakeado del resto del overlay, para poder retintar el LED o actualizar el texto del LCD cada tick sin redibujar todo (`FloorplanScene.updateLedIndicators`, throttle de 250-500ms para el LCD).
-
-## `engine/src/mission/pressure-emitter-input-source.ts` (nuevo, Fase 11h)
-
-- `pressureAwareEmitterInputs` — resuelve la entrada de un emisor de señal por TAG funcional (`EM`/`triggerType==="pressure"`), no por identidad de componente (principio 1 de CLAUDE.md): busca el sensor de presión cableado a un nodo emisor y compara la presión real de su sección (`atmosphereOf`) contra el umbral configurado en su definición.
-
-## `engine/src/mission/lcd-display-value.ts` (nuevo, Fase 11h)
-
-- `resolveLcdDisplayValue` — resuelve qué valor real muestra una Pantalla LCD según la propiedad del nodo cableado (hoy: presión de sección); mismo criterio de resolución por tag, no por id de componente.
-
-## `engine/src/mission/seal-breach-pressure-sink.ts` (nuevo, Fase 11h; reescrito, feedback de playtest 2026-07-28)
-
-- `sealBreachPressureSink` — `SectionPressureSinkSource` que drena la sección mientras la junta hermética del escenario de fuga del Capítulo 1 está rota, y RECUPERA (tasa negativa) en cuanto vuelve a estar sellada. Identifica "¿está sellada?" por POSICIÓN + lista de `componentDefinitionId` aceptables (`SealBreachConfig`), no por `instanceId` — el flujo real de reparación del jugador (desmontar + instalar) crea una instancia nueva, así que identidad por instanceId nunca vería la reparación (mismo criterio que la resolución de crisis `replacement-installed-connected`).
-
-## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, Fase 11h; feedback de playtest 2026-07-28)
-
-- `tick()` aplica el `sinkSource` con clamp de DOS lados: `PRESSURE_SINK_FLOOR_KPA` (piso de fuga) y la nueva `PRESSURE_RECOVERY_CEILING_KPA` (techo = atmósfera estándar, 101 kPa) — antes la presión solo podía caer, nunca recuperarse sola.
-
-## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, feedback de playtest 2026-07-28)
-
-- 3ª resolución del Capítulo 1 (`replacement-installed-connected`, anclada en `sealPosition`): reparar la junta hermética pasa de attrezzo puro a objetivo FORMAL de la crisis. Nuevos exports por arquetipo: `CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE`, `CHAPTER_01_SEAL_SECTION_ID_BY_ARCHETYPE`, `CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS`, tasas de drenaje/recuperación.
-
-## `engine/src/ship-status/ship-status-aggregation.ts` (modificado, feedback de playtest 2026-07-28)
-
-- `aggregateAtmosphere` suma un factor `pressureFraction = pressureKpa / 101` al `worstFraction` ya existente (antes solo miraba concentración de gas tóxico) — una fuga de presión sin gas tóxico ahora también degrada el indicador "Atmósfera" del HUD.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, feedback de playtest 2026-07-28)
-
-- `installPickerHighlightCells` — footprint completo (todas las celdas ocupadas) de la opción enfocada en el picker de instalación, resuelto en la posición donde realmente encajaría (`findFittingInstallPlacement`, mismo criterio que `confirmInstall`) — antes el resaltado de instalación solo marcaba 1 celda, pudiendo tapar overlaps sin querer.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, feedback de playtest 2026-07-28)
-
-- `updateSelectedHighlight()` reescrito: pool de rectángulos (uno por celda ocupada, mismo patrón que `updateWireHighlights`) en vez de un único `Rectangle` de 1×1 fijo — pinta el footprint completo del picker de instalación cuando está abierto, o la celda seleccionada simple si no.
-
-## `game/src/render/palette.ts` (modificado, feedback de playtest 2026-07-28)
-
-- `LED_ACTIVE_TINT` cambia de verde (`0x64dc78`, reservado en el resto de la paleta para "todo bien") a ámbar de alerta (`0xe0a33f`, reutilizado de `jammed`/`planning`) — un LED de alarma en verde era semánticamente al revés. Fix acotado, sin tocar arquitectura; el MVP de color/condición configurable por instancia queda pendiente (`PENDIENTES_OBSERVACIONES.md` punto 15).
-
-- `healthFractionColor` — extraída de `crew-strip.ts` (antes `hpBarColor` local) para que el nuevo HUD de estado use el mismo corte de 3 niveles sin duplicar la función.
-
-## `engine/src/mission/mission-overload-runtime.ts` (nuevo, Fase 12a)
-
-- `MissionOverloadRuntime` — primer llamador de producción de `OverloadRule`; evalúa sobrecarga scripteada por contenido (`ScriptedOverloadSubject`, sin simulación de carga eléctrica real en el motor) y escribe la cicatriz `Blueprint.overloadedRefs` cuando `failureMode === "cut"`.
-
-## `engine/src/blueprint/blueprint.types.ts` / `blueprint-serializer.ts` (modificado, Fase 12a)
-
-- `Blueprint.overloadedRefs: ReadonlyArray<PlacedComponentInstanceId>` — cicatriz de sobrecarga, `schemaVersion` 4→5, con default `[]` en la migración de saves antiguos.
-
-## `engine/src/crisis/crisis-definition.types.ts` (modificado, Fase 12a)
-
-- `CrisisDefinition.scriptedOverloads?: ReadonlyArray<ScriptedOverloadSubject>` — fuente de `load`/`capacityOverride` para `MissionOverloadRuntime`, dato de guion (ausente = ningún capítulo lo usa todavía).
-
-## `engine/src/ship-status/ship-status-aggregation.ts` / `ship-status-runtime.ts` (modificado, Fase 12a)
-
-- `aggregateSectionHullIntegrity` + `ShipStatusQuery.sectionHullIntegrity` — integridad de casco de UNA sección (peor caso entre sus componentes anclados), consumida por la capa "estructural" del HUD del plano.
-
-## `game/src/particles/effects/dynamic-light.ts` (nuevo, Fase 12a)
-
-- `createDynamicLight` — generaliza el único precedente de luz aditiva del proyecto (`pointlight` en `combustion-effect.ts`) a un helper reusable para bursts y efectos persistentes, con `LightHook` (`particle-effect.types.ts`) para el registro contra `hudCamera.ignore()`.
-
-## `game/src/particles/effects/overloaded-conductor-effect.ts` (nuevo, Fase 12a)
-
-- `createOverloadedConductorEffect` — `StateDrivenEffect` de chispas + luz parpadeante en la posición de un conductor/reservorio sobrecargado; cicatriz sin retorno, nunca se detiene (`overloadedConductorFlickerIntensity`, `palette.ts`).
-
-## `game/src/render/floorplan-renderer.ts` (modificado, Fase 12a)
-
-- `drawStructuralLayer` — puebla `conduitLayers.estructural` (vacío desde la Fase 11f) con el tinte de RE degradado por sección (`STRUCTURAL_LAYER_COLOR`), redibujado cada frame por `floorplan-scene.ts`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12a)
-
-- `syncOverloadedConductorEffects` — crea/actualiza un efecto por instancia en `overloadedRefs`, nunca los remueve. `redrawScreenAlertOverlay` — overlay de alerta roja de pantalla completa (`hudCamera`), disparado por `ShipStatusSnapshot` crítico o un `overload` violento reciente; "combustión violenta" queda fuera del disparador (`CombustionEvent` sin llamador de producción, ver `PENDIENTES_OBSERVACIONES.md` punto 16).
-
-## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, fix post-cierre Fase 12a)
-
-- `CHAPTER_01_OVERLOAD_INSTANCE_ID` + `overloadedConductorPosition`/`unpoweredSectionId` (solo Exploración) — siembran un `cable-cobre` real + `scriptedOverloads`/`unpoweredSectionId` para que la iluminación dinámica de 12a sea verificable jugando, no solo en tests.
-
-## `game/src/particles/effects/environmental-damage-effect.ts` (modificado, fix post-cierre Fase 12a)
-
-- `electricArcEffect` gana un burst de `createDynamicLight` en el punto de impacto — antes solo partículas, sin luz aditiva. `EnvironmentalEffectObject` amplía su unión para incluir `PointLight`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, fix post-cierre Fase 12a)
-
-- `syncUnpoweredSectionLights` — `PointLight` violeta apagada por sección sin energía, una por sección, nunca removida. `crisisStartAlertUntilSeconds` — el overlay de alerta global también se dispara al inicio de la crisis (chequeado tanto de forma síncrona en `create()` como vía el evento `crisis-triggered` en vivo, porque el trigger de los capítulos actuales ya aplica antes de que la escena exista).
-
-## `game/src/audio/` (nuevo, Fase 12b)
-
-- `audio-asset-registry.ts` — tabla `key → URL` del pack real (`game/assets/audio/`), imports `?url` solo de las variantes usadas, `preloadAudioAssets` (mismo patrón que `ui-asset-registry.ts`). `AUDIO_KEYS` documenta los gaps de asset (sin siseo de fuga, zumbido eléctrico continuo, sirena ni paso metálico dedicados).
-- `audio-effect.types.ts` — `EventDrivenSound`/`StateDrivenSound`, análogos sonoros de `particles/particle-effect.types.ts`.
-- `phenomenon-sound-registry.ts` — `fireEventSound`, mapa Factory `DomainEvent["kind"] → EventDrivenSound` en paralelo a `EFFECTS_BY_KIND` (`particles/effect-registry.ts`); cubre `overload`/`combustion`/`corrosive-exposure`.
-- `audio-utils.ts` — `pickSoundKey`, análogo sonoro de `pickTexture` (variante al azar de una familia).
-- `bark-sound.ts` — `playBarkSound`, SFX corto por categoría de `BarkEventType` que acompaña la burbuja de texto ya existente (`bark-controller.ts`), no voz hablada.
-- `effects/overload-sound.ts`, `effects/combustion-sound.ts`, `effects/corrosion-sound.ts` — sonido event-driven gemelo de sus respectivos `particles/effects/*.ts`.
-- `effects/gas-leak-sound.ts` — `createGasLeakSound`, loop ambiental state-driven gemelo de `createGasLeakEffect` (volumen ∝ concentración), cableado en `floorplan-scene.ts::sectionAtmosphereEffects` con `.stop()` explícito en `SHUTDOWN` (un `Phaser.Sound` no se destruye solo al cambiar de escena).
-
-## `game/src/crew/bark-controller.ts` (modificado, Fase 12b)
-
-- `fire()` reproduce `playBarkSound` junto a la burbuja de texto.
-
-## `game/src/ui/widgets/kenney-button.ts` (modificado, Fase 12b — ampliación post-playtest)
-
-- Único punto de creación de botones rexUI: gana sonido de hover (`pointerover`) y click (`pointerdown`), heredado automáticamente por las 10 escenas de menú y todos los widgets de misión que ya usan `createKenneyButton`.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, Fase 12b — ampliación post-playtest)
-
-- `handleMapClick` reproduce sonido al seleccionar una celda válida; `onOpenInstallPicker`/`closeInstallPicker` reproducen apertura/cierre de modal.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12b)
-
-- `preloadAudioAssets` en `preload()`. `fireEventSound` junto a cada `fireEventEffect` (kinetic/signal/failure/crew events). `sectionAtmosphereEffects` gana `gasLeakSound`. Briefing de crisis reproduce apertura/cierre de modal. `task-completed` de tipo `install` reproduce sonido de instalación. Alarma puntual (`AUDIO_KEYS.alarm`) en los 3 disparadores del overlay de alerta visual de 12a (arranque con crisis activa, `crisis-triggered`, `overload` violento). `chainHops`/`stepAsideCrewToken` reproducen paso de tripulante, filtrado por `CREW_SIGNATURE` (no suena en enemigos).
-
-## `game/src/ui/ui-effects.ts` (nuevo, Fase 12c.1)
-
-- Helper de "juice" de UI: `popIn`/`slideOut`/`clickReaction`/`shake`/`flash`/`attachHoverJuice` — configuraciones de tween reutilizables por cualquier widget; `shake`/`flash` agitan un contenedor de UI de forma independiente al mapa.
-
-## `game/src/ui/custom-cursor.ts` (nuevo, Fase 12c.3)
-
-- `CustomCursor`: cursor contextual reactivo vía `setDefaultCursor(url(...))` con sprites del pack Kenney (`assets/sprites/ui/cursor/`). Deduplica por tipo para no pelear con el `useHandCursor` por objeto.
-
-## `game/src/render/crt-pipeline.ts` (modificado, Fase 12c.8)
-
-- `CrtPostFxPipeline` + `registerCrtPipeline`: filtro CRT en dos capas parametrizado por uniforms (`onPreRender`). Capa "Clean CRT" (scanlines/CA base/barrel/glow) por `uCrtIntensity`; capa "System Failure" (CA fuerte + flicker) por `uFailure`. Barrel/scanlines en coords globales (`gl_FragCoord`) → coherentes entre las dos cámaras. Alpha-preserving; solo WebGL. `registerCrtPipeline` devuelve la instancia (una por cámara) para que la escena fije los uniforms por frame.
-
-## `game/src/render/crt-settings.ts` (nuevo, Fase 12c.8)
-
-- Store vivo en memoria de `crtIntensity`/`flickerIntensity` (get/set + `hydrateCrtSettings`). Desacopla la lectura por-frame del CRT en `floorplan-scene` de la escritura en vivo del slider en `options-scene`, sin plumbear eventos entre escenas.
-
-## `game/src/particles/effects/phosphor-static-effect.ts` (nuevo, Fase 12c.8)
-
-- `firePhosphorStatic`: ruido de fósforo localizado sobre la celda averiada (capa "System Failure" en espacio de mundo). Devuelve emisores para que la escena los marque de mundo + depth (patrón `fireEnvironmentalDamage`). Severidad `minor`/`major`.
-
-## `game/src/ui/widgets/kenney-slider.ts` (nuevo, Fase 12c.8)
-
-- `createKenneySlider`: slider 0..1 con primitivas (el pack Kenney no trae track/thumb). `onChange` en vivo al arrastrar; limpia sus listeners de `pointermove`/`pointerup` en el SHUTDOWN. Usado por los controles de accesibilidad del CRT.
-
-## Fase 12c.8 — otros módulos tocados
-
-- `game/src/scenes/floorplan-scene.ts` (modificado): CRT a frame completo (`cameras.main` + `hudCamera`), driver por frame `updateCrtDriver` (rampa `crtFailureLevel` → `uFailure`) y `fireLocalStatic` en el suscriptor de `failureEvents`.
-- `game/src/scenes/options-scene.ts` (modificado): dos sliders de accesibilidad CRT (estético + parpadeo/fallo), hidratan el store vivo y persisten en "Volver".
-- `game/src/meta/game-settings.types.ts` (modificado): campos `crtIntensity`/`flickerIntensity` (clamp [0,1], defaults 0.7/1.0) en `GameSettings`/`DEFAULT_SETTINGS`/(de)serialize.
-- `game/src/i18n/{es,en}.ts` (modificado): claves `ui.menu.options.crt-intensity` / `ui.menu.options.flicker-intensity`.
-
-## `game/src/ui/widgets/crew-strip.ts` (modificado, Fase 12c.2)
-
-- Retratos centrados (origin 0.5) para poder animarlos; tinte de salud en reposo (`healthTint`); expone `portraits` por actor (`CrewPortraitObject`) para las reacciones de daño/muerte de la escena.
-
-## `game/src/ui/widgets/kenney-button.ts` (modificado, Fase 12c.1)
-
-- Gana `iconTextureKey`/`iconSize` (icono opcional junto al texto) y `attachHoverJuice` (feedback visual de hover/click, complementa el sonido de 12b).
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, Fase 12c.6)
-
-- `initialScrollT`/`onListReady`: preservan la posición de scroll de la lista al recrear el modal por una selección (deuda #2 de PENDIENTES).
-
-## `engine/src/components/physical-component.types.ts` (modificado, Fase 12c.5 — deuda #8)
-
-- Nuevo `CreationPart` (ref + offset + footprint + rotación por pieza) y `CompositeComponentData.layout?` — disposición para dibujar una creación con los sprites reales de sus partes.
-
-## `engine/src/workbench/creation-naming.ts` + `footprint-calculator.ts` (modificado, Fase 12c.5)
-
-- `nameAndRegisterCreation` puebla `data.layout` con el offset relativo de cada pieza; `calculateFootprintOrigin` (nuevo) devuelve el min corner del bounding box.
-
-## `game/src/render/mission-overlay-renderer.ts` (modificado, Fase 12c.5 — deuda #8)
-
-- `renderMissionOverlay` acepta un `resolveDefinition`; `drawCreationLayout` dibuja cada parte de una creación en su offset con su sprite real (fallback a placeholder por parte).
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12c)
-
-- Cursor contextual (`updateCursor`/`customCursor`), reacciones de retrato (`reactCrewPortrait`/`playAnalogStatic`/`syncCrewToxicOverlays`), overlay de alerta como viñeta (`ensureVignetteTexture`) + CRT sobre `hudCamera`, y recolección visible de elementos al desmontar (`fireElementCollection`/`fireCollectibleToWorkbench`).
-
-## `game/src/ui/widgets/notification-center.ts` (nuevo, Fase 12c.7)
-
-- `NotificationCenter`: pila de notificaciones transitorias arriba-centro del mapa (tipos info/success/warning/error con color de acento + sonido, popIn + auto-descarte, cap de 4). Objeto de HUD; `push({title, lines?, type})`.
-
-## `game/src/ui/custom-cursor.ts` (modificado, Fase 12c.7)
-
-- Exporta `UI_POINTER_CURSOR_CSS` (el sprite "selectable") para que botones y filas de lista usen el cursor custom en vez del puntero del sistema (obs #2).
-
-## `game/src/particles/effects/fabrication-effect.ts` (modificado, Fase 12c.7)
-
-- `dismantleEffect` reescrito: "bolas de energía" (orbes aditivos cian/dorados + chispas + humo tenue) y un `PointLight` pulsante (`createDynamicLight`, `lightHook` para el bug de doble-cámara). Reemplaza los escombros marrones.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, Fase 12c.7 — obs #4)
-
-- Desmontar una pieza ATÓMICA ahora la acredita al `atomicStock` y devuelve `obtained` con la propia pieza (antes se destruía sin acreditar) — habilita coleccionable + notificación como el compuesto.
-
-## `game/src/render/shadows/` (nuevo, Fase 12d.1)
-
-- `visibility-polygon.ts` — geometría PURA (sin Phaser): `raySegmentIntersection`, `castRay`, `computeVisibilityPolygon` (polígono iluminado por luz puntual, recortado al radio). Unit-testeado.
-- `occluder-edges.ts` — silueta de segmentos oclusores: `buildStaticOccluderEdges` (fusión de tramos colineales de la grilla walls∪objects), `rectEdges`/`worldBorderEdges`, y `extractOccluderGrid` (extracción del tilemap, mismo patrón que `walkable-grid.ts`).
-- `dynamic-shadows.ts` — `DynamicShadowLayer`: glue Phaser, dueño de una `RenderTexture` que se rellena de oscuridad y borra (ERASE) el polígono de visibilidad de cada luz → sombra arrojada con oclusión. Registro de luces (`addLight`), `setStaticOccluders`/`setDynamicOccluders`, `redraw()` por frame.
-
-## `game/src/render/render-depths.ts` (modificado, Fase 12d.1)
-
-- Nuevo `RENDER_DEPTH.dynamicShadows` (1.7): sobre suelo/decals, debajo de objetos/componentes/tripulación/paredes.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.1)
-
-- Alta de `DynamicShadowLayer` en `create()` (oclusores estáticos extraídos una vez); toda luz dinámica se registra vía el hook `registerLight` existente; `shadowLayer.redraw()` por frame en `update()`.
-
-## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.2 + 12d.3)
-
-- `setDynamicOccluders` (casters móviles) + luz ambiental global (`makeGlobalAmbientLight`, `AmbientLight`, `AMBIENT_CLEAR_ALPHA`): ERASE parcial para sombra base; clearAlpha de las dinámicas escala con su intensidad. `DYNAMIC_SHADOW_DARKNESS_ALPHA` (ex `_AMBIENT_ALPHA`). Sin marco del mundo en los oclusores estáticos.
-
-## `game/src/render/palette.ts` (modificado, Fase 12d)
-
-- `LED_LIGHT_RADIUS_PX` / `LED_LIGHT_INTENSITY`: parámetros de la luz que emite un LED encendido.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.2/12d.3 + LED)
-
-- `collectDynamicOccluderEdges` (componentes + tokens de tripulación/enemigos como casters); ambiental global en `create()`; `syncLedLight` en `updateLedIndicators` (el LED encendido emite `PointLight` real, participa de las sombras).
-
-## `game/src/render/shadows/authored-lights.ts` (nuevo, Fase 12d iteración post-playtest)
-
-- Loader de la capa de objetos Tiled `luces`: `loadAuthoredLights(scene, archetype)` (lee el object layer del tilemap efímero) + `toAuthoredLightSpec` puro (defaults + parseo de color hex, unit-testeado). Reemplaza la ambiental global de 12d.3.
-
-## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d iteración)
-
-- Eliminada la luz ambiental global (`makeGlobalAmbientLight`/`setAmbientLight`/`AmbientLight`/`AMBIENT_CLEAR_ALPHA`) — lavaba el contraste. La oscuridad vuelve a ser el default; solo la despejan luces reales.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d iteración)
-
-- Instancia las luces autoradas (`luces`) en `create()`; `syncLedLight` centra la luz en el sprite; `syncOverloadedConductorEffects` hace cleanup (`stop()`) al desmontar/desactivar el conductor.
-
-## `game/src/particles/effects/overloaded-conductor-effect.ts` + `game/src/render/palette.ts` (modificado, Fase 12d iteración)
-
-- Glow del conductor sobrecargado atenuado (scale/quantity/frequency/alpha) y radio de luz 36→64; LED atenuado (intensity 0.35, radio 52).
-
-## `game/src/render/shadows/shadow-settings.ts` (nuevo, Fase 12d.4)
-
-- Store vivo de `shadowIntensity` (0..1) — desacopla el slider de Opciones del `DynamicShadowLayer` que lo lee por frame. Mismo patrón que `crt-settings.ts`.
-
-## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.4)
-
-- `setIntensity` (aplica el slider, 0 = apagadas). Perf: cache de polígono por luz invalidado por `occludersVersion` (bump solo si los oclusores cambian, `segmentsEqual`), culling por viewport (`circleIntersectsRect`), short-circuit a intensidad 0.
-
-## `game/src/meta/game-settings.types.ts` + `options-scene.ts` + `i18n/{es,en}.ts` (modificado, Fase 12d.4)
-
-- `GameSettings.shadowIntensity` (default 1, clamp01); tercer slider "Sombras" en Opciones (clave `ui.menu.options.shadow-intensity`), hidratado/persistido con los de CRT.
-
-## `game/src/render/palette.ts` (modificado, Fase 12e)
-
-- Contrato de semántica de color de crisis (Eje A): `CRISIS_FATAL/WARNING/SAFE_COLOR` + `INFO_NEUTRAL_COLOR` (rojo/ámbar/verde/cian) como fuente canónica, con espejos CSS (`*_CSS`) y helper `hexToCss`. Consolida los 3 hex de rojo y el ámbar reusado; `healthFractionColor`, `LED_ACTIVE_TINT`, `CORE_LOOP_MODE_COLORS`, `COMPONENT_CONDITION_TINT.jammed`, `STRUCTURAL_LAYER_COLOR`, `TIMER_TEXT_COLORS`, `SELECTED_CELL_COLOR`, `OBJECTIVE_DONE_COLOR`, `SEALED_VALVE_COLOR` derivan de él.
-- Color por categoría de tag (Eje B, ortogonal): `TAG_CATEGORY_COLORS`/`TAG_CATEGORY_CSS` (funcional azul-acero / material bronce) — antes texto plano. El químico ya vivía en `CHEMICAL_TAG_COLORS`.
-
-## `game/src/render/palette.contract.test.ts` (nuevo, Fase 12e)
-
-- Guardia de regresión del contrato: los cortes de `healthFractionColor`, el LED activo (nunca verde — regresión #15), core-loop, condición/estructura/timer/válvula derivan del Eje A; el Eje B no colisiona con el A ni consigo mismo.
-
-## `game/src/ui/widgets/notification-center.ts` + `mission-tooltip.ts` + `install-picker-modal.ts` (modificado, Fase 12e)
-
-- `notification-center` consume el contrato (info/success/warning/error → `INFO_NEUTRAL`/`CRISIS_SAFE`/`CRISIS_WARNING`/`CRISIS_FATAL`) en vez de su tabla local. Tooltip y modal de instalación colorean las líneas de tag funcional/material con `TAG_CATEGORY_CSS` (Eje B).
-
-## `game/src/render/crew-sprite.ts` (nuevo, 2026-08-03)
-
-- Sprite genérico de tripulante para los tokens del PLANO (no la tira UI). `preloadCrewSprite` carga el PNG crudo (`crew/tripulante.png`, amarillo, mira a la izquierda); `ensureCrewTintTexture` deriva una vez una base GRIS CLARA en `CanvasTexture` (luminancia empujada a claro, alfa preservado) para que `setTint` rinda el color por personaje nítido. `faceX` (pura, testeada) resuelve el `flipX` de "mira hacia donde camina". `CREW_TOKEN_HEIGHT_PX` fija la altura del token.
-
-## `game/src/render/crew-sprite.test.ts` (nuevo, 2026-08-03)
-
-- 3 casos de `faceX`: derecha ⇒ voltea, izquierda ⇒ no, vertical puro ⇒ conserva la cara.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 2026-08-03)
-
-- `initCrewTokens` usa el `Image` teñido de `crew-sprite.ts` en vez del círculo placeholder; `dot` del mapa `crewTokens` pasa de `Arc` a `Image`. `faceHopTarget` aplica el volteo por dirección en `chainHops`/`stepAsideCrewToken` (no-op en enemigos). `flashCrewToken` adaptado a `Image` (displayHeight en vez de radius, pulso de escala relativo).
-
-## `game/src/render/crew-portrait-registry.ts` (modificado, 2026-08-03)
-
-- Excluye el basename `tripulante` del glob de retratos por-nombre: es el sprite genérico compartido, no un retrato de un tripulante llamado así.
-
-## `game/src/ui/widgets/crew-strip.ts` (modificado, 2026-08-03)
-
-- Cada tarjeta gana una franja de identidad de color (`IDENTITY_BAR_WIDTH`) en el borde izquierdo, siempre visible, con el mismo `CREW_TOKEN_COLORS[index]` que el token del mapa — para distinguir quién es quién sin depender del retrato.
-
-## Fase 12f — Fixes de playtest de 12d (2026-08-03)
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12f)
-
-- `activeHopTweens` (`Set<Phaser.Tweens.Tween>`) + `trackHopTween`: tracking de los tweens de salto de tripulación/enemigos en vuelo, pausados/reanudados en `update()` según `coreLoop.mode` (Obs 3). `redrawProjectileTokens` pasa un resolver `ref → componentDefinitionId` (vía `mission.loosePromoter`) a `renderProjectileTokens` (deuda #5).
-- `knownProjectileRefs` (`Set<string>`) + `syncNewlyPromotedProjectiles` (fix post-QA, deuda #5): detecta una promoción nueva a proyectil suelto (mismo tick que la instalación) y fuerza `redrawOverlay()` para borrar el sprite fantasma que quedaba pegado en la celda.
-
-## `game/src/enemies/enemy-tokens.ts` (modificado, Fase 12f)
-
-- `hopEnemyToken` pasa de `void` a devolver el `Phaser.Tweens.Tween` de `hopMove`, para que el llamador pueda trackearlo y pausarlo en modo `planning` (Obs 3).
-
-## `game/index.html` + `game/src/main.ts` + `game/src/scenes/boot-scene.ts` (modificado, Fase 12f)
-
-- Fix de fullscreen en negro (Obs 7): contenedor `#game-root` con tamaño explícito como `scale.parent`/`scale.fullscreenTarget`; `BootScene` fuerza `scale.refresh()` en `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN`.
-
-## `engine/src/mission/loose-ferromagnetic-promoter.ts` (modificado, Fase 12f)
-
-- `definitionByRef` (`Map<ref, ComponentId>`) + `definitionIdForRef(ref)`: conserva el `componentDefinitionId` de catálogo de cada pieza promovida a proyectil suelto, sin tocar `ProjectileBody`/`kinetics/` (deuda #5).
-
-## `game/src/render/projectile-renderer.ts` (modificado, Fase 12f)
-
-- `renderProjectileTokens` recibe un resolver `(ref) => componentDefinitionId | undefined` y dibuja el sprite real de la pieza (`componentTextureKey`/`hasComponentSprite`) antes de caer al círculo placeholder (deuda #5).
-
-## `game/src/ui/widgets/crew-select-card.ts` (nuevo, Fase 12g)
-
-- `renderCrewSelectCard`: tarjeta de selección de tripulante (retrato con fallback de color, nombre, especialidad/tier, rasgo, descripción). Hermana de `crew-strip.ts` (10b) pero sin barra de HP y con bloque de descripción — layout de grilla vertical, no tira horizontal.
-
-## `game/src/ui/widgets/ship-archetype-card.ts` (nuevo, Fase 12g)
-
-- `renderShipArchetypeCard`: tarjeta de selección de arquetipo (imagen exterior con fallback de color + id de arquetipo, nombre propio, nombre de arquetipo, descripción, pros/cons en columna única con wrap dinámico — evita el solape que dejaba un offset fijo o dos columnas lado a lado con texto largo en español).
-
-## `game/src/meta/ship-archetype-metadata.ts` (nuevo, Fase 12g)
-
-- `SHIP_ARCHETYPE_METADATA`: mapa `ShipArchetype → { properNameKey, descriptionKey, proKeys, conKeys }` (claves i18n, no texto). Vive en `/game` porque es flavor/presentación, no dato de motor.
-
-## `game/src/render/ship-image-registry.ts` (nuevo, Fase 12g)
-
-- `hasShipImage`/`shipImageTextureKey`/`preloadShipImages`: registro de imagen exterior por arquetipo, mismo patrón `import.meta.glob` que `crew-portrait-registry.ts`. Carpeta `game/assets/sprites/ships/` creada vacía en esta fase — sin sprites reales todavía, cae siempre al placeholder de color.
-
-## `game/src/scenes/crew-select-scene.ts` (modificado, Fase 12g)
-
-- Reemplaza la lista de botones de texto por una grilla de `renderCrewSelectCard` (2 columnas), con entrada escalonada (`popIn`).
-
-## `game/src/scenes/archetype-select-scene.ts` (modificado, Fase 12g)
-
-- Reemplaza los botones de texto por una grilla de `renderShipArchetypeCard` (2×2), con entrada escalonada (`popIn`).
-
-## `game/src/scenes/title-scene.ts` (modificado, Fase 12g)
-
-- `cameras.main.fadeIn` al entrar + `popIn` escalonado en los 6 botones del menú (antes aparecían sin animación). Fix de paso: el botón "Continuar" (creado dentro de un `.then()`) capturaba la `y` compartida con el resto de botones sync, que para cuando el microtask corría ya había avanzado hasta el valor final — quedaba dibujado encima de "Salir"; ahora se captura en una constante antes del `await`.
-
-## `game/src/i18n/es.ts` + `game/src/i18n/en.ts` (modificado, Fase 12g)
-
-- Claves nuevas `crew.specialty.*`/`crew.trait.*`/`crew.tier.*` (etiquetas legibles) y `ship.<archetype>.properName`/`.description`/`.pro.N`/`.con.N` (placeholder redactado por Claude, reemplazable por el operador). Las descripciones de tripulante (`crew.<slug>.description`) ya existían de una fase anterior, sin usar hasta ahora.
-
-## `engine/src/geometry/line-of-sight.ts` (nuevo, Fase 13a)
-
-- `hasLineOfSight(from, to, blocked: CellBlockedQuery)`: raycast tipo Bresenham entre dos celdas, lógica pura sin Phaser/Tiled. `CellBlockedQuery` es el puerto mínimo de "¿esta celda está bloqueada?" que `/game` implementa concretamente sobre su `WalkableGrid`.
-
-## `engine/src/mission/motion-emitter-input-source.ts` (nuevo, Fase 13a)
-
-- `motionAwareEmitterInputs(shipState, actorPositions, blocked, base)`: `EmitterInputSource` que resuelve `triggerType: "optical"` (`fotorreceptor`, reusado como sensor de presencia) contra la posición real de tripulación/enemigos vivos, por rango Manhattan + `hasLineOfSight`. Mismo patrón de envoltorio parcial que `pressure-emitter-input-source.ts` (Subfase 11h).
-
-## `engine/src/mission/mission-reaction-runtime.ts` (nuevo, Fase 13a)
-
-- `MissionReactionRuntime` (`Tickable`): primer llamador de producción de `ReactionResolver` fuera de la mesa de creación. Evalúa `CrisisDefinition.scriptedReactions` cada tick con `oxygen` real de sección y `ignitionPresent` real para el trigger `"overload-bridge"` (se suscribe a `failureEvents`, resuelve `OverloadEvent.ref` → sección). Cicatriz sin retorno: un `subject.id` que combustiona no se re-evalúa.
-
-## `engine/src/crisis/crisis-definition.types.ts` (modificado, Fase 13a)
-
-- `ScriptedReactionSubject` (reactivos + `sectionId` + `ignitionTrigger`) y `CrisisDefinition.scriptedReactions?`, mismo criterio narrativo/data-driven que `ScriptedOverloadSubject` (Fase 12a).
-
-## `engine/src/chemistry/reaction/reaction-events.types.ts` (modificado, Fase 13a)
-
-- `CombustionEvent.sectionId?: SectionId` opcional — lo llena `MissionReactionRuntime` al emitir (no `CombustionRule`, que sigue sin noción de mundo), para que `/game` sepa dónde posicionar el efecto/overlay.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 13a)
-
-- `setMotionBlockedQuery(query)` + composición de `motionAwareEmitterInputs` en `emitterInputs` (junto a `pressureAwareEmitterInputs` ya existente). `reactionEvents`/`reactionRuntime` nuevos, mismo patrón que `failureEvents`/`overloadRuntime` (Fase 12a).
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13a)
-
-- Llama `mission.setMotionBlockedQuery(...)` tras `extractWalkableGrid` (adapta `WalkableGrid` al `CellBlockedQuery` del motor). Nuevo listener de `reactionEvents` (mismo patrón que `failureEvents`): dispara `combustionEffect`/`combustionSound` (ya existían, sin llamador real hasta ahora) y extiende el overlay de alerta de pantalla completa a combustión no-débil.
-
-## `engine/src/power/power.types.ts` (nuevo, Fase 13b)
-
-- `PowerState`/`SectionPowerAllocation`/`InstancePowerPriority`/`emptyPowerState()`. Estado dinámico del presupuesto de energía: asignación de unidades por sección, prioridad manual por instancia, y `permanentlyDisconnectedSectionIds` (cicatriz real, distinta del déficit táctico de sesión).
-
-## `engine/src/power/power-source.ts` (nuevo, Fase 13b)
-
-- `totalPowerBudget(placedComponents, componentRegistry)`: suma `powerUnits` de toda instancia RES(E) instalada. "Conectada" = instalada (mismo MVP sin simulación de cableado físico que el resto del dominio de misión).
-
-## `engine/src/power/power-allocation.ts` (nuevo, Fase 13b; modificado, fixes post-playtest rondas 2 y 4)
-
-- Reparto en dos niveles, funciones puras testeadas antes de integrar: `allocateSectionBudget` (global→sección — `darkSectionIds` es informativo, no gatea nada por sí solo), `allocateComponentPower` (sección→componentes, ordena por prioridad con desempate determinista por `instanceId`, consume por `powerDraw`). `reconcilePowerScars`/`distributeBudgetEvenly` (ronda 1) eliminados en la ronda 2 — sin caller tras desacoplar la cicatriz permanente del déficit vivo (ver `mission-power-runtime.ts`).
-- Ronda 4: ante déficit ya no recorta proporcionalmente — apaga secciones de MENOR a MAYOR asignación hasta que el resto entre (desempate por `sectionId`); un único sobreviviente que excede el presupuesto se recorta en vez de apagarse. Devuelve además `shortfallUnits` y `shedSectionIds`. No toca `sectionAllocations`: la reconciliación es no destructiva.
-
-## `engine/src/power/power-events.types.ts` (nuevo, fix post-playtest ronda 4 de 13b)
-
-- `PowerShortfallEvent`/`PowerDomainEvent`: el jugador tiene más energía repartida que la que la nave entrega. El motor ya resolvió el conflicto; el evento existe para que `/game` lo comunique. Sumado a la unión agregada `DomainEvent` (`index.ts`).
-
-## `engine/src/power/mission-power-runtime.ts` (nuevo, Fase 13b; modificado, fixes post-playtest rondas 2 y 3)
-
-- `MissionPowerRuntime` (`Tickable`, molde de `MissionOverloadRuntime`). Implementa `PowerScarSource` e `InstancePowerSource` (`mission-signal-runtime.ts`). `Blueprint.unpoweredSectionIds` refleja SOLO `powerState.permanentlyDisconnectedSectionIds` (ronda 2 — ya no unión con déficit vivo). `sectionHasNoPowerGranted(sectionId)`: señal puramente cosmética (déficit vivo, sin excepciones) para el efecto visual ambiental, desacoplada del gating real.
-- `recalculate()` público (ronda 3): el recálculo NO puede depender solo de `tick()`, porque `CoreLoopModeMachine` es NO-OP en modo `planning` y los controles de energía solo existen en pausa. `tick()` delega en él.
-- Ronda 5: implementa además `PowerSupplySource` (`grantedTotalUnits()`/`requestedTotalUnits()`) — alimenta el indicador de energía del HUD.
-- Ronda 4: cachea `grantedBySectionId`/`shortfallUnits` (`sectionPowerGranted()`, `powerShortfallUnits()`) y emite `PowerShortfallEvent` POR FLANCO — solo cuando el faltante aparece o cambia de magnitud, no en cada recálculo. Guarda el último `elapsedSeconds` visto en `tick()`, porque `recalculate()` no recibe `TickContext`.
-
-## `engine/src/properties/functional.types.ts` (modificado, Fase 13b)
-
-- `ReservoirProperty.powerUnits?` (unidades de presupuesto de una fuente RES(E)) y `ActuatorProperty.powerDraw?` (costo eléctrico), ambos opcionales/retrocompatibles.
-
-## `engine/src/blueprint/blueprint.types.ts` + `blueprint-serializer.ts` (modificado, Fase 13b)
-
-- `Blueprint.powerState: PowerState` nuevo (`schemaVersion` 5→6). `unpoweredSectionIds` pasa de cicatriz autoritativa a campo DERIVADO (recalculado por `MissionPowerRuntime`); sigue siendo el único campo público que consumen `MissionSignalRuntime`/UI. Serializer valida/defaultea `powerState` para saves pre-v6.
-
-## `engine/src/mission/mission-signal-runtime.ts` (modificado, Fase 13b)
-
-- Nueva interfaz `InstancePowerSource` (gating por instancia, más fino que `PowerScarSource` por sección) — `outputOf()` fuerza `false` si la instancia dueña del nodo no está alimentada, aunque su sección sí tenga presupuesto.
-
-## `engine/src/save/campaign-save-factory.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
-
-- `powerState.sectionAllocations` arranca `[]` (ronda 2 — revierte el auto-reparto de la ronda 1, ya no hace falta como red de seguridad porque el gating real no depende del déficit vivo); `permanentlyDisconnectedSectionIds` arranca `[]` (se quitó la siembra de la demo "taller", ver `chapter-01-primer-aviso.ts`).
-
-## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, fix post-playtest ronda 2 de 13b)
-
-- Quitado `Chapter01ArchetypeParams.unpoweredSectionId` y el export `CHAPTER_01_UNPOWERED_SECTION_ID_BY_ARCHETYPE` — la demo de "taller" (attrezzo de Fase 12a) no era contenido narrativo real; reemplazada por una fuente real sembrada en `initial-ship-state.ts`.
-
-## `engine/src/floorplan/initial-ship-state.ts` (+ `initial-ship-state.test.ts` nuevo) (modificado, fixes post-playtest rondas 2 y 3 de 13b)
-
-- `starterKit(archetype)` gana el parámetro `archetype`: solo para `"exploracion"` siembra fuentes reales de energía. Ronda 3: 5× `celula-fotovoltaica` (footprint 1×2, `powerUnits: 2`) = **10 unidades** — 3 en `ingenieria` y 2 en `propulsion` (`ingenieria` tope real 6: solo 3 pares verticales libres). Celdas verificadas contra `nave-exploracion.json`, en `EXPLORACION_POWER_SOURCE_CELLS`.
-
-## `engine/src/ship-status/ship-status-aggregation.ts` + `ship-status-runtime.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 5)
-
-- Comentarios actualizados: `aggregateEnergy` ya no es MVP-stub, la fórmula no cambió pero `unpoweredSectionIds` ahora es un valor real derivado, no un flag estático.
-- Ronda 5: `aggregateEnergy` recibe `EnergyAggregationInput` (objeto, no 4 números posicionales) y devuelve el PEOR de dos señales — cicatriz permanente y suministro/demanda (`granted/requested`). `requestedUnits === 0` = nominal, la condición que impide revivir el bug de "todo crítico al arrancar" de la ronda 1. Sin esto el indicador quedaba muerto (siempre 100%). El dato entra por `PowerSupplySource`, interfaz angosta y opcional implementada por `MissionPowerRuntime`.
-
-## `engine/src/components/catalog/{atomic-component-catalog,composite/*}.ts` (modificado, Fase 13b)
-
-- `powerUnits` autorado en las 8 fuentes `RES(E)` reales del catálogo (atomic + 4 composite por arquetipo).
-
-## `game/src/render/palette.ts` + `floorplan-renderer.ts` (modificado, Fase 13b)
-
-- `ENERGY_LAYER_COLOR`/`ENERGY_LAYER_ALPHA` (deriva del Eje A de color). `FloorplanLayerId` gana `"energia"`; `drawEnergyLayer()` (plantilla de `drawStructuralLayer`) pinta rojo/ámbar por sección según déficit.
-- Ronda 6: `POWER_BLOCKED_FLASH_COLOR` (= `CRISIS_FATAL_COLOR`, rojo de bloqueo del contrato) para el destello de rechazo del slider, con aserción en `palette.contract.test.ts`.
-
-## `game/src/audio/audio-asset-registry.ts` (modificado, fix post-playtest ronda 6 de 13b)
-
-- Clave `uiDenied` (acción rechazada por la UI) mapeada a los assets de error YA cargados (`sfx-ui-error-*`, compartidos con `barkFailureOrInjury`) — sin assets nuevos.
-
-## `game/src/ui/widgets/power-allocation-slider.ts` (nuevo, fix post-playtest ronda 2 de 13b — reemplaza `power-allocation-dial.ts`, borrado; modificado ronda 3)
-
-- `renderPowerAllocationSlider`: slider entero de arrastre por sección (molde de `kenney-slider.ts`), consciente de cámara (`getWorldPoint`, objeto de mundo no HUD) y con `destroy()` explícito de sus propios listeners de `scene.input` — necesario porque se destruye/reconstruye muchas veces por sesión, a diferencia del slider de `options-scene.ts`.
-- Ronda 3: el track abarca `0..maxUnits` (presupuesto total, ancho con el mismo significado en todas las secciones) pero el arrastre se topa en `capUnits`; el tramo bloqueado se pinta con `LOCKED_COLOR` propio. Etiqueta `N/total · P%`. `setCap(capUnits)` reajusta el tope sin destruir el widget.
-- Ronda 4: relleno partido pedido vs. otorgado — azul hasta `grantedUnits`, ámbar (`ENERGY_LAYER_COLOR.deficit`) de ahí al pedido. `setGranted(n)` lo refresca sin destruir el widget. Sin déficit el tramo ámbar mide 0.
-- Ronda 5: el pedido ya NO se clampea al presupuesto (lo tapaba: dos zonas con 3 y 7 mostraban ambas "2/2"). La escala del track es `max(1, maxUnits, units)` — fijada al construir, no se recalcula en el arrastre. `capUnits` limita solo el arrastre. El `· P%` se muestra solo cuando el pedido entra en el presupuesto.
-- Ronda 6: señal de rechazo al chocar contra el tope (antes era silencioso y el slider parecía roto) — `signalBlocked()` throttleado a 500 ms: sacudón del thumb, destello con `POWER_BLOCKED_FLASH_COLOR` y sonido `uiDenied`; la etiqueta muestra "Sin energía libre" ~1s. `LOCKED_COLOR` con más contraste (neutro, no rojo: aparece casi siempre). `destroy()` cancela timer y tweens.
-- Ronda 7: `setLabel(texto, color)` mide y encoge la fuente si el texto no entra en `maxLabelWidth` (robusto frente a i18n); el mensaje de bloqueo va en `CRISIS_FATAL_CSS`, el mismo rojo del destello. `LABEL_OFFSET_Y` a `-24` — antes la etiqueta se salía por arriba del panel.
-- Ronda 8: el mensaje de bloqueo se dibuja sobre un badge casi negro dimensionado al texto medido — el rojo del contrato sobre el gris del panel daba ~1.3:1 de contraste; sobre el badge sube a ~4.5:1 sin salirse de las constantes canónicas. Piso del auto-encogido a 10px (el mensaje caía en el anterior de 8px).
-
-## `game/src/ui/widgets/power-priority-list.ts` (nuevo, Fase 13b)
-
-- `renderPowerPriorityList`: inspector de prioridad de una sección, lista con botones ↑/↓ por fila — opción más simple del diseño cerrado, sin drag-and-drop.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
-
-- `powerRuntime: MissionPowerRuntime` nuevo, registrado en el core loop antes de `signalRuntime`. Getters/setters para la UI: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`, y (ronda 2) `sectionHasNoPowerGranted`.
-- Ronda 3: `setSectionPowerUnits`/`reorderInstancePriority` llaman `powerRuntime.recalculate()` de forma síncrona — el core loop no tickea en pausa, que es cuando se opera la UI de energía.
-- Ronda 4: emisor `powerEvents` (déficit de energía) + getters `sectionPowerGranted`/`powerShortfallUnits`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 13b; modificado, fix post-playtest ronda 2)
-
-- Redibuja la capa "energia" cada frame (mismo criterio que "estructural"). Slider/inspector de prioridad se reconstruyen bajo demanda (toggle de capa, cambio de modo) — `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`, usa `renderPowerAllocationSlider` (ronda 2). Nuevo campo `energyControlWorldBounds` + chequeo en `isOverFixedUi()` (ronda 2, fix de click bleed-through, mismo patrón que `actionPanelBounds`). `redrawUnpoweredSectionScar`/`syncUnpoweredSectionLights` consumen `mission.sectionHasNoPowerGranted()` en vez de `blueprint.unpoweredSectionIds` (ronda 2).
-- Ronda 3: `unallocatedPowerUnits()`/`syncEnergySliderCaps()` imponen el tope global del reparto (los sliders de las otras secciones se reajustan sin reconstruirse). Constante `ENERGY_CONTROL_BOX`, fuente única de la que se derivan el panel de fondo (`createKenneyPanel`) y `energyControlWorldBounds`.
-- Ronda 4: suscripción a `mission.powerEvents` → aviso de déficit por el `NotificationCenter`; `syncEnergySliderCaps` refresca además lo otorgado en todos los sliders.
-- Ronda 7: `ENERGY_CONTROL_BOX` gana `padding` y crece a 120×90 con las 3 piezas re-espaciadas (la etiqueta se salía del panel); `ENERGY_CONTROL_SHADOW` + un segundo `createKenneyPanel` tintado de negro hacen de sombra dura, sin shaders (hay un cluster por sección).
-
-## `engine/src/wear/` (nuevo, Fase 13c)
-
-- `wear.types.ts`: `ComponentWear` (`nuevo`/`usado`/`degradado`/`critico`), `WEAR_ORDER`, `wearSteps`, `worsenWear`, `worstWear`. Eje ortogonal a `ComponentCondition`. No existe función inversa a propósito (principio 5: sin undo gratuito).
-- `effective-resistance.ts`: `effectiveResistance(catalogRE, wear, legacyOverride?)` — punto ÚNICO donde el desgaste entra en el cálculo estructural; antes la fórmula estaba replicada en 3 sitios. Mapeo 1:1 (un escalón de desgaste = un escalón de RE) + retrocompat de la cicatriz `structuralResistanceOverride` de saves ≤ v6 (gana el peor de los dos ejes).
-- `overload-capacity.ts`: `wornCapacity(capacity, wear)` = −15% por escalón. Así el desgaste sube el riesgo de fallo catastrófico sin meter azar en el tick de simulación.
-- `dismantle-wear.ts`: `wearAfterDismantle` — probabilidad de conservar el estado al canibalizar, reutilizando `atomicRecoveryFraction` (GDD §6.5) como probabilidad por pieza. Sin `RandomSource` inyectado nunca degrada.
-
-## `engine/src/simulation/random-source.ts` (nuevo, Fase 13c)
-
-- `RandomSource` (tipo inyectable), `sequenceRandom` (secuencia fija para tests), `systemRandom`. Primer y único azar del motor; se inyecta para que los casos de validación sigan siendo reproducibles.
-
-## `engine/src/properties/material-order.ts` (nuevo, Fase 13c)
-
-- `RE_ORDER`/`CE_ORDER`/`CT_ORDER` + `worstResistance`/`bestConductivity`/`bestThermalConductivity`. El orden canónico de niveles de material, antes un array local de `structural-failure.ts`.
-
-## `engine/src/workbench/creation-material-aggregation.ts` (nuevo, Fase 13c — deuda #6)
-
-- `aggregateCreationMaterial`: RE = peor de las partes, MAG = OR, CE/CT = mayor, ES = mayoritario. Consumido por `creation-naming.ts`, que hasta ahora solo agregaba propiedades funcionales.
-
-## `engine/src/inventory/` (modificado, Fase 13c)
-
-- `inventory.types.ts`: `AtomicPartsStock` pasa de `Record<ComponentId, number>` a buckets por desgaste (`WearBuckets`) — sin esto no hay dónde guardar la historia de una pieza entre desmontarla y reinstalarla.
-- `inventory-ledger.ts`: `stockOf` conserva su firma y devuelve el total; nuevos `stockOfWear`/`wearBucketsOf`; `consumeStock`/`creditStock` operan sobre un bucket explícito y no caen a otro.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, Fase 13c)
-
-- `DismantleWearDeps` (azar + lookup `actorId → CrewActor`, ambos opcionales): el desmontaje degrada la pieza según el tier del especialista y la instalación toma el desgaste del bucket consumido. Sin las deps, comportamiento pre-13c intacto.
-
-## `engine/src/blueprint/` · `engine/src/save/` (modificado, Fase 13c)
-
-- `PlacedComponentInstance.wear` requerido (`schemaVersion` 6→7, default `nuevo` en el guard); `structuralResistanceOverride` deprecado a solo-lectura. `CampaignSaveState` 3→4 por el cambio de forma del stock, con migración `number → {nuevo: n}`.
-
-## `game/src/render/palette.ts` (modificado, Fase 13c)
-
-- `COMPONENT_WEAR_TINT`/`COMPONENT_WEAR_CSS`: `degradado` y `critico` derivan del contrato de 12e; `usado` es un bronce apagado que no colisiona con el Eje A. `condition` gana sobre `wear` al pintar.
-
-## `game/src/ui/widgets/mission-tooltip.ts` · `install-picker-modal.ts` (modificado, Fase 13c)
-
-- Tooltip: tag de desgaste + resistencia EFECTIVA (corrige un bug preexistente que mostraba el RE de catálogo).
-- Selector de instalación: una fila por bucket de desgaste (`optionRowLabel`), para que el jugador elija qué unidad gasta en vez de recibir la peor en silencio.
-
-## `engine/src/ship-status/ship-status-aggregation.ts` (modificado, 13c fix de playtest ronda 1)
-
-- `instanceHullContribution`/`weightedHullFraction` reemplazan a `instanceHullFraction`: la integridad de casco solo cuenta piezas con tag `EST` y las pondera por `damageResistance`. **Provisional** — la Subfase 13f lo borra y pasa la integridad a ser vida propia de la sección.
-
-## `engine/src/tasks/task-events.types.ts` (modificado, 13c fix de playtest ronda 1)
-
-- `TaskCompletedEvent.obtained` pasa a reusar `TaskEffectResult["obtained"]` en vez de repetir su forma; mientras estuvieron duplicados, los campos nuevos del motor no llegaban a `/game` sin que nada fallara al compilar.
-
-## `engine/src/components/catalog/atomic-component-catalog.ts` (modificado, 13c fix de playtest ronda 1)
-
-- `material.RE` autorado en las 18 piezas que no lo declaraban (B electrónica/plástico, M metálico funcional): sin RE, el desgaste de 13c no tenía consecuencia mecánica en la mayoría del catálogo.
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13c fix de playtest ronda 1)
-
-- `DESCRIPTION_BACKDROP_*` + rectángulo de fondo bajo la columna de ficha: los tags del Eje B daban 1.2-1.4:1 sobre el gris del panel Kenney. Mismo recurso que el fondo del tooltip, sin tocar la paleta.
-
-## `engine/src/salvage/` (nuevo, Subfase 13d)
-
-- `salvage-hazard.types.ts`: `dismantle-spark`/`dismantle-spill`/`dismantle-leak` + `SalvageDomainEvent`. Todos llevan `instanceId`/`position`/`sectionId` — lo que `/game` necesita para pintar y lo que 13f necesitará para restar vida a la sección sin cambiar el contrato.
-- `dismantle-hazard-rules.ts`: Strategy, una regla por condición de peligro (`powered-instance`, `reservoir-content`, `hazardous-atmosphere`) + `DismantleHazardContext` (el estado vivo alrededor de la pieza).
-- `dismantle-hazard-assessment.ts`: evaluación PURA compartida por el efecto de tarea y por la UI (badge de riesgo) — una sola fuente de verdad, no dos criterios que se desincronizan.
-- `dismantle-hazard-handler.ts`: la parte con efectos (emitir eventos, dañar al actor vía `applyCrewDamage`, pedir el escalón extra de desgaste).
-- `salvage-parameters.ts`: daño por hazard, umbrales de atmósfera comprometida, caudal/duración de la fuga.
-- `transient-pressure-sink.ts`: `TransientLeakPressureSink`, fugas acotadas en el tiempo como `SectionPressureSinkSource` (las permanentes son 13f).
-
-## `engine/src/mission/composite-pressure-sink.ts` (nuevo, Subfase 13d)
-
-- `composePressureSinks(...)`: `MissionAtmosphereRuntime` acepta un solo sumidero (ocupado por la junta rota del Cap.1); esto los suma respetando el signo. Cubre también el hueco #5 relevado por 13f.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, Subfase 13d)
-
-- `SalvageHazardDeps` (opcional, mismo criterio que `DismantleWearDeps`): consultas al mundo vivo — energía (13b), atmósfera de la sección, reloj — más el handler. Sin ellas, comportamiento pre-13d intacto.
-- `dismantleHazardContext()` exportado: `/game` lo reusa para el badge de riesgo antes de encolar.
-- Casos nuevos `cut-power` (asignación de la sección a 0) y `purge-reservoir` (ventea el contenido, no lo acredita al stock).
-
-## `engine/src/mission/mission-reaction-runtime.ts` (modificado, Subfase 13d)
-
-- Segunda fuente de ignición real: se suscribe a `dismantle-spark` además del `OverloadEvent` fire/explosion. `ignitionTrigger: "overload-bridge"` pasa a significar "hay ignición real en la sección", venga de donde venga (nombre conservado para no tocar contenido autorado).
-
-## `game/src/particles/effects/salvage-hazard-effect.ts` · `game/src/audio/effects/dismantle-spark-sound.ts` (nuevo, Subfase 13d)
-
-- Tres efectos visualmente distintos (principio 6): estallido eléctrico hacia arriba, charco + salpicadura, chorro ancho que se disipa. El sonido del chispazo reutiliza el banco de sobrecarga (misma familia eléctrica, sin asset dedicado — deuda #17).
-
-## `game/src/mission/mission-runtime.ts` (modificado, Subfase 13d)
-
-- `salvageEvents`, `dismantleHazardsFor()`, `queueCutPower`/`queuePurgeReservoir`, `sectionIdOfInstance()`, y un `Tickable` mínimo registrado PRIMERO en el core loop que fija el reloj del tick (los hazards lo leen para datar sus eventos) y caduca las fugas abiertas.
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, Subfase 13d)
-
-- `ActionPanelContent.instance.dismantleHazards`: badge de riesgo en ámbar (contrato de 12e) + un botón de asegurado por hazard aplicable. El widget solo pinta: el riesgo lo evalúa el motor.
-
-## `engine/src/salvage/instance-energized.ts` (nuevo, 13d fix de playtest ronda 1)
-
-- `isElectricallyLive` / `isElectricSource` / `isInstanceEnergized`: el predicado de "pieza viva" propio de 13d. **No usar `MissionPowerRuntime.isInstancePowered` para esto** — significa "su demanda está satisfecha" y da `true` para cualquier pieza sin `powerDraw`, incluso con la sección a 0 (ver el docblock del módulo).
-- Se resuelve por propiedades (`COND`/`RES` de tipo E, `ACT`, `EM`, `REC`, `CE ≠ "N"`), no por identidad de componente. Una FUENTE (`RES(E)` con `powerUnits`) está viva hasta que se la descarga, sin depender de la red.
-
-## `engine/src/power/` (modificado, 13d fix de playtest ronda 1)
-
-- `PowerState.dischargedSourceIds` (schema 7→8): fuentes descargadas por la tarea `discharge-source`. `totalPowerBudget` deja de contarlas — asegurar una batería para canibalizarla cuesta presupuesto de nave, permanentemente.
-
-## `engine/src/properties/functional.types.ts` (modificado, Subfase 13e)
-
-- `FabricatorProperty` (`FAB`, con `domain: "fisica" | "quimica"`): propiedad de HABILITACIÓN, no de trabajo — declara que desde esa pieza se abre la mesa de creación. No es un `ACT` (no convierte energía en trabajo); misma clase de aclaración semántica que 11h hizo con LED/LCD dentro de `REC`. Extiende el set de tags del GDD §5.1.
-
-## `engine/src/components/fabricator-query.ts` · `catalog/composite/taller.ts` (nuevo, Subfase 13e)
-
-- `fabricatorDomainOf`/`instanceFabricatorDomain`/`findFabricators`/`hasFabricator`: punto ÚNICO de "¿qué instancias habilitan qué mesa?", resuelto por propiedad `FAB` y nunca por `ComponentId` (Principio 1). Una instancia `destroyed` deja de habilitar; `jammed` sigue.
-- `TALLER_CATALOG`: `banco-de-trabajo` (FAB física) y `estacion-quimica` (FAB química + `RES(L)` = su reservorio de SALIDA). No es un catálogo de arquetipo — es kit base de las 4 naves, sembrado en `initial-ship-state.ts`.
-
-## `engine/src/reservoir/` (nuevo, Subfase 13e)
-
-- `reservoir-ledger.ts`: operaciones PURAS sobre `Blueprint.reservoirContents` (`contentOf`/`freeCapacity`/`pourInto`/`drawFrom`/`emptyReservoir`). Los escritores que faltaban desde siempre — hasta 13d ese campo solo se vaciaba. Regla: UNA sustancia por reservorio; verter otra lanza `ReservoirOccupiedError` (hay que purgar antes).
-- `reservoir-query.ts`: `substanceReservoirProperty`/`instanceReservoirCapacity`, que filtran el `RES` de tipo G/L/T — las baterías (`RES(E)` de 13b) no son reservorios de sustancia.
-- `fluid-transfer-reachability.ts`: espejo exacto de `assertSignalWiringReachable` con `kind: "fluido"`. Intra-sección libre, cross-section exige conducto, misma política fail-open.
-- `substance-composition.ts`: de qué está hecha una sustancia — receta de catálogo → procedencia registrada al sintetizar → indescomponible. **Precondición en los tres: estar analizada** (`analyze-substance` de 11e pasa de flavor a puerta real).
-
-## `engine/src/inventory/element-ledger.ts` · `mutable-element-stock.ts` (nuevo, Subfase 13e)
-
-- `ElementStock` y su ledger. Sin buckets de desgaste a diferencia de `AtomicPartsStock`: una sustancia no acumula historia entre usos. `consumeElements` devuelve `null` sin descontar parcialmente, mismo contrato que `consumeStock`.
-
-## `engine/src/mission/section-gas-injection.ts` (nuevo, Subfase 13e)
-
-- `SectionGasInjectionSource` + `TransientGasInjection`, inyectados como 4º parámetro OPCIONAL de `MissionAtmosphereRuntime` (mismo patrón DI que `SectionPressureSinkSource`). **El primer escritor real de un `ChemicalSubstanceId` en `atmosphere.gases`**: todo el camino lector (`contaminantAt`, `sectionCorrosiveLevel`, `HazardousAtmosphereHazardRule`) existía desde 13a sin escritor. El gas entra desplazando al resto, con la suma de fracciones acotada a 1.
-
-## `engine/src/mission/fluid-operations.ts` (nuevo, Subfase 13e — cierra la deuda #10)
-
-- `FluidOperationRegistry`: operaciones de fluido EN CURSO (trasvase/vertido/extracción/purga), enganchadas al ciclo de vida de la tarea. De acá sale el caudal real con que se anima la capa `fluido`, en vez de la heurística prestada del booleano de energía. Sin operación viva el conducto queda quieto — correcto, mismo criterio que 11f.4 para `senal` en calma.
-
-## `engine/src/tasks/` · `crew/crew-affinity.ts` · `mission/ship-task-effect.ts` (modificado, Subfase 13e)
-
-- Tres `TaskType` nuevos con su payload: `transfer-substance`, `apply-substance`, `extract-elements` (afinidad Ingeniero las dos primeras, Médico la tercera). `SubstanceFlowDeps` opcional en `createShipTaskEffect`, mismo criterio que `SalvageHazardDeps`: sin ella las tareas son no-op y nada del comportamiento anterior cambia.
-
-## `engine/src/save/` (modificado, Subfase 13e)
-
-- `CampaignSaveState.schemaVersion` 4→5: `elementStock`, `substanceProvenance` y `analyzedSubstanceIds`. Los dos últimos vivían solo en memoria de `MissionRuntime`; `analyzedSubstanceIds` pasó de flavor a precondición de la extracción, así que tenía que persistir. Migración "campo ausente ⇒ vacío". **`Blueprint.schemaVersion` NO se toca**: `reservoirContents` ya existía y ya se serializaba.
-
-## `game/src/mission/mission-runtime.ts` (modificado, Subfase 13e)
-
-- `elementStock`, `substanceProvenance`, `fluidOperations`; `queueTransferSubstance`/`queueApplySubstance`/`queueExtractElements`; `reservoirContentOf`/`transferTargetsFor`/`extractionBlockedFor`/`fabricatorDomainOfInstance`/`benchCell`. `queueSynthesis` consume el stock AL ENCOLAR (no al completar, para no repetir el bug de la Obs 8), registra la procedencia y deposita el resultado en el reservorio de la estación. `availableSubstances` deriva también de `reservoirContents`, así que el HUD por fin sabe DÓNDE está cada sustancia.
-
-## `game/src/ui/widgets/mission-action-panel.ts` · `scenes/{floorplan-scene,creative-workbench-scene}.ts` (modificado, Subfase 13e)
-
-- `ReservoirPanelInfo` en el contenido `instance`: contenido del reservorio + botones Aplicar/Trasvasar/Extraer, con el MOTIVO del bloqueo en el propio label (un botón gris y mudo es lo que impide descubrir que primero hay que analizar). El panel sigue sin conocer el catálogo: todo viene precalculado, mismo criterio que los hazards de 13d.
-- El botón MESA global del header **se eliminó**: la mesa se abre desde el panel contextual del aparato y entra fijada a su dominio, así que el toggle libre Física/Química también desapareció. La recolección de elementos de 12c.5 vuela ahora al banco de trabajo real del plano.
-
-## `engine/src/components/catalog/composite/composite-component-spec.types.ts` (nuevo, 13e ronda 1 de fixes)
-
-- `CompositeComponentSpec` extraída: estaba duplicada palabra por palabra en los 4 catálogos de arquetipo y las copias ya divergían (solo exploración tenía `footprint`). Los cuatro la importan y la re-exportan para no romper a sus consumidores.
-- Campo nuevo `contains?: ChemicalSubstanceId`: la sustancia que un reservorio trae DE FÁBRICA. Es dato de catálogo; el estado vivo sigue siendo `Blueprint.reservoirContents`.
-
-## `engine/src/reservoir/initial-reservoir-contents.ts` · `factory-reservoir-contents.ts` (nuevo, 13e ronda 1)
-
-- `indexFactoryReservoirContents` (puro, sobre specs) + `deriveInitialReservoirContents` (instancias → entradas llenas a `capacity`), y el singleton atado al catálogo real. **Es lo que faltaba para que 13e fuera jugable**: hasta acá todos los reservorios nacían vacíos, así que el ciclo extraer → sintetizar no tenía de dónde arrancar. Filtra el `RES(E)` de las baterías de 13b.
-- Lo consumen `save/campaign-save-factory.ts` (campaña nueva) y `save/chapter-progression.ts` (semillas de capítulo).
-
-## `engine/src/reservoir/reservoir-parameters.ts` (nuevo, 13e ronda 1)
-
-- `EXTRACTION_BATCH_UNITS`: unidades por tarea de extracción. Con los tanques sembrados llenos, vaciar uno de un saque daba materia prima infinita; topear por tarea convierte la escasez en TIEMPO (cada lote es un viaje), en vez de autorar 21 cantidades a mano.
-
-## `game/src/ui/widgets/kenney-card-list.ts` (modificado, 13e ronda 1)
-
-- **Fix de un bug preexistente**: rexUI ancla cada hijo de un sizer por su CENTRO, pero las tarjetas dibujaban sus hijos con `origin(0,0)` desde ese punto — media tarjeta caía fuera de la máscara del `scrollablePanel` ("se ve cortado a la derecha de cada tarjeta"). Hijos relativos al centro (`left = -cardWidth/2`) + alto adaptativo al contenido medido en vez de fijo.
-
-## `game/src/scenes/creative-workbench-scene.ts` (modificado, 13e ronda 1)
-
-- `CHEM_COLUMNS`: el modo química deja de heredar el layout del grid físico (que no usa) y pasa a tres columnas — paleta → selección → resultado — sobre el alto completo. "Modo cableado"/"modo borrar" solo se crean en modo físico.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 2)
-- `purge-reservoir` deja de borrar la entrada a mano: usa `drawFrom` + `gasInjection.inject(sectionId, …)` —
-  la misma vía que `apply-substance`, porque es el mismo fenómeno físico con otra intención — y devuelve
-  `{pouredSubstanceId, pouredAmount}`. `apply-substance` devuelve el mismo par.
-- El case `dismantle` inyecta en la sección el contenido de los `dismantle-spill` que emitió la regla: hasta
-  acá la sustancia derramada moría con la instancia sin llegar nunca a `atmosphere.gases`.
-
-## `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificado, 13e ronda 2)
-- `TaskCompletedEvent` y la emisión de `completeTask` propagan `obtainedElements`, `overflowAmount`,
-  `pouredSubstanceId` y `pouredAmount`. Es el único punto de traducción efecto→evento; sin esto los cuatro
-  campos se calculaban y se perdían dentro del motor.
-
-## `game/src/particles/particle-effect.types.ts` + `effect-registry.ts` (modificado, 13e ronda 2)
-- `EventEffectOptions {tint?}` como 4º parámetro opcional de `EventDrivenEffect.trigger` y de
-  `fireEventEffect`: permite que el color de un efecto dependa de datos que solo `/game` puede resolver (el
-  registro químico) sin que `/engine` conozca colores.
-
-## `game/src/particles/effects/salvage-hazard-effect.ts` (modificado, 13e ronda 2)
-- `firePouredSubstance(scene, position, amount, tint)` — salpicadura + charco, extraído del efecto de derrame
-  porque ahora hay tres formas de mojar el piso (derrame al desmontar, verter, purgar). `dismantleSpillEffect`
-  delega en él.
-
-## `game/src/render/palette.ts` (modificado, 13e ronda 2)
-- `chemicalSubstanceColor(id, tags)` — color de cualquier sustancia: elemento curado > color por primer tag >
-  neutro. Usado por el charco y por la nube de sección, que antes tenían colores fijos.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 2)
-- `airborneSubstanceAt(sectionId)` — sustancia dominante en el aire SIN filtrar por tag, para uso visual;
-  hermana de `contaminantAt`, que sigue siendo la de daño y la del siseo de alarma. `substanceTagsOf` expone
-  los tags para que quien pinta derive el color. `BASELINE_GAS_KEYS` excluye O2/N2/CO2.
-- `queuePurgeReservoir` pasa la `sectionId` en el payload (la que ya calculaba para el viaje).
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 2)
-- `notifySubstanceTaskResult(event)` — notificación por cada resultado de tarea de sustancia y charco visible
-  en la celda de la tarea. El rechazo de `openWorkbench` pasa de `setStatus` a `NotificationCenter`.
-- El handler de `core-loop-mode-changed` refresca el panel de acciones (el botón de la mesa depende del modo).
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 2)
-- `fabricatorBlocked` en el contenido de instancia; `transferBlocked`/`applyBlocked`/`reservoirHint`/
-  `openFabricatorBlocked` en los labels. Todos los botones del bloque de reservorio llevan el motivo en el
-  label cuando están deshabilitados, no solo "Extraer".
-
-## `engine/src/mission/section-gas-injection.ts` (modificado, 13e ronda 3)
-- `isAirborneSubstance(substance)` — solo `state === "G"` o tag `VOLAT` pueden estar en el aire; un líquido
-  inerte (el agua) se derrama al piso y no desplaza oxígeno. El discriminador es el ESTADO DE MATERIA, no el
-  tag: `VOLAT` lo llevan 4 sustancias con estados G/S/L/L y solo alimenta reglas de combustión.
-- `GasInjectionDeps {substanceOf, sectionVolumeOf}` — inyectadas al construir `TransientGasInjection`. La
-  fracción pasa a dividirse por el volumen de la sección, como exige la espec de datos §4. Sin dependencias el
-  comportamiento es el previo a la ronda 3.
-
-## `game/src/particles/effects/atmosphere-state-effects.ts` (modificado, 13e ronda 3)
-- `CLOUD_VISIBILITY_THRESHOLD` + `CLOUD_RAMP_PER_SECOND`: la nube tiene umbral de visibilidad y su
-  concentración mostrada persigue a la real con retardo, en vez de saltar. La opacidad del emisor acompaña a
-  la densidad.
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 3)
-- `attachPanelScroll(...)` — convierte el panel en ventana con scroll (máscara sobre un sub-container + rueda
-  del mouse + indicador "▾") cuando el contenido excede `maxHeight`. No usa `ScrollablePanel` de rexUI porque
-  todo el apilado del panel usa coordenadas absolutas y rexUI re-centra a sus hijos.
-
-## `game/src/render/render-depths.ts` (modificado, 13e ronda 3)
-- `hudFloatingPanel: 25` — depth propio para el panel de acciones flotante, entre `hudContent` y
-  `notification`. Compartir el 21 con la tira de tripulación hacía que la tira lo tapara al re-crearse.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 4)
-- `installTopmostOnlyInput()` — sobrescribe `input.sortGameObjects` para que el objeto de UI de capa más alta
-  sea el ÚNICO que recibe el click. El `topOnly` nativo no alcanza: ordena por el índice en el `renderList` de
-  la cámara del puntero, donde los `Label` de rexUI no entran, y el hit-test ignora las listas `ignore` de
-  cámara (que solo afectan al render), así que un objeto de mundo tiene área de click fantasma sobre el HUD.
-
-## `game/src/render/palette.ts` (modificado, 13e ronda 4)
-- `CHEMICAL_COMPOUND_COLORS` — color curado por compuesto del catálogo, consultado por
-  `chemicalSubstanceColor` antes de caer al color por tag. Sin esto el agua se pintaba con el gris genérico de
-  `INERTE`, que además era el mismo valor que el neutro de "desconocida" y que `ANCHOR_COLOR`; los tres son
-  ahora distintos y `palette.contract.test.ts` lo fija.
-
-## `game/src/particles/effects/salvage-hazard-effect.ts` (modificado, 13e ronda 4)
-- `firePouredSubstance` acepta un hook de registro de objetos, para que la escena les asigne cámara de mundo
-  (sin él caía en el bug de doble-cámara) y usa `RENDER_DEPTH.substanceSpill` en vez de `bloodDecal`.
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 5)
-- `backdrop` gana `setInteractive()` (sin handler de click propio) — entra al hit-test de
-  `installTopmostOnlyInput`, cierra el agujero por el que el click al área vacía del panel atravesaba al mundo.
-- `attachPanelDrag(...)` — arrastre del panel por click&hold sobre el backdrop (`pointerdown` local +
-  `pointermove`/`pointerup` globales en `scene.input`, mismo patrón que `kenney-slider.ts`). Nuevo
-  `ActionPanelCallbacks.onPanelDragged?`.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 5)
-- `manualPanelPosition` (getter) — posición manual tras un arrastre, escrita por `onPanelDragged`. Se limpia en
-  `setActionPanelContent` (cambio de objetivo del panel); sobrevive a un rebuild por `refreshActionPanel`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 5)
-- `updateActionPanelAnchor()` — si `interaction.manualPanelPosition` existe, la usa (clampeada al mismo borde
-  que el anclaje automático) en vez de recalcular desde `selectedCell`.
-- Notificación de `combine` reemplazada: consume `mission.consumeMaterializedByTask(event.taskId)` en vez de
-  comparar `availableSubstances.length`/`installableCreations.length` (frágil ante deduplicación por `Set`).
-  Elimina `lastSubstancesCount`/`lastCreationsCount`.
-- `fireCollectionBurst(originCell, targetCell, count)` — helper extraído de `fireElementCollection` (stagea N
-  "monedas" en arco hacia una mesa). `notifySubstanceTaskResult` lo usa para volar una moneda por sustancia
-  distinta desde una extracción de reservorio hacia `mission.benchCell("quimica")`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 5)
-- `materializedByTaskId` + `consumeMaterializedByTask(taskId)` — qué materializó cada tarea `combine`
-  (sustancia o creación), poblado en el mismo listener de `task-completed` que ya materializa. Patrón "drenar y
-  limpiar", mismo criterio que `TransientGasInjection.asInjectionSource()`.
-- `benchCell(domain: FabricatorDomain = "fisica")` — generalizado por dominio (antes hardcodeaba `"fisica"`),
-  reusando `findFabricators` que ya lo soporta.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 6)
-- `transferTargetsFor` exige `freeCapacity(...) > 0` además de capacidad de catálogo y alcanzabilidad — un
-  reservorio ya lleno deja de contar como destino válido (antes se ofrecía igual, y el motor perdía el 100%
-  del origen como "desborde total" al ejecutar).
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 6)
-- Caso `"transfer-substance"`: chequea `freeCapacity` del destino ANTES de `drawFrom` — con 0, la tarea es un
-  no-op (defensa en profundidad, cubre la carrera de que el destino se llene entre armar el panel y ejecutar
-  la tarea). El desborde PARCIAL (destino con algo de lugar, pero no todo) sigue igual que antes.
-
-## `engine/src/mission/ship-task-effect.ts` (modificado, 13e ronda 7)
-- Caso `"transfer-substance"`: devuelve `pouredSubstanceId`/`pouredAmount` cuando `poured.poured > 0`, además
-  de `overflowAmount` — antes un trasvase 100% exitoso no reportaba nada.
-- Caso `"install"`: nueva rama `isCompositeEntity(definition) && payload.consumeRecipe` — consume la receta
-  completa (bucket `nuevo`, mismo `consumeStock` estricto que el camino atómico) antes de instalar. Las
-  creaciones personalizadas nunca ponen ese flag, así que siguen gratis.
-
-## `engine/src/tasks/task.types.ts` (modificado, 13e ronda 7)
-- `InstallTaskPayload.consumeRecipe?: boolean` — distingue un compuesto de catálogo instalado desde
-  "Inventario" (gasta receta) de una creación personalizada (gratis).
-
-## `engine/src/index.ts` (modificado, 13e ronda 7)
-- Exporta `ALL_COMPOSITE_SPECS` (`build-component-catalog.ts`) — lista estática del catálogo de compuestos,
-  sin las creaciones personalizadas que se registran en caliente en el mismo `componentRegistry`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 7)
-- `transferTargetsFor` → `transferCandidatesFor`: devuelve TODOS los reservorios de la nave (cualquier
-  dominio) con motivo de bloqueo (`"full"` | `"unreachable"` | `"different-substance"`) en vez de solo los ya
-  válidos — el modo de selección espacial necesita ver los bloqueados para iluminarlos en rojo.
-- `installableCatalogComposites` (getter) / `hasRecipeStockFor(definition)` — compuestos de catálogo (no
-  creaciones) con stock suficiente de su receta, para la pestaña "Inventario".
-- `queueInstall` gana el parámetro `consumeRecipe?: boolean`, propagado al payload de la tarea.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 7)
-- Nuevo modo de interacción `transferModeState` (hermano de `wireModeValue`): `startTransferMode`,
-  `cancelTransferMode`, `handleTransferModeClick`, getters `transferMode`/`transferModeOrigin`/
-  `transferModeCandidates`. `handleMapClick` lo intercepta igual que `wireModeValue`.
-- `buildInventoryOptions` suma una tercera fuente (compuestos de catálogo con `consumesRecipe: true`) además
-  de piezas atómicas y creaciones personalizadas.
-- Nuevo callback `MissionInteractionCallbacks.onTransferModeChanged`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 7)
-- `updateTransferMode()` — punto de entrada único del modo de trasvase: botón "Cancelar trasvase" (mismo
-  casillero que `wireModeButton`, mutuamente excluyentes), oscurecido de todo el plano (`transferDimOverlay`),
-  un anillo verde/rojo por reservorio candidato (`transferHighlights`, `CRISIS_SAFE_COLOR`/`CRISIS_FATAL_COLOR`)
-  y forzado/restaurado de la capa `fluido`.
-- `updateTransferChannel(pointer)` — línea recta origen↔candidato-bajo-cursor, coloreada según si hay camino.
-- `instanceCell(instanceId)` — helper extraído del lookup que ya hacía `taskTargetCell` para `dismantle`.
-- `notifySubstanceTaskResult`: rama propia para `event.type === "transfer-substance"` (notificación +
-  `fireCollectionBurst` hacia el destino elegido) en vez de reusar el charco de verter/purgar.
-
-## `game/src/render/render-depths.ts` (modificado, 13e ronda 7)
-- `mapDimOverlay: 5.8` (oscurecido del modo de trasvase) y `transferTargetHighlight: 6.1` (resaltados de
-  reservorio, por encima del oscurecido).
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 7)
-- `InstallPickerOption.consumesRecipe?: boolean` — marca las filas de compuesto de catálogo que gastan su
-  receta al instalarse.
-
-## `game/src/render/conduit-path.ts` (modificado, 13e ronda 8)
-- `computeSignalWireRoute` generalizada a `computeConduitRoute(floorplan, walkableGrid, from, to, kind)`;
-  `computeSignalWireRoute` queda como wrapper de una línea (`kind: "senal"`) para no tocar el cableado.
-
-## `game/src/render/floorplan-renderer.ts` (modificado, 13e ronda 8)
-- `drawConduitLine`/`drawConduitMarker` pasan a exportadas — reusadas por `FloorplanScene.updateTransferMode`
-  para clonar la capa `fluido` fuera del container `base` (fix del bug de depth #5).
-
-## `game/src/render/render-depths.ts` (modificado, 13e ronda 8)
-- `transferHighlightedConduit: 5.9` — depth del clon top-level de la capa `fluido` durante el modo de
-  trasvase, entre `mapDimOverlay` (5.8) y `problemMarker` (6).
-
-## `game/src/render/mission-overlay-renderer.ts` (modificado, 13e ronda 8)
-- Nuevo `componentSpritesByInstanceId` en `MissionOverlayRender` — sprites reales por instancia, poblado en el
-  branch de sprite real y en `drawCreationLayout` (ahora devuelve los `Image` que dibuja). Usado por el
-  resaltado del modo de trasvase para tintar la pieza misma cuando tiene arte real.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 8)
-- `updateTransferMode()`: oculta `conduitLayers.fluido` y dibuja su clon top-level
-  (`transferFluidoHighlightLayer`, fix del bug de depth); `transferHighlights` pasa de `Arc[]` (círculos) a
-  `Rectangle[]` (contorno de footprint real vía `instancePlacement`); tinta los sprites reales de los
-  candidatos (`transferTintedSprites`, restaurados por `restoreTransferTintedSprites`).
-- `updateTransferChannel(pointer)`: usa `computeConduitRoute(..., "fluido")` para dibujar la ruta real en vez
-  de una línea recta.
-- Listener `keydown-ESC`: cancela el modo de trasvase si está activo, antes de caer al comportamiento previo
-  de pausa.
-- Nuevo helper `instancePlacement(instanceId)` (placement completo, no solo la celda de `instanceCell`).
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 8)
-- `handleTransferModeClick` recalcula `transferCandidatesFor` en el momento del click en vez de leer la lista
-  cacheada al abrir el modo (candidato más plausible del aviso de pérdida reportado, sin garantía).
-- `buildInventoryOptions`/`buildCatalogOptions` se fusionan en `buildInstallOptions()` — lista única,
-  habilitados primero, bloqueados después con motivo. Nuevo helper `missingIngredientNames(definition)`.
-- `installPickerState` pierde `activeTab`/`inventoryOptions`/`catalogOptions` → un solo campo `options`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 8)
-- Nuevo `missingRecipeIngredients(definition)` — ingredientes de receta que faltan (bucket `nuevo`, mismo
-  criterio que `hasRecipeStockFor`), para explicar el motivo de bloqueo en el selector de instalación.
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 8)
-- Elimina `InstallPickerTab`/`activeTab`/`renderTabStrip`/el hint de "Catálogo" — `renderInstallPickerModal`
-  pasa a recibir un único `options: ReadonlyArray<InstallPickerOption>`.
-- `InstallPickerOption` gana `blocked?: "no-stock" | "missing-ingredients"` y `missingIngredientNames?`. La
-  fila deshabilitada explica el motivo directo en su texto (`optionRowLabel`); la ficha de detalle
-  (`renderSelectedComponentSheet`) suma una línea ámbar con el motivo cuando el ítem está bloqueado.
-
-## `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado, 13e ronda 8)
-- `CHAPTER_01_INITIAL_ATOMIC_STOCK` suma `tubo-flexible: 1`, `valvula-simple: 1`, sube `junta-hermetica` de 1 a
-  2 — completa la receta del segundo reservorio (1+1+2, `exploracion.ts`).
-
-## `game/src/ui/widgets/kenney-list.ts` (modificado, 13e ronda 9)
-- `KenneyListItem` gana `muted?: boolean` — atenuado visual independiente de `enabled` (clickeable). El color
-  de texto/alpha de fondo depende de `(enabled ?? true) && !muted`; `setInteractive`/`onClick` siguen
-  dependiendo solo de `enabled`.
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 9)
-- Filas de la lista: `enabled: true` siempre (seleccionables aunque estén bloqueadas), `muted: !!option.blocked`
-  para el atenuado visual — el botón "Instalar" sigue gateado por `selected?.blocked`.
-- `renderSelectedComponentSheet`: la huella se ancla en `titleText.y + titleText.height + 4` en vez de un
-  offset fijo — ya no se superpone cuando el título ocupa 2 líneas.
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13e ronda 9)
-- `CompositionIngredient` gana `hasStock?: boolean` — `false` marca el ingrediente puntual sin stock
-  suficiente (independiente de `hasRequiredTag`).
-
-## `game/src/ui/widgets/composition-list.ts` (modificado, 13e ronda 9)
-- `renderCompositionLines` agrega el sufijo `"(sin stock)"`/`"(no stock)"` (i18n) en gris atenuado (`#8890a8`,
-  mismo tono que las filas deshabilitadas de `kenney-list.ts`) cuando `ingredient.hasStock === false`, con
-  prioridad sobre el resaltado ámbar de `hasRequiredTag`.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 9)
-- `buildComposition` gana `options?: { highlightRequiredTag?; missingRefs? }` — `buildInstallOptions` pasa
-  `highlightRequiredTag: false` (sin ámbar de objetivo de misión en este contexto) y `missingRefs` desde
-  `mission.missingRecipeIngredients(def)` para marcar `hasStock` por ingrediente.
-- `handleTransferModeClick`: la cantidad encolada pasa a `Math.min(content.amount, candidate.freeCapacity)` en
-  vez del contenido completo del origen.
-- `transferModeState.candidates`/`transferModeCandidates` derivan de `ReturnType<MissionRuntime["transferCandidatesFor"]>`
-  en vez de duplicar la forma a mano.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 9)
-- `transferCandidatesFor` expone `freeCapacity: number` por candidato (ya se computaba internamente para
-  decidir el motivo `"full"`).
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 9)
-- `transferModePriorFluidoActive: boolean` → `transferModePriorActiveLayers: ReadonlySet<FloorplanLayerId>`
-  (snapshot completo). `updateTransferMode()` reemplaza `activeFloorplanLayers` por `{"fluido"}` exacto (no
-  solo agrega) y llama `applyLayerAlpha` para todas las capas — apaga los tokens de flujo animado de las
-  demás capas sin tocar `updateConduitFlowEffects`/`updateSignalWireFlowEffects`.
-- `updateTransferChannel`: usa `instancePlacement(...)` + `occupiedCells(...)` (huella completa) en vez de
-  `instanceCell(...)` (una sola celda) para resolver el candidato bajo el cursor.
-
-## `game/src/i18n/es.ts` (modificado, 13e ronda 9)
-- Renombradas las 8 entradas que decían "trasvasar"/"trasvase" a la familia "transferir"/"transferencia"
-  (claves sin cambio, ya en inglés). Nueva clave `ui.floorplan.mission.composition-no-stock`.
-
-## `game/src/ui/widgets/install-picker-modal.ts` (modificado, 13e ronda 10)
-- `optionRowLabel` ya no agrega el motivo de bloqueo al texto de la fila (el atenuado `muted` ya distingue).
-  `InstallPickerOption.missingIngredientNames` eliminado (sin consumidores).
-- `InstallPickerLabels.blockedMissingIngredients` pasa de función `(names) => string` a string estático,
-  igual que `blockedNoStock`. `renderSelectedComponentSheet` avanza `lineY` con `warningText.height + 8` en
-  vez de un offset fijo — no pisa más la sección de Composición cuando el warning envuelve a 2+ líneas.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13e ronda 10)
-- `missingIngredientNames()` (helper privado) eliminado junto con su único call site.
-- `buildInstallOptions`: `blockedMissingIngredients` label pasa a texto estático sin `.replace("{names}", ...)`.
-- `handleTransferModeClick`: la rama de `candidate.blocked` reproduce
-  `scene.sound.play(pickSoundKey(AUDIO_KEYS.uiDenied))` antes de `setStatus(...)`.
-
-## `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificado, 13e ronda 10)
-- Nueva regla transversal "sin energía, la máquina no actúa": `TaskSchedulerOptions.isSectionUnpowered?:
-  (sectionId) => boolean`; `POWER_EXEMPT_TASK_TYPES` (`dismantle`, `cut-power`, `purge-reservoir`,
-  `discharge-source`) queda fuera. `resolveBlockingReason` devuelve el nuevo motivo `"no-power"` cuando
-  `task.targetSectionId` está definido, el tipo no es exento, y la sección no tiene energía otorgada —
-  evaluado DESPUÉS del bloqueo por dependencias, que tiene prioridad. `TaskBlockedEvent["reason"]` gana el
-  literal `"no-power"`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 10)
-- `new TaskScheduler(...)` pasa `isSectionUnpowered: (sectionId) => this.powerRuntime.sectionHasNoPowerGranted(sectionId)`.
-- `sectionHasNoPowerGranted` (delegado) documentado como segundo consumidor real de gating, no solo cosmético.
-
-## `engine/src/power/mission-power-runtime.ts` (modificado, 13e ronda 10)
-- `sectionHasNoPowerGranted` deja de documentarse como "puramente cosmético, nunca para gating" — ahora
-  también alimenta `TaskScheduler` (gating de tareas); el gating de señales/HUD sigue usando
-  `unpoweredSectionIds` (cicatriz permanente), sin cambios de comportamiento ahí.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13e ronda 10)
-- Notificación de `task-blocked` distingue `event.reason === "no-power"` con la clave
-  `ui.floorplan.notification.task-blocked-no-power` en vez del texto genérico.
-
-## `game/src/ui/widgets/kenney-list.ts` (modificado, 13e ronda 11)
-- `pointerout` restaura `dimmed ? 0.25 : ROW_BG_ALPHA` en vez de un alpha normal hardcodeado — una fila
-  atenuada (`muted`) ya no queda con el color de fondo normal tras alejar el mouse.
-
-## `engine/src/tasks/task.types.ts` + `task-factory.ts` (modificado, 13e ronda 11)
-- `CrewTask`/`CreateCrewTaskInput` ganan `readonly powerSectionIds?: ReadonlyArray<SectionId>` —
-  independiente de `targetSectionId` (que sigue existiendo para ubicación del actor/animación de camino).
-  Ausente/vacío = la tarea nunca se gatea por energía.
-
-## `engine/src/tasks/task-scheduler.ts` (modificado, 13e ronda 11)
-- `POWER_EXEMPT_TASK_TYPES` eliminado. `resolveBlockingReason` itera `task.powerSectionIds ?? []` y
-  bloquea con `"no-power"` si CUALQUIERA de esas secciones no tiene energía — reemplaza el gate por
-  `targetSectionId` + lista de tipos exentos de la ronda 10 (no podía expresar "dos secciones distintas"
-  sin un switch por tipo).
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13e ronda 11)
-- `queueTransferSubstance`/`queueApplySubstance` pasan `powerSectionIds` con AMBAS secciones (origen y
-  destino) — corrige que transferir hacia un destino sin energía no se bloqueaba.
-- `queueExtractElements`/`queueAnalyzeSubstance`/`queueFabrication`/`queueSynthesis` pasan
-  `powerSectionIds: [targetSectionId]` (mismo comportamiento que la ronda 10, migrado al campo nuevo).
-- `queueGoTo`/`queueDismantle`/`queueCutPower`/`queuePurgeReservoir`/`queueDischargeSource`/`queueInstall`/
-  `queueConnect`: sin cambios — nunca fijan `powerSectionIds`, así que nunca se gatean.
-
-## `game/src/i18n/es.ts` / `en.ts` (modificado, 13e ronda 10)
-- `blocked-missing-ingredients` deja de llevar `{names}`. Nueva clave
-  `ui.floorplan.notification.task-blocked-no-power`.
-
-## `game/src/render/shadows/light-grid.ts` (nuevo, Fase 12d.5)
-- `computeLightLevelGrid` — nivel de luz 0..1 por celda, PURO (sin Phaser). Reusa `raySegmentIntersection` de
-  `visibility-polygon.ts`, así que la oclusión es la misma geometría que dibuja la RT de sombras. Recorta por
-  bbox de radio antes del raycast; combina luces con `max` (no suma) y usa `ambient` como piso.
-- `LIGHT_CLEAR_ALPHA_FLOOR` — piso de aclarado de una luz; única fuente del valor, lo importa `dynamic-shadows.ts`.
-
-## `game/src/render/shadows/light-shading.ts` (nuevo, Fase 12d.5)
-- `shade(baseColor, level)` — color × nivel de luz, canal por canal. `NEUTRAL_TINT`, y `actorLightLevel` con
-  `MIN_ACTOR_LIGHT_LEVEL` (piso de brillo para tripulación/enemigos: se oscurecen, nunca desaparecen).
-
-## `game/src/render/shadows/dynamic-shadows.ts` (modificado, Fase 12d.5)
-- `lightGrid(w, h, cell)` — expone la grilla de nivel de luz, cacheada por firma (`staticOccludersVersion` +
-  estado de cada luz + ambiente). Usa SOLO oclusores estáticos: los móviles son las cosas que se tintan y se
-  ocluirían a sí mismas. `ambient` se deriva del mismo `darknessAlpha × intensity` que pinta la RT.
-- `quantizeIntensity` + `staticOccludersVersion` — evitan que el parpadeo de las luces de cicatriz invalide el
-  cache 60 veces por segundo. `currentEdges()` extrae la composición estáticos ∪ dinámicos que ya usaba `redraw`.
-
-## `game/src/render/render-depths.ts` (modificado, Fase 12d.5)
-- `dynamicLight` (1.8) — luz aditiva persistente entre las sombras (1.7) y los objetos (2): la luz actúa sobre
-  el plano del suelo, no sobre los sprites. Antes toda luz vivía en `effect` (7), encima de todo.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.5)
-- `applyLightShading()` — pinta componentes, LEDs y tokens con `base × nivel de luz de su celda`. Corre por
-  frame junto al `redraw()` de sombras. No toca affordances de UI (hover, anillos, marcador).
-- `baseTints` (`WeakMap`) + `baseTintOf`/`setBaseTint`/`applyShadedTint` — único punto de escritura de tinte.
-  El LED y el resaltado de trasvase escriben la BASE; solo `applyLightShading` llama a `setTint`/`setFillStyle`.
-- `registerLight` pasa a `dynamicLight`; `registerBurstLight` (nuevo) deja el fogonazo de un burst en `effect`.
-- `registerEffectObject` + `worldEffectOptions` — registro único de todo objeto creado por un efecto de evento
-  (cámara de mundo + depth para emisores, `registerBurstLight` para luces, decals con su propia capa).
-
-## `game/src/particles/` (modificado, Fase 12d.5)
-- `particle-effect.types.ts` — `ObjectCreatedHook` con nombre propio; `EventEffectOptions.onObjectCreated` lo reusa.
-- `particle-utils.ts` — `spawnBurst`/`spawnDecal` aceptan el hook como último parámetro opcional.
-- `effects/*.ts` — los 15 efectos del registro propagan el hook (antes solo `salvage-hazard-effect.ts`).
-  `combustion-effect.ts` registra además su `PointLight` (deuda #16 residual).
-
-## `game/src/render/shadows/light-grid.ts` (modificado, Fase 12d.6)
-- La contribución de una luz deja de leer `intensity` (`falloff(dist/radio)` a secas): esa propiedad es el
-  brillo del glow aditivo, no opacidad de oscurecido, y mezclar ambas escalas dejaba todo iluminado a 0.65
-  contra 0.50 sin luz. `LIGHT_CLEAR_ALPHA_FLOOR` sigue exportada solo para la RT de sombras, con la nota de
-  por qué el sombreado de sprites NO debe leerla.
-
-## `game/src/scenes/dev-event-samples.ts` (nuevo, Fase 12d.6)
-- `DEV_EVENT_SAMPLES` — catálogo de `DomainEvent` de muestra, uno por fenómeno del registro. Extraído de
-  `particle-gallery-scene.ts` para compartirlo con la tecla de dev del plano de misión.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Fase 12d.6)
-- `fireDevEventSample()` + tecla **F** — dispara el siguiente fenómeno del catálogo en la celda seleccionada
-  por el camino de producción (`fireEventEffect` + `worldEffectOptions` + `fireEventSound`). Única forma de
-  verificar el bug de doble-cámara: la galería (tecla G) tiene una sola cámara.
-- `forEachShadedTarget` — lista única de objetivos del sombreado, para que `applyLightShading` y
-  `clearLightShading` (nueva, devuelve todo a brillo pleno) no puedan divergir.
-- `spriteCopyAboveDim` — copia top-level del sprite de un candidato de trasvase por encima del oscurecido;
-  el original no se puede subir porque vive dentro del container del overlay. Reemplaza el tinte plano y el
-  relleno del recuadro, y elimina `transferTintedSprites`.
-
-## `game/src/i18n/es.ts` / `en.ts` (modificado, Fase 12d.6)
-- `ui.floorplan.dev.no-cell` / `ui.floorplan.dev.fired` — avisos de la tecla de dev.
-
-## `game/src/particles/effects/dynamic-light.ts` (modificado, Fase 12d.7)
-- `createBurstLight` — luz de burst con ciclo de vida completo: parpadeo → desvanecido → destrucción, con las
-  fases encadenadas por `onComplete` (dos tweens sobre `intensity` se pelean si se solapan). Es la mitad que
-  faltaba del módulo: solo existía `createDynamicLight` (luz persistente), así que los dos bursts del proyecto
-  copiaban el patrón a mano y ambos destruían la luz sin fade.
-- Consumidores: `combustion-effect.ts` (`sustainMs` = duración de la llama, `fadeMs` = 1.5×, misma vida total
-  que antes) y `environmental-damage-effect.ts` (arco eléctrico, `fadeMs` 200).
-
-## `engine/src/integrity/` (dominio nuevo, Subfase 13f)
-- `section-integrity.types.ts` — `SectionIntegrity` (hp/maxHp/breached, escalares mutables) + `SectionIntegritySnapshot`
-  y su round-trip. Molde exacto de `atmosphere/section.types.ts` + `atmosphere-snapshot.types.ts`.
-  `initialSectionIntegrity` escala la vida con `sectionArea()`.
-- `section-integrity-parameters.ts` — TODO el balance de la subfase (hp por celda, daño por escritor, umbral y piso de
-  descompresión, drenaje y piso de presión de la brecha, RE mínima del parche, rango de explosiones del colapso).
-  Ninguna regla tiene literales propios.
-- `section-damage-rules.ts` — **Strategy**, molde de `dismantle-hazard-rules.ts`. Dos familias: ambientales por tick
-  (`corrosionDamageRule`, `decompressionDamageRule`) y puntuales por evento (`kineticImpactSectionDamage`,
-  `combustionSectionDamage`, funciones puras: no hay nada que acumular). La descompresión devuelve un `floorHp` y por
-  eso **no puede colapsar una sección por sí sola** — es la amortiguación del bucle de realimentación, estructural y no
-  un número afinado a ojo.
-- `section-integrity.ts` — `applySectionDamage`: aplica, emite `section-damaged` solo al CRUZAR de nivel del corte del
-  HUD (`fractionToLevel`, así el evento coincide con lo que ve el jugador) y `section-breached` una sola vez.
-- `integrity-events.types.ts` — `SectionDamagedEvent`/`SectionBreachedEvent` (con `breachCell`) + `SectionDamageCause`.
-- `breach-cell.ts` (ronda 1 de playtest de 13f) — `hullBreachCell`/`isHullEdgeCell`, puras: la brecha se abre en la celda
-  de la sección que TOCA el exterior más cercana al origen del daño, con desempate determinista. Antes se usaba el
-  centroide y el agujero aparecía en medio del piso, lejos de donde el jugador había clickeado.
-
-## `engine/src/mission/mission-section-integrity-runtime.ts` (nuevo, Subfase 13f)
-- `MissionSectionIntegrityRuntime` — `Tickable`, molde de `MissionStructuralRuntime`; se registra tras `atmosphereRuntime`.
-  Corrosión y descompresión por tick; impacto contra pared y combustión por suscripción. Al colapsar: brecha, desgaste de
-  toda la maquinaria de la sección (reusa `worsenWear`, no un segundo eje de daño) y 1..N combustiones REALES por el
-  emisor de reacciones. `ignoredCombustionRefs` evita que el colapso se dañe a sí mismo en bucle. Expone `fractionOf`/
-  `weightedFractions` (implementa `SectionIntegritySource`), `openBreaches`, `pressureFloorFor` y `toSnapshots`.
-  `weightedFractions` pondera cada sección por su `maxHp` y multiplica el peso de las brechadas
-  (`breachedSectionWeightMultiplier`) — ronda 1 de playtest: la agregación "peor sección gana" hundía el casco de toda
-  la nave por una sala, y la media plana no lo movía casi nada.
-
-## `engine/src/mission/section-breach-pressure-sink.ts` (nuevo, Subfase 13f)
-- `sectionBreachPressureSink` — mismo molde que `sealBreachPressureSink`: drena mientras el agujero está abierto y
-  recupera (tasa negativa) en cuanto está tapado. La ronda 2 de playtest corrigió la versión original, que solo detenía
-  el drenaje: nada más movía `pressureKpa`, así que la sala quedaba a 0 kPa y letal para siempre con el parche puesto.
-  La diferencia física con la junta rota se mantiene donde importa — drena 12 kPa/s y recupera 2. `isBreachPatch` decide qué sirve de parche **por propiedades**
-  (`EST` + RE efectiva suficiente, principio 1) y no por lista de ids; `isBreachSealed` mira TODAS las celdas ocupadas
-  por la pieza, no solo su origen.
-
-## `engine/src/mission/mission-hazard-runtime.ts` + `mission-hazard-parameters.ts` (nuevos, Subfase 13f)
-- `MissionHazardRuntime` — llamador de producción que le faltaba a `HazardAccumulator` (deuda #16). Hermano del runtime
-  de sección: misma lectura de atmósfera aplicada al tripulante. Tóxico, corrosivo y **vacío** (que usa la causa `"cold"`
-  ya existente en vez de inventar un `kind` nuevo de `HazardEvent`). `incapacitation` hiere con `minHp: 1`, solo
-  `lethal` mata. El vacío aplica **mordiscos discretos por actor** (~10 s hasta la muerte, el primero no letal como
-  aviso): la versión original escalaba una fracción con `dtSeconds` y por frame redondeaba a cero daño mientras emitía
-  un `crew-damaged` por frame.
-
-## `engine/src/mission/kinetic-damage-handler.ts` (nuevo, Subfase 13f)
-- `registerKineticDamage` — llamador de producción de `applyKineticDamage`, que existía desde 11a sin ninguno. Enemigos
-  y tripulantes comparten la tabla `HP_LOSS_FRACTION` para que un impacto signifique lo mismo contra ambos.
-
-## `engine/src/atmosphere/tagged-concentration.ts` (nuevo, Subfase 13f)
-- `sectionTaggedConcentration` — el recorrido "gases contaminantes con tag X" que vivía copiado en `aggregateAtmosphere`
-  y `sectionCorrosiveLevel`, extraído antes de que hiciera falta una tercera copia.
-
-## `engine/src/kinetics/` (modificado, Subfase 13f)
-- `KineticImpactEvent` gana `position` (celda golpeada) y `targetKind` (`component`/`crew`/`enemy`/`wall`) — huecos #1 y
-  #2 del relevamiento. `CellOccupant` gana `kind`. `resolveKineticImpact` recibe el ocupante y la celda.
-- `MissionProjectileWorld` acepta un objeto de opciones con `blocked` (el `CellBlockedQuery` que `MissionRuntime` YA
-  tenía inyectado desde el tilemap — se reusa, no se duplica) y `gridSize`: un proyectil frena contra pared y contra el
-  borde del plano (deuda #21).
-
-## `engine/src/failure/` + `mission-overload-runtime.ts` (modificado, Subfase 13f)
-- `OverloadEvent` gana `sectionId?`, estampado por `MissionOverloadRuntime` (que sí conoce el plano) al emitir; la regla
-  sigue pura. El lookup manual `ref → sección` de `MissionReactionRuntime` se borró: una sola fuente de verdad.
-
-## `engine/src/ship-status/` (modificado, Subfase 13f)
-- **Borrados** `instanceHullContribution` y `weightedHullFraction` (parche interino de 13c) y
-  `aggregateSectionHullIntegrity`. `aggregateHullIntegrity(sectionFractions)` ya no recibe componentes: "peor sección
-  gana", mismo criterio que atmósfera y soporte vital.
-- `SectionIntegritySource` — interfaz angosta NO opcional (a diferencia de `PowerSupplySource`): sin ella el indicador
-  quedaría muerto. `ShipStatusQuery` dejó de necesitar el `componentRegistry`.
-
-## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, Subfase 13f)
-- `SectionPressureFloorSource` opcional: el piso de presión pasa a ser POR SECCIÓN. Una brechada llega a 0 kPa (vacío
-  real); el resto conserva el `PRESSURE_SINK_FLOOR_KPA` de 11h, que sigue siendo correcto para una gotera.
-
-## `engine/src/blueprint/` + `save/` (modificado, Subfase 13f)
-- `Blueprint.sectionIntegrity` (`schemaVersion` 8→9), con el guard "ausente = `[]`" del serializer. Es el callback de
-  cicatriz estructural que `Primeras_8_crisis.md` pide para los Cap. 3, 6, 7 y 8.
-
-## `game/src/particles/effects/section-breach-effect.ts` + `audio/effects/section-breach-sound.ts` (nuevos, Subfase 13f)
-- `sectionDamagedEffect` (polvo cayendo) y `sectionBreachedEffect` (chorro de descompresión largo + mancha permanente
-  que marca dónde instalar el parche). El sonido reutiliza el banco de explosión grave: no hay asset de descompresión
-  (deuda #40).
-
-## `game/src/mission/mission-runtime.ts` (modificado, Subfase 13f)
-- `sectionIntegrityRuntime`/`hazardRuntime` registrados tras `atmosphereRuntime` (leen corrosión y presión ya difundidas).
-  Buses nuevos `integrityEvents` y **`atmosphereEvents`** — este último no existía, que es la razón de fondo por la que
-  el sonido de corrosión de 12b nunca sonó. `sectionAt`/`elapsedSeconds` públicos.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, Subfase 13f)
-- Suscripción a `integrityEvents` (la brecha se pinta en SU celda, el daño en el centroide) y a `atmosphereEvents`. Una
-  brecha dispara el mismo overlay de alerta y alarma que una combustión violenta.
-- `fireDevSectionDamage()` + tecla **H** — emite una combustión REAL por el emisor del motor, o sea que recorre el
-  camino de producción entero (daño, colapso, brecha, drenaje, desgaste). Existe porque ningún capítulo autorado tiene
-  hoy forma jugable de dañar el casco, y sin esto los pasos de prueba manual serían imposibles de ejecutar.
-
-
-## `game/src/meta/live-mission-save.ts` (nuevo, ronda 1 de playtest de 13f)
-- Registro de una función `(base) => CampaignSaveState` que `FloorplanScene` publica al montar la misión y libera en su
-  SHUTDOWN, para que `PauseMenuScene` pueda persistir el estado VIVO sin conocer `MissionRuntime`. Cierra un bug
-  preexistente: "Guardar y salir" guardaba `campaignSession.touch()`, o sea solo `updatedAt`, y tiraba en silencio
-  atmósfera, desgaste, `condition`, stock, química, HP y la cicatriz de casco.
-
-## `game/src/meta/save-adapter.ts` (modificado, ronda 1 de playtest de 13f)
-- `mostRecentCampaignSave()` — ordena por `metadata.updatedAt` y omite las partidas ilegibles. "Continuar" tomaba
-  `saves[0]` de un `readdir` SIN ORDENAR, así que con varias campañas en disco entraba en una vieja sin ningún error
-  visible (los guards de deserialización son tolerantes a propósito) y el jugador leía "los componentes desaparecieron".
-  Se ordena por `updatedAt` y no por el timestamp del id, que marca la CREACIÓN y no el último guardado.
-
-
-## `engine/src/save/crew-write-back.ts` (nuevo, 13f ronda 2)
-- `writeBackCrew` — vuelca el estado vivo de la tripulación sobre el save: HP y celda de `MutableCrewState`,
-  status/sección del `TaskScheduler`, y la BAJA DEFINITIVA de los muertos (permadeath, GDD 6.1). Un muerto queda `dead`
-  con 0 HP, sale de `activeCrewIds` y sigue en `crew` (el roster conserva a quien fue; `assertCampaignSaveIntegrity`
-  exige justamente esa relación). Vivía dentro de `MissionRuntime.toUpdatedSave`, donde no se podía testear sin
-  levantar una misión entera con plano, assets y registros.
-
-## `engine/src/tasks/task-scheduler.ts` (modificado, 13f ronda 2)
-- `CrewActorStatus` gana `"dead"`, TERMINAL: `standDown(actorId, tick)` cancela la cola del muerto reusando `cancel()`
-  (que ya cascadea `dependency-cancelled` a los dependientes y notifica), el tick deja de avanzarlo, `enqueue` lo
-  rechaza y `registerActor` no lo resucita. Antes el scheduler no sabía nada de HP y un tripulante muerto seguía
-  trabajando.
-
-## `engine/src/mission/mutable-crew-state.ts` (modificado, 13f ronda 2)
-- `isAlive`/`allAlive`/`markDead`. Criterio ÚNICO de "vivo": estaba copiado como `hp > 0` en `firstAlive`,
-  `healthiestAlive` y cada runtime que aplica daño, y el permadeath añadió un segundo eje (`status`) que tenía que
-  decidir lo mismo en todos lados.
-
-
-## `engine/src/tasks/task-progress-key.ts` (nuevo, 13f ronda 3)
-- `taskProgressKey(task)` — identidad del OBJETIVO de una tarea, derivada de su `payload`. Es lo que permite el trabajo
-  por relevos: `TaskScheduler` acumula el avance por objetivo (`progressByObjective`) y no por tarea, así que si el
-  tripulante muere a mitad el siguiente retoma donde quedó. Se limpia al COMPLETAR — cancelar o morir deja el avance a
-  propósito. Nunca usa el `instanceId` de la propia tarea (el de `install` se genera al encolar, así que dos intentos no
-  compartirían nada); `go-to` y las tareas sin payload no acumulan.
-
-## `engine/src/workbench/installation-placement.ts` (modificado, 13f ronda 3)
-- **Borrado `findFittingInstallPlacement`.** Reubicaba la pieza a "la celda válida más cercana" a la clickeada, lo que
-  ponía una plancha 2×2 AL LADO de la brecha cuando su celda estaba ocupada, sin rechazar la acción ni avisar. Existía
-  porque no había forma de ver el footprint antes de confirmar; con el fantasma en vivo del nuevo flujo de instalación
-  sobra, y su comportamiento es justo el contrario del que el operador decidió ("lo que ves es lo que se instala").
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13f ronda 3)
-- Modo de COLOCACIÓN de pieza (`installPlacementState`), molde de `transferModeState`: se elige QUÉ instalar en el modal
-  y DÓNDE en el mapa, con `installPlacementPreviewAt` devolviendo el footprint anclado exacto bajo el cursor y si ahí
-  entra. El selector ya no recibe una celda y "Instalar aquí" desapareció del panel de celda vacía — el flujo empieza en
-  el botón de la barra (`updateInstallButton`, `floorplan-scene.ts`).
-
-## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, 13f ronda 4)
-- `netPressureRateOf(sectionId)` — tasa neta del sumidero aplicada en el último tick, con el mismo signo que
-  `SectionPressureSinkSource` (positivo = drena). Estado de tick, no de dominio: no se persiste. El `tick` guarda el mapa
-  que ya recorría, así que UI y física no pueden discrepar sobre si una sección se vacía o se llena. Ninguna regla del
-  motor lo consume: existe para que la UI pueda decir "represurizando" y explicar por qué una sala parchada sigue matando.
-
-## `game/src/ui/widgets/mission-tooltip.ts` (modificado, 13f ronda 4)
-- La variante `section` deja de ser solo el nombre: presión, tendencia, "Vacío: letal" y la brecha de esa celda. Es la
-  única lectura del estado de una sala desde que el panel de celda vacía dejó de existir. Las mismas líneas se pintan
-  sobre una PIEZA cuando la sala es noticia (`noteworthySectionAtmosphere`), porque tras tapar la brecha el jugador mira
-  el parche, no el suelo de al lado.
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13f ronda 4)
-- **Borrada la variante `empty`.** Desde que la ronda 3 le quitó "Instalar aquí" no le quedaba ninguna acción, y un panel
-  flotante que tapa el mapa a cambio de una pista de texto no se gana el sitio. El aviso de brecha sobrevive solo en la
-  variante `instance`, donde SÍ es accionable ("lo que instalaste no sirve de parche").
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, 13f ronda 4)
-- `swallowCurrentClick()` + `targetPickArmedDownTime`: la pulsación que abre/cierra una capa de UI sobre el mapa no vale
-  además como click de mapa. Se identifica por `pointer.downTime` (la pulsación concreta) y no con una bandera de "ignorá
-  el próximo click", para que el fix no dependa del orden en que Phaser despacha GameObjects vs. escena. Lo llaman el
-  cierre del selector de instalación (vía callback del controller), el briefing, el panel de objetivos y los dos modos de
-  selección de destino.
-- `tooltipRedrawKey`: el tooltip se reconstruye cuando cambiaría su TEXTO, no solo al cambiar de celda, y se refresca
-  desde `update()` mientras está a la vista — si no, la presión de una sala represurizándose quedaba congelada.
-- `devTargetMode` (13f ronda 4b): las teclas de dev F y H arman una herramienta y el siguiente click de mapa elige
-  la celda, en vez de leer `interaction.selectedCell`. Se rompieron cuando el panel de celda vacía desapareció —
-  una herramienta de dev no debe depender de un estado de juego para funcionar.
-
-# Subfase 13h — Puertas y compartimentación (ronda A: motor)
-
-## `engine/src/doors/` (dominio nuevo, Subfase 13h)
-- `door.types.ts` — `DoorId`/`DoorMode`/`DoorState`/`DoorOverrideSource`/`DoorRuntime`/`DoorSnapshot`. `DoorState` incluye
-  `opening`/`closing`: la transición dura `ACT.cadence` y no es un escalón. `overrideSource` lleva el MOTIVO para que la UI
-  pueda decir por qué la puerta no responde.
-- `door-parameters.ts` — todo el balance de la subfase (vida por `RE`, radio de auto-apertura, umbral de trabado magnético,
-  coste de forzar). Ninguna regla tiene literales propios.
-- `door-aperture.ts` — apertura [0,1] de una puerta; `opening`/`closing` INTERPOLAN, si no la cadencia sería cosmética.
-- `door-identity.ts` — `isDoorCapable` (`ACT`+`EST`), `doorActuator`, `doorTransitionSeconds`, `thresholdSectionsAt`.
-  La identidad es por propiedades y la de umbral por geometría; ninguna lista de ids de catálogo.
-- `door-governance.ts` + `door-rules/` — Strategy con prioridad ORDENADA (destruida > trabada > sin energía > señal >
-  tarea > auto). El orden vive en `door-rule-registry.ts` y ES la semántica; `AutoProximityRule` va siempre última porque
-  es la única que aplica incondicionalmente.
+Índice de módulos por dominio: **una entrada por módulo**, con lo que existe y para qué. Se ACTUALIZA la entrada existente al tocar un módulo — nunca se agrega una segunda para el mismo archivo. No es un changelog (eso vive en `docs/changelog/`) ni un historial de fases (`ORDEN_DE_TRABAJO.md`).
+
+Se lee por sección de carpeta, no entero.
+
+---
+
+## `engine/src/atmosphere/`
+- `tagged-concentration.ts` — `sectionTaggedConcentration`: punto único de "gases contaminantes con tag X".
+- `diffusion.ts` — `diffuse()` equilibra `pressureKpa` además de las fracciones de gas, con la misma apertura y paso. Es lo que hace que una brecha se desangre por cada puerta abierta.
+- `section.types.ts` / `atmosphere-snapshot.types.ts` — molde de estado por sección + round-trip de snapshot (referencia para `integrity/`).
+- `thermal-parameters.ts` — **único lugar con números térmicos**: `NOMINAL_TEMPERATURE_CELSIUS` (única fuente del 21, la importa `standardSectionAtmosphere`), `PASSIVE_DRIFT_PER_SECOND`, `THERMAL_DIFFUSION_RATE_PER_SECOND`, `MIN_THERMAL_APERTURE`, clamps piso/techo, `THERMAL_SENSOR_TRIGGER_CELSIUS`, `AUTOIGNITION_CELSIUS` (90, **medido** contra la pila real: a 120 la propagación era imposible), `SPARK_IGNITION_SECONDS`, y las tablas `COMBUSTION_HEAT`/`OVERLOAD_HEAT` (autoradas como "+X °C en Y s", no como °C/s).
+- `diffusion.ts` — tercer bloque de equilibrio (temperatura) junto a presión y gases, con tasa propia y piso de apertura: **una puerta cerrada detiene el gas y NO el calor**. El `continue` por apertura 0 exige que ambos pasos sean nulos.
+
+## `engine/src/blueprint/`
+- `blueprint.types.ts` + `blueprint-serializer.ts` — `Blueprint` y su serialización versionada. Campos acumulados: `overloadedRefs` (cicatriz de sobrecarga), `powerState` (`unpoweredSectionIds` es DERIVADO, recalculado por `MissionPowerRuntime`, y el único campo público que consumen `MissionSignalRuntime`/UI), `PlacedComponentInstance.wear` requerido (`structuralResistanceOverride` deprecado a solo-lectura), `sectionIntegrity`. `schemaVersion` actual **9**; cada subida trae su guard/migración con default en el serializer.
+
+## `engine/src/chemistry/`
+- `reaction/unidentified-mixture-factory.ts` — id determinístico de "Mezcla sin identificar" por unión ordenada de tags (incluye nivel para `TOX`/`CORR`); dos mezclas con distinto conjunto de tags no colisionan.
+- `reaction/mixture-hazard-preview.ts` — `deriveMixtureHazardPreview`: función pura, radio de combustión (según O2 de sección) y segundos por nivel de degradación, sobre las constantes de `reaction-parameters.ts`.
+- `reaction/reaction-events.types.ts` — `CombustionEvent.sectionId?` lo estampa `MissionReactionRuntime` al emitir, no `CombustionRule` (que sigue sin noción de mundo).
+- `phase/phase-change.types.ts` — `PhaseChangePoints`, `PhaseTransition` y `AuthoredSubstanceData` (el tipo que vuelve obligatorios `state` + los dos puntos, y solo en las entradas de catálogo).
+- `phase/phase-change-parameters.ts` — `DEFAULT_PHASE_POINTS_BY_STATE` (perfil de las sustancias sintetizadas en runtime), `PHASE_EXPANSION_KPA_PER_UNIT`/`_DURATION_SECONDS`, `FREEZE_DESTROYS_RESERVOIR_AT_WORST_WEAR`.
+- `phase/matter-state.ts` — `phasePointsOf` (punto único de resolución catálogo/fallback), `effectiveMatterState`, `nominalStateOf`, `phaseTransitionOf`, `isFrozenAt`.
+- `phase/phase-events.types.ts` — `SubstancePhaseChangeEvent` (sustancia suelta en una sección) y `ReservoirContentPhaseChangeEvent` (contenido de un tanque, con si dañó o destruyó el contenedor).
+- `catalog/element-catalog.ts` + `compound-catalog.ts` — las 49 entradas declaran sus dos puntos de transición; `CRYOGENIC_SUBSTANCE_IDS` nombra las excepciones deliberadas al test de coherencia.
+- `reaction/reaction-events.types.ts` — `NeutralizationEvent.sectionId` opcional, mismo criterio que el de `CombustionEvent`.
+
+## `engine/src/components/`
+- `physical-component.types.ts` — `CreationPart` (ref + offset + footprint + rotación) y `CompositeComponentData.layout?` para dibujar una creación con los sprites de sus partes; `data.powerDraw` como dato de componente, hermano de `footprint` (lo inyecta `withPowerDraw` al construir, los specs no lo autoran).
+- `catalog/atomic-component-catalog.ts` — catálogo atómico. Incluye Indicador LED (1×1, `REC`), Pantalla LCD (2×1, `REC`, valor real vía `lcd-display-value.ts`) y Sensor de Presión (1×1, `EM`, `triggerType: "pressure"`). `material.RE` autorado en las 18 piezas que no lo declaraban.
+- `catalog/composite/composite-component-spec.types.ts` — `CompositeComponentSpec` única, importada y re-exportada por los 4 catálogos de arquetipo. Campo `contains?: ChemicalSubstanceId`: sustancia de fábrica de un reservorio (el estado vivo es `Blueprint.reservoirContents`).
+- `catalog/composite/guerra.ts` — `garra-de-abordaje` (solo `ACT`, cuerpo a cuerpo) frente a `torreta-automatizada` (`EM`+`ACT`, a distancia); `compuerta-blindada` con `ACT.cadence` 1.5 s, número compartido por simulación y animación.
+- `catalog/composite/taller.ts` — `banco-de-trabajo` (FAB física) y `estacion-quimica` (FAB química + `RES(L)` de salida). Kit base de las 4 naves, sembrado en `initial-ship-state.ts`, no catálogo de arquetipo.
+- `catalog/build-component-catalog.ts` — construcción del catálogo; exporta `ALL_COMPOSITE_SPECS` (lista estática, sin las creaciones registradas en caliente en `componentRegistry`). `powerUnits` autorado en las 8 fuentes `RES(E)` reales.
+- `fabricator-query.ts` — `fabricatorDomainOf`/`instanceFabricatorDomain`/`findFabricators`/`hasFabricator`: punto ÚNICO de "¿qué instancias habilitan qué mesa?", resuelto por propiedad `FAB` y nunca por `ComponentId` (Principio 1). Una instancia `destroyed` deja de habilitar; `jammed` sigue.
+
+## `engine/src/crew/`
+- `crew-actor.types.ts` — `CrewActor` con `currentCell?: GridPosition` (compartido con `EnemyActor`).
+- `crew-events.types.ts` — `CrewDamageCause` incluye `"enemy-attack"`.
+
+## `engine/src/crisis/`
+- `crisis-definition.types.ts` — `CrisisDefinition` con `scriptedOverloads?` (`ScriptedOverloadSubject`: `load`/`capacityOverride` para `MissionOverloadRuntime`) y `scriptedReactions?` (`ScriptedReactionSubject`: reactivos + `sectionId` + `ignitionTrigger`). Datos de guion; ausentes = ningún capítulo los usa.
+- `campaign/chapter-01-primer-aviso.ts` — Capítulo 1. 3ª resolución `replacement-installed-connected` anclada en `sealPosition`, con `CHAPTER_01_SEAL_POSITION_BY_ARCHETYPE`, `..._SEAL_SECTION_ID_BY_ARCHETYPE`, `..._SEAL_ACCEPTABLE_COMPONENT_IDS` y tasas de drenaje/recuperación. `CHAPTER_01_OVERLOAD_INSTANCE_ID` + `overloadedConductorPosition` siembran un `cable-cobre` real. `CHAPTER_01_INITIAL_ATOMIC_STOCK` define el stock de arranque (re-balanceado en 14a-3; sigue siendo deuda #44).
+- `crisis-rule.ts` — molde Strategy que reusan `enemies/combat-rule.ts` y los demás dominios.
+
+## `engine/src/doors/`
+- `door.types.ts` — `DoorId`/`DoorMode`/`DoorState`/`DoorOverrideSource`/`DoorRuntime`/`DoorSnapshot`. `DoorState` incluye `opening`/`closing` (la transición dura `ACT.cadence`, no es un escalón); `overrideSource` lleva el MOTIVO para que la UI diga por qué la puerta no responde. `blocksPathing(door)` y `blocksPassage(door)` son preguntas DISTINTAS: una puerta en `auto` con energía tapa la celda pero no es obstáculo para planificar ruta.
+- `door-parameters.ts` — todo el balance (vida por `RE`, radio de auto-apertura, umbral de trabado magnético, coste de forzar). Ninguna regla tiene literales propios.
+- `door-aperture.ts` — apertura [0,1]; `opening`/`closing` interpolan.
+- `door-identity.ts` — `isDoorCapable` (`ACT`+`EST`), `doorActuator`, `doorTransitionSeconds`, `thresholdSectionsAt`. Identidad por propiedades y umbral por geometría; ninguna lista de ids.
+- `door-governance.ts` + `door-rules/` + `door-rule-registry.ts` — Strategy con prioridad ORDENADA (destruida > trabada > sin energía > señal > tarea > auto). El orden vive en el registry y ES la semántica; `AutoProximityRule` va última porque es la única incondicional.
 - `door-events.types.ts` — `door-transition`/`settled`/`override-changed`/`damaged`/`destroyed`/`repaired`/`crushed-actor`.
-
-## `engine/src/valves/` (dominio nuevo, Subfase 13h)
-- `valve.types.ts` / `valve-runtime.ts` — apertura viva por `ConduitId`, sembrada de `initialAperture` y pisada por el save.
-  Existe porque la puerta NO cierra el ducto: contener una fuga exige cerrar también la válvula.
-
-## `engine/src/mission/mission-door-runtime.ts` (nuevo, Subfase 13h)
-- Dueño del estado vivo. Produce las dos cosas que consume el resto: `apertureSource()` (aristas atmosféricas de las
-  puertas, que se SUMAN a las de conductos) y `blocksCell()` — única fuente de verdad del bloqueo, compartida por
-  pathfinding, línea de visión y proyectiles de 13f para que no diverjan.
-- `DoorWorldQueries`: interfaz angosta y opcional (ocupación, señal, energía, campo magnético). Sin queries las puertas
-  corren en `auto` puro.
-- `syncInstalledDoors()` promueve instalaciones `ACT`+`EST` sobre umbral a puertas; se llama al cambiar el blueprint, no
-  por tick.
-
-## `engine/src/mission/mission-atmosphere-runtime.ts` (modificado, 13h)
-- `SectionApertureSource` opcional, molde de `SectionPressureSinkSource`. Devuelve la lista COMPLETA de conexiones
-  efectivas del tick, no un delta: resuelve válvulas (misma arista, otra apertura) y puertas (aristas adicionales) con la
-  misma forma. `diffuse()` no cambió.
-
-## `engine/src/mission/composite-aperture-source.ts` (nuevo, 13h)
-- Molde de `composePressureSinks`, pero CONCATENA en vez de sumar por clave: entre dos secciones puede haber a la vez un
-  ducto abierto y una puerta cerrada, y son dos caminos distintos para el aire.
-
-## `engine/src/floorplan/` (modificado, 13h)
-- `ConduitId` derivado en `parseConduits` (`${kind}:${a}:${b}:${índice}`) — los conductos no tenían identidad y `/game`
-  improvisaba claves; el índice hace falta porque hay pares repetidos reales en `nave-exploracion`.
-- `DoorSeedPoint` + capa Tiled `puertas` OPCIONAL con `span`/`axis`: un vano de dos celdas es UNA puerta con dos celdas,
-  porque partirlo duplicaría su caudal de aire. Integridad: `door-self-reference`/`unknown-section`/`not-adjacent`/
-  `outside-section`/`duplicate-id`.
-
-## `engine/src/workbench/derive-signal-nodes.ts` (modificado, 13h)
-- `ACT` pasa a derivar un nodo `receptor`. Un actuador gobernado por señal ES un receptor; sin esto el panel de compuerta
-  del Cap.1 era un nodo huérfano y una puerta instalada no se podía cablear. Vale para todo `ACT`, no solo puertas.
-
-## `engine/src/mission/enemy-threat-runtime.ts` (modificado, 13h)
-- `doorBlocking`/`damageDoor`: el enemigo se frena ante una puerta cerrada con su reloj de ruta pausado (`routeHoldSeconds`,
-  necesario porque `cellAtElapsedSeconds` es función del tiempo absoluto) y la golpea hasta romperla. Trabar una puerta
-  compra tiempo, no inmunidad.
-
-## `engine/src/mission/loose-ferromagnetic-promoter.ts` (modificado, 13h)
-- Excluye puertas: una compuerta ferromagnética dañada saldría del blueprint para siempre, llevándose la
-  compartimentación de esa sección sin que el jugador hiciera nada.
-
-# Subfase 13h — ronda B (UI y visual)
-
-## `game/src/mission/mission-runtime.ts` (modificado, 13h)
-- `doorRuntime`/`valveRuntime` construidos ANTES de la atmósfera (son sus productores de apertura); sus `queries` son
-  closures, así que no dependen del orden de construcción. El tickable de puertas va entre energía y atmósfera.
-- `projectileWorld` pasa a ser campo: el trabado magnético usa las MISMAS bobinas activas que aceleran proyectiles.
-- Resincronización de puertas construidas comparando la REFERENCIA de `placedComponents` (`Blueprint` es inmutable, el
-  `!==` es exacto y O(1)). Sin esto una compuerta instalada a mitad de misión no era puerta.
-- `queueSetValve`/`queueForceDoor`/`queueRepairDoor`. `durationScaleFor` aplica solo el multiplicador de afinidad, para
-  que `force-door` escale con `ACT.power` de la hoja concreta y no con la tabla base.
-
-## `game/src/render/walkable-grid.ts` (modificado, 13h)
-- `withDoorState(grid, isDoorBlocked)`: decora, no copia. La escena mantiene `navigationGrid` (decorada, para pathfinding
-  y bloqueo) separada de `walkableGrid` (cruda, para el ruteo estático de conductos y cables).
-
-## `game/src/render/floorplan-renderer.ts` (modificado, 13h)
-- `FloorplanLayerId` gana `"puertas"` y `"presion"`.
-- `drawDoorLayer`: una barra por hoja que se acorta con el avance de la transición — es donde se ve que la puerta tarda
-  `ACT.cadence`. También marca las válvulas cerradas EN VIVO, porque `drawConduitMarker` se dibuja una sola vez desde
-  `initialAperture` y se quedaría mostrando la apertura de fábrica.
-- `drawPressureLayer`: molde exacto de `drawEnergyLayer`; alpha escalado por distancia a lo nominal. Una sala a presión
-  nominal no se dibuja (principio 6).
-
-## `game/src/ui/widgets/mission-action-panel.ts` (modificado, 13h)
-- Variantes `conduit` (válvula: apertura, delta de presión con flecha, abrir/cerrar) y `door` (autorada). `DoorPanelInfo`
-  + `renderDoorBlock` compartido con la variante `instance`, porque una puerta construida se desmonta y se repara como
-  cualquier pieza. `overrideSource` llega hasta el panel para que el botón gris diga POR QUÉ.
-
-## `game/src/mission/mission-interaction-controller.ts` (modificado, 13h)
-- `doorInfoForInstance`/`doorInfoById`/`conduitLiveState`: el panel abierto se re-deriva del mundo vivo en cada dibujo,
-  igual que los hazards de 13d — el estado de una puerta cambia solo.
-- `conduitAtCell` redondea la posición del marcador (se autora en coordenadas fraccionales sobre la arista): sin eso un
-  conducto en (11.5, 11) no sería clickeable desde ninguna celda.
-
-## `game/src/particles/effects/conduit-flow-effect.ts` + `conduit-flow-heuristics.ts` (modificados, 13h)
-- `direction` en el estado: se apaga el SPAWN del sentido contrario, no el stream — los tokens en viaje terminan su
-  recorrido. `ventilationIntensity` lee la apertura VIVA y devuelve el sentido (de mayor a menor presión).
-
-## `engine/src/mission/coil-field-source.ts` (nuevo, 13h)
-- `coilFieldIntensityAt`: compone las funciones puras de `kinetics/` en la pregunta que faltaba — "cuánto campo hay en
-  esta celda". Las bobinas contiguas cuentan como un solo electroimán; se toma el máximo entre grupos, no la suma.
-
-# Subfase 13h — ronda 1 de playtest
-
-## `engine/src/floorplan/instantiate-door-seeds.ts` (nuevo)
-- `instantiateDoorSeeds`: la capa Tiled `puertas` materializa INSTANCIAS reales de `compuerta-blindada` + su nodo
-  receptor derivado del `ACT`. Elimina la dualidad autorada/construida que dejaba a las puertas del casco sin sprite
-  y sin poder cablearse. Un vano de dos celdas es una instancia 2×1, no dos piezas: dos aportarían dos aristas de
-  difusión.
-
-## `engine/src/doors/door.types.ts` (modificado, ronda 1)
-- `blocksPathing(door)` junto a `blocksPassage(door)`. Son preguntas distintas y colapsarlas dejó la nave entera
-  inalcanzable: una puerta en `auto` con energía tapa la celda (pared para un proyectil) pero NO es obstáculo para
-  planificar una ruta — se abre sola al llegar. `instanceId` deja de ser opcional.
-
-## `engine/src/atmosphere/diffusion.ts` (modificado, ronda 1)
-- `diffuse()` equilibra `pressureKpa` además de las fracciones de gas, con la misma apertura y el mismo paso. Hasta
-  acá la presión NUNCA se propagó por una conexión: solo la movía el sumidero de 13f sobre una sección. Es lo que
-  hace que una brecha se desangre por cada puerta abierta.
-
-## `engine/src/mission/mission-door-runtime.ts` (modificado, ronda 1)
-- Sin `seedAuthoredDoors`: `syncInstalledDoors` es el único camino de alta. Los snapshots quedan PENDIENTES hasta que
-  su puerta se da de alta (al construir el runtime ya no existe ninguna). `blocksPathingAt(cell)` nuevo.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 1)
-- `navigationGrid` se decora con `blocksPathingAt`; `setMotionBlockedQuery` conserva `blocksCell`.
-- `chainHops` difiere el salto que entra en una celda de puerta hasta que esté abierta (`isDoorwayHeldClosed`,
-  reintento cada `DOOR_WAIT_RETRY_MS`): sin eso el tiempo de la hoja no le costaba nada al jugador.
-
-## `game/src/render/floorplan-renderer.ts` (modificado, ronda 1)
-- `drawDoorLayer` pasa de barra a CONTORNO por celda: independiente de la orientación (el bug de la barra siempre
-  horizontal desaparece por construcción) y no tapa el sprite.
-
-# Subfase 13h — ronda 2 de playtest
-
-## `game/src/render/door-visuals.ts` (nuevo)
-- `doorOpenness` (unificado: estaba DUPLICADO textualmente en `floorplan-renderer.ts` y `floorplan-scene.ts`),
-  `easedDoorOpenness` (Sine.InOut, respeta los extremos para no adelantar la apertura real) y `doorSlideAxis`
-  (eje del vano si mide más de una celda; si no, perpendicular al sentido del paso entre sus dos secciones).
-
-## `engine/src/mission/door-signal-output.ts` (nuevo)
-- `doorSignalOutput`: qué le ordena el cable a una puerta. Los tres valores no son intercambiables — `undefined`
-  = nadie la gobierna (sin cable, o SIN MOTOR: un motor muerto no oye el cable), `true`/`false` = abrir/cerrar en
-  override. Era un closure en `/game`, donde no había forma de testearlo.
-
-## `engine/src/signals/orient-signal-wiring.ts` (nuevo)
-- `orientSignalWiring`: la dirección del cable sale de los ROLES, no del orden de clicks. Rechaza receptor↔receptor
-  y emisor↔emisor. Antes una arista al revés se aceptaba en silencio y no la leía nadie.
-
-## `game/src/audio/effects/door-sound.ts` (nuevo)
-- `EventDrivenSound<"door-transition">`. Enganchado al arranque de la transición, no a `door-settled`.
-
-## `engine/src/mission/mission-door-runtime.ts` (modificado, ronda 2)
-- `DoorWorldQueries.powered` toma la PUERTA en vez de un `SectionId`: se resuelve por instancia (misma fuente que
-  el reparto de 13b) y mira las dos secciones, no solo `door.a`.
-
-## `game/src/mission/mission-runtime.ts` (modificado, ronda 2)
-- `signalRuntime` se registra ANTES que `doorRuntime` (la puerta leía la señal del tick anterior).
-- `signalOutput`/`powered` delegan en `doorSignalOutput` e `isInstancePowered`.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 2)
-- `updateDoorSprites` corre la hoja `DOOR_SLIDE_CELLS` y la desvanece, sin tweens (ver el docblock: inversión a
-  mitad de camino, reconstrucción del overlay y pausa táctica).
-- `unreachableReason`: "Sin ruta al destino" nombra la puerta culpable, buscando la ruta otra vez sobre la grilla
-  sin puertas. Solo corre cuando una orden ya falló.
-- Suscripción a `doorEvents` — el primer consumidor: el motor emitía al vacío desde la ronda A.
-
-## `engine/src/components/catalog/composite/guerra.ts` (modificado, ronda 2)
-- `compuerta-blindada`: `ACT.cadence` 3 s → 1.5 s. Simulación y animación comparten el número.
-
-# Subfase 13h — ronda 3 de playtest (estado visible por componente)
-
-## `engine/src/instance-state/` (dominio nuevo)
-- `instance-state.types.ts` — `InstanceStateFlag` (hoy `unpowered`) e `InstanceState`, que lleva el detalle
-  numérico (`required`/`available`) como DATOS: el motor no arma texto de UI.
-- `derive-instance-states.ts` — `deriveInstanceStates` con interfaz angosta inyectada (molde de
-  `DoorWorldQueries`). `unpowered` exige `powerDraw > 0`: sin ese guard, toda pieza sin consumo declarado se
-  marcaría apagada.
-
-## `engine/src/power/component-power-draw.ts` (nuevo)
-- `componentPowerDraw`: única lectura de `powerDraw`. Estaba copiada en `allocateComponentPower` y en
-  `sectionPowerDemand`. Punto único de cambio cuando 13g lo suba a dato de componente.
-
-## `game/src/render/component-state-visuals.ts` (nuevo)
-- Tabla ORDENADA estado→(tinte, ícono, aviso) + `resolveComponentVisual` (cadena
-  `destroyed > jammed > unpowered > wear`) e `instanceStateLabel` (compone los números; `t()` no interpola).
-- Es la ÚNICA fuente de tinte de sprite: absorbe la prioridad `condition > wear` que decidía el renderer.
-
-## `game/src/scenes/floorplan-scene.ts` (modificado, ronda 3)
-- `updateComponentStateTints` + `syncStateIcon`: escriben `setBaseTint` (nunca `setTint`) y corren fuera del
-  guard de `execution`. El ícono no entra en `forEachShadedTarget`, así que la luz no lo apaga.
-- `tooltipRedrawKey` pasa a calcularse también para `kind === "instance"` (antes `""` fijo).
-
-## `game/src/ui/widgets/mission-tooltip.ts` y `mission-action-panel.ts` (modificados, ronda 3)
-- Líneas de estado con ícono, texto y color ya resueltos por el llamador desde la misma tabla.
-
----
-
-# Subfase 13g — Consumo Eléctrico Real
-
-## `engine/src/power/power-parameters.ts` (nuevo)
-- `POWER_DRAW_BY_COMPONENT` + `declaredPowerDraw`: la ÚNICA tabla de consumos del catálogo. Criterio
-  documentado (señal pura 1 · `ACT` 2 · pesado/`FAB` 3) y por qué conductores y fuentes no consumen.
-
-## `engine/src/power/default-allocation.ts` (nuevo)
-- `defaultSectionAllocations`: reparto inicial por demanda declarada de cada sección, mayor primero, hasta
-  agotar presupuesto. Existe porque `emptyPowerState()` deja toda sección en 0 y con demanda declarada eso
-  significa una partida nueva sin señales, sin mesas y sin puertas.
-
-## `engine/src/components/physical-component.types.ts` y `catalog/build-component-catalog.ts` (modificados)
-- `data.powerDraw` como dato de componente, hermano de `footprint`; `withPowerDraw` lo inyecta al construir
-  desde la tabla. Los specs de catálogo no lo autoran.
-
-## `engine/src/power/component-power-draw.ts` (modificado)
-- Pasa a leer `definition.data.powerDraw`. Sigue siendo el único lector — por eso la migración entró en un
-  solo lugar y reparto, heatmap y derivación de estado no pudieron divergir.
-
-## `engine/src/properties/functional.types.ts` (modificado)
-- `ActuatorProperty` pierde `powerDraw` (queda `power`, que es otra magnitud). Comentario de por qué no vuelve.
-
-## `engine/src/power/mission-power-runtime.ts` (modificado)
-- Docblocks nuevos en `isInstancePowered` (el predicado de gating vigente) y `unpoweredSections` (cicatriz sin
-  escritor autorado todavía, honesto). El fail-open de instancias sin sección se conserva con razón nueva.
-
-## `engine/src/tasks/` (modificado)
-- `task.types.ts`/`task-factory.ts`: `powerInstanceIds`, hermano por instancia de `powerSectionIds` — y único
-  sitio donde una tarea `combine` conserva de qué mesa habla.
-- `task-scheduler.ts`: `isInstanceUnpowered` inyectable, `fail(taskId, reason, tick)` (primer escritor real de
-  `failed`, hermano de `cancel()`, borra el avance por objetivo) y re-chequeo de energía en la Fase A del tick,
-  que hasta ahora no miraba el mundo.
-- `task-events.types.ts`: `TaskFailedEvent.reason`, para que el aviso nombre la causa.
-
-## `engine/src/floorplan/initial-ship-state.ts` y `save/campaign-save-factory.ts` (modificados)
-- Oferta de exploración 10 → 38 (deuda #39) y siembra del reparto inicial (deuda del patrón 42). El reparto se
-  siembra en el SAVE y no en el runtime: el runtime no distingue "nunca se asignó" de "el jugador puso 0".
-
-## `game/src/mission/mission-runtime.ts` (modificado)
-- `fabricatorBlockedReason`: punto único que comparten el guard de `openWorkbench` y el label del botón.
-- `powerInstanceIds` poblado en las cuatro tareas de máquina; limpieza de `pendingFabrications`/
-  `pendingSynthesis` al fallar o cancelar (el material se pierde, principio 5, pero los maps se vacían).
-
-## `game/src/render/component-sprite-registry.ts` y `mission-overlay-renderer.ts` (modificados, deuda #38)
-- `ensureComponentPlaceholderTexture` + placeholder como `Image` por celda: las piezas sin arte recorren el
-  mismo camino de tinte y sombreado que un sprite real, en vez de vivir en el `Graphics` batcheado.
-
-## Fixes de playtest de 13g, ronda 1
-
-### `engine/src/mission/emitter-sensing.ts` (nuevo)
-- `PRESENCE_TRIGGER_TYPES` / `PRESSURE_TRIGGER_TYPES`, `emitterRangeOf` (contra el REGISTRO, no el catálogo
-  atómico), `emitterReaches` y `emitterCoverageCells`. Una sola fórmula de alcance, compartida por el
-  resolvedor que decide el disparo y la capa de `/game` que dibuja el área.
-
-### `engine/src/mission/motion-emitter-input-source.ts` y `pressure-emitter-input-source.ts` (modificados)
-- Reciben el `EntityRegistry`: los sensores COMPUESTOS se resuelven por primera vez. `optical` y `motion` son
-  el mismo disparador de presencia. El fail-open de los tipos sin simular queda documentado (deuda #40).
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- `emitterCoverageOf(instanceId)`: punto único que resuelve las celdas cubiertas reusando el helper del motor
-  y el mismo `motionBlockedQuery` que alimenta al resolvedor.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `updateEmitterRangeHighlight()`: un `Graphics` top-level en el depth nuevo `emitterRange` (2.8), redibujado
-  desde `update()` porque la cobertura es viva (una puerta que se abre cambia la línea de visión).
-
-## Fixes de playtest de 13g, ronda 2
-
-### `engine/src/floorplan/floorplan-integrity.ts` (modificado)
-- Issue nuevo `door-not-a-threshold`: la celda de una puerta debe resolver por `thresholdSectionsAt` a las
-  DOS secciones que declara — la misma condición que `syncInstalledDoors` exige para darla de alta. Sin esto,
-  una puerta mal ubicada cargaba como pieza decorativa sin que nada fallara.
-
-### `engine/src/floorplan/maps/nave-exploracion.json` (dato)
-- `puerta-puente` (5,9) → (4,9): la celda anterior tocaba tres secciones y el motor la descartaba.
-
-## Fixes de playtest de 13g, ronda 3
-
-### `engine/src/doors/door-identity.ts` (modificado)
-- `sectionsTouchingCell` (todas las secciones que toca una celda) y `cellSeparates` (¿toca estas dos?).
-  `thresholdSectionsAt` se reescribe sobre el primero y conserva su semántica de inferencia.
-
-### `engine/src/mission/mission-door-runtime.ts` (modificado)
-- `resolveBoundary`: autorada → `a`/`b` del mapa (verificados con `cellSeparates`); improvisada → inferencia.
-  Es lo que permite autorar una puerta en la boca de un pasillo, que toca tres secciones.
-- `initialOpen` del seed decide el estado inicial; el snapshot del save le gana.
-
-### `engine/src/floorplan/floorplan-integrity.ts` (modificado)
-- `door-not-a-threshold` pasa a exigir `cellSeparates` — la misma precondición que el runtime — en vez de que
-  la inferencia dé exactamente dos secciones, que prohibía mapas correctos.
-
-## Subfase 14a-1: Dominio de Temperatura
-
-### `engine/src/atmosphere/thermal-parameters.ts` (nuevo)
-- Único lugar con números térmicos: `NOMINAL_TEMPERATURE_CELSIUS` (única fuente del 21, lo importa
-  `standardSectionAtmosphere`), `PASSIVE_DRIFT_PER_SECOND`, `THERMAL_DIFFUSION_RATE_PER_SECOND`,
-  `MIN_THERMAL_APERTURE`, clamp piso/techo, `THERMAL_SENSOR_TRIGGER_CELSIUS`, y las tablas de calor por
-  evento `COMBUSTION_HEAT` / `OVERLOAD_HEAT` (autoradas como "+X °C en Y s", no como °C/s).
-
-### `engine/src/atmosphere/diffusion.ts` (modificado)
-- Tercer bloque de equilibrio, igual que presión y gases pero con tasa propia y piso de apertura: una puerta
-  cerrada detiene el gas y NO el calor. El `continue` por apertura 0 pasa a exigir que ambos pasos sean nulos.
-
-### `engine/src/mission/mission-thermal-runtime.ts` (nuevo)
-- `Tickable` que traduce `CombustionEvent` / `OverloadEvent` (fire, explosion) / `NeutralizationEvent` a
-  pulsos de °C/s con duración, y los expone por `rates()` / `heatRateOf()`. La neutralización usa el calor
-  que trae el propio evento; el resto, la tabla de parámetros. Eventos sin `sectionId` se ignoran.
-
-### `engine/src/mission/mission-atmosphere-runtime.ts` (modificado)
-- `SectionHeatSource` como 7º parámetro opcional (mismo patrón DI que `SectionPressureSinkSource`), y
-  `applyThermalUpdate`: aporte por evento + deriva exponencial hacia el nominal, con clamp de dos lados.
-  Va antes del early-return del sumidero: una misión sin fuentes de presión igual climatiza.
-
-### `engine/src/mission/temperature-emitter-input-source.ts` (nuevo)
-- `temperatureAwareEmitterInputs`: resuelve `triggerType: "thermal"` contra la temperatura real de la sección
-  del sensor. Molde de `pressureAwareEmitterInputs`, búsqueda contra el registro completo (el sensor térmico
-  es compuesto), disparo POR ENCIMA del umbral. Saca a `sensor-termico-precision` del fail-open.
-
-### `engine/src/mission/emitter-sensing.ts` (modificado)
-- `THERMAL_TRIGGER_TYPES` junto a los sets de presencia y presión.
-
-### `engine/src/chemistry/reaction/reaction-events.types.ts` (modificado)
-- `NeutralizationEvent.sectionId` opcional, mismo criterio y mismo llenado que el de `CombustionEvent`.
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- `thermalRuntime` construido y registrado en el core loop ANTES de `atmosphereRuntime`; su `rates()` se
-  inyecta por closure como `SectionHeatSource`. `emitterInputs` pasa a armarse en pasos nombrados
-  (`withMotion` → `withPressure` → temperatura) en vez de anidada. `sectionAtmosphereInfo` agrega
-  `temperatureCelsius` y `heating`.
-
-### `game/src/ui/widgets/mission-tooltip.ts` (modificado)
-- Línea de temperatura (siempre, coloreada al cruzar el umbral del sensor) y línea de "fuente de calor
-  activa" en ámbar. Ejes separados a propósito, igual que `vacuum` lo es de `trend`.
-
-### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
-- `HEAT_VAPOR_THRESHOLD_CELSIUS` pasa a importar `THERMAL_SENSOR_TRIGGER_CELSIUS` del motor en vez de
-  repetir el 60: si el jugador ve vapor, el sensor está disparado.
-
-## Subfase 14a-2: Acoplamientos Térmicos
-
-### `engine/src/signals/graph-traversal.ts` (nuevo)
-- `upstreamNodes` / `downstreamNodes`: BFS del grafo de señal en las dos direcciones, tolerante a ciclos
-  (el latch de GDD 5.6). El de aguas arriba se extrajo de `mission-projectile-world.ts`, donde era privado.
-
-### `engine/src/power/conductor-load.ts` (nuevo)
-- `conductorElectricalLoad`: la carga de un conductor es la suma del `powerDraw` de lo que cuelga aguas
-  abajo. En unidades de `powerDraw`, que es por lo que se re-escaló `COND.maxCapacity` en el catálogo.
-
-### `engine/src/failure/thermal-conductivity-rule.ts` (modificado)
-- Pasa de un umbral (frío) a dos: `thermalCapacityFactor(temperatura, CT)` con rama fría (≤ -50) y caliente
-  (≥ 100, desplazada por el `CT` del material). `thermallyAdjustedConductorOverloadSubject` lo consume.
-
-### `engine/src/mission/mission-overload-runtime.ts` (modificado)
-- Deja de recorrer solo `scriptedOverloads` y evalúa TODO conductor instalado con carga derivada.
-  Cadena de capacidad: catálogo → `capacityOverride` → `wornCapacity` → factor térmico. Recibe `atmosphereOf`.
-
-### `engine/src/mission/thermal-regulators.ts` (nuevo)
-- `isThermalRegulatorDefinition` (identidad por propiedades: `ACT` no direccional + `CT: "A"`),
-  `isThermalRegulatorActive` (energía + señal, molde de `doorSignalOutput`),
-  `activeThermalRegulatorsBySection` y `sectionsWithThermalRegulator`.
-
-### `engine/src/mission/section-reactants.ts` (nuevo)
-- `sectionReactants`: qué hay en el aire de una sección que pueda reaccionar, excluyendo los gases de fondo y
-  las trazas. `reactantsFingerprint` para el antirruido por tick.
-
-### `engine/src/mission/mission-thermal-runtime.ts` (modificado)
-- Sexto y séptimo escritores: aporte continuo de los reguladores activos (`ActiveThermalRegulatorSource`) y
-  `applySubstanceSpill` para el pulso térmico de un derrame. Sigue siendo el único productor del mapa de °C/s.
-
-### `engine/src/mission/mission-reaction-runtime.ts` (modificado)
-- `tickEmergent`: química por sección a partir de las sustancias realmente presentes, además de la scripteada.
-  `thermalRegulatorOverloaded` pasa a derivarse (hay regulador instalado y la sala supera su umbral).
-
-### `engine/src/mission/section-gas-injection.ts` (modificado)
-- `GasInjectionDeps.onSpill`, avisado ANTES del descarte por sustancia no aérea: un criogénico enfría la sala
-  aunque quede como charco.
-
-### `engine/src/integrity/section-damage-rules.ts` (modificado)
-- `thermalDamageRule`, quinto escritor de daño, registrado en `SECTION_ENVIRONMENTAL_DAMAGE_RULES`. Dos lados
-  (calor y frío) y sin `floorHp`. `SectionDamageCause` suma `"thermal"`.
-
-### `engine/src/mission/ship-task-effect.ts` (modificado)
-- `installInstance` puebla `reservoirContents` desde `FACTORY_RESERVOIR_CONTENTS`: un reservorio fabricado por
-  el jugador nace con su sustancia, como los sembrados al crear la campaña.
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- `MissionOverloadRuntime` pasa a recibir `shipFloorplan` (faltaba, y sin él los `OverloadEvent` salían sin
-  `sectionId`) y `atmosphereOf`. Se cablean el `onSpill` de la inyección, la fuente de reguladores activos del
-  runtime térmico y el catálogo químico + reguladores del runtime de reacciones.
-
-### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
-- `FREEZING_THRESHOLD_CELSIUS` pasa a importar el umbral de daño por frío del motor, igual que el vapor de
-  calor importa el del sensor: la escarcha aparece cuando la sala empieza a sufrir.
-
----
-
-# Ronda 1 de playtest de 14a-2 — legibilidad del eje térmico (2026-09-01)
-
-### `game/src/particles/effects/atmosphere-effect-coverage.ts` (NUEVO)
-- Cuánta superficie ocupa un fenómeno de atmósfera y con qué densidad, aparte de "qué partícula es cada
-  fenómeno" (`atmosphere-state-effects.ts`). `sectionEmitZone` reparte partículas sobre las celdas REALES de una
-  sección (nunca su bounding box), `coverageQuantity` escala con área y severidad con techo y piso, y
-  `thresholdSeverity` normaliza los dos lados del eje térmico. Compartido por los tres efectos de atmósfera y
-  por las chispas de sobrecarga.
-
-### `game/src/particles/particle-effect.types.ts` (modificado)
-- `EffectArea` (celdas de grid) y tercer parámetro opcional de `StateDrivenEffect.start`: un efecto de SALA
-  necesita su superficie, no solo un punto. Opcional, así la galería de partículas y los tests siguen
-  instanciando efectos sin sección detrás.
-
-### `game/src/particles/effects/atmosphere-state-effects.ts` (modificado)
-- Los tres efectos aceptan `EffectArea` y escalan densidad por severidad × área; `FREEZING_THRESHOLD_CELSIUS` y
-  `HEAT_VAPOR_THRESHOLD_CELSIUS` pasan a leerse de `HAZARD_PARAMETERS.thermal` (el umbral del TRIPULANTE, no el
-  de la estructura): ver escarcha o vapor significa que la sala mata.
-
-### `game/src/particles/effects/overloaded-conductor-effect.ts` (modificado)
-- Chispas con núcleo propio (`OVERLOADED_SPARK_CORE_COLOR`, distinto del ámbar de la luz), frecuencia por debajo
-  de la vida para que nunca haya cero partículas vivas, y dispersión sobre el footprint real de la pieza.
-
-### `engine/src/mission/mission-hazard-parameters.ts` + `mission-hazard-runtime.ts` (modificados)
-- Quinto peligro: `HAZARD_PARAMETERS.thermal` (umbrales -10/60, propios y distintos de los de la sección) y su
-  aplicación por ACTOR. `applyVacuum` se generalizó al `bite()` compartido por vacío y térmico, con
-  `thermalDamageCause` mapeando temperatura → `"cold"`/`"fire"`. Vacío y frío llevan cuentas separadas y se
-  acumulan.
-
-### `engine/src/instance-state/` (modificado)
-- `InstanceStateFlag` suma `"overloaded"`; `InstanceStateQueries.isInstanceOverloaded` y su rama en
-  `deriveInstanceStates`, emitida ANTES que `unpowered` (el orden de emisión es la subprioridad visual).
-
-### `game/src/render/component-state-visuals.ts` + `palette.ts` + `render-depths.ts` (modificados)
-- Fila `overloaded` en `STATE_VISUAL` (tinte = ámbar de su propia cicatriz, glifo, `noticeKey`).
-  `FROST_LAYER_COLOR`/`FROST_MIN_ALPHA`/`FROST_MAX_ALPHA` y `OVERLOADED_SPARK_CORE_COLOR` en la paleta;
-  `RENDER_DEPTH.frostLayer` (1.6) entre la cicatriz de energía y los objetos.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `initSectionAtmosphereEffects` pasa las celdas de la sección a los tres efectos; `redrawFrostLayer` pinta la
-  escarcha por celda con alpha por severidad; `syncOverloadedConductorEffects` pasa el footprint real de la pieza.
-
-### `game/src/ui/widgets/mission-tooltip.ts` (modificado)
-- `isLethalTemperature`: la lectura de temperatura se colorea por los DOS lados del eje, con los umbrales del
-  daño a tripulación.
-
-### `engine/src/crisis/campaign/chapter-01-primer-aviso.ts` (modificado)
-- Retirados el `cable-cobre` sembrado en `ingenieria`, su `scriptedOverloads` y `overloadedConductorPosition`:
-  reventaba en el primer tick y era un falso positivo permanente sobre la cadena térmica.
-
-## Subfase 14a-4 — El cableado del jugador ES el conductor
-
-### `engine/src/signals/edge-conductor.ts` (nuevo)
-- Punto único de dos preguntas que antes no tenían dueño: `isWiringMaterial`/`electricalConductorProperty`
-  ("¿esta pieza es material de cableado?", por PROPIEDAD `COND(E)`, nunca por lista de ids) y
-  `edgeConductorId`/`edgeConductorWear` ("¿con qué se tendió esta arista?", con el default de migración a
-  `cable-cobre` en un solo lugar). Firmas estructurales, para servir igual a un spec de catálogo que a una
-  definición del registry.
-
-### `engine/src/signals/active-signal-graph.ts` (nuevo)
-- `activeSignalEdges`/`activeSignalGraph`/`isEdgeBurned`: el grafo menos los cables quemados. Punto único
-  consumido por dos dominios que no se conocen — la evaluación de señal (deja de propagar) y el cálculo de
-  carga (se redistribuye). No le enseña al `SignalEvaluator` qué es una sobrecarga.
-
-### `engine/src/signals/signal-edge.types.ts` + `graph-traversal.ts` (modificados)
-- `SignalEdge` suma `conductorId`/`conductorWear`; la capacidad NO se persiste, se deriva del catálogo.
-- `upstreamNodes`/`downstreamNodes` aceptan el conjunto de aristas a recorrer (default: el grafo completo),
-  para poder recorrer el grafo activo sin duplicar el BFS.
-
-### `engine/src/power/conductor-load.ts` (modificado)
-- `edgeElectricalLoad` reemplaza a `conductorElectricalLoad`, borrado al quedarse sin llamadores. Cuenta el
-  dueño de `edge.to` (a diferencia de la versión por instancia) y recorre el grafo ACTIVO.
-
-### `engine/src/mission/mission-overload-runtime.ts` (modificado)
-- Recorre aristas además de instancias; una pieza `COND(E)` colocada ya no es sujeto. `edgeStatus(edge)`
-  público — la UI pregunta carga/capacidad al runtime que decide, en vez de recalcular la cadena.
-  `worstThermalFactorAlong`: manda el peor de los dos extremos, y el evento se estampa con esa sección.
-
-### `engine/src/mission/ship-task-effect.ts` (modificado)
-- `payComponentCost` extraído (compartido por `install` y `connect`); `connect` cobra ANTES de tocar el grafo;
-  case `disconnect` nuevo, que saca la arista y su cicatriz sin acreditar nada.
-
-### `engine/src/workbench/port-wiring.ts` (modificado)
-- `wireExternalPort` acepta el conductor y rechaza un par ya cableado (`SignalWiringDuplicateError`, no
-  dirigido). `/game` la distingue para ofrecer RETIRAR en vez de mostrar un error.
-
-### `engine/src/tasks/task-scheduler.ts` + `task-events.types.ts` (modificados)
-- `completeTask` envuelve el efecto en try/catch: un rechazo pasa la tarea a `failed` con motivo
-  `effect-rejected` (+ `task-effect-error` con el mensaje crudo para diagnóstico) en vez de reventar el tick.
-
-### `game/src/mission/mission-interaction-controller.ts` (modificado)
-- `isWiringOnly` saca los conductores del selector de instalación; `buildWireOptions`/`conductorDetailLines`
-  arman el selector de cableado (capacidad EFECTIVA por fila, no la de catálogo); `confirmWireConductor`
-  encola el tendido; repetir el gesto sobre un par ya cableado encola el retiro.
-
-### `game/src/ui/widgets/install-picker-modal.ts` (modificado)
-- `footprint` pasa a opcional (un cable no se coloca) y `detailLines` permite líneas ya formateadas por el
-  llamador. El mismo modal sirve a instalación y a cableado — un solo widget para el mismo gesto.
-
-### `game/src/render/mission-overlay-renderer.ts` + `conduit-path.ts` + `palette.ts` (modificados)
-- `drawSignalLayer` extraída y exportada, para repintar solo la capa de señal; el cable se pinta por su carga
-  (`wireLoadColor`, `WIRE_LOAD_WARNING_RATIO`) y carbonizado si se quemó (`BURNED_WIRE_COLOR`).
-- `signalWireCells(route)`: celdas que ATRAVIESA un cable, para sembrar la cicatriz por todo su largo.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `signalWireRouteFor` centraliza la ruta de un cable (flujo, dibujo y cicatriz comparten la MISMA);
-  `refreshSignalWireColors` repinta el color a 4 Hz en ejecución (la capacidad efectiva baja con la
-  temperatura sin que cambie la topología); el evento de sobrecarga de una arista resuelve su celda; el flujo
-  animado de un cable quemado se apaga.
-
-## Subfase 14a-4 — Ronda 1 de playtest
-
-### `engine/src/doors/door.types.ts` (modificado)
-- `blocksPathing` mira el ESTADO antes que el modo: una hoja abierta o abriéndose no es obstáculo, la
-  gobierne quien la gobierne. Era el único de los tres predicados de puerta que ignoraba `state`, y por
-  eso una puerta abierta por señal dejaba al tripulante encerrado.
-
-### `engine/src/workbench/derive-signal-nodes.ts` (modificado)
-- Un `ACT` deriva receptor **y** emisor de salida. `actuatorOutputNodeId`/`isActuatorOutputNode`: el id
-  del emisor se deriva del receptor y no consume índice, para no correr los ids de los nodos posteriores
-  (una arista guardada que apuntara a uno de ellos habría quedado huérfana).
-
-### `engine/src/mission/actuator-emitter-input-source.ts` (nuevo)
-- `actuatorEmitterInputs`: eslabón de la cebolla de `EmitterInputSource` que resuelve las salidas de
-  actuador contra el estado REAL del mundo (`ActuatorActivityReader`). Un actuador sin lector se
-  resuelve a `false`, nunca al fail-open de `allEmittersActive` (deuda #40).
-
-### `engine/src/mission/seed-actuator-output-nodes.ts` (nuevo)
-- `seedActuatorOutputNodes`: siembra las salidas que falten en una partida ya empezada, re-derivando con
-  `deriveSignalNodes` en vez de deducir qué receptor vino del `ACT`. Idempotente y preserva identidad.
-
-### `engine/src/mission/mission-door-runtime.ts` + `ship-task-effect.ts` (modificados)
-- `isActuatorActive(instanceId)`: el lector de estado real para la salida de señal de una puerta.
-- `disconnect` acredita el conductor un escalón más gastado, salvo que la arista esté quemada.
-
-### `game/src/render/signal-node-layout.ts` (nuevo)
-- `layoutSignalNodes` / `signalNodeAtPoint`: reparto en abanico de los nodos que comparten celda y
-  hit-test por el más cercano en píxeles. Compartido por el dibujo y por el modo cableado a propósito —
-  dos cálculos separados se desincronizan.
-
-### `game/src/ui/widgets/mission-tooltip.ts` + `mission-action-panel.ts` (modificados)
-- `TooltipContent` gana `kind: "wire"` (carga/capacidad efectiva, desgaste, quemado, degradación
-  térmica) y `SignalTooltipInfo` en la variante `instance` (qué gobierna, quién la gobierna, si emite).
-- `ActionPanelContent` gana `kind: "wire"` con "Retirar cable" y el coste dicho por adelantado.
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- `signalRoleOf(instanceId)` y `edgeStatusOf(edge)` (con capacidad NOMINAL además de la efectiva, para
-  poder explicar por qué el número es más chico que el del catálogo); `actuatorEmitterInputs` al final
-  de la cebolla de emisores y `seedActuatorOutputNodes` al construir el runtime.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `wireByCell` + `rebuildWireCellIndex` (índice celda→cable para el tooltip, con `signalWireCells`, la
-  misma función que siembra la cicatriz); `refreshSignalWireColors` sale del gate de ejecución; el click
-  pasa el punto de mundo además de la celda, para el hit-test por nodo más cercano.
-
----
-
-# Subfase 14a-4 — Ronda 2 de playtest (2026-09-02)
-
-### `engine/src/signals/signal-output-parameters.ts` (nuevo)
-- `SIGNAL_OUTPUT_CAPACITY_BY_COMPONENT` + `declaredSignalOutputCapacity` + los defaults
-  (`DEFAULT_SIGNAL_OUTPUT_CAPACITY`, `ACTUATOR_OUTPUT_CAPACITY`). Tabla data-driven gemela de
-  `power-parameters.ts`, inyectada en `data.signalOutputCapacity` por `build-component-catalog.ts`.
-
-### `engine/src/signals/emitter-fanout.ts` (nuevo)
-- `allocateEmitterFanout`: cuánto cuelga de cada salida, quién queda sin señal. La demanda NO es
-  transitiva (cada salida paga solo lo directo) — es lo que convierte a un chip en relé útil. Ordena
-  con `orderByPowerPriority`, el comparador del triaje eléctrico.
-
-### `engine/src/mission/mission-fanout-runtime.ts` (nuevo)
-- El reparto vivo, memoizado por identidad de blueprint + prioridades. Punto único para los tres
-  consumidores (compuerta de señal, estado de instancia, tooltips), que no se conocen entre sí.
-
-### `engine/src/signals/orient-signal-wiring.ts` + `signal-evaluator.ts` (modificados)
-- Cae el rechazo receptor→receptor (el relé); la orientación se decide por "el segundo es emisor", lo
-  que además arregla `conductor → emisor`. `SignalEvaluator.tick` gana una compuerta opcional por
-  arista, el mecanismo del triaje sin tocar el grafo activo.
-
-### `engine/src/power/power-allocation.ts` + `instance-state/` (modificados)
-- `orderByPowerPriority` extraído y compartido entre los dos triajes.
-- `InstanceStateFlag` gana `unsignaled`; `InstanceStateQueries` gana `signalStarvationOf`, que
-  devuelve los dos números (demanda / capacidad) en vez de un booleano.
-
-### `game/src/ui/widgets/signal-node-menu.ts` (nuevo)
-- Menú circular para elegir entre nodos superpuestos. Aparece solo con ambigüedad real.
-
-### `game/src/render/component-state-visuals.ts` (modificado)
-- Fila `unsignaled` y `stateGlyphs`: el tinte sigue siendo uno (el más grave), los glifos se acumulan.
-  `detailKeys` por estado, porque los dos números de `unsignaled` no son los de `unpowered`.
-
-### `game/src/render/signal-node-layout.ts` (modificado)
-- `signalNodesAtPoint` (todos los candidatos bajo el punto, para detectar ambigüedad) y
-  `signalNodeRoleKey` (cómo se llama un nodo para el jugador: entrada / salida / emite / paso).
-
-### `game/src/scenes/floorplan-scene.ts` + `mission-interaction-controller.ts` (modificados)
-- `handleWireModeClick` se parte en "elegir nodo" y `applyWireNode`, para que el menú entre por el
-  mismo camino; línea fantasma con flecha en `pointermove`; aro de carga en el nodo emisor
-  (`nodeLoadRatio`, canal separado del color de rol); el resalte de nodos pasa a usar
-  `layoutSignalNodes` en vez del centro de celda.
-
----
-
-# Subfase 14a-4 — Ronda 3 de playtest (2026-09-02)
-
-### `game/src/render/conduit-path.ts` (modificado, + `conduit-path.test.ts` nuevo)
-- `signalWireBodyCells` — las celdas del cable SIN sus extremos, para que su cicatriz no se pinte
-  encima de las piezas que une. `signalWireCells` se queda para el índice del tooltip: divergencia
-  deliberada, documentada en `wireByCell`.
-- `polylineMidpoint` — punto medio POR LONGITUD (no vértice del medio); ancla del fogonazo del corte.
-- `dashedPolyline` — segmentos de un trazo entrecortado, acumulando el patrón entre tramos para que
-  los guiones sigan las esquinas.
-- `arcTargetsNear` — paredes y celdas ocupadas cerca de un punto. Pura porque su modo de fallo es
-  invisible (arcos al vacío, o ninguno nunca).
-
-### `game/src/particles/effects/electric-arc-effect.ts` (nuevo)
-- Arco de un cable quemado, en reemplazo de la luz de la cicatriz. Direccional y transitorio, sin
-  ningún efecto de dominio.
-
-### `game/src/particles/effects/overloaded-conductor-effect.ts` (modificado)
-- `withLight`: la cicatriz de un CABLE la apaga; la de una pieza colocada la conserva.
-
-### `engine/src/signals/active-signal-graph.ts` (modificado, + test nuevo)
-- `burnedWiresTouching(blueprint, instanceId)`: cables quemados entrantes y salientes de una pieza.
-  En el motor y no en `MissionRuntime` para poder testearse.
-
-### `game/src/scenes/floorplan-scene.ts` + `mission-tooltip.ts` + `mission-runtime.ts` (modificados)
-- Cicatriz sobre el cuerpo del cable y sin luz; arcos por cable quemado (`electricArcEffects`,
-  `arcTargetsFrom`); fogonazo/estática al punto medio (`burnedEdgeCenterCell`); línea de cable
-  quemado en el tooltip de la pieza (`SignalTooltipInfo.burnedWires`), sin glifo.
-
----
-
-# Subfase 14a-4 — Ronda 4a de playtest (2026-09-02)
-
-### `game/src/mission/mission-runtime.ts` (modificado, + `mission-runtime.test.ts` nuevo)
-- `ensureAt` devuelve el id del `go-to` que encoló, y los 16 sitios que la llaman lo declaran como
-  `dependsOn`. Es el llamador que le faltaba al bloqueo por dependencia desde la Fase 10.
-- El test existe porque `MissionRuntime` no importa Phaser: su constructor solo toma un save.
-
-### `engine/src/tasks/task-scheduler.ts` (modificado)
-- `blockReasonFor(taskId)`: expone `lastBlockReason`, que no tenía salida. Sin lógica nueva.
-
-### `game/src/ui/queue-rows.ts` (nuevo)
-- `buildQueueRows`: orden y anidado de la cola. Pura y testeada — un árbol mal ordenado miente sobre
-  qué espera a qué, y el widget de la cola tiene por contrato "solo dibuja".
-
-### `game/src/ui/widgets/crew-queue-panel.ts` (modificado)
-- `UnifiedQueueTask` gana `depth` y `blockReason`; sangría, conector `└`, bloqueadas en ámbar con su
-  motivo, y botón de cancelar con caja propia (`rowXMin`/`rowXMax` para el click derecho).
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `buildQueueRows` alimenta la cola; `queueCancelHitAt` distingue click derecho (fila entera) de
-  izquierdo (solo la "×"); `updateQueueCancelHover` resalta el botón bajo el cursor.
-
-## Subfase 14a-4 — ronda 4b de playtest (cancelar tenía que verse)
-
-### `game/src/mission/active-task-visuals.ts` (nuevo)
-- Registro `taskId → cómo se apaga su visual`. `register`/`stop`/`forget`. Fuera de la escena y sin
-  Phaser para tener test propio: un apagador que no se invoca es exactamente lo que no se ve al
-  revisar código.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `chainHops` gana `shouldContinue`, consultado antes de cada salto (corta entre saltos, nunca a
-  mitad de uno); `travelCrewToken` y `fireFabricationEffect` registran su apagador; los eventos
-  `task-cancelled`/`task-failed`/`task-blocked` lo invocan y `task-completed` lo olvida.
-
-### `game/src/ui/queue-rows.ts` (modificado)
-- Filtra los tres estados terminales antes de resolver los padres: un dependiente cuya dependencia se
-  canceló pasa a raíz con su motivo, en vez de colgar de una fila que ya no se dibuja.
-
-## Subfase 14a-4 — ronda 4c de playtest (el fantasma de lo encolado y sus reservas)
-
-### `engine/src/inventory/component-stock-cost.ts` (nuevo, con test)
-- `componentStockCost(registry, id, wear, consumeRecipe)` — QUÉ cuesta materializar una pieza, puro y
-  sin mirar el stock: atómico → 1 del bucket pedido; compuesto con receta → sus ingredientes en
-  `nuevo`; compuesto sin el flag → gratis. Extraído de `payComponentCost`, que decidía y cobraba en el
-  mismo sitio; la reserva necesitaba el cálculo sin la mutación. `stockCostKey(ref, wear)` es la clave
-  de agregación por bucket.
-
-### `engine/src/tasks/queued-reservations.ts` (nuevo, puro, con test)
-- `reservedCells(tasks)` y `reservedStock(tasks, costOf)` — qué tiene comprometido la cola VIVA
-  (`pending`/`in-progress`/`blocked`, vía `TERMINAL_TASK_STATES`, el mismo predicado que filtra la cola
-  dibujada). Solo `install` ocupa celdas; `install` y `connect` reservan stock. Nunca se persiste.
-
-### `engine/src/mission/ship-task-effect.ts` (modificado)
-- `payComponentCost` consume `componentStockCost` en vez de bifurcar por su cuenta; conserva los dos
-  mensajes de `InsufficientStockError` (falta la pieza vs. falta un ingrediente de su receta).
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- Puerta única a las reservas: `reservedCells()`, `reservedStockOfWear`, `availableStockOfWear`,
-  `queuedInstallGhosts()`. Sin caché, recalculado por consulta. `hasRecipeStockFor` y
-  `missingRecipeIngredients` pasan a medir contra el DISPONIBLE, y este último devuelve además
-  `reserved` para poder distinguir "falta" de "está comprometida".
-
-### `game/src/mission/mission-interaction-controller.ts` (modificado)
-- `installIssuesAt(position, footprint)` — predicado ÚNICO de "por qué no se puede instalar acá",
-  compartido por el fantasma bajo el cursor y por el click que encola; suma el motivo "celda ya pedida
-  por una instalación encolada". `reservationDetailLine` y `recipeBlockReason` alimentan el desglose y
-  el bloqueo `queue-reserved` en los dos selectores (instalación y cableado).
-
-### `game/src/render/queued-install-ghosts.ts` (nuevo)
-- `renderQueuedInstallGhosts(scene, ghosts, onCreated?)` — sprite atenuado (o el placeholder tinteable
-  del registro) más contorno entrecortado por celda con `dashedPolyline`. Ámbar si la tarea está
-  bloqueada, más opaco en `in-progress`. Depth `queuedGhost` (1.9), debajo de `objects`.
-
-### `game/src/render/render-depths.ts` (modificado)
-- `queuedGhost: 1.9` — entre la luz persistente y los objetos colocados: un plan no puede tapar un
-  estado real del motor.
-
-### `game/src/scenes/floorplan-scene.ts` (modificado)
-- `redrawQueuedInstallGhosts()` colgado de `redrawQueuePanel()`: mapa y cola muestran el mismo dato y
-  se redibujan en el mismo sitio, para que no puedan divergir.
-
-### `game/src/ui/widgets/install-picker-modal.ts` (modificado)
-- `blocked` admite `"queue-reserved"` y `InstallPickerLabels` gana `blockedQueueReserved`.
-
-## Subfase 14a-3 — Cambio de estado de sustancia (L↔S↔G)
-
-### `engine/src/chemistry/phase/` (nuevo)
-- `phase-change.types.ts` — `PhaseChangePoints`, `PhaseTransition` y `AuthoredSubstanceData` (el tipo
-  que vuelve obligatorios `state` + los dos puntos en las entradas de catálogo, y solo ahí).
-- `phase-change-parameters.ts` — `DEFAULT_PHASE_POINTS_BY_STATE` (perfil de las sustancias
-  sintetizadas en runtime), `PHASE_EXPANSION_KPA_PER_UNIT`/`_DURATION_SECONDS`,
-  `FREEZE_DESTROYS_RESERVOIR_AT_WORST_WEAR`.
-- `matter-state.ts` — `phasePointsOf` (punto único de resolución catálogo/fallback),
-  `effectiveMatterState`, `nominalStateOf`, `phaseTransitionOf`, `isFrozenAt`.
-- `phase-events.types.ts` — `SubstancePhaseChangeEvent` (sustancia suelta en una sección) y
-  `ReservoirContentPhaseChangeEvent` (contenido de un tanque, con si dañó o destruyó el contenedor).
-
-### `engine/src/chemistry/catalog/` (modificado)
-- `element-catalog.ts` / `compound-catalog.ts` — las 49 entradas declaran sus dos puntos de
-  transición; `CRYOGENIC_SUBSTANCE_IDS` nombra las excepciones deliberadas al test de coherencia.
-
-### `engine/src/mission/phase-expansion-pressure.ts` (nuevo)
-- `PhaseExpansionPressureSource` — primera FUENTE de presión del motor: un derrame que se evapora
-  aporta kPa negativos durante un pulso, compuesto con los sumideros existentes.
-
-### `engine/src/mission/mission-phase-runtime.ts` (nuevo)
-- `MissionPhaseRuntime` — vigila el contenido de los reservorios contra la temperatura de su sección
-  y actúa solo en el CRUCE del umbral: emite evento y aplica `worsenWear`. Estado previo por instancia,
-  de simulación y no persistido.
-
-### `engine/src/reservoir/frozen-content.ts` (nuevo)
-- `isSubstanceFrozenAt` (predicado desnudo) y `frozenContentOf` (resuelve instancia → sección →
-  temperatura → puntos). Función ÚNICA que consumen el efecto de tarea, el panel de acciones y el
-  glifo del plano.
-
-### `engine/src/mission/section-gas-injection.ts` (modificado)
-- `isAirborneSubstance` deriva el estado de la temperatura y deja de aceptar la vía por tag `VOLAT`;
-  `hasEvaporated` distingue "soltar un gas" de "el charco hirvió". `GasInjectionDeps` gana
-  `sectionTemperatureOf` y `onEvaporate`.
-
-### `engine/src/mission/mission-reaction-runtime.ts` (modificado)
-- Ventana de ignición con vencimiento (`ignitedUntilSeconds`), autoignición por temperatura
-  (`hasIgnitionSource`) y consumo real de los reactivos sobre `atmosphere.gases` (`consumeReactants`).
-
-### `engine/src/mission/ship-task-effect.ts` (modificado)
-- `FrozenReservoirContentError` + `assertContentNotFrozen` en las cuatro tareas que mueven sustancia;
-  `SubstanceFlowDeps` gana `substanceOf` y `sectionTemperatureOf`.
-
-### `engine/src/instance-state/` (modificado)
-- Cuarto `InstanceStateFlag`: `frozen-content`, con `frozenContentOf` como consulta nueva.
-
-### `engine/src/atmosphere/thermal-parameters.ts` (modificado)
-- `AUTOIGNITION_CELSIUS` (90, medido) y `SPARK_IGNITION_SECONDS`.
-
-### `game/src/particles/effects/phase-change-effect.ts` (nuevo)
-- `substancePhaseChangeEffect` (vapor ascendente con el color de la sustancia) y
-  `reservoirContentPhaseChangeEffect` (escarcha sobre la pieza, densidad según el daño).
-
-### `game/src/render/component-state-visuals.ts` (modificado)
-- Fila `frozen-content`: `FROST_LAYER_COLOR` + glifo ❄ a brillo pleno y sus dos etiquetas de detalle.
-
-### `game/src/mission/mission-runtime.ts` (modificado)
-- `phaseEvents`, `phaseRuntime`, `phaseExpansion`, `frozenContentFor`, `instanceCellOf`;
-  `sectionAtmosphereInfo` suma `selfIgniting` y el estado de las sustancias en el aire.
+- `door-identity.ts` — `sectionsTouchingCell` (todas las secciones que toca una celda) y `cellSeparates` (¿toca estas dos?); `thresholdSectionsAt` está reescrita sobre el primero y conserva su semántica de inferencia.
+- `door.types.ts` — `blocksPathing` mira el ESTADO antes que el modo: una hoja abierta o abriéndose no es obstáculo, la gobierne quien la gobierne.
+
+## `engine/src/enemies/`
+- `enemy-actor.types.ts` — `EnemyActor`: celda, arquetipo (`armored`/`agile`), arma de catálogo, state machine.
+- `enemy-route.types.ts` + `route-progression.ts` — `ScriptedRoute`/`RouteWaypoint` y `cellAtElapsedSeconds` (snap discreto, sin interpolar).
+- `weapon-damage.ts` — `weaponDamageSeverity`: `ActuatorProperty.power`/`cadence` → severidad cualitativa.
+- `combat-rule.ts` + `rules/{melee-adjacency,ranged-proximity,combat-rule-registry}` — Strategy de rango de combate, molde de `crisis/crisis-rule.ts`.
+- `enemy-attack-resolver.ts` — `resolveEnemyAttack`: orquesta arma + reglas + `applyCrewDamage`, sin mutar estado.
+- `enemy-events.types.ts` — `enemy-advanced`/`enemy-attacked`/`enemy-defeated`, agregados a `DomainEvent`.
+- `campaign/chapter-02-enemy-seed.ts` — `CHAPTER_02_INTRUSO` + su ruta; `ENEMY_SEED_BY_CHAPTER_ID` (análogo a `CHAPTER_SEED_BY_ID`). Ritmo ~0.33 s/celda.
+
+## `engine/src/failure/`
+- `OverloadEvent` gana `sectionId?`, estampado por `MissionOverloadRuntime` (que conoce el plano) al emitir; la regla sigue pura. Fuente única: `MissionReactionRuntime` ya no hace su propio lookup `ref → sección`.
+- `thermal-conductivity-rule.ts` — `thermalCapacityFactor(temperatura, CT)` con **dos** ramas: fría (≤ -50) y caliente (≥ 100, desplazada por el `CT` del material). Lo consume `thermallyAdjustedConductorOverloadSubject`.
+
+## `engine/src/floorplan/`
+- `conduit-connectivity.ts` — `sectionsConnectedByConduit`/`findConduitRoute`: BFS sobre el grafo de secciones con aristas = conductos de un `kind` (multi-salto). `findConduitRoute` devuelve la secuencia y la reusa el render del cable en `/game`.
+- `initial-ship-state.ts` — `starterKit(archetype)`: siembra el kit base y, en `"exploracion"`, las fuentes reales de energía (`EXPLORACION_POWER_SOURCE_CELLS`, celdas verificadas contra `nave-exploracion.json`). La oferta y el reparto inicial se siembran en el SAVE, no en el runtime (el runtime no distingue "nunca se asignó" de "el jugador puso 0").
+- `parseConduits` — deriva `ConduitId` (`${kind}:${a}:${b}:${índice}`); el índice hace falta porque hay pares repetidos reales en `nave-exploracion`.
+- `instantiate-door-seeds.ts` — `instantiateDoorSeeds`: la capa Tiled `puertas` (opcional, con `span`/`axis`) materializa INSTANCIAS reales de `compuerta-blindada` + su nodo receptor. Un vano de dos celdas es UNA instancia 2×1: dos piezas aportarían dos aristas de difusión.
+- `floorplan-integrity` — validaciones: `door-self-reference`/`unknown-section`/`not-adjacent`/`outside-section`/`duplicate-id`.
+- `floorplan-integrity.ts` — issue `door-not-a-threshold`: la celda de una puerta debe cumplir `cellSeparates` con las dos secciones que declara — **la misma precondición que exige el runtime** para darla de alta.
+
+## `engine/src/geometry/`
+- `line-of-sight.ts` — `hasLineOfSight(from, to, blocked: CellBlockedQuery)`: raycast tipo Bresenham, puro. `CellBlockedQuery` es el puerto mínimo que `/game` implementa sobre su `WalkableGrid`.
+
+## `engine/src/index.ts`
+- Barrel público del motor.
+
+## `engine/src/instance-state/`
+- `instance-state.types.ts` — `InstanceStateFlag` e `InstanceState`, que lleva el detalle numérico (`required`/`available`) como DATOS: el motor no arma texto de UI. Flags: `unpowered`, `frozen-content` y las demás del sistema genérico.
+- `derive-instance-states.ts` — `deriveInstanceStates` con interfaz angosta inyectada (molde de `DoorWorldQueries`). `unpowered` exige `powerDraw > 0`.
+- `InstanceStateFlag` completo: `unpowered`, `overloaded`, `unsignaled`, `frozen-content`. **El orden de emisión es la subprioridad visual** (`overloaded` va antes que `unpowered`). `InstanceStateQueries` suma `isInstanceOverloaded`, `signalStarvationOf` (devuelve los dos números demanda/capacidad, no un booleano) y `frozenContentOf`.
+
+## `engine/src/integrity/`
+- `section-integrity.types.ts` — `SectionIntegrity` (hp/maxHp/breached) + snapshot y round-trip; `initialSectionIntegrity` escala la vida con `sectionArea()`.
+- `section-integrity-parameters.ts` — TODO el balance (hp por celda, daño por escritor, umbral y piso de descompresión, drenaje y piso de presión de la brecha, RE mínima del parche, rango de explosiones del colapso).
+- `section-damage-rules.ts` — Strategy (molde de `dismantle-hazard-rules.ts`). Ambientales por tick (`corrosionDamageRule`, `decompressionDamageRule`) y puntuales por evento (`kineticImpactSectionDamage`, `combustionSectionDamage`). La descompresión devuelve un `floorHp` y **no puede colapsar una sección por sí sola**: es la amortiguación del bucle de realimentación.
+- `section-integrity.ts` — `applySectionDamage`: emite `section-damaged` solo al CRUZAR nivel del corte del HUD (`fractionToLevel`) y `section-breached` una sola vez.
+- `breach-cell.ts` — `hullBreachCell`/`isHullEdgeCell`, puras: la brecha se abre en la celda que TOCA el exterior más cercana al origen del daño, con desempate determinista.
+- `integrity-events.types.ts` — `SectionDamagedEvent`/`SectionBreachedEvent` (con `breachCell`) + `SectionDamageCause`.
+- `section-damage-rules.ts` — `thermalDamageRule`, quinto escritor, registrado en `SECTION_ENVIRONMENTAL_DAMAGE_RULES`. Dos lados (calor y frío) y **sin `floorHp`**. `SectionDamageCause` suma `"thermal"`.
+
+## `engine/src/inventory/`
+- `inventory.types.ts` — `AtomicPartsStock` con buckets por desgaste (`WearBuckets`): es dónde vive la historia de una pieza entre desmontarla y reinstalarla.
+- `inventory-ledger.ts` — `stockOf` (total), `stockOfWear`/`wearBucketsOf`; `consumeStock`/`creditStock` operan sobre un bucket explícito y no caen a otro.
+- `element-ledger.ts` + `mutable-element-stock.ts` — `ElementStock` y su ledger, sin buckets (una sustancia no acumula historia). `consumeElements` devuelve `null` sin descontar parcialmente, mismo contrato que `consumeStock`.
+- `component-stock-cost.ts` — `componentStockCost(registry, id, wear, consumeRecipe)`: QUÉ cuesta materializar una pieza, **puro y sin mirar el stock** (atómico → 1 del bucket pedido; compuesto con receta → sus ingredientes en `nuevo`; compuesto sin el flag → gratis). Extraído de `payComponentCost`, que decidía y cobraba en el mismo sitio, porque la reserva necesitaba el cálculo sin la mutación. `stockCostKey(ref, wear)` es la clave de agregación por bucket.
+
+## `engine/src/kinetics/`
+- `KineticImpactEvent` con `position` (celda golpeada) y `targetKind` (`component`/`crew`/`enemy`/`wall`); `CellOccupant` con `kind`; `resolveKineticImpact` recibe ocupante y celda.
+- `MissionProjectileWorld` toma opciones con `blocked` (el `CellBlockedQuery` que `MissionRuntime` ya tiene inyectado desde el tilemap) y `gridSize`: un proyectil frena contra pared y contra el borde del plano.
+- `magnetic-acceleration.ts` — velocidad cualitativa acumulada y su decaimiento.
+
+## `engine/src/mission/`
+Todos los `*-runtime.ts` implementan `Tickable` y se registran en orden en `MissionRuntime`. El patrón común del dominio: **dependencias opcionales inyectadas** (`DismantleWearDeps`, `SalvageHazardDeps`, `DoorWorldQueries`, `GasInjectionDeps`, `SectionPressureSinkSource`…) — sin ellas el comportamiento previo queda intacto y los tests unitarios no se rompen.
+
+**Orquestación y estado vivo**
+- `mutable-crew-state.ts` — `MutableCrewState` + `isAlive`/`allAlive`/`markDead`: criterio ÚNICO de "vivo" (`hp > 0` más el eje `status` del permadeath), antes copiado en cada runtime que aplica daño.
+- `mutable-enemy-state.ts` — espejo del anterior para enemigos (get/set/all).
+- `mission-projectile-world.ts` — `occupantAt` resuelve contra componentes colocados, `crew` y `enemies`.
+
+**Tareas y efectos**
+- `ship-task-effect.ts` — `createShipTaskEffect`: el switch de efectos de toda tarea de nave. Casos: `install` (rama `isCompositeEntity && payload.consumeRecipe` consume la receta completa del bucket `nuevo`; las creaciones personalizadas no ponen el flag y siguen gratis), `dismantle` (acredita atómicas al `atomicStock`, degrada por tier del especialista, e inyecta en la sección el contenido de los `dismantle-spill`), `connect` (valida `assertSignalWiringReachable` cuando le inyectan `floorplan`), `cut-power`, `purge-reservoir` y `transfer-substance` (ambos vía `drawFrom` + `gasInjection.inject`, la misma vía que `apply-substance`; devuelven `pouredSubstanceId`/`pouredAmount` y `overflowAmount`; `transfer` chequea `freeCapacity` del destino ANTES de `drawFrom`). Exporta `dismantleHazardContext()`, que `/game` reusa para el badge de riesgo antes de encolar.
+- `fluid-operations.ts` — `FluidOperationRegistry`: operaciones de fluido EN CURSO (trasvase/vertido/extracción/purga) enganchadas al ciclo de vida de la tarea. De acá sale el caudal real que anima la capa `fluido`; sin operación viva el conducto queda quieto.
+
+**Atmósfera y presión**
+- `mission-atmosphere-runtime.ts` — aplica el sumidero con clamp de dos lados (`PRESSURE_SINK_FLOOR_KPA` / `PRESSURE_RECOVERY_CEILING_KPA` = 101 kPa). `SectionPressureFloorSource` hace el piso POR SECCIÓN (una brechada llega a 0 kPa real). `SectionApertureSource` devuelve la lista COMPLETA de conexiones efectivas del tick (válvulas = misma arista con otra apertura, puertas = aristas adicionales); `diffuse()` no cambió. `netPressureRateOf(sectionId)`: tasa neta del último tick, estado de tick y no de dominio, sin consumidores en el motor — existe para que la UI diga "represurizando".
+- `seal-breach-pressure-sink.ts` — drena mientras la junta del Cap. 1 está rota y RECUPERA (tasa negativa) al sellarse. Identifica "¿sellada?" por POSICIÓN + `componentDefinitionId` aceptables (`SealBreachConfig`), nunca por `instanceId`: reparar crea una instancia nueva.
+- `section-breach-pressure-sink.ts` — mismo molde para la brecha de casco (drena 12 kPa/s, recupera 2). `isBreachPatch` decide qué sirve de parche **por propiedades** (`EST` + RE efectiva), no por lista de ids; `isBreachSealed` mira TODAS las celdas ocupadas por la pieza.
+- `composite-pressure-sink.ts` — `composePressureSinks(...)`: suma sumideros respetando el signo (el runtime acepta uno solo).
+- `composite-aperture-source.ts` — molde del anterior pero CONCATENA en vez de sumar por clave: entre dos secciones puede haber a la vez un ducto abierto y una puerta cerrada, y son dos caminos distintos.
+- `section-gas-injection.ts` — `SectionGasInjectionSource` + `TransientGasInjection`: **el escritor real de `ChemicalSubstanceId` en `atmosphere.gases`**. El gas entra desplazando al resto, con la suma de fracciones acotada a 1 y dividida por `sectionVolumeOf` (espec §4). `isAirborneSubstance`: solo `state === "G"` o tag `VOLAT` pueden estar en el aire — el discriminador es el ESTADO DE MATERIA, no el tag.
+
+**Daño, riesgo y fallas**
+- `mission-section-integrity-runtime.ts` — corrosión y descompresión por tick; impacto y combustión por suscripción. Al colapsar: brecha + desgaste de la maquinaria de la sección (reusa `worsenWear`) + 1..N combustiones reales, con `ignoredCombustionRefs` para no dañarse en bucle. Expone `fractionOf`/`weightedFractions` (`SectionIntegritySource`), `openBreaches`, `pressureFloorFor`, `toSnapshots`. `weightedFractions` pondera por `maxHp` y multiplica el peso de las brechadas.
+- `mission-hazard-runtime.ts` + `mission-hazard-parameters.ts` — llamador de producción de `HazardAccumulator`: tóxico, corrosivo y **vacío** (usa la causa `"cold"` existente). `incapacitation` hiere con `minHp: 1`, solo `lethal` mata. El vacío aplica mordiscos discretos por actor (~10 s hasta la muerte, el primero no letal como aviso).
+- `kinetic-damage-handler.ts` — `registerKineticDamage`: llamador de `applyKineticDamage`. Enemigos y tripulantes comparten `HP_LOSS_FRACTION`.
+- `mission-overload-runtime.ts` — llamador de `OverloadRule`; evalúa `ScriptedOverloadSubject` y escribe la cicatriz `Blueprint.overloadedRefs` cuando `failureMode === "cut"`. Estampa `sectionId` en el evento.
+- `mission-reaction-runtime.ts` — llamador de `ReactionResolver` fuera de la mesa. Evalúa `scriptedReactions` con `oxygen` real de sección; `ignitionTrigger: "overload-bridge"` significa "hay ignición real en la sección" venga de `OverloadEvent` o de `dismantle-spark` (nombre conservado para no tocar contenido autorado). Cicatriz sin retorno: un `subject.id` que combustiona no se re-evalúa.
+- `loose-ferromagnetic-promoter.ts` — promueve piezas sueltas a proyectil. `definitionByRef`/`definitionIdForRef` conservan el `componentDefinitionId` sin tocar `kinetics/`. Excluye puertas.
+
+**Señales, sensores y puertas**
+- `mission-signal-runtime.ts` — `InstancePowerSource`: gating por instancia (más fino que `PowerScarSource` por sección); `outputOf()` fuerza `false` si la instancia dueña del nodo no está alimentada aunque su sección tenga presupuesto.
+- `pressure-emitter-input-source.ts` — `pressureAwareEmitterInputs`: resuelve la entrada por TAG funcional (`EM` + `triggerType: "pressure"`), nunca por identidad de componente.
+- `motion-emitter-input-source.ts` — `motionAwareEmitterInputs`: resuelve `triggerType: "optical"` contra posiciones reales de crew/enemigos, por rango Manhattan + `hasLineOfSight`. Mismo molde de envoltorio parcial que el anterior.
+- `lcd-display-value.ts` — `resolveLcdDisplayValue`: qué valor real muestra una Pantalla LCD según la propiedad del nodo cableado.
+- `mission-door-runtime.ts` — dueño del estado vivo de puertas. Produce `apertureSource()` (aristas atmosféricas, se SUMAN a las de conductos) y `blocksCell()`/`blocksPathingAt()`, única fuente de verdad del bloqueo compartida por pathfinding, línea de visión y proyectiles. `syncInstalledDoors()` es el único camino de alta (se llama al cambiar el blueprint, no por tick); los snapshots quedan pendientes hasta que su puerta se da de alta. `DoorWorldQueries.powered` toma la PUERTA y mira sus dos secciones.
+- `door-signal-output.ts` — `doorSignalOutput`: los tres valores no son intercambiables — `undefined` = nadie la gobierna (sin cable o sin motor vivo), `true`/`false` = override abrir/cerrar.
+- `enemy-threat-runtime.ts` — avanza rutas y resuelve ataques con cooldown por arma. `doorBlocking`/`damageDoor`: el enemigo se frena ante una puerta cerrada con su reloj de ruta pausado (`routeHoldSeconds`, necesario porque `cellAtElapsedSeconds` es función del tiempo absoluto) y la golpea hasta romperla.
+- `coil-field-source.ts` — `coilFieldIntensityAt`: cuánto campo hay en una celda. Bobinas contiguas cuentan como un solo electroimán; máximo entre grupos, no suma.
+- `mission-thermal-runtime.ts` — `Tickable` **único productor del mapa de °C/s**. Traduce `CombustionEvent`/`OverloadEvent`(fire, explosion)/`NeutralizationEvent` a pulsos con duración, suma el aporte continuo de los reguladores activos (`ActiveThermalRegulatorSource`) y el pulso de un derrame (`applySubstanceSpill`). Expone `rates()`/`heatRateOf()`. La neutralización usa el calor que trae su propio evento; el resto, la tabla de parámetros. Eventos sin `sectionId` se ignoran.
+- `mission-atmosphere-runtime.ts` — `SectionHeatSource` como 7º parámetro opcional y `applyThermalUpdate`: aporte por evento + deriva exponencial hacia el nominal, con clamp de dos lados. Va **antes** del early-return del sumidero, así que una misión sin fuentes de presión igual climatiza.
+- `emitter-sensing.ts` — `PRESENCE_TRIGGER_TYPES`/`PRESSURE_TRIGGER_TYPES`/`THERMAL_TRIGGER_TYPES`, `emitterRangeOf` (contra el REGISTRO, no el catálogo atómico), `emitterReaches` y `emitterCoverageCells`. **Una sola fórmula de alcance**, compartida por el resolvedor que decide el disparo y la capa de `/game` que dibuja el área.
+- `temperature-emitter-input-source.ts` — `temperatureAwareEmitterInputs`: resuelve `triggerType: "thermal"` contra la temperatura real de la sección, disparo POR ENCIMA del umbral.
+- `actuator-emitter-input-source.ts` — `actuatorEmitterInputs`: resuelve las salidas de actuador contra el estado REAL del mundo (`ActuatorActivityReader`). Un actuador sin lector se resuelve a `false`, **nunca** al fail-open de `allEmittersActive`.
+- Los `*-emitter-input-source.ts` se componen como una **cebolla** en `MissionRuntime`, en pasos nombrados: `withMotion` → `withPressure` → temperatura → actuador. Todos reciben el `EntityRegistry`, así que los sensores COMPUESTOS se resuelven.
+- `seed-actuator-output-nodes.ts` — `seedActuatorOutputNodes`: siembra las salidas que falten en una partida ya empezada re-derivando con `deriveSignalNodes`, no deduciendo qué receptor vino del `ACT`. Idempotente y preserva identidad.
+- `thermal-regulators.ts` — `isThermalRegulatorDefinition` (identidad por propiedades: `ACT` no direccional + `CT: "A"`), `isThermalRegulatorActive` (energía + señal, molde de `doorSignalOutput`), `activeThermalRegulatorsBySection`, `sectionsWithThermalRegulator`.
+- `section-reactants.ts` — `sectionReactants`: qué hay en el aire que pueda reaccionar, excluyendo gases de fondo y trazas. `reactantsFingerprint` para el antirruido por tick.
+- `mission-overload-runtime.ts` — evalúa **todo conductor instalado y toda arista** con carga derivada, no solo `scriptedOverloads`. Cadena de capacidad: catálogo → `capacityOverride` → `wornCapacity` → factor térmico. Una pieza `COND(E)` colocada ya no es sujeto (lo es la arista). `edgeStatus(edge)` es público: la UI le pregunta carga/capacidad al runtime que decide, en vez de recalcular la cadena. `worstThermalFactorAlong` manda el peor de los dos extremos y estampa el evento con esa sección.
+- `mission-fanout-runtime.ts` — el reparto de señal vivo, memoizado por identidad de blueprint + prioridades. Punto único para tres consumidores que no se conocen: compuerta de señal, estado de instancia y tooltips.
+- `mission-phase-runtime.ts` — vigila el contenido de los reservorios contra la temperatura de su sección y actúa solo en el CRUCE del umbral: emite evento y aplica `worsenWear`. Estado previo por instancia, de simulación y no persistido.
+- `phase-expansion-pressure.ts` — `PhaseExpansionPressureSource`: **primera FUENTE de presión del motor** (kPa negativos durante un pulso cuando un derrame se evapora), compuesta con los sumideros existentes.
+- `mission-reaction-runtime.ts` — `tickEmergent`: química por sección a partir de las sustancias realmente presentes, además de la scripteada. Ventana de ignición con vencimiento (`ignitedUntilSeconds`), autoignición por temperatura (`hasIgnitionSource`) y consumo real de los reactivos sobre `atmosphere.gases` (`consumeReactants`). `thermalRegulatorOverloaded` se deriva (hay regulador instalado y la sala supera su umbral).
+- `section-gas-injection.ts` — `isAirborneSubstance` **deriva el estado de la temperatura** y ya no acepta la vía por tag `VOLAT`; `hasEvaporated` distingue "soltar un gas" de "el charco hirvió". `GasInjectionDeps` suma `sectionTemperatureOf`, `onEvaporate` y `onSpill` (avisado ANTES del descarte por sustancia no aérea: un criogénico enfría la sala aunque quede como charco).
+- `ship-task-effect.ts` — `payComponentCost` extraído y compartido por `install` y `connect`, que cobra ANTES de tocar el grafo; case `disconnect` (saca la arista y su cicatriz, acredita el conductor un escalón más gastado, salvo que esté quemada). `FrozenReservoirContentError` + `assertContentNotFrozen` en las cuatro tareas que mueven sustancia. `installInstance` puebla `reservoirContents` desde `FACTORY_RESERVOIR_CONTENTS`.
+- `mission-door-runtime.ts` — `resolveBoundary`: puerta autorada → `a`/`b` del mapa (verificados con `cellSeparates`); improvisada → inferencia. Es lo que permite autorar una puerta en la boca de un pasillo, que toca tres secciones. `initialOpen` del seed decide el estado inicial y el snapshot del save le gana. `isActuatorActive(instanceId)` es el lector de estado real para la salida de señal de una puerta.
+
+- `mission-hazard-parameters.ts` + `mission-hazard-runtime.ts` — quinto peligro: `HAZARD_PARAMETERS.thermal` (umbrales -10/60, **propios y distintos de los de la sección**) aplicado por ACTOR. `applyVacuum` se generalizó al `bite()` compartido por vacío y térmico, con `thermalDamageCause` mapeando temperatura → `"cold"`/`"fire"`. Vacío y frío llevan cuentas separadas y se acumulan.
+
+## `engine/src/power/`
+- `power.types.ts` — `PowerState`/`SectionPowerAllocation`/`InstancePowerPriority`/`emptyPowerState()`. Incluye `permanentlyDisconnectedSectionIds` (cicatriz real, distinta del déficit táctico de sesión) y `dischargedSourceIds` (fuentes canibalizadas por `discharge-source`: cuestan presupuesto permanentemente).
+- `power-source.ts` — `totalPowerBudget`: suma `powerUnits` de toda instancia RES(E) instalada, descontando las descargadas.
+- `power-parameters.ts` — `POWER_DRAW_BY_COMPONENT` + `declaredPowerDraw`: la ÚNICA tabla de consumos, con el criterio documentado (señal pura 1 · `ACT` 2 · pesado/`FAB` 3) y por qué conductores y fuentes no consumen.
+- `component-power-draw.ts` — `componentPowerDraw`: único lector de `definition.data.powerDraw`. Por eso reparto, heatmap y derivación de estado no pueden divergir.
+- `power-allocation.ts` — reparto puro en dos niveles: `allocateSectionBudget` (global→sección; `darkSectionIds` es informativo, no gatea) y `allocateComponentPower` (sección→componentes, por prioridad con desempate por `instanceId`). Ante déficit **apaga secciones de menor a mayor asignación** hasta que el resto entre, en vez de recortar proporcionalmente; un único sobreviviente que excede se recorta. Devuelve `shortfallUnits` y `shedSectionIds` y no toca `sectionAllocations` (reconciliación no destructiva).
+- `default-allocation.ts` — `defaultSectionAllocations`: reparto inicial por demanda declarada, mayor primero. Existe porque `emptyPowerState()` deja todo en 0, y eso es una partida nueva sin señales, sin mesas y sin puertas.
+- `mission-power-runtime.ts` — implementa `PowerScarSource`, `InstancePowerSource` y `PowerSupplySource` (`grantedTotalUnits()`/`requestedTotalUnits()`, alimenta el HUD). `recalculate()` es público y `tick()` delega en él: el recálculo NO puede depender del tick porque `CoreLoopModeMachine` es NO-OP en `planning` y los controles de energía solo existen en pausa. Cachea `sectionPowerGranted()`/`powerShortfallUnits()` y emite `PowerShortfallEvent` POR FLANCO. `unpoweredSectionIds` refleja SOLO la cicatriz permanente; `sectionHasNoPowerGranted` (déficit vivo) alimenta el efecto ambiental y el gating de tareas de `TaskScheduler`; `isInstancePowered` es el predicado de gating vigente, con fail-open para instancias sin sección.
+- `power-events.types.ts` — `PowerShortfallEvent`/`PowerDomainEvent`, sumados a la unión `DomainEvent`. El motor ya resolvió el conflicto; el evento existe para que `/game` lo comunique.
+- `conductor-load.ts` — `edgeElectricalLoad`: la carga de una arista es la suma del `powerDraw` de lo que cuelga aguas abajo, en unidades de `powerDraw` (por eso se re-escaló `COND.maxCapacity` en el catálogo). Cuenta el dueño de `edge.to` y recorre el grafo ACTIVO.
+- `power-allocation.ts` — `orderByPowerPriority` extraído acá y compartido por los dos triajes (energía y señal).
+
+## `engine/src/properties/`
+- `functional.types.ts` — las propiedades funcionales del GDD §5.1. `ReservoirProperty.powerUnits?` (presupuesto de una fuente `RES(E)`), `FabricatorProperty` (`FAB`, con `domain: "fisica" | "quimica"`): propiedad de HABILITACIÓN, no de trabajo — declara que desde esa pieza se abre la mesa. `ActuatorProperty` tiene `power` pero **no** `powerDraw` (el consumo eléctrico es dato de componente, ver `power/`).
+- `material-order.ts` — `RE_ORDER`/`CE_ORDER`/`CT_ORDER` + `worstResistance`/`bestConductivity`/`bestThermalConductivity`: orden canónico de niveles de material.
+
+## `engine/src/reservoir/`
+- `reservoir-ledger.ts` — operaciones PURAS sobre `Blueprint.reservoirContents`: `contentOf`/`freeCapacity`/`pourInto`/`drawFrom`/`emptyReservoir`. Regla: UNA sustancia por reservorio; verter otra lanza `ReservoirOccupiedError` (hay que purgar antes).
+- `reservoir-query.ts` — `substanceReservoirProperty`/`instanceReservoirCapacity`: filtran el `RES` de tipo G/L/T; las baterías (`RES(E)`) no son reservorios de sustancia.
+- `fluid-transfer-reachability.ts` — espejo exacto de `assertSignalWiringReachable` con `kind: "fluido"`. Intra-sección libre, cross-section exige conducto, misma política fail-open.
+- `substance-composition.ts` — de qué está hecha una sustancia: receta de catálogo → procedencia registrada al sintetizar → indescomponible. **Precondición en los tres: estar analizada** (`analyze-substance` es puerta real, no flavor).
+- `initial-reservoir-contents.ts` + `factory-reservoir-contents.ts` — `indexFactoryReservoirContents` (puro, sobre specs) + `deriveInitialReservoirContents` (instancias → entradas llenas a `capacity`). Lo consumen `save/campaign-save-factory.ts` y `save/chapter-progression.ts`.
+- `reservoir-parameters.ts` — `EXTRACTION_BATCH_UNITS`: tope por tarea de extracción, que convierte la escasez en TIEMPO (cada lote es un viaje) en vez de autorar cantidades a mano.
+- `frozen-content.ts` — `isSubstanceFrozenAt` (predicado desnudo) y `frozenContentOf` (instancia → sección → temperatura → puntos). Función ÚNICA que consumen el efecto de tarea, el panel de acciones y el glifo del plano.
+
+## `engine/src/salvage/`
+- `salvage-hazard.types.ts` — `dismantle-spark`/`dismantle-spill`/`dismantle-leak` + `SalvageDomainEvent`. Todos llevan `instanceId`/`position`/`sectionId`.
+- `dismantle-hazard-rules.ts` — Strategy, una regla por condición (`powered-instance`, `reservoir-content`, `hazardous-atmosphere`) + `DismantleHazardContext` (estado vivo alrededor de la pieza). Molde reusado por `integrity/section-damage-rules.ts`.
+- `dismantle-hazard-assessment.ts` — evaluación PURA compartida por el efecto de tarea y por el badge de riesgo de la UI: una sola fuente de verdad.
+- `dismantle-hazard-handler.ts` — la parte con efectos: emitir eventos, dañar al actor vía `applyCrewDamage`, pedir el escalón extra de desgaste.
+- `salvage-parameters.ts` — daño por hazard, umbrales de atmósfera comprometida, caudal/duración de la fuga.
+- `transient-pressure-sink.ts` — `TransientLeakPressureSink`: fugas acotadas en el tiempo (las permanentes son de `integrity/`).
+- `instance-energized.ts` — `isElectricallyLive`/`isElectricSource`/`isInstanceEnergized`, resuelto por propiedades (`COND`/`RES(E)`, `ACT`, `EM`, `REC`, `CE ≠ "N"`). **No confundir con `MissionPowerRuntime.isInstancePowered`**, que significa "su demanda está satisfecha" y da `true` para cualquier pieza sin `powerDraw` incluso con la sección a 0. Una FUENTE está viva hasta que se la descarga, sin depender de la red.
+
+## `engine/src/save/`
+- `campaign-save-factory.ts` — campaña nueva. `powerState.sectionAllocations` y `permanentlyDisconnectedSectionIds` arrancan `[]`.
+- `CampaignSaveState` — `schemaVersion` **5**: incluye `elementStock`, `substanceProvenance` y `analyzedSubstanceIds` (los dos últimos vivían solo en memoria de `MissionRuntime`). Migración "campo ausente ⇒ vacío". Se versiona aparte del `Blueprint.schemaVersion`.
+- `crew-write-back.ts` — `writeBackCrew`: vuelca HP y celda de `MutableCrewState`, status/sección del `TaskScheduler`, y la BAJA DEFINITIVA de los muertos (permadeath, GDD 6.1). Un muerto queda `dead` con 0 HP, sale de `activeCrewIds` y sigue en `crew` — `assertCampaignSaveIntegrity` exige esa relación.
+- `chapter-progression.ts` — semillas por capítulo.
+
+## `engine/src/ship-status/`
+- `ship-status.types.ts` — `ShipStatusLevel` (`nominal`/`warning`/`critical`), `ShipStatusIndicator` (`level`+`fraction`), `ShipStatusSnapshot` (atmósfera / soporte vital / integridad de casco / energía).
+- `ship-status-aggregation.ts` — `fractionToLevel` (corte de 3 niveles, mismo criterio que `hpBarColor` de `crew-strip.ts`) + los cuatro agregadores a nivel de NAVE, criterio "peor sección gana", sobre umbrales ya existentes (`REACTION_PARAMETERS.toxicity`, `RE_ORDER`). `aggregateAtmosphere` combina concentración de gas tóxico y `pressureFraction = pressureKpa / 101`. `aggregateHullIntegrity(sectionFractions)` recibe fracciones por sección y no componentes. `aggregateEnergy(EnergyAggregationInput)` devuelve el PEOR de dos señales — cicatriz permanente y suministro/demanda (`granted`/`requested`) — con `requestedUnits === 0` = nominal.
+- `ship-status-runtime.ts` — `ShipStatusQuery`: consulta pull-based (no `Tickable`). `SectionIntegritySource` es interfaz angosta **no opcional**: sin ella el indicador quedaría muerto.
+
+## `engine/src/signals/`
+- `orient-signal-wiring.ts` — `orientSignalWiring`: la dirección del cable sale de los ROLES, no del orden de clicks. Rechaza receptor↔receptor y emisor↔emisor.
+- `graph-traversal.ts` — `upstreamNodes`/`downstreamNodes`: BFS en las dos direcciones, tolerante a ciclos (el latch de GDD 5.6). Aceptan el conjunto de aristas a recorrer (default: el grafo completo), para recorrer el grafo activo sin duplicar el BFS.
+- `edge-conductor.ts` — punto único de dos preguntas que no tenían dueño: `isWiringMaterial`/`electricalConductorProperty` ("¿es material de cableado?", por PROPIEDAD `COND(E)`, nunca por lista de ids) y `edgeConductorId`/`edgeConductorWear` ("¿con qué se tendió esta arista?", con el default de migración a `cable-cobre` en un solo lugar). Firmas estructurales, para servir igual a un spec de catálogo que a una definición del registry.
+- `active-signal-graph.ts` — `activeSignalEdges`/`activeSignalGraph`/`isEdgeBurned`: el grafo menos los cables quemados. Punto único consumido por dos dominios que no se conocen — la evaluación de señal (deja de propagar) y el cálculo de carga (se redistribuye); no le enseña al `SignalEvaluator` qué es una sobrecarga. `burnedWiresTouching(blueprint, instanceId)` vive acá y no en `MissionRuntime` para poder testearse.
+- `signal-edge.types.ts` — `SignalEdge` lleva `conductorId`/`conductorWear`; **la capacidad NO se persiste**, se deriva del catálogo.
+- `signal-output-parameters.ts` — `SIGNAL_OUTPUT_CAPACITY_BY_COMPONENT` + `declaredSignalOutputCapacity` + defaults. Tabla data-driven gemela de `power-parameters.ts`, inyectada en `data.signalOutputCapacity` por `build-component-catalog.ts`.
+- `emitter-fanout.ts` — `allocateEmitterFanout`: cuánto cuelga de cada salida y quién queda sin señal. **La demanda NO es transitiva** (cada salida paga solo lo directo): es lo que convierte a un chip en relé útil. Ordena con `orderByPowerPriority`, el comparador compartido con el triaje eléctrico.
+- `orient-signal-wiring.ts` — la orientación se decide por "el segundo es emisor"; el rechazo receptor→receptor cayó (habilita el relé) y eso además arregló `conductor → emisor`.
+- `signal-evaluator.ts` — `tick` acepta una compuerta opcional por arista: el mecanismo del triaje de señal sin tocar el grafo activo.
+
+## `engine/src/simulation/`
+- `random-source.ts` — `RandomSource` inyectable, `sequenceRandom` (secuencia fija para tests), `systemRandom`. Primer y único azar del motor; se inyecta para que los casos de validación sigan siendo reproducibles.
+
+## `engine/src/tasks/`
+- `task.types.ts` / `task-factory.ts` — `CrewTask` y su payload. `TaskType` incluye `analyze-substance`, `transfer-substance`, `apply-substance`, `extract-elements`, `cut-power`, `purge-reservoir`, `discharge-source`. `InstallTaskPayload.consumeRecipe?` distingue un compuesto de catálogo (gasta receta) de una creación personalizada (gratis). `powerSectionIds?` es independiente de `targetSectionId` (que sigue siendo ubicación del actor/animación); ausente o vacío = la tarea nunca se gatea por energía. `powerInstanceIds` es su hermano por instancia y el único sitio donde una tarea `combine` conserva de qué mesa habla.
+- `task-scheduler.ts` — state machine de la cola. `resolveBlockingReason` itera `powerSectionIds` y bloquea con `"no-power"` si cualquiera no tiene energía, evaluado DESPUÉS del bloqueo por dependencias (que tiene prioridad). `fail(taskId, reason, tick)` es hermano de `cancel()` (que cascadea `dependency-cancelled` a los dependientes) y borra el avance por objetivo. `CrewActorStatus` incluye `"dead"`, TERMINAL: `standDown(actorId, tick)` cancela la cola del muerto, el tick deja de avanzarlo, `enqueue` lo rechaza y `registerActor` no lo resucita. Re-chequea energía en la Fase A del tick.
+- `task-progress-key.ts` — `taskProgressKey(task)`: identidad del OBJETIVO derivada del payload. Habilita el trabajo por relevos (`progressByObjective`): si el tripulante muere a mitad, el siguiente retoma donde quedó. Se limpia al COMPLETAR — cancelar o morir deja el avance a propósito. Nunca usa el `instanceId` de la tarea; `go-to` y las tareas sin payload no acumulan.
+- `task-events.types.ts` — `TaskCompletedEvent` (reusa `TaskEffectResult["obtained"]` en vez de repetir su forma, y propaga `obtainedElements`/`overflowAmount`/`pouredSubstanceId`/`pouredAmount`), `TaskFailedEvent.reason`, `TaskBlockedEvent["reason"]` (incluye `"no-power"`).
+- `queued-reservations.ts` — `reservedCells(tasks)` y `reservedStock(tasks, costOf)`: qué tiene comprometido la cola VIVA (`pending`/`in-progress`/`blocked`, vía `TERMINAL_TASK_STATES`, el mismo predicado que filtra la cola dibujada). Solo `install` ocupa celdas; `install` y `connect` reservan stock. **Nunca se persiste.**
+- `task-scheduler.ts` — `completeTask` envuelve el efecto en try/catch: un rechazo pasa la tarea a `failed` con motivo `effect-rejected` (+ `task-effect-error` con el mensaje crudo) en vez de reventar el tick. `blockReasonFor(taskId)` expone `lastBlockReason`.
+
+## `engine/src/valves/`
+- `valve.types.ts` / `valve-runtime.ts` — apertura viva por `ConduitId`, sembrada de `initialAperture` y pisada por el save. Existe porque la puerta NO cierra el ducto: contener una fuga exige cerrar también la válvula.
+
+## `engine/src/wear/`
+- `wear.types.ts` — `ComponentWear` (`nuevo`/`usado`/`degradado`/`critico`), `WEAR_ORDER`, `wearSteps`, `worsenWear`, `worstWear`. Eje ortogonal a `ComponentCondition`. **No existe función inversa a propósito** (principio 5: sin undo gratuito).
+- `effective-resistance.ts` — `effectiveResistance(catalogRE, wear, legacyOverride?)`: punto ÚNICO donde el desgaste entra en el cálculo estructural. Mapeo 1:1 (un escalón de desgaste = uno de RE) + retrocompat de `structuralResistanceOverride` en saves ≤ v6 (gana el peor de los dos ejes).
+- `overload-capacity.ts` — `wornCapacity(capacity, wear)` = −15% por escalón: el desgaste sube el riesgo de fallo catastrófico sin meter azar en el tick.
+- `dismantle-wear.ts` — `wearAfterDismantle`: probabilidad de conservar el estado al canibalizar, reutilizando `atomicRecoveryFraction` (GDD §6.5). Sin `RandomSource` inyectado nunca degrada.
+
+## `engine/src/workbench/`
+- `port-wiring.ts` — `assertSignalWiringReachable(floorplan, graph, from, to)` + `SignalWiringUnreachableError`: un cable de señal solo cruza de sección a sección si hay camino de conductos `senal`. Vive aparte de `wireExternalPort` (operación pura de grafo) porque necesita geometría.
+- `derive-signal-nodes.ts` — deriva los nodos de señal de una pieza. `ACT` deriva un nodo `receptor`: un actuador gobernado por señal ES un receptor. Vale para todo `ACT`, no solo puertas.
+- `creation-naming.ts` + `footprint-calculator.ts` — `nameAndRegisterCreation` puebla `data.layout` con el offset relativo de cada pieza; `calculateFootprintOrigin` devuelve el min corner del bounding box.
+- `creation-material-aggregation.ts` — `aggregateCreationMaterial`: RE = peor de las partes, MAG = OR, CE/CT = mayor, ES = mayoritario. Lo consume `creation-naming.ts`, que antes solo agregaba propiedades funcionales.
+- `installation-placement.ts` — validación de colocación. **No** reubica la pieza: "lo que ves es lo que se instala" (el viejo `findFittingInstallPlacement` fue borrado; el fantasma en vivo lo reemplaza).
+- `derive-signal-nodes.ts` — un `ACT` deriva receptor **y** emisor de salida. `actuatorOutputNodeId`/`isActuatorOutputNode`: el id del emisor se deriva del receptor y **no consume índice**, para no correr los ids posteriores y dejar huérfana una arista ya guardada.
+- `port-wiring.ts` — `wireExternalPort` acepta el conductor y rechaza un par ya cableado (`SignalWiringDuplicateError`, no dirigido); `/game` lo distingue para ofrecer RETIRAR en vez de mostrar un error.
+
+## `game/src/audio/`
+- `audio-asset-registry.ts` — tabla `key → URL` del pack real (`game/assets/audio/`), imports `?url` solo de las variantes usadas, `preloadAudioAssets` (mismo patrón que `ui-asset-registry.ts`). `AUDIO_KEYS` documenta los gaps de asset (sin siseo de fuga, zumbido eléctrico continuo, sirena ni paso metálico dedicados). `uiDenied` (acción rechazada) reusa los assets de error ya cargados.
+- `audio-effect.types.ts` — `EventDrivenSound`/`StateDrivenSound`, análogos sonoros de `particles/particle-effect.types.ts`.
+- `phenomenon-sound-registry.ts` — `fireEventSound`: Factory `DomainEvent["kind"] → EventDrivenSound`, en paralelo a `EFFECTS_BY_KIND`.
+- `audio-utils.ts` — `pickSoundKey`, análogo sonoro de `pickTexture`.
+- `bark-sound.ts` — `playBarkSound`: SFX corto por categoría de `BarkEventType`, no voz hablada.
+- `effects/` — `overload-sound`, `combustion-sound`, `corrosion-sound` y `door-sound` (event-driven, gemelos de sus `particles/effects/*`; el de puerta engancha al ARRANQUE de la transición, no a `door-settled`); `gas-leak-sound` es state-driven (loop ambiental, volumen ∝ concentración) y necesita `.stop()` explícito en `SHUTDOWN` — un `Phaser.Sound` no se destruye solo al cambiar de escena.
+
+## `game/src/crew/`
+- `bark-controller.ts` — `fire()` reproduce `playBarkSound` junto a la burbuja de texto.
+
+## `game/src/enemies/`
+- `enemy-tokens.ts` — `createEnemyToken`/`flashEnemyAttack`/`destroyEnemyToken` (rectángulo placeholder por arquetipo, distinto de los círculos de tripulación). `enemyJumpSignature` es la firma de salto que `floorplan-scene.ts` encadena celda a celda; `hopEnemyToken` (salto directo A→B) quedó como fallback sin grilla transitable y devuelve el tween para poder pausarlo en modo `planning`.
+
+## `game/src/i18n/`
+- `es.ts` / `en.ts` — catálogo de claves de traducción. Familias: `crew.specialty.*`/`crew.trait.*`/`crew.tier.*`, `ship.<archetype>.properName`/`.description`/`.pro.N`/`.con.N`, `ui.floorplan.*`. Terminología fijada: "transferir"/"transferencia" (no "trasvasar"). **Toda cadena de UI y bark pasa por acá, es+en, desde el MVP.**
+
+## `game/src/meta/`
+- `game-settings.types.ts` — `GameSettings` persistidas (CRT, `shadowIntensity` con clamp01…), hidratadas por `options-scene.ts`.
+- `ship-archetype-metadata.ts` — `SHIP_ARCHETYPE_METADATA`: `ShipArchetype → { properNameKey, descriptionKey, proKeys, conKeys }`, claves i18n y no texto. Vive en `/game` porque es presentación, no dato de motor.
+- `live-mission-save.ts` — registro de una `(base) => CampaignSaveState` que `FloorplanScene` publica al montar la misión y libera en su SHUTDOWN, para que `PauseMenuScene` persista el estado VIVO sin conocer `MissionRuntime`. Sin esto "Guardar y salir" solo tocaba `updatedAt`.
+- `save-adapter.ts` — E/S de saves. `mostRecentCampaignSave()` ordena por `metadata.updatedAt` (no por el timestamp del id, que marca la CREACIÓN) y omite las ilegibles.
+
+## `game/src/mission/`
+- `mission-runtime.ts` — sumó al core loop `thermalRuntime` (ANTES de `atmosphereRuntime`, su `rates()` se inyecta por closure como `SectionHeatSource`), `phaseRuntime`, `phaseExpansion` y el bus `phaseEvents`. `MissionOverloadRuntime` pasa a recibir `shipFloorplan` (sin él los `OverloadEvent` salían sin `sectionId`) y `atmosphereOf`. Nueva superficie: `emitterCoverageOf(instanceId)` (celdas cubiertas, reusando el helper del motor y el mismo `motionBlockedQuery` que alimenta al resolvedor), `signalRoleOf`, `edgeStatusOf(edge)` (con capacidad NOMINAL además de la efectiva, para poder explicar por qué el número es más chico que el del catálogo), `frozenContentFor`, `instanceCellOf`, y la **puerta única a las reservas**: `reservedCells()`, `reservedStockOfWear`, `availableStockOfWear`, `queuedInstallGhosts()` (sin caché, recalculado por consulta). `hasRecipeStockFor`/`missingRecipeIngredients` miden contra el DISPONIBLE, y el segundo devuelve además `reserved` para distinguir "falta" de "está comprometida". `sectionAtmosphereInfo` agrega `temperatureCelsius`, `heating`, `selfIgniting` y el estado de las sustancias en el aire. `ensureAt` devuelve el id del `go-to` que encoló y los 16 sitios que la llaman lo declaran como `dependsOn` — el llamador que le faltaba al bloqueo por dependencia desde la Fase 10. Tiene test propio (`mission-runtime.test.ts`): no importa Phaser, su constructor solo toma un save.
+- `mission-interaction-controller.ts` — `isWiringOnly` saca los conductores del selector de instalación; `buildWireOptions`/`conductorDetailLines` arman el selector de cableado (capacidad EFECTIVA por fila, no la de catálogo); `confirmWireConductor` encola el tendido y repetir el gesto sobre un par ya cableado encola el retiro. `installIssuesAt(position, footprint)` es el predicado ÚNICO de "por qué no se puede instalar acá", compartido por el fantasma bajo el cursor y por el click que encola; `reservationDetailLine`/`recipeBlockReason` alimentan el desglose y el bloqueo `queue-reserved`.
+- `active-task-visuals.ts` — registro `taskId → cómo se apaga su visual` (`register`/`stop`/`forget`). Fuera de la escena y sin Phaser para tener test propio: un apagador que no se invoca es exactamente lo que no se ve al revisar código.
+
+## `game/src/mission/conduit-flow-heuristics.ts`
+- `conduitFlowIntensity`/`computeSectionSignalActivity` — intensidad de flujo por conducto FÍSICO derivada de datos reales del motor (presión, `unpoweredSectionIds`, `signalGraph` + `outputOf`), nunca inventada. La capa `fluido` toma su caudal de `FluidOperationRegistry`. `signalWireFlowIntensity(edge, mission)` aplica el mismo criterio a un `SignalEdge` que armó el jugador: por NODO en vez de por sección.
+
+## `game/src/mission/mission-interaction-controller.ts`
+Segundo archivo más tocado. Tres **modos de interacción** hermanos, todos interceptados por `handleMapClick` antes del comportamiento normal:
+- `wireModeValue` — cableado de señal.
+- `transferModeState` — `startTransferMode`/`cancelTransferMode`/`handleTransferModeClick` + getters `transferMode`/`transferModeOrigin`/`transferModeCandidates`. Recalcula `transferCandidatesFor` **en el momento del click**, no al abrir el modo. La cantidad encolada es `Math.min(content.amount, candidate.freeCapacity)`. Un candidato bloqueado suena `AUDIO_KEYS.uiDenied` antes de `setStatus(...)`.
+- `installPlacementState` — modo de COLOCACIÓN: se elige QUÉ en el modal y DÓNDE en el mapa; `installPlacementPreviewAt` devuelve el footprint anclado exacto bajo el cursor y si ahí entra. El flujo empieza en el botón de la barra (`updateInstallButton`), no en el panel de celda vacía.
+
+**Panel de acciones**: flota, no está docked. `hasContextualSelection` reemplaza el chequeo `idle` disperso; `repositionActionPanel(point)` reposiciona el `Container` ya construido (lo llama la escena cada frame); `manualPanelPosition` guarda la posición tras un arrastre y se limpia al cambiar el objetivo del panel, pero sobrevive a un `refreshActionPanel`. El contenido abierto **se re-deriva del mundo vivo en cada dibujo** (`doorInfoForInstance`/`doorInfoById`/`conduitLiveState`, igual que los hazards): el estado de una puerta cambia solo.
+
+**Selector de instalación**: `buildInstallOptions()` — lista ÚNICA y plana (sin pestañas), habilitados primero y bloqueados después con su motivo. Sus tres fuentes: piezas atómicas, creaciones personalizadas y compuestos de catálogo con `consumesRecipe: true`. `buildComposition(options?: { highlightRequiredTag?; missingRefs? })` marca `hasStock` por ingrediente desde `mission.missingRecipeIngredients(def)`.
+
+`conduitAtCell` redondea la posición del marcador: los conductos se autoran en coordenadas fraccionales sobre la arista, y sin redondear uno en (11.5, 11) no sería clickeable desde ninguna celda.
+
+## `game/src/mission/mission-runtime.ts`
+**El archivo más tocado del proyecto.** Construye y registra todos los runtimes del motor en el core loop, y expone la única superficie que la UI consume. Nada en `/game` habla con `/engine` salteándolo.
+
+**Orden de registro en el core loop** (importa, y varias regresiones vinieron de acá):
+1. Un `Tickable` mínimo PRIMERO, que fija el reloj del tick (los hazards lo leen para datar sus eventos) y caduca las fugas abiertas.
+2. `powerRuntime` → `signalRuntime` → `doorRuntime` (la puerta debe leer la señal de ESTE tick, no del anterior) → `atmosphereRuntime` → `sectionIntegrityRuntime`/`hazardRuntime` (leen corrosión y presión ya difundidas).
+- `doorRuntime`/`valveRuntime` se **construyen** antes de la atmósfera (son sus productores de apertura); sus `queries` son closures, así que no dependen del orden de construcción.
+- `enemyThreatRuntime` va tras `crisisRuntime` y antes de señales/proyectiles.
+
+**Buses de eventos expuestos**: `enemyEvents`, `reactionEvents`, `failureEvents`, `powerEvents`, `salvageEvents`, `integrityEvents`, `atmosphereEvents`.
+
+**Superficie para la UI**, agrupada:
+- *Energía*: `sectionPowerAllocation`, `setSectionPowerUnits`, `sectionPowerDemand`, `instancePowerPriorityOrder`, `reorderInstancePriority`, `totalPowerBudget`, `sectionPowerGranted`, `powerShortfallUnits`, `sectionHasNoPowerGranted`. `setSectionPowerUnits`/`reorderInstancePriority` llaman `powerRuntime.recalculate()` **de forma síncrona**: el core loop no tickea en pausa, que es justo cuando se opera esta UI.
+- *Química y fluidos*: `elementStock`, `substanceProvenance`, `fluidOperations`, `reservoirContentOf`, `transferCandidatesFor` (devuelve TODOS los reservorios con motivo de bloqueo `"full"`/`"unreachable"`/`"different-substance"` y su `freeCapacity`, para que el modo espacial pueda iluminar los bloqueados), `extractionBlockedFor`, `availableSubstances` (deriva también de `reservoirContents`, así que el HUD sabe DÓNDE está cada sustancia), `airborneSubstanceAt` (dominante en el aire sin filtrar por tag, para uso visual; hermana de `contaminantAt`, que es la de daño), `substanceTagsOf`, `isSubstanceAnalyzed`, `hazardPreviewFor` (recalcula en vivo contra el O2 real).
+- *Instalación*: `installableCatalogComposites`, `hasRecipeStockFor`, `missingRecipeIngredients`, `fabricatorDomainOfInstance`, `benchCell(domain)`, `fabricatorBlockedReason` (punto único que comparten el guard de `openWorkbench` y el label del botón).
+- *Encolado*: `queueGoTo`/`queueDismantle`/`queueInstall`/`queueConnect`/`queueCutPower`/`queuePurgeReservoir`/`queueDischargeSource`/`queueTransferSubstance`/`queueApplySubstance`/`queueExtractElements`/`queueAnalyzeSubstance`/`queueFabrication`/`queueSynthesis`/`queueSetValve`/`queueForceDoor`/`queueRepairDoor`. **Regla de energía**: las cuatro tareas de máquina pasan `powerSectionIds`/`powerInstanceIds`; transferir y aplicar pasan AMBAS secciones (origen y destino); las demás no fijan `powerSectionIds` y por eso nunca se gatean.
+- *Estado*: `shipStatus` (pull-based, recalcula en cada lectura), `sectionAt`, `elapsedSeconds`, `sectionIdOfInstance()`, `dismantleHazardsFor()`, `enemyRoutes` (para que la escena calcule la duración real de cada tramo al animar).
+- `materializedByTaskId` + `consumeMaterializedByTask(taskId)` — qué materializó cada tarea `combine`, patrón "drenar y limpiar" (mismo criterio que `TransientGasInjection.asInjectionSource()`).
+- `queueSynthesis` consume el stock **AL ENCOLAR**, no al completar; `pendingFabrications`/`pendingSynthesis` se limpian al fallar o cancelar (el material se pierde, principio 5, pero los maps se vacían).
+- Resincronización de puertas construidas comparando la REFERENCIA de `placedComponents` (`Blueprint` es inmutable, el `!==` es exacto y O(1)): sin esto una compuerta instalada a mitad de misión no era puerta.
+
+## `game/src/particles/`
+Cada fenómeno del motor tiene su efecto (principio 6: dos fenómenos distintos nunca se ven igual). Dos familias, `EventDrivenEffect` y `StateDrivenEffect`.
+
+**Infraestructura**
+- `particle-effect.types.ts` — las dos familias, `ObjectCreatedHook`, `LightHook`, y `EventEffectOptions { tint?, onObjectCreated? }` como 4º parámetro opcional de `trigger`/`fireEventEffect`: permite que el color dependa de datos que solo `/game` puede resolver (el registro químico) sin que `/engine` conozca colores.
+- `effect-registry.ts` — `EFFECTS_BY_KIND`: Factory `DomainEvent["kind"] → efecto`, gemelo de `phenomenon-sound-registry.ts`.
+- `particle-utils.ts` — `spawnBurst`/`spawnDecal`, ambos con el hook opcional al final.
+- **Regla del doble-cámara**: los 15 efectos del registro propagan `onObjectCreated` para que la escena marque cada objeto con la cámara de mundo y lo excluya del `hudCamera`. Un objeto que no se registra aparece duplicado o pegado al HUD.
+
+**Efectos**
+- `dynamic-light.ts` — `createDynamicLight` (luz aditiva persistente) y `createBurstLight` (parpadeo → desvanecido → destrucción, con las fases encadenadas por `onComplete`, porque dos tweens sobre `intensity` se pelean si se solapan). Consumidores: `combustion-effect.ts` (`fadeMs` = 1.5× `sustainMs`) y `environmental-damage-effect.ts` (arco eléctrico, `fadeMs` 200).
+- `conduit-flow-effect.ts` — `createConduitPathFlowEffect(path, onTokenCreated?)`: **tokens viajeros**, `Image` con posición manual sobre la polilínea (`cumulativeLengths`/`pointAtDistance`), no `ParticleEmitter`. 2 `FlowStream` por conducto (path directo + invertido) cubren ambos extremos como origen; cada token tiene cabeza + 2 fantasmas de estela y fade en los extremos; la velocidad se fija al spawnear, así que un token en tránsito termina su viaje aunque el conducto se apague. `direction` apaga el SPAWN del sentido contrario, no el stream. `ConduitPathFlowState.visible` fuerza el alpha final a 0 (oculto REAL, no atenuado) sin pausar el avance interno. `ventilationIntensity` lee la apertura VIVA y devuelve el sentido (de mayor a menor presión). `createConduitFlowEffect` + `createFlowEmitter`/`flowFrequency`/`flowQuantity` son el emisor-rocío de punto fijo (demo de galería).
+- `overloaded-conductor-effect.ts` — `StateDrivenEffect` de chispas + luz parpadeante sobre un conductor/reservorio sobrecargado. Cicatriz sin retorno: nunca se detiene.
+- `environmental-damage-effect.ts` — `electricArcEffect` con burst de luz en el punto de impacto; `EnvironmentalEffectObject` incluye `PointLight` en su unión.
+- `phosphor-static-effect.ts` — `firePhosphorStatic`: ruido de fósforo localizado sobre la celda averiada, en espacio de mundo. Severidad `minor`/`major`.
+- `fabrication-effect.ts` — `dismantleEffect`: orbes aditivos cian/dorados + chispas + humo tenue + `PointLight` pulsante.
+- `salvage-hazard-effect.ts` — tres efectos visualmente distintos para los tres hazards de desmontaje: estallido eléctrico hacia arriba, charco + salpicadura, chorro ancho que se disipa. `firePouredSubstance(scene, position, amount, tint)` está extraído porque hay TRES formas de mojar el piso (derrame al desmontar, verter, purgar); usa `RENDER_DEPTH.substanceSpill`.
+- `section-breach-effect.ts` — `sectionDamagedEffect` (polvo cayendo) y `sectionBreachedEffect` (chorro de descompresión + mancha permanente que marca dónde instalar el parche).
+- `atmosphere-state-effects.ts` — nubes de gas por sección. `CLOUD_VISIBILITY_THRESHOLD` + `CLOUD_RAMP_PER_SECOND`: la concentración mostrada persigue a la real con retardo en vez de saltar, y la opacidad del emisor acompaña a la densidad.
+- `crew-death-effect.ts` — incluye la variante `weaponStrike` para `cause: "enemy-attack"`.
+- `substance-phase-change` / `reservoir-content-phase-change` — columna de vapor ascendente (color de la sustancia) y escarcha sobre la pieza (más densa si rompió el tanque), del eje térmico de 14a-3.
+
+**Gaps de asset conocidos**: el chispazo de desmontaje reutiliza el banco de sobrecarga y la brecha el de explosión grave — no hay assets dedicados (deudas #17 y #40 en `PENDIENTES_OBSERVACIONES.md`).
+- `atmosphere-effect-coverage.ts` — cuánta superficie ocupa un fenómeno de atmósfera y con qué densidad (aparte de "qué partícula es", que decide `atmosphere-state-effects.ts`). `sectionEmitZone` reparte partículas sobre las celdas REALES de una sección, **nunca su bounding box**; `coverageQuantity` escala con área y severidad con techo y piso; `thresholdSeverity` normaliza los dos lados del eje térmico. Compartido por los tres efectos de atmósfera y por las chispas de sobrecarga.
+- `particle-effect.types.ts` — `EffectArea` (celdas de grid) como tercer parámetro opcional de `StateDrivenEffect.start`: un efecto de SALA necesita su superficie, no solo un punto. Opcional, así la galería y los tests siguen instanciando efectos sin sección detrás.
+- `atmosphere-state-effects.ts` — los tres efectos escalan densidad por severidad × área. `FREEZING_THRESHOLD_CELSIUS` y `HEAT_VAPOR_THRESHOLD_CELSIUS` se leen de `HAZARD_PARAMETERS.thermal` — el umbral del **TRIPULANTE**, no el de la estructura: ver escarcha o vapor significa que la sala mata.
+- `phase-change-effect.ts` — `substancePhaseChangeEffect` (vapor ascendente con el color de la sustancia) y `reservoirContentPhaseChangeEffect` (escarcha sobre la pieza, densidad según el daño).
+- `electric-arc-effect.ts` — arco de un cable quemado, direccional y transitorio, en reemplazo de la luz de la cicatriz.
+- `overloaded-conductor-effect.ts` — chispas con núcleo propio (`OVERLOADED_SPARK_CORE_COLOR`, distinto del ámbar de la luz), frecuencia por debajo de la vida para que nunca haya cero partículas vivas, dispersión sobre el footprint real. `withLight`: la cicatriz de un CABLE apaga la luz, la de una pieza colocada la conserva.
+
+## `game/src/render/`
+### Color y contrato de paleta
+- `palette.ts` — **fuente canónica de color**, dos ejes ortogonales. *Eje A (semántica de crisis)*: `CRISIS_FATAL/WARNING/SAFE_COLOR` + `INFO_NEUTRAL_COLOR` (rojo/ámbar/verde/cian), con espejos CSS (`*_CSS`) y `hexToCss`. De él derivan `healthFractionColor` (corte de 3 niveles, compartido con la tira de tripulación y el HUD de estado), `LED_ACTIVE_TINT` (ámbar, **nunca verde**: un LED de alarma en verde estaba semánticamente al revés), `CORE_LOOP_MODE_COLORS`, `COMPONENT_CONDITION_TINT`, `COMPONENT_WEAR_TINT`/`_CSS` (`usado` es un bronce apagado que no colisiona con el Eje A; `condition` gana sobre `wear` al pintar), `STRUCTURAL_LAYER_COLOR`, `ENERGY_LAYER_COLOR`/`_ALPHA`, `POWER_BLOCKED_FLASH_COLOR`, `TIMER_TEXT_COLORS`, `SELECTED_CELL_COLOR`, `OBJECTIVE_DONE_COLOR`, `SEALED_VALVE_COLOR`. *Eje B (categoría de tag)*: `TAG_CATEGORY_COLORS`/`_CSS` (funcional azul-acero / material bronce); el químico vive en `CHEMICAL_TAG_COLORS` y `CHEMICAL_COMPOUND_COLORS`. `chemicalSubstanceColor(id, tags)` resuelve elemento curado > compuesto curado > primer tag > neutro. También `LED_LIGHT_RADIUS_PX`/`LED_LIGHT_INTENSITY`.
+- `palette.contract.test.ts` — guardia de regresión del contrato: verifica los cortes de `healthFractionColor`, que el LED activo nunca sea verde, que condición/estructura/timer/válvula deriven del Eje A, y que el Eje B no colisione con el A ni consigo mismo. **Cualquier color nuevo se agrega acá, no como literal suelto.**
+- `render-depths.ts` — `RENDER_DEPTH`, orden de capas. Valores con historia: `dynamicShadows` 1.7 y `dynamicLight` 1.8 van sobre suelo/decals y **debajo** de objetos (la luz actúa sobre el plano del suelo, no sobre los sprites); `enemyEntity` 4.2 junto a `crewEntity`; `mapDimOverlay` 5.8 / `transferHighlightedConduit` 5.9 / `problemMarker` 6 / `transferTargetHighlight` 6.1 (modo de transferencia); `hudFloatingPanel` 25 tiene depth propio entre `hudContent` y `notification` porque compartir el 21 con la tira de tripulación hacía que la tira lo tapara al re-crearse.
+
+### Plano y overlay
+- `floorplan-renderer.ts` — `renderFloorplan(…, walkableGrid?)` → `FloorplanRender` con `conduitLayers` (un `Graphics` por `FloorplanLayerId`) y `conduitPaths`. `FLOORPLAN_LAYER_IDS`: `estructural`, `energia`, `fluido`, `senal`, `puertas`, `presion`. Dibujantes por capa: `drawConduitLine` + `drawConduitMarker` (ambos exportados, los reusa el clon de capa del modo de transferencia), `drawStructuralLayer` (tinte de RE degradado por sección), `drawEnergyLayer` (rojo/ámbar por déficit), `drawPressureLayer` (molde del anterior; alpha por distancia a lo nominal — **una sala nominal no se dibuja**, principio 6), `drawDoorLayer` (CONTORNO por celda, no barra: independiente de la orientación y no tapa el sprite; marca además las válvulas cerradas EN VIVO, porque `drawConduitMarker` se dibuja una sola vez desde `initialAperture`).
+- `mission-overlay-renderer.ts` — `renderMissionOverlay(…, floorplan?, walkableGrid?, resolveDefinition)`. El cable de señal se dibuja ruteado por conductos cuando cruza secciones (`drawSignalEdge`), no en recta. `drawCreationLayout` dibuja cada parte de una creación en su offset con su sprite real. Expone fuera del `graphics` bakeado: `ledIndicatorsByInstanceId`, el texto LCD por instancia (retintables/actualizables por tick sin redibujar todo; el LCD con throttle de 250-500 ms) y `componentSpritesByInstanceId` (sprites reales por instancia, para tintar la pieza en el modo de transferencia).
+- `conduit-path.ts` — ruteo en espacio de PÍXELES (`PixelPoint`), con el marcador del conducto como vértice exacto y el cruce de pared por celdas de aproximación transitables (`nearestSectionCell`). `computeConduitPaths(floorplan, walkableGrid?)` reusa el pathfinding de tripulación (`crew/floorplan-pathfinding.ts`); `computeConduitRoute(floorplan, walkableGrid, from, to, kind)` es la forma general multi-salto (vía `findConduitRoute`), y `computeSignalWireRoute` su wrapper con `kind: "senal"`.
+- `walkable-grid.ts` — extracción del tilemap. `withDoorState(grid, isDoorBlocked)` **decora, no copia**: la escena mantiene `navigationGrid` (decorada, para pathfinding y bloqueo) separada de `walkableGrid` (cruda, para el ruteo estático de conductos y cables).
+- `door-visuals.ts` — `doorOpenness` (estaba duplicado textualmente en renderer y escena), `easedDoorOpenness` (Sine.InOut, respeta los extremos para no adelantar la apertura real) y `doorSlideAxis` (eje del vano si mide más de una celda; si no, perpendicular al sentido del paso).
+- `projectile-renderer.ts` — `renderProjectileTokens` recibe un resolver `(ref) => componentDefinitionId` y dibuja el sprite real de la pieza antes de caer al círculo placeholder.
+
+### Sprites y estado visual de componentes
+- `component-state-visuals.ts` — tabla ORDENADA estado→(tinte, ícono, aviso) + `resolveComponentVisual` (cadena `destroyed > jammed > unpowered > wear`) e `instanceStateLabel` (compone los números, porque `t()` no interpola). **Es la única fuente de tinte de sprite.**
+- `component-sprite-registry.ts` — `componentTextureKey`/`hasComponentSprite` + `ensureComponentPlaceholderTexture`. El placeholder es un `Image` por celda, así que una pieza sin arte recorre el mismo camino de tinte y sombreado que un sprite real.
+- `crew-sprite.ts` — sprite genérico de tripulante para los tokens del PLANO (no la tira de UI). `preloadCrewSprite` carga `crew/tripulante.png`; `ensureCrewTintTexture` deriva una vez una base GRIS CLARA en `CanvasTexture` (luminancia empujada a claro, alfa preservado) para que `setTint` rinda nítido el color por personaje. `faceX` (pura, con test: derecha ⇒ voltea, izquierda ⇒ no, vertical puro ⇒ conserva la cara) resuelve el `flipX`. `CREW_TOKEN_HEIGHT_PX` fija la altura.
+- `crew-portrait-registry.ts` / `ship-image-registry.ts` — registros `import.meta.glob` de retratos por nombre y de imagen exterior por arquetipo. El primero excluye el basename `tripulante` (es el sprite genérico compartido); el segundo cae siempre al placeholder de color mientras `game/assets/sprites/ships/` esté vacía.
+
+### Iluminación y sombras (`shadows/`)
+- `visibility-polygon.ts` — geometría PURA sin Phaser: `raySegmentIntersection`, `castRay`, `computeVisibilityPolygon` (polígono iluminado por luz puntual, recortado al radio).
+- `occluder-edges.ts` — `buildStaticOccluderEdges` (fusión de tramos colineales de la grilla walls∪objects), `rectEdges`/`worldBorderEdges`, `extractOccluderGrid`.
+- `dynamic-shadows.ts` — `DynamicShadowLayer`: el glue de Phaser, dueño de una `RenderTexture` que se rellena de oscuridad y borra (ERASE) el polígono de visibilidad de cada luz. `addLight`, `setStaticOccluders`/`setDynamicOccluders`, `redraw()` por frame, `setIntensity` (0 = apagadas). **La oscuridad es el default**: no hay luz ambiental global (se probó y lavaba el contraste); solo la despejan luces reales. Perf: cache de polígono por luz invalidado por `occludersVersion`, culling por viewport, short-circuit a intensidad 0, y `quantizeIntensity` para que el parpadeo de las luces de cicatriz no invalide el cache 60 veces por segundo.
+- `light-grid.ts` — `computeLightLevelGrid`: nivel de luz 0..1 por celda, PURO, reusando `raySegmentIntersection` (misma geometría que dibuja la RT). Recorta por bbox de radio, combina luces con `max` (no suma) y usa `ambient` como piso. **La contribución de una luz NO lee `intensity`** — esa propiedad es el brillo del glow aditivo, no opacidad de oscurecido, y mezclar las dos escalas dejaba todo iluminado. `LIGHT_CLEAR_ALPHA_FLOOR` se exporta solo para la RT de sombras.
+- `light-shading.ts` — `shade(baseColor, level)` canal por canal, `NEUTRAL_TINT`, y `actorLightLevel` con `MIN_ACTOR_LIGHT_LEVEL` (piso de brillo: tripulación y enemigos se oscurecen, nunca desaparecen).
+- `authored-lights.ts` — `loadAuthoredLights(scene, archetype)`: lee la capa de objetos Tiled `luces`; `toAuthoredLightSpec` es puro y testeado (defaults + parseo de color hex).
+- `shadow-settings.ts` — store vivo de `shadowIntensity` (0..1), que desacopla el slider de Opciones del layer que lo lee por frame.
+
+### CRT
+- `crt-pipeline.ts` — `CrtPostFxPipeline` + `registerCrtPipeline`: filtro en dos capas por uniforms (`onPreRender`). "Clean CRT" (scanlines / aberración cromática base / barrel / glow) por `uCrtIntensity`; "System Failure" (CA fuerte + flicker) por `uFailure`. Barrel y scanlines en coords globales (`gl_FragCoord`) para ser coherentes entre las dos cámaras. Alpha-preserving, solo WebGL; devuelve la instancia (una por cámara) para fijar uniforms por frame.
+- `crt-settings.ts` — store vivo de `crtIntensity`/`flickerIntensity` (+ `hydrateCrtSettings`). Mismo patrón que `shadow-settings.ts`: desacopla lectura por-frame de escritura del slider, sin plumbear eventos entre escenas.
+- `signal-node-layout.ts` — `layoutSignalNodes` (reparto en abanico de los nodos que comparten celda), `signalNodeAtPoint`/`signalNodesAtPoint` (hit-test por el más cercano en píxeles / todos los candidatos, para detectar ambigüedad) y `signalNodeRoleKey` (entrada / salida / emite / paso). **Compartido a propósito por el dibujo y por el modo cableado**: dos cálculos separados se desincronizan.
+- `conduit-path.ts` — `signalWireCells(route)` (celdas que ATRAVIESA un cable, para el índice del tooltip) y `signalWireBodyCells` (sin los extremos, para que la cicatriz no se pinte encima de las piezas que une) — divergencia deliberada, documentada en `wireByCell`. `polylineMidpoint` (punto medio POR LONGITUD, no el vértice del medio), `dashedPolyline` (acumula el patrón entre tramos para que los guiones sigan las esquinas) y `arcTargetsNear`.
+- `mission-overlay-renderer.ts` — `drawSignalLayer` exportada, para repintar solo la capa de señal; el cable se pinta por su carga (`wireLoadColor`, `WIRE_LOAD_WARNING_RATIO`) y carbonizado si se quemó (`BURNED_WIRE_COLOR`).
+- `queued-install-ghosts.ts` — `renderQueuedInstallGhosts(scene, ghosts, onCreated?)`: sprite atenuado (o el placeholder tinteable) más contorno entrecortado por celda con `dashedPolyline`. Ámbar si la tarea está bloqueada, más opaco en `in-progress`.
+- `component-state-visuals.ts` — filas `overloaded`, `unsignaled` y `frozen-content`. `stateGlyphs`: **el tinte sigue siendo uno (el más grave), los glifos se acumulan**; `detailKeys` por estado, porque los dos números de `unsignaled` no son los de `unpowered`.
+- `render-depths.ts` — `frostLayer` 1.6, `queuedGhost` 1.9 (entre la luz persistente y los objetos: **un plan no puede tapar un estado real del motor**), `emitterRange` 2.8.
+- `palette.ts` — `FROST_LAYER_COLOR`/`FROST_MIN_ALPHA`/`FROST_MAX_ALPHA`, `OVERLOADED_SPARK_CORE_COLOR`, `BURNED_WIRE_COLOR`, `wireLoadColor`/`WIRE_LOAD_WARNING_RATIO`.
+
+## `game/src/scenes/floorplan-scene.ts`
+**El archivo más grande y más tocado del proyecto** (29 revisiones registradas). Es la escena del plano: monta el render, se suscribe a todos los buses del motor, anima los tokens y hospeda todo el HUD de misión. Agrupado por responsabilidad:
+
+**Ciclo de vida**
+- `preload()`: `preloadAudioAssets`, sprites de tripulación/componentes/naves.
+- `create()`: `extractWalkableGrid` **antes** de `renderFloorplan`; `mission.setMotionBlockedQuery(...)`; alta del `DynamicShadowLayer` con los oclusores estáticos extraídos una vez; instancia las luces autoradas (capa Tiled `luces`); publica la función de guardado vivo (`live-mission-save.ts`).
+- `update()`: sincroniza `crewState.currentCell` **y** `currentSectionId` CADA FRAME desde la posición visual real del token (`sectionContainingCell`), no desde el modelo por-tarea del scheduler (que solo actualiza la sección al COMPLETAR un `go-to`). Redibuja las capas `estructural`, `energia` y `presion`, corre `shadowLayer.redraw()` y `applyLightShading()`, refresca el tooltip a la vista y reposiciona el panel de acciones.
+- Los efectos de flujo (`updateConduitFlowEffects`/`updateSignalWireFlowEffects`) y los tweens de salto solo corren en `coreLoop.mode === "execution"`: **todo se congela en pausa táctica**, igual que proyectiles y atmósfera.
+
+**Movimiento de tokens**
+- `chainHops` (generalizado a cualquier `HopTarget`/`JumpSignature`) encadena un salto por celda; `travelEnemyToken`/`enemySegmentDurationMs` reparten la duración real del tramo de ruta en vez de saltar A→B. `faceHopTarget` aplica el volteo por dirección (no-op en enemigos). `chainHops` **difiere** el salto que entra en una celda de puerta hasta que esté abierta (`isDoorwayHeldClosed`, reintento cada `DOOR_WAIT_RETRY_MS`): el tiempo de la hoja le cuesta al jugador.
+- `activeHopTweens` + `trackHopTween`: los tweens en vuelo se pausan/reanudan según el modo del core loop.
+- `unreachableReason` nombra la puerta culpable de un "sin ruta al destino", rebuscando la ruta sobre la grilla sin puertas. Solo corre cuando una orden ya falló.
+
+**Suscripciones a eventos del motor** (Observer; `/engine` nunca conoce Phaser): `enemyEvents`, `reactionEvents`, `failureEvents`, `powerEvents`, `salvageEvents`, `integrityEvents`, `atmosphereEvents`, `doorEvents`, más los de tarea. Cada uno dispara `fireEventEffect` + `fireEventSound` por el mismo camino. La brecha se pinta en SU celda y el daño en el centroide.
+
+**Cicatrices y efectos persistentes**: `syncOverloadedConductorEffects` (uno por instancia en `overloadedRefs`, con `stop()` al desmontar), `syncUnpoweredSectionLights`, `redrawUnpoweredSectionScar` — estos dos consumen `mission.sectionHasNoPowerGranted()`, no `blueprint.unpoweredSectionIds`.
+
+**Iluminación y tinte** — la regla más delicada del archivo:
+- `baseTints` (`WeakMap`) + `baseTintOf`/`setBaseTint`/`applyShadedTint`: **único punto de escritura de tinte**. Todo lo demás (LED, estados de componente, resaltados) escribe la BASE; solo `applyLightShading` llama a `setTint`/`setFillStyle`.
+- `applyLightShading()` pinta componentes, LEDs y tokens con `base × nivel de luz de su celda`; no toca affordances de UI (hover, anillos, marcador). `forEachShadedTarget` es la lista única de objetivos, para que `applyLightShading` y `clearLightShading` no puedan divergir.
+- `registerLight` → depth `dynamicLight`; `registerBurstLight` deja el fogonazo en `effect`. `registerEffectObject` + `worldEffectOptions` son el registro único de todo objeto creado por un efecto (cámara de mundo + depth) — el que evita el bug de doble-cámara.
+- `collectDynamicOccluderEdges` pasa componentes y tokens como casters móviles; `syncLedLight` hace que un LED encendido emita `PointLight` real y participe de las sombras.
+
+**HUD y capas**
+- `redrawShipStatusHud()` con throttle por cambio de valor (redibuja siempre si algún indicador está `critical`, para animar el parpadeo).
+- Botón "Capas" → panel flotante; `toggleFloorplanLayer`/`applyLayerAlpha` atenúan la línea estática, pero el flujo animado se OCULTA por completo (`ConduitPathFlowState.visible`) — no comparte el factor de atenuación.
+- Controles de energía: `redrawEnergyControls()`/`openEnergyPriorityPanel()`/`closeEnergyPriorityPanel()`, `unallocatedPowerUnits()`/`syncEnergySliderCaps()` (tope global del reparto; los sliders de las otras secciones se reajustan sin reconstruirse). `ENERGY_CONTROL_BOX` es la fuente única de la que derivan el panel de fondo y `energyControlWorldBounds`; `ENERGY_CONTROL_SHADOW` es un segundo panel tintado de negro que hace de sombra dura, sin shaders.
+- `redrawScreenAlertOverlay` — viñeta de alerta a pantalla completa sobre `hudCamera` + alarma, disparada por `ShipStatusSnapshot` crítico, `overload` violento, combustión no-débil, brecha, o el arranque de la crisis (`crisisStartAlertUntilSeconds`, chequeado tanto síncronamente en `create()` como por el evento `crisis-triggered`, porque el trigger ya aplica antes de que la escena exista).
+- `updateComponentStateTints` + `syncStateIcon` escriben `setBaseTint` (nunca `setTint`) y corren FUERA del guard de `execution`; el ícono no entra en `forEachShadedTarget`, así que la luz no lo apaga.
+- `updateDoorSprites` corre la hoja `DOOR_SLIDE_CELLS` y la desvanece **sin tweens** (por la inversión a mitad de camino, la reconstrucción del overlay y la pausa táctica).
+- `tooltipRedrawKey`: el tooltip se reconstruye cuando cambiaría su TEXTO, no solo al cambiar de celda, y se refresca desde `update()` mientras está a la vista.
+
+**Input — las tres trampas ya resueltas** (volver acá antes de agregar UI sobre el mapa):
+- `installTopmostOnlyInput()` sobrescribe `input.sortGameObjects` para que el objeto de UI de capa más alta sea el ÚNICO que recibe el click. El `topOnly` nativo no alcanza: ordena por el índice en el `renderList` de la cámara del puntero, donde los `Label` de rexUI no entran, y el hit-test ignora las listas `ignore` de cámara (que solo afectan al render), así que un objeto de mundo tiene área de click fantasma sobre el HUD.
+- `swallowCurrentClick()` + `targetPickArmedDownTime`: la pulsación que abre o cierra una capa de UI sobre el mapa no vale además como click de mapa. Se identifica por `pointer.downTime` (la pulsación concreta) y no con una bandera de "ignorá el próximo click", para no depender del orden en que Phaser despacha GameObjects vs. escena.
+- `isOverFixedUi()` chequea `actionPanelBounds` y `energyControlWorldBounds` — el panel flota sobre el mapa, a diferencia del viejo docked.
+- `keydown-ESC` cancela primero el modo de selección activo, y recién después cae a la pausa.
+
+**Modo de transferencia** (`updateTransferMode`/`updateTransferChannel`) — el molde a copiar para cualquier modo de selección espacial: botón "Cancelar" en el mismo casillero que `wireModeButton` (mutuamente excluyentes), `transferDimOverlay` oscureciendo el plano, `transferModePriorActiveLayers` guardando el snapshot completo de capas para restaurarlo, reemplazo de `activeFloorplanLayers` por `{"fluido"}` exacto, clon top-level de la capa `fluido` (`transferFluidoHighlightLayer`, por el bug de depth), contornos de footprint real por candidato (`instancePlacement` + `occupiedCells`, no una sola celda), `spriteCopyAboveDim` para levantar el sprite del candidato por encima del oscurecido (el original no se puede subir porque vive dentro del container del overlay), y `updateTransferChannel` dibujando la ruta real con `computeConduitRoute(..., "fluido")`.
+
+**Otros helpers**: `updateSelectedHighlight()` usa un pool de rectángulos (uno por celda ocupada) y pinta el footprint completo; `instanceCell`/`instancePlacement`; `fireCollectionBurst(originCell, targetCell, count)` (stagea N "monedas" en arco hacia una mesa) y `notifySubstanceTaskResult`, que consume `mission.consumeMaterializedByTask(event.taskId)` en vez de comparar longitudes de listas; `reactCrewPortrait`/`playAnalogStatic`/`syncCrewToxicOverlays`; `updateCursor`/`customCursor`.
+
+**Teclas de dev**: **F** (`fireDevEventSample()`, siguiente fenómeno del catálogo por el camino de producción — única forma de verificar el bug de doble-cámara, porque la galería tiene una sola cámara) y **H** (`fireDevSectionDamage()`, combustión REAL por el emisor del motor: recorre daño, colapso, brecha, drenaje y desgaste). Ambas usan `devTargetMode`: arman la herramienta y el siguiente click de mapa elige la celda, sin depender de `interaction.selectedCell` — **una herramienta de dev no debe depender de un estado de juego para funcionar**.
+- `updateEmitterRangeHighlight()` — `Graphics` top-level en depth `emitterRange`, redibujado desde `update()` porque la cobertura es viva (una puerta que se abre cambia la línea de visión).
+- `signalWireRouteFor` centraliza la ruta de un cable: flujo, dibujo y cicatriz comparten la MISMA. `wireByCell` + `rebuildWireCellIndex` es el índice celda→cable del tooltip. `refreshSignalWireColors` repinta a 4 Hz **fuera** del gate de ejecución (la capacidad efectiva baja con la temperatura sin que cambie la topología). El flujo animado de un cable quemado se apaga; `electricArcEffects`/`arcTargetsFrom` pintan sus arcos y `burnedEdgeCenterCell` ancla el fogonazo.
+- `handleWireModeClick` se parte en "elegir nodo" y `applyWireNode`, para que el menú circular entre por el mismo camino. Línea fantasma con flecha en `pointermove`; aro de carga en el nodo emisor (`nodeLoadRatio`, canal separado del color de rol); el resalte de nodos usa `layoutSignalNodes`, no el centro de celda. El click pasa el punto de mundo además de la celda.
+- `redrawFrostLayer` pinta la escarcha por celda con alpha por severidad; `initSectionAtmosphereEffects` pasa las celdas de la sección a los tres efectos; `syncOverloadedConductorEffects` pasa el footprint real.
+- `chainHops` gana `shouldContinue`, consultado antes de cada salto (corta ENTRE saltos, nunca a mitad de uno). `travelCrewToken` y `fireFabricationEffect` registran su apagador en `active-task-visuals.ts`; `task-cancelled`/`task-failed`/`task-blocked` lo invocan y `task-completed` lo olvida.
+- `buildQueueRows` alimenta la cola; `queueCancelHitAt` distingue click derecho (fila entera) de izquierdo (solo la "×"); `updateQueueCancelHover` resalta el botón bajo el cursor. `redrawQueuedInstallGhosts()` cuelga de `redrawQueuePanel()`: **mapa y cola muestran el mismo dato y se redibujan en el mismo sitio, para que no puedan divergir.**
+
+## `game/src/ui/`
+Todo el chrome usa el pack Kenney a través de los helpers `createKenney*`. **Regla transversal del dominio**: un botón deshabilitado lleva el MOTIVO en su propio label — un botón gris y mudo impide descubrir qué falta. Y los widgets solo pintan: el riesgo, el bloqueo y los números los precalcula el motor o el controller.
+
+### Primitivas
+- `widgets/kenney-button.ts` — **único punto de creación de botones rexUI**: sonido de hover y click heredado por las 10 escenas de menú y todos los widgets de misión, `iconTextureKey`/`iconSize` opcionales, `attachHoverJuice`.
+- `widgets/kenney-list.ts` — `KenneyListItem` distingue `enabled` (clickeable, gobierna `setInteractive`/`onClick`) de `muted` (solo atenuado visual). `pointerout` restaura `dimmed ? 0.25 : ROW_BG_ALPHA`, no un alpha fijo.
+- `widgets/kenney-card-list.ts` — lista de tarjetas con scroll. Ojo: rexUI ancla cada hijo de un sizer por su CENTRO, así que las tarjetas dibujan sus hijos relativos al centro (`left = -cardWidth/2`) con alto adaptativo al contenido medido; con `origin(0,0)` media tarjeta caía fuera de la máscara.
+- `widgets/kenney-slider.ts` — `createKenneySlider`: slider 0..1 armado con primitivas (el pack no trae track/thumb). `onChange` en vivo al arrastrar; limpia sus listeners de `pointermove`/`pointerup` en el SHUTDOWN.
+- `ui-effects.ts` — `popIn`/`slideOut`/`clickReaction`/`shake`/`flash`/`attachHoverJuice`: tweens reutilizables. `shake`/`flash` agitan un contenedor de UI sin tocar el mapa.
+- `custom-cursor.ts` — `CustomCursor`: cursor contextual vía `setDefaultCursor(url(...))` con sprites Kenney, deduplicado por tipo para no pelear con el `useHandCursor` por objeto. `UI_POINTER_CURSOR_CSS` es el sprite "selectable" que usan botones y filas.
+
+### Panel de acciones y tooltip
+- `widgets/mission-action-panel.ts` — `renderMissionActionPanel`, construido en origen LOCAL (0,0); el llamador reposiciona el `Container` con `setPosition()`. Variantes de `ActionPanelContent`: `idle` (mensaje corto), `substances-list`, `substance` (ficha + "Analizar sustancia"), `instance`, `conduit` (válvula: apertura, delta de presión con flecha, abrir/cerrar) y `door` (`DoorPanelInfo` + `renderDoorBlock`, compartido con `instance` porque una puerta construida se desmonta y repara como cualquier pieza; `overrideSource` llega hasta el panel para que el botón gris diga POR QUÉ). **La variante `empty` fue borrada**: sin acciones, un panel flotante que tapa el mapa a cambio de una pista de texto no se gana el sitio.
+  - En `instance`: `dismantleHazards` (badge ámbar + un botón de asegurado por hazard aplicable) y `ReservoirPanelInfo` (contenido + Aplicar/Trasvasar/Extraer, con `transferBlocked`/`applyBlocked`/`reservoirHint`/`fabricatorBlocked`/`openFabricatorBlocked` como motivos en los labels).
+  - `attachPanelScroll(...)` convierte el panel en ventana con scroll (máscara sobre un sub-container + rueda + indicador "▾") cuando excede `maxHeight`. **No usa `ScrollablePanel` de rexUI** porque el apilado del panel es en coordenadas absolutas y rexUI re-centra a sus hijos.
+  - `attachPanelDrag(...)` — arrastre por click&hold sobre el backdrop (`pointerdown` local + `pointermove`/`pointerup` globales, mismo patrón que `kenney-slider.ts`), con callback `onPanelDragged`.
+  - El `backdrop` tiene `setInteractive()` sin handler propio, para entrar al hit-test de `installTopmostOnlyInput` y cerrar el agujero por el que el click al área vacía atravesaba al mundo.
+  - **No hay botón MESA global**: la mesa se abre desde el panel contextual del aparato y entra fijada a su dominio.
+- `widgets/mission-tooltip.ts` — muestra tag de desgaste y **resistencia EFECTIVA** (no la de catálogo). La variante `section` da presión, tendencia, "Vacío: letal" y la brecha de esa celda: es la única lectura del estado de una sala desde que el panel de celda vacía dejó de existir. Las mismas líneas se pintan sobre una PIEZA cuando la sala es noticia (`noteworthySectionAtmosphere`), porque tras tapar la brecha el jugador mira el parche, no el suelo de al lado. Las líneas de estado (ícono, texto, color) las resuelve el llamador desde `component-state-visuals.ts`.
+
+### HUD de misión
+- `widgets/ship-status-hud.ts` — `renderShipStatusHud`: 4 filas (atmósfera / soporte vital / integridad de casco / energía) con barra por fracción (`healthFractionColor`) + parpadeo en `critical` + botón "Sustancias (N)".
+- `widgets/notification-center.ts` — `NotificationCenter.push({title, lines?, type})`: pila transitoria arriba-centro, tipos info/success/warning/error mapeados al contrato de paleta (`INFO_NEUTRAL`/`CRISIS_SAFE`/`CRISIS_WARNING`/`CRISIS_FATAL`), popIn + auto-descarte, cap de 4.
+- `widgets/crew-strip.ts` — tira de tripulación. Retratos con origin 0.5 (para animarlos) y tinte de salud en reposo; expone `portraits` por actor para las reacciones de daño/muerte. Cada tarjeta lleva una franja de identidad de color en el borde izquierdo, siempre visible, con el mismo `CREW_TOKEN_COLORS[index]` que el token del mapa.
+- `widgets/floorplan-layer-toggle-panel.ts` — un botón de toggle por `FloorplanLayerId`.
+
+### Controles de energía
+- `widgets/power-allocation-slider.ts` — `renderPowerAllocationSlider`: slider entero por sección, **objeto de mundo** (usa `getWorldPoint`) con `destroy()` explícito de sus listeners de `scene.input`, porque se reconstruye muchas veces por sesión. Acumula varias lecciones de playtest que conviene no revertir:
+  - El track abarca `0..max(1, maxUnits, units)`, escala fijada al construir; el arrastre se topa en `capUnits` (`setCap` lo reajusta sin destruir el widget) y el tramo bloqueado usa `LOCKED_COLOR` neutro.
+  - **El pedido NO se clampea al presupuesto** — clamparlo hacía que dos zonas con 3 y 7 mostraran ambas "2/2". Relleno partido: azul hasta `grantedUnits`, ámbar de ahí al pedido (`setGranted` lo refresca). El `· P%` solo aparece cuando el pedido entra en el presupuesto.
+  - `signalBlocked()` (throttle 500 ms) da señal de rechazo al chocar contra el tope: sacudón del thumb, destello con `POWER_BLOCKED_FLASH_COLOR` y sonido `uiDenied`. Sin esto el tope funcionaba en silencio y el slider "parecía roto".
+  - `setLabel(texto, color)` mide y encoge la fuente (piso 10px) si no entra en `maxLabelWidth` — robustez frente a i18n. El mensaje de bloqueo va sobre un badge casi negro dimensionado al texto medido: el rojo del contrato sobre el gris del panel Kenney da ~1.3:1, y sobre el badge sube a ~4.5:1 sin inventar colores fuera de las constantes canónicas.
+- `widgets/power-priority-list.ts` — `renderPowerPriorityList`: inspector de prioridad de una sección con botones ↑/↓ por fila, sin drag-and-drop.
+
+### Selector de instalación y composición
+- `widgets/install-picker-modal.ts` — `renderInstallPickerModal` recibe **un único `options: ReadonlyArray<InstallPickerOption>`**: lista plana, sin pestañas (`InstallPickerTab`/`activeTab`/`renderTabStrip` fueron borrados). Una fila por bucket de desgaste, para que el jugador elija qué unidad gasta en vez de recibir la peor en silencio. `InstallPickerOption` lleva `consumesRecipe?` y `blocked?: "no-stock" | "missing-ingredients"`; una fila bloqueada es `enabled: true` + `muted: true` (seleccionable pero atenuada) y el botón "Instalar" queda gateado por `selected?.blocked`. `renderSelectedComponentSheet` ancla la huella en `titleText.y + titleText.height + 4` y avanza `lineY` con `warningText.height + 8` — offsets medidos, no fijos, para que nada se pise cuando el título o el warning envuelven a dos líneas. `initialScrollT`/`onListReady` preservan el scroll al recrear el modal. `DESCRIPTION_BACKDROP_*` pone un rectángulo bajo la ficha porque los tags del Eje B daban 1.2-1.4:1 sobre el gris del panel.
+- `widgets/composition-list.ts` — `renderCompositionLines`: sufijo `"(sin stock)"` en gris atenuado cuando `ingredient.hasStock === false`, con prioridad sobre el resaltado ámbar de `hasRequiredTag`.
+
+### Tarjetas de selección
+- `widgets/crew-select-card.ts` — `renderCrewSelectCard`: retrato con fallback de color, nombre, especialidad/tier, rasgo, descripción. Hermana de `crew-strip.ts` pero en grilla vertical y sin barra de HP.
+- `widgets/ship-archetype-card.ts` — `renderShipArchetypeCard`: imagen exterior con fallback, nombre propio, arquetipo, descripción y pros/cons en **columna única con wrap dinámico** (dos columnas lado a lado se solapaban con texto largo en español).
+- `queue-rows.ts` — `buildQueueRows`: orden y anidado de la cola, **pura y testeada** (un árbol mal ordenado miente sobre qué espera a qué, y el widget tiene por contrato "solo dibuja"). Filtra los tres estados terminales antes de resolver los padres, así que un dependiente cuya dependencia se canceló pasa a raíz con su motivo en vez de colgar de una fila que ya no se dibuja.
+- `widgets/crew-queue-panel.ts` — `UnifiedQueueTask` con `depth` y `blockReason`: sangría, conector `└`, bloqueadas en ámbar con su motivo, botón de cancelar con caja propia (`rowXMin`/`rowXMax`).
+- `widgets/signal-node-menu.ts` — menú circular para elegir entre nodos superpuestos. **Aparece solo con ambigüedad real.**
+- `widgets/mission-tooltip.ts` — `TooltipContent` suma `kind: "wire"` (carga/capacidad efectiva, desgaste, quemado, degradación térmica) y `SignalTooltipInfo` en la variante `instance` (qué gobierna, quién la gobierna, si emite, `burnedWires`). Línea de temperatura siempre presente, coloreada por los DOS lados del eje con los umbrales del daño a TRIPULACIÓN (`isLethalTemperature`), y línea de "fuente de calor activa" en ámbar — ejes separados a propósito.
+- `widgets/mission-action-panel.ts` — `ActionPanelContent` suma `kind: "wire"` con "Retirar cable" y el coste dicho por adelantado.
+- `widgets/install-picker-modal.ts` — `footprint` pasa a **opcional** (un cable no se coloca) y `detailLines` admite líneas ya formateadas por el llamador: el mismo modal sirve a instalación y a cableado. `blocked` admite `"queue-reserved"`.
+
+## `game/src/scenes/` (otras escenas)
+- `title-scene.ts` — `fadeIn` + `popIn` escalonado en los 6 botones. Ojo con "Continuar", creado dentro de un `.then()`: su `y` se captura en una constante antes del `await`, o el microtask lo dibuja encima de "Salir".
+- `archetype-select-scene.ts` / `crew-select-scene.ts` — grillas de `renderShipArchetypeCard` (2×2) y `renderCrewSelectCard` (2 columnas), con entrada escalonada.
+- `creative-workbench-scene.ts` — mesa de creación. `CHEM_COLUMNS`: el modo química no hereda el layout del grid físico, usa tres columnas (paleta → selección → resultado) sobre el alto completo. "Modo cableado"/"modo borrar" solo existen en modo físico.
+- `dev-event-samples.ts` — `DEV_EVENT_SAMPLES`: catálogo de `DomainEvent` de muestra, uno por fenómeno del registro, compartido por la galería de partículas y la tecla F del plano.
+- `particle-gallery-scene.ts` — galería de efectos (una sola cámara).
+- `options-scene.ts` — sliders de CRT y sombras, hidratados/persistidos contra `GameSettings`.
+- `pause-menu-scene.ts` — persiste el estado VIVO vía `live-mission-save.ts`.
+
+## Raíz y datos autorados
+- `game/index.html` + `game/src/main.ts` + `game/src/scenes/boot-scene.ts` — contenedor `#game-root` con tamaño explícito como `scale.parent`/`scale.fullscreenTarget`; `BootScene` fuerza `scale.refresh()` en `ENTER_FULLSCREEN`/`LEAVE_FULLSCREEN`.
+- `engine/src/floorplan/maps/nave-exploracion.json` — el plano autorado del arquetipo de exploración (Tiled). Sus capas: secciones, conductos, `puertas` (opcional, con `span`/`axis`) y `luces`.
