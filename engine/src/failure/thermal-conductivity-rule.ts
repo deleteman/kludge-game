@@ -16,23 +16,40 @@ import type { OverloadSubject } from "./overload-rule.js";
  * como su objetivo (combustión → calor → cortocircuito → combustión).
  */
 export const THERMAL_CONDUCTIVITY_PARAMETERS = {
-  /** Por debajo de esta temperatura (°C) el enfriamiento extremo (ej. nitrógeno
-   *  líquido) reduce la resistencia del conductor lo bastante como para
-   *  arriesgar sobrecarga. */
-  triggerTemperatureCelsius: -50,
+  /**
+   * Por debajo de esta temperatura (°C) el enfriamiento extremo (ej. nitrógeno
+   * líquido) reduce la resistencia del conductor lo bastante como para
+   * arriesgar sobrecarga.
+   *
+   * **-30 y no -50 desde la ronda 2 de playtest de 14a-3.** El -50 se eligió
+   * contra un enfriador que se creía capaz de llegar a -69 °C; medido sobre la
+   * nave real, un regulador térmico llega a **-35.7** (ver
+   * `COOLER_RATE_CELSIUS_PER_SECOND` y `thermal-calibration.fixture.ts`), así que
+   * el umbral era inalcanzable y esta rama de la regla estaba muerta en partida.
+   * A -30 la cruza un enfriador solo en una sala normal, que es la condición del
+   * caso de validación 2.
+   */
+  triggerTemperatureCelsius: -30,
   /**
    * Por encima de esta temperatura (°C) el conductor caliente pierde capacidad
    * de corriente segura.
    *
    * El número sale de cruzar los que ya están en el repo, no de estimarlo:
    * queda por ENCIMA de `THERMAL_SENSOR_TRIGGER_CELSIUS` (60), para que el
-   * sensor térmico sea un aviso previo y no llegue tarde; lo cruza el pico de
-   * una combustión `violent` (~161 °C) y el de una `explosion` de sobrecarga
-   * (~111 °C); y NO lo cruza una combustión `standard` (~81 °C). Si coincidiera
-   * con el umbral del sensor o quedara por encima del pico máximo, la franja
-   * sería vacía y el acoplamiento decorativo.
+   * sensor térmico sea un aviso previo y no llegue tarde.
+   *
+   * **85 y no 100 desde la ronda 2 de playtest de 14a-3**, por la misma razón que
+   * el umbral frío: los picos que justificaban el 100 (`violent` ~161,
+   * `explosion` ~111) salían de la fórmula de equilibrio sin conducción. Los
+   * reales son **109.2** y **86.3**, así que con el desplazamiento por `CT` de
+   * antes (`M: +20`, `B: +40`) el umbral quedaba en 120 y 140: **inalcanzable
+   * para todo conductor que no fuera `CT: "A"`**.
+   *
+   * Con 85 lo cruza una combustión `violent` en los tres materiales, una
+   * `explosion` de sobrecarga solo en `A`, y una `standard` (61.5) en ninguno:
+   * la franja existe para los tres y sigue distinguiendo intensidades.
    */
-  hotTriggerTemperatureCelsius: 100,
+  hotTriggerTemperatureCelsius: 85,
   /** Fracción de la capacidad nominal que queda como "segura" fuera del rango
    *  de operación, por cualquiera de los dos lados. */
   effectiveCapacityFractionOutsideRange: 0.5,
@@ -46,8 +63,14 @@ export const THERMAL_CONDUCTIVITY_PARAMETERS = {
    * la temperatura ambiental: el material del conductor entra en la decisión.
    * No se aplica al umbral frío — aislar no protege de la fragilización, solo
    * retrasa el calentamiento.
+   *
+   * **Los desplazamientos se achicaron a la mitad en la ronda 2 de playtest de
+   * 14a-3**: con el pico real de una `violent` en 109.2 °C, `+40` dejaba el
+   * umbral de un conductor aislado en 140 y ningún escritor del motor llegaba
+   * ahí. Con 85/95/105, aislar sigue siendo una ventaja real (hace falta una
+   * combustión más intensa para degradarlo) sin volverlo inmune.
    */
-  hotTriggerOffsetByThermalConductivity: { A: 0, M: 20, B: 40 } as Readonly<
+  hotTriggerOffsetByThermalConductivity: { A: 0, M: 10, B: 20 } as Readonly<
     Record<ThermalConductivityLevel, number>
   >,
 } as const;

@@ -179,7 +179,7 @@ describe("case 2 — Cortocircuito en bahía de carga", () => {
     // pagar la receta cara y comprar margen. Ojo con el mecanismo — acá lo que
     // salva a la fibra es su CAPACIDAD (12 contra 6: la mitad de 12 sigue
     // cubriendo la carga), no su `CT`, que solo desplaza el umbral CALIENTE.
-    // Contra el frío, los tres cables cruzan el mismo -50 °C.
+    // Contra el frío, los tres cables cruzan el mismo umbral: `CT` no lo desplaza.
     const conFibra = bahiaCableada();
     const ship = conFibra.get();
     conFibra.set({

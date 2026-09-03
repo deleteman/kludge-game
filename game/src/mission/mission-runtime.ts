@@ -110,7 +110,6 @@ import {
   conductorHeatBySection,
   getGasFraction,
   NOMINAL_TEMPERATURE_CELSIUS,
-  PASSIVE_DRIFT_PER_SECOND,
   edgeHeatCelsiusPerSecond,
   effectiveMatterState,
   frozenContentOf,
@@ -231,6 +230,29 @@ const FLUID_OPERATION_REFERENCE_SECONDS = 10;
  * otra clave del mapa es un `ChemicalSubstanceId` (convención de 13a).
  */
 const BASELINE_GAS_KEYS = new Set<string>(Object.values(GAS));
+
+/**
+ * Ganancia del termostato de dev (ronda 2 de playtest de 14a-3): °C/s de aporte
+ * por cada °C de error contra la consigna.
+ *
+ * **Medido, no elegido.** Un lazo proporcional se estabiliza donde la tasa que
+ * pide iguala a la que el mundo se lleva, así que el error residual es
+ * `pérdidas / ganancia`: con 2 la consigna de 80 se quedaba en 76, y con 10 en
+ * 79.2 — 1.5 °C de error como peor caso en cualquier sala de la nave y en los dos
+ * sentidos, alcanzados en menos de 5 segundos. No se sube más porque la
+ * convergencia ya es visualmente instantánea y una ganancia alta con dt de frame
+ * variable es lo que hace oscilar a un lazo.
+ */
+const DEV_THERMOSTAT_GAIN = 10;
+
+/**
+ * Techo del aporte del termostato de dev, en °C/s. A cadencia de frame son
+ * ~1 °C por frame: el salto inicial hacia una consigna lejana se ve como una
+ * rampa rápida y no como un teletransporte, que es lo que permite verificar que
+ * los efectos de cruce de umbral (evaporación, congelación) se disparan de
+ * verdad en vez de saltárselos entre dos ticks.
+ */
+const DEV_THERMOSTAT_MAX_RATE = 60;
 
 /** Acciones del core loop con afinidad de especialidad (GDD 6.6); `combine` = fabricar en la mesa (11c.2). */
 type ModulatedTaskType =
@@ -1590,8 +1612,8 @@ export class MissionRuntime {
    * **Entra por el mismo canal que cualquier otra fuente de calor**, no
    * escribiendo `temperatureCelsius` a mano: si escribiera el campo, la deriva
    * pasiva pelearía contra ella cada tick y el playtest estaría verificando algo
-   * que el motor no hace. Acá se calcula la tasa que MANTIENE el equilibrio en
-   * la consigna, que es exactamente lo que haría una máquina real.
+   * que el motor no hace. Es un TERMOSTATO: aporta la tasa que haga falta para
+   * llegar a la consigna, exactamente lo que haría una máquina real.
    *
    * Estado solo de `/game` y no se persiste: es una herramienta, no una mecánica.
    */
@@ -1617,16 +1639,39 @@ export class MissionRuntime {
   }
 
   /**
-   * Tasa que sostiene cada consigna, resolviendo el equilibrio contra la deriva
-   * pasiva: una fuente de `R` °C/s estabiliza la sala en `nominal + R / drift`,
-   * así que para una consigna `T` hace falta `R = (T - nominal) × drift`. Es la
-   * misma cuenta con la que se calibraron el enfriador (14a-2) y el calor del
-   * cableado, no un número aparte.
+   * Tasa que sostiene cada consigna, en LAZO CERRADO: mide el error contra la
+   * temperatura real de la sección este tick y aporta lo que falte.
+   *
+   * **Por qué no la cuenta directa** (ronda 2 de playtest de 14a-3). La ronda 1
+   * resolvía el equilibrio de una vez, `R = (consigna - nominal) × drift`, y el
+   * operador reportó que *"la nueva tecla T no logra llevar las zonas a la
+   * temperatura que promete"*: esa fórmula ignora la conducción a las secciones
+   * vecinas, que se lleva más calor que la propia climatización, así que una
+   * consigna de 80 se quedaba en ~66 y el error dependía de cuántas vecinas
+   * tuviera la sala. Un lazo cerrado no necesita conocer ninguna de esas
+   * pérdidas: las compensa todas por construcción, incluidas las que no existían
+   * cuando se escribió (un enfriador puesto, un incendio en la sala de al lado).
+   *
+   * Es un termostato COMPLETO y no solo un calefactor: con una consigna de 80 y
+   * un incendio en la sala, enfría para mantener los 80. Es lo que se quiere de
+   * una herramienta de verificación — la sala está donde el operador la puso, y
+   * no donde la dejó el último evento.
+   *
+   * La ganancia proporcional deja un error residual permanente (~0.8 °C con
+   * `GAIN = 10`, medido): es una herramienta de dev y ese error no cambia ninguna
+   * verificación, así que no se agrega término integral.
    */
   private devTemperatureRates(): ReadonlyMap<SectionId, number> {
     const rates = new Map<SectionId, number>();
     for (const [sectionId, target] of this.devTemperatureTargets) {
-      rates.set(sectionId, (target - NOMINAL_TEMPERATURE_CELSIUS) * PASSIVE_DRIFT_PER_SECOND);
+      const current =
+        this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius ??
+        NOMINAL_TEMPERATURE_CELSIUS;
+      const rate = (target - current) * DEV_THERMOSTAT_GAIN;
+      rates.set(
+        sectionId,
+        Math.max(-DEV_THERMOSTAT_MAX_RATE, Math.min(DEV_THERMOSTAT_MAX_RATE, rate)),
+      );
     }
     return rates;
   }
@@ -1658,11 +1703,35 @@ export class MissionRuntime {
   }
 
   /**
-   * °C/s que este cable concreto está disipando, para su tooltip (14a-3 ronda 1).
-   * Un color es una alerta; el número es la lectura (patrón 66).
+   * °C/s que este cable concreto está disipando EN TOTAL (14a-3 ronda 1). Es la
+   * propiedad del cable como objeto: sale de su carga y su material, sin importar
+   * por dónde pase. La consumen las partículas de calor sobre el recorrido, cuyo
+   * sujeto es el cable entero calentándose.
    */
   wireHeatOf(edgeId: SignalEdgeId): number {
     return edgeHeatCelsiusPerSecond(this.shipState.get(), edgeId, this.componentRegistry);
+  }
+
+  /**
+   * °C/s que este cable le aporta a UNA sala (ronda 2 de playtest de 14a-3).
+   *
+   * El operador reportó que el tooltip del cable decía `2.7 °C/s en esta sala` y
+   * el de la sección `1.7`. Los dos números eran correctos y el texto era el que
+   * mentía: `wireHeatOf` da el total del cable, pero un tronco que cruza dos
+   * secciones **reparte** su calor entre ellas (si no repartiera, tender un cable
+   * largo sería la forma más eficiente de calentar la nave entera).
+   *
+   * El reparto se calcula acá igual que en `conductorHeatBySection` y sobre el
+   * mismo `wireSectionIndex`, así que el número del cable y el de la sección no
+   * pueden discrepar — es lo que 13f ronda 4 aprendió con las tasas de presión:
+   * una lectura y la física que la produce salen de la misma fuente o divergen.
+   */
+  wireHeatInSectionOf(edgeId: SignalEdgeId, sectionId: SectionId): number {
+    const sections = this.wireSectionIndex.get(edgeId) ?? [];
+    if (!sections.includes(sectionId)) {
+      return 0;
+    }
+    return this.wireHeatOf(edgeId) / sections.length;
   }
 
   /** Celdas de TODAS las brechas abiertas, para el marcador persistente del plano. */
@@ -3029,7 +3098,7 @@ export class MissionRuntime {
       // Se lee del blueprint VIVO, no de una copia: `overloadedRefs` es la
       // cicatriz que `MissionOverloadRuntime` escribe en cuanto un conductor
       // supera su capacidad, sea por carga del cableado o por el factor térmico
-      // de 14a-2 (un cable a -50 °C conduce menos y se corta con la misma carga
+      // de 14a-2 (un cable bajo cero conduce menos y se corta con la misma carga
       // que antes aguantaba).
       isInstanceOverloaded: (instanceId) => this.blueprint.overloadedRefs.includes(instanceId),
       sectionGrantedUnitsAt: (entry) => {

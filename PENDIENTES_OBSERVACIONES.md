@@ -578,11 +578,49 @@ lee.
 **Estado:** ABIERTA, informativa. No es un bug: es una decisión declarada que conviene no perder.
 
 Las 49 entradas del catálogo químico declaran punto de fusión y de ebullición, pero la ventana térmica realmente
-alcanzable del motor va de -80 °C (clamp) a ~161 °C (pico de una combustión violenta). Los metales, sales y gases
+alcanzable del motor va de **-80 °C** (el clamp; lo alcanzan dos reguladores térmicos, uno solo llega a -35.7) a
+**~157 °C** (dos troncos de cableado cargados y sostenidos en la sala peor ventilada). Los metales, sales y gases
 nobles llevan sus valores reales, muy fuera de esa ventana: son inertes al eje térmico A PROPÓSITO, y sus números
 están ahí por trazabilidad, no como mecánica.
+
+**Corregido en la ronda 2 de playtest de 14a-3**: hasta entonces esta deuda decía que el techo era "~161 °C, pico
+de una combustión violenta", número despejado de la fórmula de equilibrio que ignora la conducción. El techo real
+de una combustión violenta es **109.2 °C** y se disipa; el techo sostenido lo pone el CABLEADO. O sea que se puede
+mantener una sala más caliente de lo que se la puede picar, y las sustancias entre 109 y 157 °C (peróxido a 150,
+los dos ácidos a 110) sí son alcanzables, pero sólo con un montaje eléctrico deliberado — no con un incendio.
 
 Las que SÍ tienen su transición dentro de la ventana —y por lo tanto son las únicas con las que el jugador puede
 jugar hoy— están fijadas por un test: agua, combustible de motor, disolvente volátil y bromo. Si el balanceo de la
 Fase 23 mueve `COMBUSTION_HEAT` o `COOLER_RATE_CELSIUS_PER_SECOND`, ese test es el que avisa de que la ventana se
 movió y hay que revisar esta lista.
+
+---
+
+## Deuda #49 — El termostato de dev es proporcional y deja error residual (Subfase 14a-3, ronda 2)
+
+**Estado:** ABIERTA, informativa. Decisión consciente, anotada para que nadie la lea como un bug.
+
+La tecla T sostiene una sección con un lazo **proporcional** (`R = (consigna - T_actual) × 10`, clamp ±60 °C/s).
+Un lazo proporcional se estabiliza donde la tasa que pide iguala a la que el mundo se lleva, así que siempre
+queda un error de `pérdidas / ganancia`: **~1.5 °C** en la peor sala. Una consigna de 120 se lee como 118.6.
+
+No se agrega término integral a propósito: es una herramienta de verificación, 1.5 °C no cambia ninguna prueba
+manual, y un integrador mal sintonizado oscilaría con el dt variable del core loop. Si alguna vez la consigna
+tiene que ser exacta —por ejemplo para un test automatizado que dependa de cruzar un umbral por 0.5 °C—, el
+cambio es subir la ganancia antes que agregar el integrador.
+
+---
+
+## Deuda #50 — El regulador térmico sólo existe por fabricación, y ninguna prueba lo dice (Subfase 14a-3, ronda 2)
+
+**Estado:** ABIERTA, menor. Es un hueco de comunicación, no de motor.
+
+Los dos únicos componentes que el predicado `isThermalRegulatorDefinition` reconoce como enfriadores
+(`banco-sangre-fluidos` y `sistema-refrigeracion-muestras`) son compuestos de la **nave médica**, y ninguno está
+en el stock del Capítulo 1. El eje de enfriamiento entero —y con él la rama fría de `thermalConductivityRule`,
+recalibrada en esta ronda— parece inalcanzable si uno mira sólo la lista de piezas.
+
+**Sí es alcanzable**: 14a-2 stockeó deliberadamente los ingredientes para fabricar `sistema-refrigeracion-muestras`
+en la mesa (`placa-disipadora` ×2 + motor ×1 + tubo flexible ×1 + chip ×1). Lo que falta es que el juego lo diga:
+hoy sólo consta en un comentario del capítulo. Cuando 14b haga cableable al enfriador, conviene resolverlo con
+contenido —una entrada de bitácora o un objetivo— y no dejarlo dependiendo de que el jugador explore la mesa.

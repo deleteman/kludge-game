@@ -91,7 +91,8 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   //   · `reservorio-disolvente`          = tubo flexible ×1 + válvula ×1 + junta ×2
 // Subfase 14a-3: el `reservorio-disolvente` deja de ser un extra y pasa a ser la
 // pieza CENTRAL de la cadena de ignición — el disolvente volátil hierve a 56 °C,
-// o sea que basta una combustión estándar (pico ~67 °C) para evaporarlo y
+// o sea que basta una combustión estándar (pico 61.5 °C, medido sobre la nave real
+// en la ronda 2 de 14a-3) para evaporarlo y
 // volverlo un reactivo `COMB` en el aire. El `reservorio-agua-reciclada` es su
 // contraparte fría: el agua funde a 0 °C, dentro del alcance del enfriador.
   // Los niveles alcanzan para DOS enfriadores, DOS tanques criogénicos y UN
@@ -168,7 +169,7 @@ export const CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS: ReadonlyArray<ComponentId
  * del fenómeno que hay que playtestear.
  *
  * La cicatriz de sobrecarga sigue siendo alcanzable por el camino real (cargar un conductor colocado
- * por el jugador, o enfriarlo por debajo de -50 °C) y sigue cubierta por
+ * por el jugador, o enfriarlo por debajo del umbral frío de `THERMAL_CONDUCTIVITY_PARAMETERS`) y sigue cubierta por
  * `mission-overload-runtime.test.ts` y `mission-reaction-cascade.integration.test.ts`, que ejercitan
  * `scriptedOverloads` sobre sus propios fixtures.
  */

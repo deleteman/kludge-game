@@ -18,7 +18,7 @@ import type { PhaseChangePoints } from "./phase-change.types.js";
  * Son deliberadamente ANCHOS: un producto de reacción sin identidad no debería
  * cambiar de estado por la temperatura de la sala, porque nadie autoró qué
  * significa eso para él. El perfil lo deja en su estado nominal en toda la
- * ventana térmica alcanzable del motor ([-80, ~161] °C), sin necesitar un caso
+ * ventana térmica alcanzable del motor ([-80, ~157] °C), sin necesitar un caso
  * especial en `effectiveMatterState`.
  */
 export const DEFAULT_PHASE_POINTS_BY_STATE: Readonly<Record<MatterState, PhaseChangePoints>> = {

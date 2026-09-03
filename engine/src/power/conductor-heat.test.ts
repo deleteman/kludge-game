@@ -7,12 +7,14 @@ import {
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import { electricalConductorProperty } from "../signals/edge-conductor.js";
 import { edgeElectricalLoad } from "./conductor-load.js";
-import { MissionThermalRuntime } from "../mission/mission-thermal-runtime.js";
-import { MissionAtmosphereRuntime } from "../mission/mission-atmosphere-runtime.js";
+import {
+  CALIBRATION_SECTIONS,
+  settledTemperature,
+  simulateThermal,
+} from "../atmosphere/thermal-calibration.fixture.js";
 import {
   AUTOIGNITION_CELSIUS,
   NOMINAL_TEMPERATURE_CELSIUS,
-  PASSIVE_DRIFT_PER_SECOND,
   THERMAL_SENSOR_TRIGGER_CELSIUS,
 } from "../atmosphere/thermal-parameters.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
@@ -20,7 +22,6 @@ import type { ComponentId } from "../components/physical-component.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
-import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 
 /**
  * Ronda 1 de playtest de 14a-3: el conductor como fuente de calor.
@@ -39,9 +40,6 @@ const FUENTE_NODE = "fuente-1-em" as SignalNodeId;
 const HUB = "chip-1" as PlacedComponentInstanceId;
 const HUB_NODE = "chip-1-rec" as SignalNodeId;
 const TRONCAL = "troncal" as SignalEdgeId;
-
-/** Temperatura de equilibrio de una sala con una fuente sostenida de `rate` °C/s. */
-const equilibrium = (rate: number) => NOMINAL_TEMPERATURE_CELSIUS + rate / PASSIVE_DRIFT_PER_SECOND;
 
 /**
  * Monta el TRONCO real del proyecto: `fuente → cable troncal → relé (chip) → N
@@ -120,8 +118,17 @@ describe("edgeHeatCelsiusPerSecond", () => {
     // El chip declara `powerDraw: 1`, así que "sin nada colgado" no es carga 0:
     // es la carga mínima real del catálogo. Lo que importa es que a esa carga el
     // aporte sea despreciable, no que sea exactamente cero.
+    //
+    // Se afirma sobre la TEMPERATURA y no sobre la tasa: la ronda 1 pedía
+    // `< 0.1 °C/s`, un número que solo significaba algo con la constante de
+    // entonces y que se volvió rojo al recalibrar sin que nada estuviera mal.
+    // "Despreciable" quiere decir que la sala no se entera, y eso se mide.
     const blueprint = blueprintWith("cable-cobre", 0);
-    expect(edgeHeatCelsiusPerSecond(blueprint, TRONCAL, REGISTRY)).toBeLessThan(0.1);
+    const heat = edgeHeatCelsiusPerSecond(blueprint, TRONCAL, REGISTRY);
+    expect(heat).toBeGreaterThan(0);
+    expect(settledTemperature(CALIBRATION_SECTIONS.closedRoom, heat)).toBeLessThan(
+      NOMINAL_TEMPERATURE_CELSIUS + 5,
+    );
   });
 
   it("un cable cuyo conductor no declara `COND(E)` no calienta", () => {
@@ -166,7 +173,17 @@ describe("edgeHeatCelsiusPerSecond", () => {
 });
 
 describe("calibración contra los umbrales que ya existen (patrón 23/81)", () => {
-  /** Todo el cableado de un montaje, agregado en la sala donde vive. */
+  /**
+   * Todo el cableado de un montaje, agregado en la sala donde vive.
+   *
+   * De acá para abajo, todo aserto de TEMPERATURA pasa por
+   * `thermal-calibration.fixture.ts`, que simula el eje térmico completo sobre la
+   * nave canónica con sus conductos y sus puertas. La ronda 1 de este archivo
+   * usaba un helper `equilibrium()` con la cuenta analítica
+   * `21 + R / PASSIVE_DRIFT_PER_SECOND`, que ignora la conducción a las vecinas
+   * y prometía 82 °C donde el juego daba 43. Ese helper **no se reescribe**: el
+   * fixture es ahora la única forma de convertir una tasa en una temperatura.
+   */
   const montageHeat = (consumers: number, conductorId = "cable-cobre") =>
     conductorHeatBySection(blueprintWith(conductorId, consumers), REGISTRY, () => [SALA]).get(
       SALA,
@@ -192,21 +209,53 @@ describe("calibración contra los umbrales que ya existen (patrón 23/81)", () =
   });
 
   it("un tronco de cobre al límite deja la sala con vapor inflamable y SIN encender sola", () => {
-    const equilibriumCelsius = equilibrium(montageHeat(FULL_TRUNK_CONSUMERS));
+    const settled = settledTemperature(
+      CALIBRATION_SECTIONS.closedRoom,
+      montageHeat(FULL_TRUNK_CONSUMERS),
+    );
     // Por encima de los 75 °C de ebullición del combustible de motor (y de los
     // 56 del disolvente): hay vapor en el aire, o sea algo que puede arder.
-    expect(equilibriumCelsius).toBeGreaterThan(75);
+    expect(settled).toBeGreaterThan(75);
     // Y por debajo de la autoignición: el jugador tiene el vapor y sigue
     // eligiendo cuándo prenderlo. Si este aserto cayera, la franja donde la
     // chispa importa habría desaparecido y el charco ardería solo.
-    expect(equilibriumCelsius).toBeLessThan(AUTOIGNITION_CELSIUS);
+    expect(settled).toBeLessThan(AUTOIGNITION_CELSIUS);
+  });
+
+  it("NINGUNA sala de la nave enciende sola con un solo montaje", () => {
+    // El aserto anterior sobre la sala más fácil de calentar no alcanza: el techo
+    // lo pone la sala más DIFÍCIL de ventilar, y si alguna cruzara el umbral, la
+    // promesa "vos elegís cuándo prender" sería falsa justo donde el jugador
+    // guarda las cosas inflamables. La bodega (60 celdas, 4 conexiones) llega a
+    // 89.2 °C: pasa raspando, y por eso se afirma sobre TODA la nave y no sobre
+    // una sala elegida.
+    const heat = montageHeat(FULL_TRUNK_CONSUMERS);
+    for (const sectionId of Object.values(CALIBRATION_SECTIONS)) {
+      expect(settledTemperature(sectionId, heat)).toBeLessThan(AUTOIGNITION_CELSIUS);
+    }
   });
 
   it("DOS montajes cargados en la misma sala la llevan a encender sola", () => {
     // La propagación pide un montaje deliberado, no un accidente: es la presión
     // aguas arriba que el patrón 69 exige para que la mecánica no quede muerta.
-    const single = montageHeat(FULL_TRUNK_CONSUMERS);
-    expect(equilibrium(single * 2)).toBeGreaterThan(AUTOIGNITION_CELSIUS);
+    const double = montageHeat(FULL_TRUNK_CONSUMERS) * 2;
+    for (const sectionId of Object.values(CALIBRATION_SECTIONS)) {
+      expect(settledTemperature(sectionId, double)).toBeGreaterThan(AUTOIGNITION_CELSIUS);
+    }
+  });
+
+  it("la TOPOLOGÍA de la sala cambia el resultado: el pasillo es un disipador", () => {
+    // No es dispersión de la calibración, es la consecuencia jugable de
+    // `MIN_THERMAL_APERTURE`: compartimentar sirve. El mismo montaje deja una
+    // sala cerrada con vapor inflamable y el pasillo central —16 conexiones— sin
+    // llegar siquiera al umbral del sensor térmico.
+    const heat = montageHeat(FULL_TRUNK_CONSUMERS);
+    expect(settledTemperature(CALIBRATION_SECTIONS.corridor, heat)).toBeLessThan(
+      settledTemperature(CALIBRATION_SECTIONS.closedRoom, heat),
+    );
+    expect(settledTemperature(CALIBRATION_SECTIONS.corridor, heat)).toBeLessThan(
+      THERMAL_SENSOR_TRIGGER_CELSIUS,
+    );
   });
 
   it("el cableado corriente NO dispara nada: una pieza cableada deja la sala lejos del sensor", () => {
@@ -214,7 +263,9 @@ describe("calibración contra los umbrales que ya existen (patrón 23/81)", () =
     // 60 °C del sensor térmico y de los 56 de la ebullición más baja. Sin este
     // piso, cablear cualquier cosa sería un impuesto térmico invisible sobre
     // toda la nave y el sensor daría falsas alarmas por el cableado normal.
-    expect(equilibrium(montageHeat(1))).toBeLessThan(THERMAL_SENSOR_TRIGGER_CELSIUS);
+    expect(
+      settledTemperature(CALIBRATION_SECTIONS.closedRoom, montageHeat(1)),
+    ).toBeLessThan(THERMAL_SENSOR_TRIGGER_CELSIUS);
   });
 
   it("con la MISMA carga, un tronco de resistencia calienta más que uno de cobre", () => {
@@ -247,42 +298,27 @@ describe("integración: el calor del cableado llega de verdad a la atmósfera", 
   /**
    * La regla puede estar bien y no llegar a ningún lado: `conductorHeatBySection`
    * se consume a través de `MissionThermalRuntime`, y afirmar cómo se comporta
-   * sin verificar quién lo INVOCA es el patrón 74. Acá se monta la pareja real
-   * —térmico + atmósfera— y se mide la temperatura de EQUILIBRIO, no un pico.
+   * sin verificar quién lo INVOCA es el patrón 74.
+   *
+   * **Este test ya existía en la ronda 1 y no alcanzó.** Montaba la pareja real
+   * —térmico + atmósfera— a cadencia de frame y leía el equilibrio de la
+   * simulación… sobre un `ShipFloorplan` de UNA sección con `conduits: []`. En
+   * una nave de una sola sala sin vecinas, la fórmula analítica que se quería
+   * desmentir es exacta, así que el test la confirmaba en vez de contradecirla y
+   * la calibración salió al playtest con el doble del error. Ahora la topología
+   * la pone `thermal-calibration.fixture.ts`, que simula la nave canónica entera.
    */
   it("un tronco cargado sostiene la sala por encima del punto de ebullición", () => {
-    const plan: ShipFloorplan = {
-      id: "nave-14a3-cables",
-      archetype: "investigacion",
-      nameKey: "ship.test.name",
-      gridSize: { width: 6, height: 1 },
-      sections: [
-        { id: SALA, nameKey: "section.sala", cells: [0, 1, 2, 3, 4, 5].map((x) => ({ x, y: 0 })) },
-      ],
-      conduits: [],
-      anchors: [],
-      componentSeeds: [],
-      doors: [],
-    };
     const blueprint = blueprintWith("cable-cobre", 5);
-    const thermal = new MissionThermalRuntime(undefined, undefined, undefined, () =>
-      conductorHeatBySection(blueprint, REGISTRY, () => [SALA]),
-    );
-    const atmosphere = new MissionAtmosphereRuntime(plan, [], undefined, undefined, undefined, undefined, () =>
-      thermal.rates(),
-    );
+    const heatBySection = conductorHeatBySection(blueprint, REGISTRY, () => [
+      CALIBRATION_SECTIONS.closedRoom,
+    ]);
 
-    // Cadencia de FRAME y no de 1 tick = 1 s: una tasa continua que pasa por la
-    // resolución del tick es donde vive el bug del patrón 25.
-    for (let frame = 0; frame < 60 * 200; frame += 1) {
-      const ctx = { dtSeconds: 1 / 60, elapsedSeconds: frame / 60 };
-      thermal.tick(ctx);
-      atmosphere.tick(ctx);
-    }
+    const settled = simulateThermal({
+      sectionId: CALIBRATION_SECTIONS.closedRoom,
+      sustainedCelsiusPerSecond: heatBySection.get(CALIBRATION_SECTIONS.closedRoom) ?? 0,
+    }).settled;
 
-    const settled = atmosphere.atmosphereOf(SALA)!.temperatureCelsius;
-    // El mismo par de umbrales que el test analítico, pero medido sobre la
-    // simulación real: hay vapor inflamable y la sala no enciende sola.
     expect(settled).toBeGreaterThan(75);
     expect(settled).toBeLessThan(AUTOIGNITION_CELSIUS);
   });

@@ -5,7 +5,8 @@
  * Placeholders para "Fluido biológico" y "Sustancia médica genérica" (deferred, GDD 7.6).
  *
  * **Puntos de transición (Subfase 14a-3)**: obligatorios, con el mismo criterio
- * que `element-catalog.ts` — dentro de la ventana térmica jugable (-69 a ~161 °C)
+ * que `element-catalog.ts` — dentro de la ventana térmica jugable (-80 a ~157 °C,
+ * medida; ver `element-catalog.ts`)
  * para las sustancias cuyo cambio de estado es una mecánica, y fuera de ella,
  * deliberadamente, para los metales y minerales.
  *
@@ -341,7 +342,7 @@ export const COMPOUND_CATALOG: ReadonlyArray<CompoundSpec> = [
     data: {
       tags: [{ name: "OXI" }, { name: "COMB" }],
       state: "S",
-      // Por encima del pico de una combustión violenta (~161): el propelente no
+      // Por encima de todo lo que el motor puede sostener (~157): el propelente no
       // se funde por estar cerca del fuego, arde.
       meltingPointCelsius: 334,
       boilingPointCelsius: 450,

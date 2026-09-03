@@ -291,3 +291,60 @@ describe("MissionRuntime: reservas derivadas de la cola (14a-4 ronda 4c)", () =>
     expect(mission.reservedCells().has(`${cell.x},${cell.y}`)).toBe(false);
   });
 });
+
+describe("MissionRuntime: el termostato de dev llega a su consigna (14a-3 ronda 2)", () => {
+  /**
+   * La tecla T de la ronda 1 resolvía el equilibrio de una vez,
+   * `R = (consigna - nominal) × drift`, y el operador reportó que *"no logra
+   * llevar las zonas a la temperatura que promete"*: esa cuenta ignora la
+   * conducción a las secciones vecinas, así que la consigna de 80 se quedaba en
+   * ~66 y el error dependía de cuántas vecinas tuviera la sala.
+   *
+   * Este test corre el core loop REAL —el mismo camino que la escena— y afirma
+   * lo único que importa de una herramienta de verificación: que la sala termina
+   * donde el operador la puso. Un aserto sobre la tasa habría vuelto a pasar con
+   * el bug puesto, porque la tasa era exactamente la que la fórmula pedía.
+   */
+  function runToTarget(mission: MissionRuntime, sectionId: SectionId, seconds: number): number {
+    mission.coreLoop.play();
+    for (let frame = 0; frame < seconds * 60; frame += 1) {
+      mission.coreLoop.tick(1 / 60);
+    }
+    return mission.atmosphereRuntime.atmosphereOf(sectionId)!.temperatureCelsius;
+  }
+
+  /**
+   * Error residual admitido. Un lazo proporcional se estabiliza donde la tasa que
+   * pide iguala a la que el mundo se lleva, así que SIEMPRE queda un error de
+   * `pérdidas / DEV_THERMOSTAT_GAIN`: con la ganancia actual son ~1.5 °C en la
+   * peor sala. Está documentado en `devTemperatureRates` y no se corrige con un
+   * término integral a propósito — es una herramienta de dev y 1.5 °C no cambia
+   * ninguna verificación. Este margen es lo que se afirma, no un redondeo.
+   */
+  const TOLERANCE_CELSIUS = 2;
+
+  it.each([80, 120, -20])("la sección llega a la consigna de %i °C", (target) => {
+    const mission = new MissionRuntime(newSave());
+    const sectionId = mission.shipFloorplan.sections[0]!.id;
+    mission.setDevTemperatureTarget(sectionId, target);
+
+    // 30 s: el lazo converge en menos de 5, el resto es margen para que el test
+    // mida el estado ESTABLE y no un transitorio.
+    const settled = runToTarget(mission, sectionId, 30);
+    expect(Math.abs(settled - target)).toBeLessThan(TOLERANCE_CELSIUS);
+  });
+
+  it("liberar la consigna devuelve la sala al nominal por sí sola", () => {
+    const mission = new MissionRuntime(newSave());
+    const sectionId = mission.shipFloorplan.sections[0]!.id;
+
+    mission.setDevTemperatureTarget(sectionId, 120);
+    expect(runToTarget(mission, sectionId, 30)).toBeGreaterThan(100);
+
+    // Sin consigna no queda ningún aporte: la climatización de fondo se encarga.
+    // Es lo que hace que olvidarse la tecla puesta no falsee el playtest
+    // siguiente sin aviso.
+    mission.setDevTemperatureTarget(sectionId, undefined);
+    expect(runToTarget(mission, sectionId, 120)).toBeLessThan(30);
+  });
+});

@@ -16,7 +16,7 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 
 | # | Eje | Patrones |
 |---|---|---|
-| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80 |
+| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88 |
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
 | 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62 |
 | 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84 |
@@ -24,8 +24,8 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 | 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
-| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71 |
-| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85 |
+| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87 |
+| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85, 87 |
 | 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77 |
 | 12 | El contenido autorado manda; si no encaja, el código grita en vez de degradarse | 47, 52, 53, 54 |
 | 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86 |
@@ -1003,3 +1003,49 @@ edité eran tests de integración, quedaron con una inferencia circular (`gasInj
 último cambio, juntos y en la misma pasada, y el número que se reporta es el de esa corrida — no el
 recuerdo de una anterior. Corolario específico de este repo: un archivo `.test.ts` puede romper `tsc` sin
 romper ningún test, así que "los tests pasan" no cubre el typecheck de los tests.
+
+**Patrón 87 — Un fixture de calibración más simple que el juego es una calibración NO medida** (14a-3,
+ronda 2; el más caro del proyecto hasta ahora: cinco números mal en tres subfases). El eje térmico se
+calibró siempre despejando `T = NOMINAL + R / PASSIVE_DRIFT_PER_SECOND`. Esa cuenta ignora la conducción
+entre secciones, que en la nave real se lleva **más** calor que la propia climatización: la tasa de
+conducción es el triple de la deriva pasiva, no se apaga al cerrar una puerta (`MIN_THERMAL_APERTURE`) y
+cada par de salas está conectado dos veces (ducto + puerta). Resultado: el cableado prometía 82 °C y daba
+43, la tecla de dev nunca llegaba a su consigna, el enfriador prometía -69 y daba -10.9 —dejando
+**inalcanzable** el umbral frío que su propio docblock se felicitaba por haber hecho alcanzable— y los
+picos de combustión citados en dos docblocks estaban un 50% arriba, con lo que la rama caliente de
+`thermalConductivityRule` era inalcanzable para todo conductor que no fuera `CT: "A"`.
+
+Lo importante es por qué **sí se había medido y no alcanzó**: el test de integración de la ronda 1 montaba
+la pila real (térmico + atmósfera) a cadencia de frame y leía el equilibrio de la simulación… sobre un
+`ShipFloorplan` de UNA sección con `conduits: []`. En una nave de una sola sala sin vecinas, la fórmula
+mala es exacta, así que el test la **confirmaba** en vez de contradecirla. Los tres fixtures de calibración
+del repo tenían la misma forma.
+
+- "Medí" no es una propiedad de la corrida, es una propiedad del **mundo** contra el que se corre. La
+  pregunta no es "¿simulé?" sino "¿qué le saqué al mundo para que el fixture fuera cómodo, y ese recorte
+  es justo la variable que domina el resultado?".
+- Una calibración se mide contra el **contenido real** (acá `CANONICAL_SHIP_FLOORPLANS`), no contra un
+  plano sintético: un fixture sintético puede volver a ser más simple que el juego, un plano autorado no.
+- Cuando un número dependa de la topología, **afirmarlo sobre varias salas y no sobre una**: acá el techo
+  no lo pone la sala de referencia sino la peor ventilada (89.2 contra 76.7), y es la que decide si la
+  promesa "ningún montaje solo enciende una sala" es verdad.
+- Un test verde custodiando una regla muerta es peor que no tener test: da por saldada la verificación.
+  Si un aserto dice que un umbral es alcanzable, tiene que alcanzarlo **por el camino de producción**.
+- Corolario de números en cascada: al recalibrar una constante, buscar los OTROS números despejados de la
+  misma fórmula. Acá salieron el ramp de las partículas del cable (que nacía saturado con la constante
+  nueva) y la ventana térmica citada en cinco docblocks de química. Un `grep` de los valores viejos es
+  parte del cambio.
+- Corolario sobre magnitudes absolutas en tests: dos asertos (`< 0.1 °C/s`, equilibrio del enfriador) se
+  volvieron rojos al recalibrar sin que nada estuviera mal, porque afirmaban un NÚMERO en vez de su
+  significado ("la sala no se entera", "cruza el umbral"). Afirmar el significado sobrevive al balanceo.
+
+**Patrón 88 — Dos lecturas del mismo fenómeno tienen que gatillar sobre la misma magnitud** (14a-3,
+ronda 2). El tooltip del cable decía `2.7 °C/s en esta sala` y el de la sección `1.7`: los dos números
+eran correctos —el cable disipa 2.7 en total y reparte 1.35 a cada sala que cruza— y el que mentía era el
+TEXTO. Al corregirlo para mostrar el reparto apareció el bug simétrico: la línea del tooltip se mostraba
+sólo por encima del mismo umbral que las partículas, pero las partículas miran el total del cable y la
+línea pasaba a mirar el reparto, así que un tronco largo podía brillar sin número al lado. Cuando dos
+indicadores prometen coherencia ("si ves el shimmer, el número está ahí"), el **gatillo** de los dos tiene
+que ser la misma magnitud, aunque muestren cosas distintas. Y antes de dar por bueno un desacuerdo entre
+dos números de la UI, comprobar si el desacuerdo es real o si simplemente son dos magnitudes distintas mal
+etiquetadas.

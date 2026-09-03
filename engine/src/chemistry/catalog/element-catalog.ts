@@ -6,8 +6,12 @@
  * **Puntos de transición (Subfase 14a-3)**: cada entrada declara sus dos puntos,
  * obligatorios por tipo (`AuthoredSubstanceData`). No son física real, son
  * números de juego, y se eligen mirando la ventana térmica REALMENTE alcanzable
- * del motor —de -69 °C (equilibrio del enfriador) a ~161 °C (pico de una
- * combustión violenta)—:
+ * del motor, medida sobre la nave real en la ronda 2 de playtest de 14a-3
+ * (`atmosphere/thermal-calibration.fixture.ts`): **de -80 °C** (dos enfriadores,
+ * que llegan al clamp; uno solo alcanza -36) **a ~157 °C** (dos troncos de
+ * cableado cargados en la sala peor ventilada). Ojo con el techo: NO lo pone una
+ * combustión, que pica en 109 °C y se disipa, sino el calor SOSTENIDO del
+ * cableado — lo que se puede mantener es más alto que lo que se puede picar:
  *  - Las sustancias cuyo cambio de estado es una MECÁNICA llevan sus puntos
  *    dentro de esa ventana (bromo, azufre, fósforo, sodio, potasio).
  *  - Los metales, minerales y gases nobles llevan puntos fuera de la ventana a

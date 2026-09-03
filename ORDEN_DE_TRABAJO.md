@@ -724,6 +724,65 @@ resistencia" era un paso de prueba imposible (patrón 20/55). Entra con 4 unidad
 Suite: motor 1265 → **1278**, juego 169 → **171** (1449 en total, 180 archivos). `tsc`, `eslint` y `build`
 limpios — verificados los tres esta vez.
 
+###### Ronda 2 de playtest de 14a-3 ✅ CERRADA (2026-09-03)
+
+Dos reportes —*"la tecla T no logra llevar las zonas a la temperatura que promete"* y el montaje de 5 LEDs
+parado en 47 °C con el tooltip del cable diciendo 2.7 y el de la sección 1.7— con **una sola causa**, y mucho
+más grande que los dos síntomas.
+
+**La fórmula de equilibrio del eje térmico estaba mal y la usaba todo el mundo.** `T = 21 + R / drift` ignora la
+conducción entre secciones: `diffuse()` sangra a cada vecina a `THERMAL_DIFFUSION_RATE_PER_SECOND` (0.15), el
+**triple** de la deriva pasiva, con piso `MIN_THERMAL_APERTURE` para que cerrar la puerta no aísle, y en la nave
+real cada par de salas está conectado **dos veces** (ducto + puerta, concatenados a propósito por
+`composeApertureSources`). Cinco números calibrados con esa cuenta, en tres subfases:
+
+| | prometía | real |
+|---|---|---|
+| montaje de 5 LEDs en el taller | 82 °C | **42.7** |
+| tecla T con consigna 80 | 80 °C | **~66** |
+| enfriador de 14a-2 (-4.5 °C/s) | -69 °C | **-10.9** |
+| pico de combustión `violent` | ~161 °C | **109.2** |
+| pico de `explosion` de sobrecarga | ~111 °C | **86.3** |
+
+Las dos últimas dejaban **dos ramas de regla muertas ya mergeadas**: el umbral frío de -50 de
+`thermalConductivityRule` era inalcanzable —exactamente la regla muerta que el docblock de 14a-2 se felicitaba
+por haber evitado— y el caliente de 100, con los desplazamientos por `CT`, quedaba en 120/140 para todo
+conductor que no fuera `CT: "A"`.
+
+**Por qué ningún test lo vio: todos los fixtures de calibración eran una caja aislada.** `conductor-heat.test.ts`,
+`thermal-coupling.integration.test.ts` y `case-02` declaran `conduits: []` con una sola sección, y ahí la
+fórmula es exacta. El test de integración de la ronda 1 llegó a montar la pila real a cadencia de frame y a leer
+el equilibrio de la simulación… en una nave de una sola sala: confirmaba la fórmula en vez de contradecirla.
+
+* **`atmosphere/thermal-calibration.fixture.ts`** (la corrección estructural): simula el eje térmico completo
+  sobre la **nave canónica real**, con sus conductos y sus puertas. Se borró el helper `equilibrium()` y no se
+  reescribió en ningún test: convertir una tasa en temperatura pasa por acá o no se hace.
+* **Conductor recalibrado** `0.45 → 1.15`, midiendo. Taller 76.7 · ingeniería 75.7 · tanques 86.5 · bodega 89.2
+  · pasillo 58.6. Ningún montaje solo cruza los 90 (el techo de la nave es 89.2, se afirma sobre TODAS las
+  salas); dos los cruzan siempre; un LED suelto deja la sala en ~28.
+* **Tecla T en lazo cerrado**: mide el error contra la temperatura real y aporta lo que falte. No necesita
+  conocer ninguna pérdida, las compensa todas por construcción. Converge en <5 s a ±1.5 °C en cualquier sala.
+* **Enfriador `-4.5 → -8`**, y es una calibración **acoplada**: subirlo suprime el pico de combustión que es lo
+  único que hace observable `THERMAL_REGULATOR_OVERLOAD_CELSIUS` (70). A -10.75 el umbral frío se alcanzaría
+  pero el pico caería a 68.4 y mataría la otra regla. A -8 hay margen por los dos lados (equilibrio -35.7,
+  pico 78.9), y ahora hay un test que lo fija.
+* **Umbrales de `thermalConductivityRule`**: frío -50 → **-30**, caliente 100 → **85**, desplazamientos por `CT`
+  `{A:0,M:20,B:40}` → **`{A:0,M:10,B:20}`**. Orden resultante, todo alcanzable: 60 sensor < 70 regulador < 75
+  ebullición del combustible < 85 degradación del conductor < 90 autoignición.
+* **Tooltip del cable**: muestra el REPARTO de la sala (`wireHeatInSectionOf`) y no el total, que es lo que su
+  texto "en esta sala" ya prometía. El total sigue gobernando si la línea aparece, para no discrepar con las
+  partículas del recorrido, que son del cable entero.
+
+Del checklist, tres cosas que el operador no llegó a ver: el ramp de las partículas del cable **nacía saturado**
+con la constante nueva (un tronco al límite disipa 6.9 y el máximo estaba en 3.45, despejado de la misma fórmula
+mala) → 1.41 y 9.74, medidos; la ventana térmica jugable citada en cinco docblocks de química ([-69, ~161]) era
+falsa → [-80, ~157], y **el techo no lo pone una combustión sino el calor sostenido del cableado**: se puede
+mantener más alto de lo que se puede picar; y el efecto del cable duplicaba a mano la normalización que ya
+existía en `thresholdSeverity`.
+
+Suite: **1456** (180 archivos), motor 1278 → 1281, juego 171 → 175. `tsc` de los dos workspaces, `eslint` y
+`build` limpios.
+
 #### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
 
 * **Química → Señales:** nuevo `triggerType: "quimico"` en `EmitterProperty` + pieza "sensor químico" + `chemicalAwareEmitterInputs` (mismo molde que `pressureAwareEmitterInputs`), disparado por `contaminantAt`/`airborneSubstanceAt` sobre umbral.

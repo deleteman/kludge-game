@@ -138,11 +138,18 @@ describe("datos del catálogo químico real", () => {
   });
 
   it("las sustancias que sostienen la mecánica tienen su transición DENTRO de la ventana alcanzable", () => {
-    // Ventana real del motor: el enfriador se estabiliza en -69 °C y una
-    // combustión violenta pica en ~161. Un punto fuera de ahí es un escritor
-    // muerto, y este test es lo que impide que el balanceo lo saque sin querer.
-    const REACHABLE_COLD = -69;
-    const REACHABLE_HOT = 161;
+    // Ventana real del motor, MEDIDA sobre la nave en la ronda 2 de playtest de
+    // 14a-3 (`thermal-calibration.fixture.ts`). Los valores de la ronda 1 (-69 y
+    // ~161) salían de la fórmula de equilibrio sin conducción y describían un
+    // motor que no existe. Un punto fuera de la ventana es un escritor muerto, y
+    // este test es lo que impide que el balanceo lo saque sin querer.
+    //
+    // El piso es el CLAMP y no el equilibrio de un enfriador: dos reguladores lo
+    // alcanzan (uno solo llega a -36). El techo lo pone el calor SOSTENIDO de dos
+    // troncos cableados en la sala peor ventilada, no el pico de una combustión,
+    // que se queda en 109 °C — se puede mantener más alto de lo que se puede picar.
+    const REACHABLE_COLD = TEMPERATURE_FLOOR_CELSIUS;
+    const REACHABLE_HOT = 157;
     const casos: ReadonlyArray<[string, "melting" | "boiling"]> = [
       ["agua", "melting"],
       ["agua", "boiling"],
@@ -171,7 +178,8 @@ describe("datos del catálogo químico real", () => {
     const nitrogeno = substance("nitrogeno-liquido");
     expect(nominalStateOf(nitrogeno)).toBe("L");
     expect(effectiveMatterState(nitrogeno, NOMINAL_TEMPERATURE_CELSIUS)).toBe("G");
-    // Y vuelve a ser líquido en una sala ya helada por el propio enfriador.
+    // Y vuelve a ser líquido en una sala bien helada — hacen falta DOS
+    // reguladores térmicos: uno solo deja la sala en -36 y ahí sigue siendo gas.
     expect(effectiveMatterState(nitrogeno, -69)).toBe("L");
   });
 });

@@ -88,16 +88,29 @@ export const OVERLOAD_HEAT: Readonly<Partial<Record<FailureMode, HeatPulseSpec>>
  * 14a-2, sexto escritor). Negativo: es un aporte de °C/s como cualquier otro,
  * solo que hacia abajo.
  *
- * **El número sale de un cálculo, no de una estimación.** La climatización de
- * fondo empuja hacia el nominal a `(21 - T) * PASSIVE_DRIFT_PER_SECOND`, así que
- * una máquina que aporte `R` °C/s se estabiliza en `21 - R / 0.05`. Para cruzar
- * el umbral frío de `THERMAL_CONDUCTIVITY_PARAMETERS` (-50 °C) hacen falta al
- * menos **3.55 °C/s**; con menos, el enfriador nunca llegaría y el acoplamiento
- * de conductividad quedaría inalcanzable — exactamente el error de elegir un
- * umbral sin mirar los otros números del sistema. A 4.5 el equilibrio queda en
- * **-69 °C**: cruza el umbral con margen y sigue dentro del clamp de -80.
+ * **El número sale de SIMULAR la nave real** (ronda 2 de playtest de 14a-3). En
+ * 14a-2 salió de resolver `21 - R / PASSIVE_DRIFT_PER_SECOND`, que ignora la
+ * conducción a las secciones vecinas: prometía **-69 °C** y el juego daba
+ * **-10.9**, con lo cual el umbral frío de `THERMAL_CONDUCTIVITY_PARAMETERS`
+ * quedó inalcanzable — exactamente la regla muerta que este docblock se
+ * felicitaba por haber evitado. Ver `thermal-calibration.fixture.ts`.
+ *
+ * **Es una calibración ACOPLADA, no un número suelto**: subir el enfriador
+ * suprime el pico de una combustión en su sala, y ese pico es lo único que hace
+ * observable `THERMAL_REGULATOR_OVERLOAD_CELSIUS`. Barrido medido en el taller:
+ *
+ * | tasa   | equilibrio (taller / bodega) | pico `violent` con el enfriador puesto |
+ * |--------|------------------------------|----------------------------------------|
+ * | -4.5   | -10.9 / -18.1                | 92.2                                   |
+ * | **-8** | **-35.7 / -48.4**            | **78.9**                               |
+ * | -9     | -42.7 / -57.1                | 75.2                                   |
+ * | -10.75 | -55.0 / -72.2                | 68.4 ← por debajo de los 70: mata la regla |
+ *
+ * A -8 hay margen por los dos lados: el pico con enfriador (78.9) sigue rindiendo
+ * al regulador a los 70, y el equilibrio baja lo bastante para cruzar el umbral
+ * frío de -30 en una sala normal. Dos enfriadores llegan a ~-80, el clamp.
  */
-export const COOLER_RATE_CELSIUS_PER_SECOND = -4.5;
+export const COOLER_RATE_CELSIUS_PER_SECOND = -8;
 
 /**
  * Temperatura a partir de la cual un regulador térmico instalado en la sección
@@ -114,11 +127,16 @@ export const COOLER_RATE_CELSIUS_PER_SECOND = -4.5;
  * integración destapó que era inalcanzable *justo en el único caso en que este
  * umbral se evalúa*: la condición exige que haya un regulador instalado, y un
  * regulador instalado está enfriando a `COOLER_RATE_CELSIUS_PER_SECOND`, así que
- * una combustión `violent` en su sala pica en ~73 °C en vez de los ~161 que daría
- * sin él. O sea que el estado "el regulador no da abasto" se apagaba exactamente
- * por culpa del regulador que lo hace observable. Con 70 una combustión violenta
- * (o una explosión de sobrecarga) sí lo rinde, y una `standard` —que con el
- * enfriador puesto no pasa de ~30 °C— no: el enfriador sigue sirviendo para algo.
+ * una combustión `violent` en su sala pica muy por debajo de lo que daría sin él.
+ * O sea que el estado "el regulador no da abasto" se apagaba exactamente por
+ * culpa del regulador que lo hace observable.
+ *
+ * Números medidos sobre la nave real (ronda 2 de playtest de 14a-3; los ~73 y
+ * ~161 que citaba antes este docblock salían de la fórmula sin conducción y eran
+ * falsos): una combustión `violent` pica en **109 °C** sola y en **78.9** con el
+ * enfriador de -8 puesto, así que a 70 lo rinde con margen; una `standard`, que
+ * sola pica en 61.5, no lo rinde ni sin enfriador. El enfriador sigue sirviendo
+ * para algo y este umbral sigue siendo alcanzable.
  */
 export const THERMAL_REGULATOR_OVERLOAD_CELSIUS = 70;
 
@@ -150,23 +168,27 @@ export const SUBSTANCE_THERMAL_EFFECT: Readonly<Record<string, HeatPulseSpec>> =
  * INSTALADO y sobrecargado, así que un incendio no se propagaba nunca de sala en
  * sala aunque el calor sí viajara por `diffuse()` desde 14a-1.
  *
- * **El número salió de MEDIR, no de elegirlo.** El primer candidato fue 120
- * —entre la degradación del conductor (100) y el pico de una combustión
- * `violent` (~161)—, y el test de integración lo desmintió: con la conducción
- * real (0.15/s) contra la deriva pasiva (0.05/s), una combustión violenta deja
- * la sala de origen en **124 °C** y la vecina en **54**. La conducción atenúa
- * cerca del 70% del exceso, así que a 120 la propagación era imposible salvo
- * temperaturas que ningún escritor del motor alcanza: un escritor muerto.
+ * **El número salió de MEDIR, no de elegirlo.** El primer candidato fue 120, y
+ * el test de integración lo desmintió: la conducción atenúa la mayor parte del
+ * exceso, así que a 120 la propagación era imposible salvo temperaturas que
+ * ningún escritor del motor alcanza — un escritor muerto.
+ *
+ * Picos reales de cada pulso, medidos sobre la nave completa con
+ * `thermal-calibration.fixture.ts` (ronda 2 de playtest de 14a-3 — los ~161 que
+ * este docblock citaba para `violent` salían de la fórmula sin conducción):
+ *
+ *   weak 39.1 · fire 48.0 · standard 61.5 · explosion 86.3 · **violent 109.2**
  *
  * A 90 la franja existe y sigue ordenada respecto de los otros umbrales del eje,
  * cada uno con su significado propio:
  *   60 sensor térmico ("hay un incendio") < 70 regulador sobrecargado <
- *   75 ebullición del combustible de motor < **90 autoignición** <
- *   100 degradación del conductor.
- * Un incendio AISLADO en la sala de al lado (54 °C de pico en la vecina) NO
- * propaga; uno SOSTENIDO —el que se realimenta mientras quede combustible en el
- * aire— lleva a la vecina a ~99 °C y sí. La propagación es consecuencia de que
- * el fuego tenga con qué seguir ardiendo, no un automatismo.
+ *   75 ebullición del combustible de motor < 85 degradación del conductor <
+ *   **90 autoignición**.
+ * Un incendio AISLADO en la sala de al lado NO propaga —el pico de la vecina de
+ * una `violent` es 34 °C, la conducción se come el 90% del exceso—; uno
+ * SOSTENIDO, el que se realimenta mientras quede combustible en el aire, sí:
+ * es lo que verifica `thermal-coupling.integration.test.ts`. La propagación es
+ * consecuencia de que el fuego tenga con qué seguir ardiendo, no un automatismo.
  */
 export const AUTOIGNITION_CELSIUS = 90;
 

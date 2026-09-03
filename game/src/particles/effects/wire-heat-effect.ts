@@ -8,9 +8,13 @@ import type {
 } from "../particle-effect.types.js";
 import { type EffectScene, pickTexture, textureScale, toPixel } from "../particle-utils.js";
 import { CIRCLE_TEXTURES } from "../particle-texture-registry.js";
-import { coverageQuantity, emitterOrigin, sectionCoverageSpread } from "./atmosphere-effect-coverage.js";
+import {
+  coverageQuantity,
+  emitterOrigin,
+  sectionCoverageSpread,
+  thresholdSeverity,
+} from "./atmosphere-effect-coverage.js";
 import { HEAT_VAPOR_TINT } from "../../render/palette.js";
-import { PASSIVE_DRIFT_PER_SECOND } from "engine";
 
 /**
  * Un cable CALENTÁNDOSE (ronda 1 de playtest de 14a-3).
@@ -41,20 +45,33 @@ import { PASSIVE_DRIFT_PER_SECOND } from "engine";
  * Por debajo de esta disipación no se pinta nada.
  *
  * **El número sale de lo que significa, no de lo que se ve bien**: es la tasa
- * sostenida que hace falta para levantar una sala 10 °C sobre el nominal
- * (`10 × PASSIVE_DRIFT_PER_SECOND`). Por debajo de eso el cable calienta, sí,
- * pero nada de lo que el jugador pueda hacer depende de saberlo — y pintar cada
- * cable de la nave con chispas de calor sería el ruido que ahoga la señal, el
- * mismo criterio con que `CLOUD_VISIBILITY_THRESHOLD` filtra las trazas de gas.
+ * sostenida que hace falta para levantar una sala 10 °C sobre el nominal. Por
+ * debajo de eso el cable calienta, sí, pero nada de lo que el jugador pueda hacer
+ * depende de saberlo — y pintar cada cable de la nave con chispas de calor sería
+ * el ruido que ahoga la señal, el mismo criterio con que
+ * `CLOUD_VISIBILITY_THRESHOLD` filtra las trazas de gas.
+ *
+ * **Medido, no despejado** (ronda 2 de playtest de 14a-3): la ronda 1 lo escribió
+ * como `10 × PASSIVE_DRIFT_PER_SECOND` = 0.5, despejando de la fórmula de
+ * equilibrio que ignora la conducción a las vecinas. Sobre la nave real hacen
+ * falta **1.41 °C/s** para esos mismos 10 °C. Con el valor viejo, un solo LED
+ * cableado ya rozaba el umbral y la nave entera se habría llenado de destellos.
  */
-export const WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND = 10 * PASSIVE_DRIFT_PER_SECOND;
+export const WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND = 1.41;
 
 /**
- * Disipación a la que el efecto ya está a pleno. Es la tasa que sostiene una
- * sala en el umbral de autoignición (90 °C): a partir de ahí el cable no es "un
- * poco caliente", es la causa de que la sala vaya a encenderse sola.
+ * Disipación a la que el efecto ya está a pleno: la tasa que sostiene una sala
+ * cerrada en el umbral de autoignición (90 °C). A partir de ahí el cable no es
+ * "un poco caliente", es la causa de que la sala vaya a encenderse sola.
+ *
+ * **También medido.** El 3.45 de la ronda 1 salía de la misma fórmula mala, y con
+ * la constante del conductor recalibrada (1.15) un tronco al límite disipa
+ * 6.9 °C/s: el efecto habría nacido saturado en cualquier cable cargado, sin
+ * distinguir ya entre "trabajando" y "esto va a prender la sala". El valor real
+ * es **9.74 °C/s**, o sea que ni un tronco al límite llega solo al máximo — hace
+ * falta el segundo montaje, que es exactamente lo que cuesta encender una sala.
  */
-const WIRE_HEAT_FULL_CELSIUS_PER_SECOND = (90 - 21) * PASSIVE_DRIFT_PER_SECOND;
+const WIRE_HEAT_FULL_CELSIUS_PER_SECOND = 9.74;
 
 export interface WireHeatState {
   readonly celsiusPerSecond: number;
@@ -83,9 +100,14 @@ export function createWireHeatEffect(
         emitter?.stop();
         return;
       }
-      const severity =
-        (state.celsiusPerSecond - WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND) /
-        (WIRE_HEAT_FULL_CELSIUS_PER_SECOND - WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND);
+      // La misma normalización que usan los efectos de atmósfera, y no una copia
+      // a mano: dos montajes cargados pasan de `FULL` y sin clamp la densidad se
+      // iría por encima del techo pensado para no tapar lo que hay debajo.
+      const severity = thresholdSeverity(
+        state.celsiusPerSecond,
+        WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND,
+        WIRE_HEAT_FULL_CELSIUS_PER_SECOND,
+      );
       // Misma función de densidad que los fenómenos de sala: un cable largo
       // reparte más partículas que uno corto, con el mismo techo para no tapar
       // lo que hay debajo.

@@ -6,7 +6,7 @@ import type { MatterState } from "../../properties/material.types.js";
  *
  * Hasta 14a-3 `ChemicalSubstanceData.state` era un dato ESTÁTICO de catálogo y
  * nadie lo cambiaba nunca: el nitrógeno líquido seguía siendo líquido a 500 °C
- * y el agua no se congelaba en una sala a -69 °C. Estos dos números son lo que
+ * y el agua no se congelaba en una sala bajo cero. Estos dos números son lo que
  * lo vuelve un valor derivado del mundo.
  *
  * Se autoran en °C igual que el resto del eje térmico

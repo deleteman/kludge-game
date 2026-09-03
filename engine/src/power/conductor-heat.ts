@@ -37,27 +37,47 @@ export const CONDUCTOR_HEAT_PARAMETERS = {
   /**
    * Constante de la disipación, en °C/s por unidad de `carga² / capacidad`.
    *
-   * **Sale de resolver el equilibrio, no de estimarlo** (patrón 23/81, que en
-   * esta misma subfase ya costó una recalibración). La climatización empuja
-   * hacia el nominal a `(21 - T) × 0.05`, así que una fuente sostenida de `R`
-   * °C/s estabiliza la sala en `21 + R / 0.05`. Los dos objetivos:
+   * **Sale de SIMULAR la nave real, no de resolver una fórmula** (ronda 2 de
+   * playtest de 14a-3). La ronda 1 la calibró con
+   * `T = 21 + R / PASSIVE_DRIFT_PER_SECOND`, que ignora la conducción entre
+   * secciones —`diffuse()` sangra a las vecinas al triple de la deriva pasiva— y
+   * prometió 82 °C donde el juego daba **43**. Ahora el número sale de
+   * `thermal-calibration.fixture.ts`, que corre el eje térmico completo sobre
+   * `nave-exploracion` con sus conductos y sus puertas; ese módulo explica por
+   * qué la fórmula no vale y por qué ningún fixture de una sola sala podía
+   * detectarlo.
    *
-   *  - **75 °C** (ebullición del disolvente y del combustible): `R = 2.7 °C/s`.
-   *  - **90 °C** (`AUTOIGNITION_CELSIUS`): `R = 3.45 °C/s`.
-   *
-   * Con 0.45, el montaje de referencia del Capítulo 1 —cinco LEDs detrás de un
+   * Con 1.15, el montaje de referencia del Capítulo 1 —cinco LEDs detrás de un
    * relé, con el tronco de `cable-cobre` llevando **exactamente** su capacidad de
-   * 6— aporta **3.07 °C/s** contando tronco y ramas, y sostiene la sala en
-   * **82 °C**: por encima de la ebullición del combustible de motor (75) y del
-   * disolvente (56), así que hay vapor inflamable, y por debajo de la
-   * autoignición (90), así que el jugador sigue eligiendo cuándo prender. DOS
-   * montajes así en la misma sala la llevan a ~144 °C y enciende sola — la
-   * propagación pide un montaje deliberado, que es la presión que el patrón 69
-   * exige para que una mecánica de coste no quede muerta.
+   * 6— aporta **7.86 °C/s** contando tronco y ramas. Equilibrios medidos:
+   *
+   * | sala                     | conexiones | 1 montaje | 2 montajes | 1 LED |
+   * |--------------------------|-----------|-----------|------------|-------|
+   * | taller (20 celdas)       | 2         | **76.7**  | 132        | 27.8  |
+   * | ingeniería (24)          | 2         | **75.7**  | 130        | 27.7  |
+   * | tanques-combustible (24) | 2         | **86.5**  | 152        | 29.0  |
+   * | bodega-carga (60)        | 4         | **89.2**  | 157        | 29.3  |
+   * | pasillo-central (54)     | 16        | **58.6**  | 96         | 25.6  |
+   *
+   * Lo que ese reparto garantiza, y es lo que los tests afirman:
+   *
+   *  - hay **vapor inflamable** en cualquier sala normal (>75 del combustible de
+   *    motor, >56 del disolvente), así que existe algo que puede arder;
+   *  - **ningún** montaje solo cruza los 90 de `AUTOIGNITION_CELSIUS` — el máximo
+   *    de la nave es 89.2 en la bodega—, así que el jugador siempre sigue
+   *    eligiendo cuándo prender;
+   *  - **dos** montajes lo cruzan en todas: la propagación pide un montaje
+   *    deliberado, que es la presión que el patrón 69 exige para que una mecánica
+   *    de coste no quede muerta.
+   *
+   * **Que dependa de la topología es diseño, no dispersión**: una sala sin salida
+   * se calienta con la mitad del cableado y el pasillo central, con 16 conexiones,
+   * es el disipador de la nave. Compartimentar cambia el resultado, igual que en
+   * `MIN_THERMAL_APERTURE`.
    *
    * **"Exactamente su capacidad" es la mitad del número.** `OverloadRule` corta
    * con `load > capacity`, así que un tronco de 7 se quema, deja de conducir y
-   * deja de calentar. La primera calibración de esta ronda salió de un montaje de
+   * deja de calentar. La primera calibración de la ronda 1 salió de un montaje de
    * tres compuertas (carga 7 con el chip) que en partida habría durado un tick:
    * un número correcto sobre un escenario imposible.
    *
@@ -67,7 +87,7 @@ export const CONDUCTOR_HEAT_PARAMETERS = {
    * Sin ese piso, cablear cualquier cosa sería un impuesto térmico invisible
    * sobre toda la nave.
    */
-  celsiusPerSecondPerLoadUnit: 0.45,
+  celsiusPerSecondPerLoadUnit: 1.15,
   /**
    * Cuánto del calor disipado llega al AIRE de la sala, según la conductividad
    * térmica del material del conductor.

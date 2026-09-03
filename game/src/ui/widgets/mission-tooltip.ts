@@ -87,12 +87,25 @@ export type TooltipContent =
       /** La sección lo está degradando por frío o calor ahora mismo. */
       readonly thermallyDerated: boolean;
       /**
-       * °C/s que este cable está disipando sobre su sala (ronda 1 de playtest de
-       * 14a-3). Es la otra mitad de la lectura de la carga: el jugador ve las
-       * partículas de calor sobre el recorrido y necesita el número para saber
-       * cuánto está calentando y por qué.
+       * °C/s que este cable le aporta a ESTA sala (ronda 2 de playtest de 14a-3).
+       * Es la otra mitad de la lectura de la carga: el jugador ve las partículas
+       * de calor sobre el recorrido y necesita el número para saber cuánto está
+       * calentando y por qué.
+       *
+       * Un tronco que cruza dos secciones reparte su disipación entre ellas, así
+       * que este número es menor que el total del cable — y es el que suma el
+       * tooltip de la sección.
        */
       readonly heatCelsiusPerSecond: number;
+      /**
+       * °C/s que disipa el cable ENTERO. No se muestra: decide si la línea de
+       * calor aparece, para que use exactamente la misma magnitud que las
+       * partículas del recorrido (que son del cable, no de una sala).
+       *
+       * Sin esto, un cable que cruza varias salas podía brillar sin número al
+       * lado: el efecto miraba el total y el umbral de la línea, el reparto.
+       */
+      readonly heatTotalCelsiusPerSecond: number;
     }
   | {
       readonly kind: "section";
@@ -465,10 +478,11 @@ export function renderMissionTooltip(
         // subía. Es la frase que convierte siete cifras iguales en una regla.
         lines.push({ text: `• ${labels.wireLoadExplained}`, color: LABEL_COLOR });
         // 14a-3: cuánto calor está metiendo en la sala. Va SOLO cuando el efecto
-        // de partículas también se ve, con el mismo umbral: si el jugador ve el
-        // shimmer tiene que encontrar acá el número, y si no lo ve, esta línea
-        // sería ruido sobre un aporte que no cambia nada.
-        if (content.heatCelsiusPerSecond >= WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND) {
+        // de partículas también se ve, con el mismo umbral Y sobre la misma
+        // magnitud (el total del cable): si el jugador ve el shimmer tiene que
+        // encontrar acá el número, y si no lo ve, esta línea sería ruido sobre un
+        // aporte que no cambia nada.
+        if (content.heatTotalCelsiusPerSecond >= WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND) {
           lines.push({
             text: `≈ ${labels.wireHeat(content.heatCelsiusPerSecond)}`,
             color: CRISIS_WARNING_CSS,

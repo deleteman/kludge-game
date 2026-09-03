@@ -640,6 +640,10 @@ export class MissionInteractionController {
     // Un CABLE bajo el cursor (14a-4 ronda 1). Va DESPUÉS de las piezas: si el
     // cable cruza por encima de una, gana la pieza — es el objeto que el jugador
     // cree estar señalando.
+    // La sección de la celda la necesitan las dos ramas de abajo: el cable, para
+    // decir cuánto calor le mete a ESTA sala, y el suelo vacío, para su lectura
+    // de sala.
+    const section = sectionContainingCell(this.mission.shipFloorplan, position);
     const edge = this.wireAtCell(position);
     if (edge) {
       const status = this.mission.edgeStatusOf(edge);
@@ -647,9 +651,16 @@ export class MissionInteractionController {
       return {
         kind: "wire",
         name: this.mission.definitionOf(conductorId)?.name ?? conductorId,
-        // 14a-3: la MISMA función que alimenta las partículas de calor sobre el
-        // recorrido, para que el número y el shimmer no puedan discrepar.
-        heatCelsiusPerSecond: this.mission.wireHeatOf(edge.id),
+        // 14a-3 ronda 2: lo que ESTA sala recibe de este cable, no el total del
+        // cable. El texto de la línea dice "en esta sala", así que un tronco que
+        // cruza dos secciones tiene que mostrar su reparto o el número no cuadra
+        // con el que suma el tooltip de la sección.
+        heatCelsiusPerSecond: section
+          ? this.mission.wireHeatInSectionOf(edge.id, section.id)
+          : 0,
+        // El total gobierna si la línea se ve, para no discrepar con las
+        // partículas del recorrido, que también son del cable entero.
+        heatTotalCelsiusPerSecond: this.mission.wireHeatOf(edge.id),
         wear: edgeConductorWear(edge),
         load: status?.load ?? 0,
         capacity: status?.capacity ?? 0,
@@ -659,7 +670,6 @@ export class MissionInteractionController {
         thermallyDerated: status !== undefined && status.capacity < status.nominalCapacity - 1e-6,
       };
     }
-    const section = sectionContainingCell(this.mission.shipFloorplan, position);
     if (!section) {
       return undefined;
     }

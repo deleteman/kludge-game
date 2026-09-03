@@ -7,12 +7,16 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import {
   COMBUSTION_HEAT,
   COOLER_RATE_CELSIUS_PER_SECOND,
-  NOMINAL_TEMPERATURE_CELSIUS,
   OVERLOAD_HEAT,
-  PASSIVE_DRIFT_PER_SECOND,
   SUBSTANCE_THERMAL_EFFECT,
   TEMPERATURE_FLOOR_CELSIUS,
+  THERMAL_REGULATOR_OVERLOAD_CELSIUS,
 } from "../atmosphere/thermal-parameters.js";
+import {
+  CALIBRATION_SECTIONS,
+  settledTemperature,
+  simulateThermal,
+} from "../atmosphere/thermal-calibration.fixture.js";
 import { THERMAL_CONDUCTIVITY_PARAMETERS } from "../failure/thermal-conductivity-rule.js";
 
 const SECTION = "seccion-a" as SectionId;
@@ -200,15 +204,35 @@ describe("mission: MissionThermalRuntime — enfriamiento (Subfase 14a-2)", () =
 
   it("el enfriador alcanza de verdad el umbral de degradación del conductor", () => {
     // Patrón 23: el número solo sirve si el rango entre él y los otros números
-    // del sistema NO es vacío. La deriva pasiva empuja hacia el nominal, así que
-    // esto se comprueba simulando, no razonando sobre la constante suelta.
-    let temperature = NOMINAL_TEMPERATURE_CELSIUS;
-    for (let i = 0; i < 600; i += 1) {
-      temperature +=
-        (NOMINAL_TEMPERATURE_CELSIUS - temperature) * PASSIVE_DRIFT_PER_SECOND +
-        COOLER_RATE_CELSIUS_PER_SECOND;
-    }
-    expect(temperature).toBeLessThan(THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius);
-    expect(temperature).toBeGreaterThan(TEMPERATURE_FLOOR_CELSIUS);
+    // del sistema NO es vacío.
+    //
+    // **Este test es el que dejó pasar el bug de la ronda 2 de 14a-3.** Simulaba,
+    // sí, pero reimplementando a mano la deriva pasiva: sin conducción a las
+    // vecinas y sin el clamp, daba -139 °C donde el juego da -35.7. Afirmaba que
+    // el umbral era alcanzable mientras en partida era inalcanzable, que es la
+    // peor forma de fallar — un test verde custodiando una regla muerta. Ahora la
+    // simulación es la de producción, sobre la nave real.
+    const settled = settledTemperature(
+      CALIBRATION_SECTIONS.closedRoom,
+      COOLER_RATE_CELSIUS_PER_SECOND,
+    );
+    expect(settled).toBeLessThan(THERMAL_CONDUCTIVITY_PARAMETERS.triggerTemperatureCelsius);
+    expect(settled).toBeGreaterThan(TEMPERATURE_FLOOR_CELSIUS);
+  });
+
+  it("el enfriador NO se traga el pico que hace observable al regulador sobrecargado", () => {
+    // El otro lado de la misma calibración, y hasta la ronda 2 vivía solo en un
+    // docblock: subir el enfriador suprime el pico de una combustión en su sala,
+    // y ese pico es lo ÚNICO que hace evaluable `THERMAL_REGULATOR_OVERLOAD_CELSIUS`
+    // —la condición exige que haya un regulador instalado, y un regulador
+    // instalado está enfriando—. Sin este aserto, cualquier ajuste futuro del
+    // enfriador puede apagar `SpontaneousIgnitionRule` sin poner nada en rojo.
+    const peak = simulateThermal({
+      sectionId: CALIBRATION_SECTIONS.closedRoom,
+      sustainedCelsiusPerSecond: COOLER_RATE_CELSIUS_PER_SECOND,
+      combustion: "violent",
+      seconds: 120,
+    }).peak;
+    expect(peak).toBeGreaterThan(THERMAL_REGULATOR_OVERLOAD_CELSIUS);
   });
 });
