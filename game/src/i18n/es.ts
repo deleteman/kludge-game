@@ -118,6 +118,10 @@ export const ES: Readonly<Record<string, string>> = {
   // Ronda 2 de playtest de 14a-4: la pieza está cableada y con energía, pero
   // quien la alimenta no da abasto y el triaje la dejó afuera.
   "ui.floorplan.mission.state.unsignaled": "Sin señal: el emisor no da abasto",
+  // 14a-3: el contenido del reservorio está sólido y no se puede mover.
+  "ui.floorplan.mission.state.frozen-content": "Contenido congelado: no se puede mover",
+  "ui.floorplan.mission.state.melts-at": "funde a",
+  "ui.floorplan.mission.state.now-at": "ahora a",
   // Nombres de nodo para el menú circular de elección (14a-4 ronda 2).
   "ui.floorplan.mission.signal-node.emitter": "emite",
   "ui.floorplan.mission.signal-node.actuator-output": "salida",
@@ -211,6 +215,9 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.transfer-blocked.no-target": "Transferir (sin destino alcanzable)",
   "ui.floorplan.mission.inspector.apply-substance": "Verter en la sección",
   "ui.floorplan.mission.inspector.apply-blocked.empty": "Verter (vacío)",
+  // 14a-3: motivo PROPIO del contenido congelado, con las dos temperaturas.
+  "ui.floorplan.mission.inspector.frozen-blocked":
+    "Congelado ({temperature} °C · funde a {melting} °C)",
   "ui.floorplan.mission.inspector.reservoir-hint": "Extraer descompone {amount} unidades en elementos para la mesa química, sin vaciar el tanque.",
   "ui.floorplan.mission.inspector.reservoir-hint-empty": "Vacío. Se rellena transfiriendo desde otro reservorio.",
   "ui.floorplan.mission.inspector.extract-elements": "Extraer {amount} elementos",
@@ -263,6 +270,12 @@ export const ES: Readonly<Record<string, string>> = {
 
   "ui.floorplan.notification.dismantled": "Desmantelado",
   "ui.floorplan.notification.dismantle-spark": "¡Chispazo al desmontar!",
+  // 14a-3: el contenido de un reservorio se solidificó y forzó el tanque.
+  "ui.floorplan.notification.reservoir-frozen": "Contenido congelado",
+  "ui.floorplan.notification.reservoir-frozen-detail":
+    "El líquido expandió al solidificar y forzó el tanque: la pieza está más desgastada.",
+  "ui.floorplan.notification.reservoir-frozen-destroyed":
+    "El tanque no aguantó otra congelación y se rompió.",
   "ui.floorplan.notification.dismantle-spill": "¡Derrame al desmontar!",
   "ui.floorplan.notification.dismantle-leak": "¡Fuga abierta al desmontar!",
   // Subfase 13f — vida por sección, brecha de casco y peligro atmosférico.
@@ -290,6 +303,12 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.vacuum": "Vacío: letal para la tripulación",
   "ui.floorplan.mission.tooltip.temperature": "Temperatura: {celsius} °C",
   "ui.floorplan.mission.tooltip.heating": "Fuente de calor activa",
+  // 14a-3: umbral de autoignición y estado de las sustancias en el aire.
+  "ui.floorplan.mission.tooltip.self-igniting": "Enciende sola: cualquier inflamable arde acá",
+  "ui.floorplan.mission.tooltip.substance-state": "{substance} en el aire ({state})",
+  "ui.floorplan.mission.matter-state.S": "sólido",
+  "ui.floorplan.mission.matter-state.L": "líquido",
+  "ui.floorplan.mission.matter-state.G": "gas",
   "ui.floorplan.mission.tooltip.breach-open": "Brecha abierta en el casco",
   "ui.floorplan.mission.tooltip.breach-sealed": "Brecha tapada",
   "ui.floorplan.notification.breach-patch-failed": "Esa pieza no sella la brecha",

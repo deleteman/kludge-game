@@ -49,10 +49,38 @@ import { assertFluidTransferReachable } from "../reservoir/fluid-transfer-reacha
 import { elementsFromAmount } from "../reservoir/substance-composition.js";
 import type { SubstanceCompositionContext } from "../reservoir/substance-composition.js";
 import type { TransientGasInjection } from "./section-gas-injection.js";
+import { frozenContentOf, type FrozenContentInfo } from "../reservoir/frozen-content.js";
+import type {
+  ChemicalSubstanceDefinition,
+  ChemicalSubstanceId,
+} from "../chemistry/chemical-substance.types.js";
 
 type ComponentRegistry = EntityRegistry<ComponentId, PhysicalComponentDefinition>;
 
 export class InsufficientStockError extends Error {}
+
+/**
+ * El contenido del reservorio está SÓLIDO y no se puede mover (Subfase 14a-3,
+ * GDD §5.6 "líquido → sólido detiene flujo").
+ *
+ * Error propio y no un `return` silencioso: el scheduler convierte una excepción
+ * del efecto en tarea `failed` con aviso (14a-4), que es exactamente lo que este
+ * caso necesita — una acción BLOQUEADA tiene que distinguirse de una que no hace
+ * nada. Y motivo propio, no reciclar "reservorio vacío": cada uno manda al
+ * jugador a hacer algo distinto (acá, calentar la sala; allá, buscar sustancia).
+ *
+ * En juego real el panel de acciones ya lo deshabilita con la MISMA función
+ * (`frozenContentOf`), así que esto es defensa en profundidad para el estado que
+ * cambió entre encolar y ejecutar — el enfriador que arrancó mientras el
+ * tripulante caminaba.
+ */
+export class FrozenReservoirContentError extends Error {
+  constructor(readonly info: FrozenContentInfo) {
+    super(
+      `El contenido del reservorio está congelado (${info.temperatureCelsius.toFixed(1)} °C, funde a ${info.meltingPointCelsius} °C): no se puede trasvasar ni verter hasta que la sección se caliente.`,
+    );
+  }
+}
 
 /**
  * `TaskEffect` real (Fase 10b): la mutación física que Fase 6 dejó como hook
@@ -107,6 +135,14 @@ export interface SubstanceFlowDeps {
    * foto tomada al construir el runtime no lo reflejaría.
    */
   readonly composition?: () => SubstanceCompositionContext;
+  /**
+   * Catálogo químico y temperatura viva por sección (Subfase 14a-3): con las
+   * dos, las tareas que mueven sustancia rechazan un contenido CONGELADO. Sin
+   * ellas el comportamiento es idéntico a 13e — mismo criterio fail-open que el
+   * resto de las deps opcionales de este efecto.
+   */
+  readonly substanceOf?: (substanceId: ChemicalSubstanceId) => ChemicalSubstanceDefinition | undefined;
+  readonly sectionTemperatureOf?: (sectionId: SectionId) => number | undefined;
 }
 
 export interface DismantleWearDeps {
@@ -154,6 +190,25 @@ export function createShipTaskEffect(
   substanceDeps: SubstanceFlowDeps = {},
   compartmentDeps: CompartmentDeps = {},
 ): TaskEffect {
+  /**
+   * Guard compartido por las CUATRO tareas que mueven sustancia (14a-3). Una
+   * sola función y no un `if` copiado en cada rama: es la misma pregunta, y
+   * cuatro copias se bifurcan en el próximo cambio.
+   */
+  const assertContentNotFrozen = (instanceId: PlacedComponentInstanceId): void => {
+    const { substanceOf, sectionTemperatureOf } = substanceDeps;
+    if (!substanceOf || !sectionTemperatureOf) {
+      return;
+    }
+    const frozen = frozenContentOf(shipState.get(), floorplan, instanceId, {
+      substanceOf,
+      sectionTemperatureOf,
+    });
+    if (frozen) {
+      throw new FrozenReservoirContentError(frozen);
+    }
+  };
+
   return (task: CrewTask): TaskEffectResult | void => {
     const payload = task.payload;
     if (!payload) {
@@ -380,6 +435,7 @@ export function createShipTaskEffect(
         // es el mismo fenómeno con otra intención. Sigue sin volver al
         // inventario: purgar es tirar la carga, no cosecharla (para eso está
         // `extract-elements`).
+        assertContentNotFrozen(payload.instanceId);
         const ship = shipState.get();
         const content = contentOf(ship.reservoirContents, payload.instanceId);
         if (!content) {
@@ -399,6 +455,10 @@ export function createShipTaskEffect(
         // Trasvase entre reservorios (13e). La restricción de alcance se valida
         // acá además de en el preview de `/game`, por la misma razón que
         // `connect` valida el cableado: defensa en profundidad, no doble UX.
+        // El congelado se comprueba en el ORIGEN: lo que no se puede mover es
+        // el contenido sólido, no el destino (un tanque vacío y helado admite
+        // líquido; ya se congelará después si la sala sigue así).
+        assertContentNotFrozen(payload.fromInstanceId);
         const ship = shipState.get();
         if (floorplan) {
           assertFluidTransferReachable(
@@ -449,6 +509,7 @@ export function createShipTaskEffect(
         // de un `ChemicalSubstanceId` en `atmosphere.gases`: hasta ahora todo
         // el camino lector (contaminantes, corrosión, hazards) existía sin
         // nadie que escribiera.
+        assertContentNotFrozen(payload.fromInstanceId);
         const ship = shipState.get();
         const drawn = drawFrom(ship.reservoirContents, payload.fromInstanceId, payload.amount);
         if (drawn.drawn === 0 || !drawn.substanceId) {
@@ -462,6 +523,7 @@ export function createShipTaskEffect(
         // Descomposición en elementos (13e, GDD 5.4.1). `elementsFromAmount`
         // lanza si la sustancia no está analizada o si no se conoce su
         // composición — el gate de UX vive en `/game`, esto es el respaldo.
+        assertContentNotFrozen(payload.instanceId);
         const ship = shipState.get();
         const content = contentOf(ship.reservoirContents, payload.instanceId);
         if (!content || !substanceDeps.composition || !substanceDeps.elementStock) {

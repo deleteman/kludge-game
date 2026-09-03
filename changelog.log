@@ -6324,3 +6324,62 @@ había cerrado 14a-4; ésta cierra la primera) y la saca del Bloque 1 de la 14d.
 
 TESTS: motor 1234 (158 archivos), juego 169 (17 archivos). `tsc`, `eslint` y
 `build` limpios.
+
+2026-09-03 — Subfase 14a-3: cambio de estado de sustancia (L↔S↔G, GDD §5.6).
+Detalle: `ChemicalSubstanceData.state` deja de ser un dato estático de catálogo y pasa a DERIVARSE de la
+temperatura de la sección. Módulo nuevo `engine/src/chemistry/phase/` (tipos, parámetros, `effectiveMatterState`
+/`phasePointsOf`/`phaseTransitionOf`, eventos de dominio). Las 49 entradas de ambos catálogos químicos declaran
+ahora `meltingPointCelsius`/`boilingPointCelsius` obligatorios por tipo (`AuthoredSubstanceData`), con test de
+datos que verifica coherencia con el `state` declarado a 21 °C — salvo la lista nombrada `CRYOGENIC_SUBSTANCE_IDS`
+(hoy solo el nitrógeno líquido, que se almacena líquido y a temperatura de sala es gas: GDD línea 166).
+
+Seis consumidores del estado derivado:
+* **Destino del derrame**: `isAirborneSubstance` mira la temperatura de la sala. Verter nitrógeno líquido en una
+  sala templada la enfría Y desplaza oxígeno; un charco de disolvente en una sala caliente se evapora y pasa a ser
+  reactivo de `CombustionRule` sin tocar ninguna regla.
+* **Presión por expansión** (`PhaseExpansionPressureSource`): primera FUENTE de presión del motor (aporta en
+  negativo, molde de `TransientLeakPressureSink`). El techo del runtime la corta en la presión estándar: no hay
+  sobrepresión, su valor jugable es represurizar una sala baja tras sellar una brecha.
+* **Flujo bloqueado** (`reservoir/frozen-content.ts`): purgar/trasvasar/verter/extraer rechazan un contenido
+  sólido con `FrozenReservoirContentError`, motivo PROPIO con sus dos temperaturas. La MISMA función alimenta el
+  panel de acciones y el glifo del plano — una sola evaluación para los tres consumidores.
+* **Rotura del tanque** (`MissionPhaseRuntime`): congelarse sube un escalón de `worsenWear` por CRUCE del umbral
+  (evento de borde con registro por instancia, no un goteo por frame) y destruye la pieza en el peor desgaste.
+  El estado previo no se persiste: se siembra en el primer tick, así que guardar en una sala fría no cobra daño.
+* **Ciclo de vida de la ignición**: `ignitedSectionIds` era un `Set` que NUNCA se limpiaba —una sala con historial
+  de chispazo quedaba inflamable el resto de la misión—. Pasa a `Map<SectionId, expiresAt>`, con la duración
+  leída de `OVERLOAD_HEAT` para las sobrecargas y `SPARK_IGNITION_SECONDS` para el chispazo.
+* **Autoignición térmica** (`AUTOIGNITION_CELSIUS`): una sala por encima del umbral es fuente de ignición por sí
+  sola. Es lo que hace que un incendio se PROPAGUE entre salas por la conducción de calor que ya existía.
+
+Dos huecos preexistentes que la subfase tuvo que cerrar para que lo anterior funcione:
+* `CombustionRule` declaraba `consumedReactantIds` desde siempre y **nadie lo aplicaba**: el combustible del aire
+  no se agotaba nunca. Con autoignición encima habría sido una cascada sin final. Ahora `MissionReactionRuntime`
+  lo aplica a `atmosphere.gases` (sin estequiometría, por CLAUDE.md), y el ciclo se cierra solo.
+* Cae la vía por tag `VOLAT` de `isAirborneSubstance`, que desde 13e suplía a los puntos de ebullición
+  inexistentes. Mantenerla habría dejado al combustible y al disolvente inflamables a 21 °C, o sea la mecánica
+  entera muerta. "Volátil" se autora ahora como lo que es: un punto de ebullición bajo.
+
+Razón: GDD §5.6 pedía "líquido → sólido detiene flujo; sólido → gas genera presión/expansión" y el campo `state`
+llevaba desde la Fase 4 sin ningún consumidor que lo cambiara. Pero el aporte real no es variedad química: es el
+ESLABÓN que faltaba entre el eje térmico (14a-1/14a-2) y la cadena de ignición que ya estaba viva — un líquido
+derramado nunca entraba a `atmosphere.gases`, así que derramar combustible y provocar un chispazo no hacía nada.
+
+DOS números salieron de MEDIR con la pila real, no de elegirlos (y el primer candidato de cada uno era erróneo):
+* `AUTOIGNITION_CELSIUS` 120 → **90**. El test de integración destapó que con la conducción real (0.15/s) contra
+  la deriva pasiva (0.05/s) una combustión violenta deja la sala de origen en 124 °C y la vecina en 54: a 120 la
+  propagación era imposible. A 90 propaga un incendio SOSTENIDO (la vecina llega a ~99) y no uno aislado.
+* Ebullición del combustible de motor 95 → **75**, para que quede DEBAJO de la autoignición: entre 75 y 89 la sala
+  tiene vapor inflamable y ninguna fuente de ignición, que es el hueco donde el jugador decide cuándo encender.
+
+Legibilidad (principio 6): efectos de partículas `substance-phase-change` (columna de vapor ascendente, color de
+la sustancia) y `reservoir-content-phase-change` (escarcha sobre la pieza, más densa si rompió el tanque); cuarto
+estado del sistema genérico de `InstanceStateFlag` (`frozen-content`, copo ❄ a brillo pleno con `FROST_LAYER_COLOR`);
+el tooltip de sección dice qué sustancias hay en el aire, en qué estado, y avisa cuando la sala enciende sola; el
+panel de acciones bloquea las cuatro acciones con el motivo y los dos números. i18n es+en completo.
+
+Stock del Cap. 1: válvula 2→6, junta 7→14, tubo flexible 4→8, tubo rígido 4→6, motor 2→3 — la válvula era el techo
+real en DOS reservorios en toda la nave, y el cambio de estado se verifica comparando salas en estados distintos.
+Sigue siendo deuda de balance (#44, re-nivelar antes de la demo).
+
+TESTS: motor 1234 → **1265** (162 archivos), juego 169 sin cambios. `tsc`, `eslint` y `build` limpios.

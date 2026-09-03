@@ -204,6 +204,11 @@ function buildScene(options: SceneOptions) {
     },
     onSpill: (sectionId, substanceId, amount) =>
       thermal.applySubstanceSpill(sectionId, substanceId, amount),
+    // 14a-3: la misma dep que cablea la misión real. Sin ella el destino del
+    // derrame se decidiría al nominal de la nave y no a la temperatura de la
+    // sala — o sea que el fixture probaría una base distinta de la de
+    // producción, que es justo donde viven los agujeros de cobertura.
+    sectionTemperatureOf: (sectionId) => atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
   });
   const atmosphere = new MissionAtmosphereRuntime(
     plan,
@@ -316,8 +321,11 @@ describe("integración 14a-2: combustión → calor → regulador sobrecargado �
       withCooler: true,
     });
 
-    // 1) Disolvente volátil en el aire (es `VOLAT`, así que SÍ entra en la
-    //    atmósfera) y sala templada: no pasa nada.
+    // 1) Sala templada: el disolvente derramado queda como charco en el piso y
+    //    no llega al aire. **Cambio de 14a-3**: hasta entonces el tag `VOLAT`
+    //    lo metía en la atmósfera a cualquier temperatura; ahora hace falta
+    //    cruzar su punto de ebullición (56 °C), que es lo que vuelve al calor
+    //    parte de la cadena en vez de un decorado.
     gasInjection.inject(SALA, "disolvente-volatil" as ChemicalSubstanceId, 60);
     for (let i = 0; i < 5; i += 1) {
       tick(i);
@@ -325,6 +333,7 @@ describe("integración 14a-2: combustión → calor → regulador sobrecargado �
     expect(emitted.some((event) => event.kind === "spontaneous-ignition")).toBe(false);
 
     // 2) Un incendio calienta la sala por encima del umbral del regulador.
+    let airborne = false;
     reactionEvents.emit({
       kind: "combustion",
       elapsedSeconds: 5,
@@ -337,6 +346,16 @@ describe("integración 14a-2: combustión → calor → regulador sobrecargado �
     for (let i = 5; i < 15; i += 1) {
       tick(i);
       hottest = Math.max(hottest, temperature());
+      // Se vierte en cuanto la sala cruza los 56 °C del disolvente: es la misma
+      // acción del jugador, con otro resultado según la temperatura. Y se hace
+      // TEMPRANO a propósito — la sala sigue subiendo, y por encima de
+      // `AUTOIGNITION_CELSIUS` (90) el vapor arde por combustión directa, que es
+      // otra regla. Lo que este test cubre es la franja del regulador rendido:
+      // entre 70 y 90, sin ninguna chispa.
+      if (temperature() > 56 && !airborne) {
+        airborne = true;
+        gasInjection.inject(SALA, "disolvente-volatil" as ChemicalSubstanceId, 20);
+      }
     }
 
     // El pico se mide mientras arde. Y es un pico BAJO a propósito: el enfriador
@@ -367,11 +386,10 @@ describe("integración 14a-2: combustión → calor → regulador sobrecargado �
 
   it("no repite el evento tick tras tick mientras nada cambia", () => {
     // Patrón 26: un efecto que no cambió nada no debe emitir evento.
-    const { gasInjection, reactionEvents, emitted, tick } = buildScene({
+    const { gasInjection, reactionEvents, emitted, tick, temperature } = buildScene({
       ledCount: 0,
       withCooler: true,
     });
-    gasInjection.inject(SALA, "disolvente-volatil" as ChemicalSubstanceId, 60);
     reactionEvents.emit({
       kind: "combustion",
       elapsedSeconds: 0,
@@ -380,8 +398,14 @@ describe("integración 14a-2: combustión → calor → regulador sobrecargado �
       crewDamage: "high",
       sectionId: SALA,
     });
+    let airborne = false;
     for (let i = 0; i < 30; i += 1) {
       tick(i);
+      // 14a-3: el volátil entra al aire recién con la sala caliente.
+      if (temperature() > 56 && !airborne) {
+        airborne = true;
+        gasInjection.inject(SALA, "disolvente-volatil" as ChemicalSubstanceId, 20);
+      }
     }
     const ignitions = emitted.filter((event) => event.kind === "spontaneous-ignition");
     expect(ignitions.length).toBeGreaterThan(0);

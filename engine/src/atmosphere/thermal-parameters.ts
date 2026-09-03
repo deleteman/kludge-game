@@ -144,6 +144,50 @@ export const SUBSTANCE_THERMAL_EFFECT: Readonly<Record<string, HeatPulseSpec>> =
 };
 
 /**
+ * Temperatura a partir de la cual una sección es, **por sí sola**, fuente de
+ * ignición (Subfase 14a-3). Hasta acá encender algo exigía una chispa eléctrica
+ * (`dismantle-spark`, `overload` en modo fuego/explosión) o un regulador térmico
+ * INSTALADO y sobrecargado, así que un incendio no se propagaba nunca de sala en
+ * sala aunque el calor sí viajara por `diffuse()` desde 14a-1.
+ *
+ * **El número salió de MEDIR, no de elegirlo.** El primer candidato fue 120
+ * —entre la degradación del conductor (100) y el pico de una combustión
+ * `violent` (~161)—, y el test de integración lo desmintió: con la conducción
+ * real (0.15/s) contra la deriva pasiva (0.05/s), una combustión violenta deja
+ * la sala de origen en **124 °C** y la vecina en **54**. La conducción atenúa
+ * cerca del 70% del exceso, así que a 120 la propagación era imposible salvo
+ * temperaturas que ningún escritor del motor alcanza: un escritor muerto.
+ *
+ * A 90 la franja existe y sigue ordenada respecto de los otros umbrales del eje,
+ * cada uno con su significado propio:
+ *   60 sensor térmico ("hay un incendio") < 70 regulador sobrecargado <
+ *   75 ebullición del combustible de motor < **90 autoignición** <
+ *   100 degradación del conductor.
+ * Un incendio AISLADO en la sala de al lado (54 °C de pico en la vecina) NO
+ * propaga; uno SOSTENIDO —el que se realimenta mientras quede combustible en el
+ * aire— lleva a la vecina a ~99 °C y sí. La propagación es consecuencia de que
+ * el fuego tenga con qué seguir ardiendo, no un automatismo.
+ */
+export const AUTOIGNITION_CELSIUS = 90;
+
+/**
+ * Cuánto dura una chispa como fuente de ignición (Subfase 14a-3).
+ *
+ * Hasta acá `MissionReactionRuntime` guardaba las secciones "encendidas" en un
+ * `Set` que **nunca se limpiaba**: una sala donde alguna vez saltó un chispazo
+ * quedaba inflamable para el resto de la misión. Era un bug latente de 13d que
+ * casi no se notaba porque no había forma de meter reactivos al aire después del
+ * hecho — y 14a-3 crea justo esa forma (evaporar un charco), así que pasaría a
+ * ser el camino normal: derramar, esperar, calentar y arder sin causa presente.
+ *
+ * Un chispazo es instantáneo; esta ventana existe solo para que la resolución
+ * del tick en que ocurre lo vea, con margen para un frame lento. Las sobrecargas
+ * NO usan esta constante: duran lo que dura su propio fuego, leído de
+ * `OVERLOAD_HEAT`, para que no haya dos números describiendo el mismo fenómeno.
+ */
+export const SPARK_IGNITION_SECONDS = 1;
+
+/**
  * Umbral del sensor térmico (`triggerType: "thermal"`). Dispara POR ENCIMA, al
  * revés que el de presión, que dispara por debajo de la atmósfera estándar.
  *

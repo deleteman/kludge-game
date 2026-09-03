@@ -12,7 +12,22 @@ export type ChemicalSubstanceId = Brand<string, "ChemicalSubstanceId">;
  */
 export interface ChemicalSubstanceData {
   readonly tags: ChemicalProperties;
+  /**
+   * Estado **dentro de un contenedor sellado**, que es donde el catálogo
+   * describe a la sustancia. Desde 14a-3 NO es la autoridad de runtime: para
+   * una sustancia suelta en una sección manda `effectiveMatterState()`
+   * (`chemistry/phase/matter-state.ts`), que la deriva de la temperatura.
+   */
   readonly state?: MatterState;
+  /**
+   * Puntos de transición (14a-3). **Obligatorios en las entradas de catálogo**
+   * vía `AuthoredSubstanceData`; opcionales acá porque este mismo tipo describe
+   * los productos que las reglas de reacción sintetizan en runtime, que no salen
+   * de ningún catálogo autorado y caen al perfil de
+   * `DEFAULT_PHASE_POINTS_BY_STATE`.
+   */
+  readonly meltingPointCelsius?: number;
+  readonly boilingPointCelsius?: number;
 }
 
 /**

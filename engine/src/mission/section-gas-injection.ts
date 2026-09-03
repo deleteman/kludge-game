@@ -23,6 +23,8 @@ import type {
   ChemicalSubstanceId,
 } from "../chemistry/chemical-substance.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import { NOMINAL_TEMPERATURE_CELSIUS } from "../atmosphere/thermal-parameters.js";
+import { effectiveMatterState, nominalStateOf } from "../chemistry/phase/matter-state.js";
 
 /** Fracción de gas a AÑADIR por sección y sustancia en este tick. */
 export type SectionGasInjectionSource = () => ReadonlyMap<
@@ -59,13 +61,49 @@ export const GAS_FRACTION_PER_SUBSTANCE_UNIT = 0.2;
  * demás (el agua, `state: "L"` + `INERTE`) queda como charco en el piso — que
  * ya tiene su representación visual y su aviso de derrame desde 13d/13e, así
  * que "no afecta la atmósfera" no significa "no pasa nada".
+ *
+ * **Subfase 14a-3: el estado se DERIVA de la temperatura de la sección.** El
+ * campo de catálogo describe a la sustancia dentro de un contenedor sellado; lo
+ * que decide dónde termina un derrame es dónde cae. Sin temperatura (llamadores
+ * viejos, tests unitarios previos) se evalúa al nominal de la nave.
+ *
+ * Y con eso **cae la segunda vía por tag `VOLAT`**, que estaba acá desde 13e
+ * como sustituto de los puntos de ebullición que no existían: "un líquido
+ * volátil se evapora" era una heurística, y ahora hay dato. Mantenerla habría
+ * dejado al combustible y al disolvente permanentemente en el aire —o sea
+ * inflamables a 21 °C, sin que calentar la sala cambiara nada—, que es
+ * exactamente la mecánica que esta subfase construye. Lo volátil se autora
+ * ahora como lo que es: un punto de ebullición bajo (disolvente 56 °C,
+ * combustible 75 °C). El tag sigue vivo y sigue significando lo mismo para las
+ * reglas de combustión e ignición espontánea, que es donde el GDD lo usa.
  */
-export function isAirborneSubstance(substance: ChemicalSubstanceDefinition | undefined): boolean {
+export function isAirborneSubstance(
+  substance: ChemicalSubstanceDefinition | undefined,
+  temperatureCelsius: number = NOMINAL_TEMPERATURE_CELSIUS,
+): boolean {
+  if (!substance) {
+    return false;
+  }
+  return effectiveMatterState(substance, temperatureCelsius) === "G";
+}
+
+/**
+ * ¿Este derrame se EVAPORÓ, o sea pasó al aire por temperatura y no porque ya
+ * fuera un gas? (14a-3).
+ *
+ * Es la pregunta que separa "verter un gas comprimido" de "el charco hirvió", y
+ * la que consume la expansión de presión: soltar un gas en una sala no genera
+ * expansión, un líquido pasando a gas sí (GDD §5.6).
+ */
+export function hasEvaporated(
+  substance: ChemicalSubstanceDefinition | undefined,
+  temperatureCelsius: number,
+): boolean {
   if (!substance) {
     return false;
   }
   return (
-    substance.data.state === "G" || substance.data.tags.some((tag) => tag.name === "VOLAT")
+    nominalStateOf(substance) !== "G" && effectiveMatterState(substance, temperatureCelsius) === "G"
   );
 }
 
@@ -86,6 +124,24 @@ export interface GasInjectionDeps {
    * hacía absolutamente nada — se descartaba acá en silencio.
    */
   readonly onSpill?: (sectionId: SectionId, substanceId: ChemicalSubstanceId, amount: number) => void;
+  /**
+   * Temperatura de la sección receptora (Subfase 14a-3), para derivar el estado
+   * de la sustancia al caer. Sin ella se usa el nominal de la nave y el destino
+   * del derrame se decide como antes de 14a-3.
+   */
+  readonly sectionTemperatureOf?: (sectionId: SectionId) => number | undefined;
+  /**
+   * El derrame se EVAPORÓ al caer (14a-3): pasó de líquido/sólido a gas por la
+   * temperatura de la sala. Separado de `onSpill` porque son dos consumidores
+   * distintos —el térmico enfría igual haya evaporado o no, la expansión de
+   * presión solo aplica si hubo cambio de estado— y porque un gas vertido tal
+   * cual no es una evaporación.
+   */
+  readonly onEvaporate?: (
+    sectionId: SectionId,
+    substanceId: ChemicalSubstanceId,
+    amount: number,
+  ) => void;
 }
 
 /**
@@ -119,8 +175,19 @@ export class TransientGasInjection {
     // decide `isAirborneSubstance` es si la sustancia entra en la ATMÓSFERA, no
     // si el derrame ocurrió.
     this.deps.onSpill?.(sectionId, substanceId, amount);
-    if (this.deps.substanceOf && !isAirborneSubstance(this.deps.substanceOf(substanceId))) {
-      return;
+    if (this.deps.substanceOf) {
+      const substance = this.deps.substanceOf(substanceId);
+      // 14a-3: la temperatura de la sección decide el estado en el que la
+      // sustancia cae. Se lee UNA vez y se pasa a los dos predicados, para que
+      // "entra al aire" y "se evaporó" no puedan discrepar entre sí.
+      const temperatureCelsius =
+        this.deps.sectionTemperatureOf?.(sectionId) ?? NOMINAL_TEMPERATURE_CELSIUS;
+      if (!isAirborneSubstance(substance, temperatureCelsius)) {
+        return;
+      }
+      if (hasEvaporated(substance, temperatureCelsius)) {
+        this.deps.onEvaporate?.(sectionId, substanceId, amount);
+      }
     }
     // Sin volumen resoluble se cae a 1 (no dividir) en vez de descartar: mismo
     // criterio fail-open que el resto del motor ante un plano incompleto.

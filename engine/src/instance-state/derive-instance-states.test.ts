@@ -39,6 +39,7 @@ function queries(overrides: Partial<InstanceStateQueries> = {}): InstanceStateQu
     isInstanceOverloaded: () => false,
     sectionGrantedUnitsAt: () => 1,
     signalStarvationOf: () => undefined,
+    frozenContentOf: () => undefined,
     ...overrides,
   };
 }

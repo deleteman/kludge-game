@@ -67,9 +67,14 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   "pantalla-lcd": { nuevo: 1 },
   // 14a-2 sube junta 2→7, tubo flexible 1→4 y válvula 1→2: ver el bloque de
   // abajo, donde está la cuenta de qué compuesto consume cada cosa.
-  "junta-hermetica": { nuevo: 7 },
-  "tubo-flexible": { nuevo: 4 },
-  "valvula-simple": { nuevo: 2 },
+  // 14a-3 sube junta 7→14, tubo flexible 4→8 y válvula 2→6: los reservorios de
+  // agua y de disolvente comparten receta (flexible ×1 + válvula ×1 + junta ×2)
+  // y la válvula era el techo real en 2 unidades, o sea DOS reservorios en toda
+  // la nave. El cambio de estado se verifica comparando salas —una congelada,
+  // una templada, una en ebullición— y con dos tanques eso no se puede montar.
+  "junta-hermetica": { nuevo: 14 },
+  "tubo-flexible": { nuevo: 8 },
+  "valvula-simple": { nuevo: 6 },
   // Subfase 14a-1: material de prueba del eje térmico. `sensor-termico-precision`
   // es COMPUESTO y no se stockea como unidad — se construye desde su receta
   // (`chip-circuito-generico` ×2 + `placa-disipadora` ×1), que se paga del stock
@@ -84,13 +89,21 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   //   · `sistema-refrigeracion-muestras` = disipadora ×2 + motor ×1 + tubo flexible ×1 + chip ×1
   //   · `tanque-muestra-criogenica`      = tubo rígido ×2 + disipadora ×1 + junta ×2
   //   · `reservorio-disolvente`          = tubo flexible ×1 + válvula ×1 + junta ×2
+// Subfase 14a-3: el `reservorio-disolvente` deja de ser un extra y pasa a ser la
+// pieza CENTRAL de la cadena de ignición — el disolvente volátil hierve a 56 °C,
+// o sea que basta una combustión estándar (pico ~67 °C) para evaporarlo y
+// volverlo un reactivo `COMB` en el aire. El `reservorio-agua-reciclada` es su
+// contraparte fría: el agua funde a 0 °C, dentro del alcance del enfriador.
   // Los niveles alcanzan para DOS enfriadores, DOS tanques criogénicos y UN
   // reservorio de disolvente a la vez, más cable de sobra para cargar un
   // conductor por encima de su capacidad: el operador compara secciones entre
   // sí, y con una sola unidad no se distingue "funciona" de "está siempre
   // encendido".
-  "motor-pequeno": { nuevo: 2 },
-  "tubo-rigido": { nuevo: 4 },
+  // 14a-3 sube motor 2→3 y tubo rígido 4→6: TRES enfriadores y TRES tanques
+  // criogénicos simultáneos. El enfriador es la única fuente de frío del juego,
+  // así que sin uno por sala no hay forma de comparar dos salas a la vez.
+  "motor-pequeno": { nuevo: 3 },
+  "tubo-rigido": { nuevo: 6 },
   // Ronda 1 de playtest de 14a-4: 4 → 9. El jugador se quedó sin cable a mitad
   // de la lección que el capítulo tiene que enseñar. Desde 14a-4 CADA cable de
   // señal consume una pieza, así que esta fila ya no es stock de prueba: es lo

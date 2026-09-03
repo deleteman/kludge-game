@@ -14,8 +14,14 @@ import type {
   ChemicalSubstanceDefinition,
   ChemicalSubstanceId,
 } from "../chemistry/chemical-substance.types.js";
-import { THERMAL_REGULATOR_OVERLOAD_CELSIUS } from "../atmosphere/thermal-parameters.js";
+import {
+  AUTOIGNITION_CELSIUS,
+  OVERLOAD_HEAT,
+  SPARK_IGNITION_SECONDS,
+  THERMAL_REGULATOR_OVERLOAD_CELSIUS,
+} from "../atmosphere/thermal-parameters.js";
 import { reactantsFingerprint, sectionReactants } from "./section-reactants.js";
+import type { ReactantSubstance } from "../chemistry/reaction/reaction-context.types.js";
 
 /**
  * Química viva de misión (Fase 13a, deuda #16) — primer llamador de
@@ -35,7 +41,15 @@ import { reactantsFingerprint, sectionReactants } from "./section-reactants.js";
  */
 export class MissionReactionRuntime implements Tickable {
   private readonly firedSubjectIds = new Set<string>();
-  private readonly ignitedSectionIds = new Set<SectionId>();
+  /**
+   * Secciones con una fuente de ignición ACTIVA y hasta cuándo lo están
+   * (Subfase 14a-3). Era un `Set` que nunca se limpiaba: una sala donde alguna
+   * vez saltó un chispazo quedaba inflamable el resto de la misión, y con la
+   * evaporación de 14a-3 eso pasaba a ser el camino normal para arder sin causa
+   * presente. Cada fuente declara su duración leyendo la que ya existe
+   * (`OVERLOAD_HEAT`), en vez de inventar un número paralelo.
+   */
+  private readonly ignitedUntilSeconds = new Map<SectionId, number>();
   /** Última huella evaluada por sección (14a-2), para no re-emitir sin cambios. */
   private readonly lastEmergentFingerprint = new Map<SectionId, string>();
 
@@ -72,7 +86,13 @@ export class MissionReactionRuntime implements Tickable {
         return;
       }
       if (event.sectionId) {
-        this.ignitedSectionIds.add(event.sectionId);
+        // Dura lo que dura su propio fuego: la misma tabla que le da el pulso
+        // de calor a `MissionThermalRuntime`, no una constante gemela.
+        this.igniteFor(
+          event.sectionId,
+          event.elapsedSeconds,
+          OVERLOAD_HEAT[event.failureMode]?.durationSeconds ?? SPARK_IGNITION_SECONDS,
+        );
       }
     });
     // Segunda fuente de ignición REAL (Subfase 13d): el chispazo de desmontar
@@ -81,14 +101,53 @@ export class MissionReactionRuntime implements Tickable {
     // `ignitionPresent: true` literal en el fixture del test.
     salvageEvents?.on("dismantle-spark", (event) => {
       if (event.sectionId) {
-        this.ignitedSectionIds.add(event.sectionId);
+        this.igniteFor(event.sectionId, event.elapsedSeconds, SPARK_IGNITION_SECONDS);
       }
     });
   }
 
   tick(ctx: TickContext): void {
+    this.expireIgnitions(ctx.elapsedSeconds);
     this.tickScripted(ctx);
     this.tickEmergent(ctx);
+  }
+
+  /** Abre (o extiende) la ventana de ignición de una sección. */
+  private igniteFor(sectionId: SectionId, elapsedSeconds: number, durationSeconds: number): void {
+    const until = elapsedSeconds + durationSeconds;
+    this.ignitedUntilSeconds.set(
+      sectionId,
+      Math.max(this.ignitedUntilSeconds.get(sectionId) ?? 0, until),
+    );
+  }
+
+  /**
+   * Borde INCLUSIVO (`until < elapsed`, no `<=`): el efecto de tarea que emite
+   * el chispazo y el tick que lo evalúa comparten el mismo `elapsedSeconds`, y
+   * con el borde exclusivo la chispa se apagaba en el mismo instante en que se
+   * creaba. Con `SPARK_IGNITION_SECONDS = 1` y un chispazo en t=0, la ventana
+   * vale en [0, 1] — un tick de un segundo entero, que es el mínimo para que
+   * cualquier cadencia de simulación la vea.
+   */
+  private expireIgnitions(elapsedSeconds: number): void {
+    for (const [sectionId, until] of [...this.ignitedUntilSeconds]) {
+      if (until < elapsedSeconds) {
+        this.ignitedUntilSeconds.delete(sectionId);
+      }
+    }
+  }
+
+  /**
+   * ¿Hay con qué encender en esta sección? Dos caminos, y el segundo es de
+   * 14a-3: una chispa reciente, **o** una sala tan caliente que enciende sola.
+   * El segundo es lo que hace que un incendio se PROPAGUE por la conducción de
+   * calor que ya existe desde 14a-1, sin ningún camino nuevo.
+   */
+  private hasIgnitionSource(sectionId: SectionId, atmosphere: SectionAtmosphere): boolean {
+    return (
+      this.ignitedUntilSeconds.has(sectionId) ||
+      atmosphere.temperatureCelsius >= AUTOIGNITION_CELSIUS
+    );
   }
 
   /**
@@ -120,7 +179,7 @@ export class MissionReactionRuntime implements Tickable {
         continue;
       }
       const regulatorOverloaded = this.isThermalRegulatorOverloaded(section.id, atmosphere);
-      const ignitionPresent = this.ignitedSectionIds.has(section.id);
+      const ignitionPresent = this.hasIgnitionSource(section.id, atmosphere);
       const fingerprint = `${reactantsFingerprint(reactants)}#${regulatorOverloaded}#${ignitionPresent}`;
       if (this.lastEmergentFingerprint.get(section.id) === fingerprint) {
         continue;
@@ -134,7 +193,18 @@ export class MissionReactionRuntime implements Tickable {
         thermalRegulatorOverloaded: regulatorOverloaded,
         elapsedSeconds: ctx.elapsedSeconds,
       });
-      if (outcome.appliedRuleIds.length === 0 || !this.emitter) {
+      if (outcome.appliedRuleIds.length === 0) {
+        continue;
+      }
+      // 14a-3: lo que reaccionó SALE del aire. Hasta acá `consumedReactantIds`
+      // se declaraba en cada `ReactionResult` y no lo aplicaba nadie: el
+      // combustible no se agotaba nunca. Con la autoignición eso sería una
+      // cascada sin final y "apagar el fuego" no existiría — el ciclo se cierra
+      // acá (derramar → evaporar → arder → agotarse → apagarse).
+      this.consumeReactants(atmosphere, reactants, outcome.result);
+      // La huella se recalcula sola el tick que viene sobre la atmósfera ya
+      // consumida, así que no hace falta invalidarla a mano.
+      if (!this.emitter) {
         continue;
       }
       for (const event of outcome.events) {
@@ -145,6 +215,36 @@ export class MissionReactionRuntime implements Tickable {
         );
       }
     }
+  }
+
+  /**
+   * Quita del aire lo que reaccionó y deja en su lugar el producto, si el
+   * catálogo sabe qué es.
+   *
+   * **Sin estequiometría, a propósito** (CLAUDE.md: "no simular química real"):
+   * la fracción total de los reactivos consumidos pasa entera al producto. Y si
+   * el producto no se puede resolver contra el registro —el residuo de una
+   * combustión, una "Mezcla sin identificar"—, esa masa simplemente desaparece
+   * del aire en vez de quedar como una clave de gas que nadie sabe leer y que
+   * seguiría desplazando oxígeno para siempre.
+   */
+  private consumeReactants(
+    atmosphere: SectionAtmosphere,
+    reactants: ReadonlyArray<ReactantSubstance>,
+    result: ReactantSubstance | null,
+  ): void {
+    let consumedFraction = 0;
+    for (const reactant of reactants) {
+      if (result && reactant.id === result.id) {
+        continue;
+      }
+      consumedFraction += atmosphere.gases.get(reactant.id) ?? 0;
+      atmosphere.gases.delete(reactant.id);
+    }
+    if (consumedFraction <= 0 || !result || !this.substanceOf?.(result.id)) {
+      return;
+    }
+    atmosphere.gases.set(result.id, (atmosphere.gases.get(result.id) ?? 0) + consumedFraction);
   }
 
   /**
@@ -173,11 +273,16 @@ export class MissionReactionRuntime implements Tickable {
       if (this.firedSubjectIds.has(subject.id)) {
         continue;
       }
-      const ignitionPresent = subject.ignitionTrigger === "always" || this.ignitedSectionIds.has(subject.sectionId);
+      // La atmósfera se lee ANTES del gate (14a-3): la respuesta a "¿hay con qué
+      // encender?" es la misma pregunta acá que en la química emergente, y una
+      // sala a 120 °C enciende un sujeto scripteado igual que un charco.
+      const atmosphere = this.atmosphereOf(subject.sectionId);
+      const ignitionPresent =
+        subject.ignitionTrigger === "always" ||
+        (atmosphere !== undefined && this.hasIgnitionSource(subject.sectionId, atmosphere));
       if (!ignitionPresent) {
         continue;
       }
-      const atmosphere = this.atmosphereOf(subject.sectionId);
       const outcome = this.resolver.resolve({
         reactants: subject.reactants,
         oxygen: atmosphere ? sectionCombustionAtmosphere(atmosphere) : "none",

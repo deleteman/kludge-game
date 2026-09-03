@@ -101,10 +101,34 @@ describe("TransientGasInjection — qué llega al aire y cuánto (ronda 3)", () 
     expect(injection.asInjectionSource()().get(BODEGA)?.get(AMONIACO)).toBeGreaterThan(0);
   });
 
-  it("un líquido VOLÁTIL también llega al aire: se evapora", () => {
-    const injection = new TransientGasInjection(deps);
+  it("un líquido volátil llega al aire SOLO si la sala cruzó su punto de ebullición (14a-3)", () => {
+    // Cambio deliberado de 14a-3: hasta entonces el tag `VOLAT` metía al
+    // combustible en la atmósfera a cualquier temperatura, y la heurística
+    // reemplazaba a un dato que no existía. Ahora existe (hierve a 75 °C), y con
+    // ella caía la mecánica entera: un charco permanentemente evaporado es
+    // inflamable a 21 °C y calentar la sala no cambia nada.
+    const frio = new TransientGasInjection(deps);
+    frio.inject(BODEGA, COMBUSTIBLE, 5);
+    expect(frio.isEmpty).toBe(true);
+
+    const caliente = new TransientGasInjection({ ...deps, sectionTemperatureOf: () => 90 });
+    caliente.inject(BODEGA, COMBUSTIBLE, 5);
+    expect(caliente.asInjectionSource()().get(BODEGA)?.get(COMBUSTIBLE)).toBeGreaterThan(0);
+  });
+
+  it("avisa de la EVAPORACIÓN solo cuando hubo cambio de estado, no al soltar un gas", () => {
+    // `onEvaporate` alimenta la expansión de presión: soltar un gas comprimido
+    // no expande nada, un líquido pasando a gas sí (GDD 5.6).
+    const evaporados: string[] = [];
+    const injection = new TransientGasInjection({
+      ...deps,
+      sectionTemperatureOf: () => 90,
+      onEvaporate: (_sectionId, substanceId) => evaporados.push(substanceId),
+    });
+    injection.inject(BODEGA, AMONIACO, 5);
+    expect(evaporados).toEqual([]);
     injection.inject(BODEGA, COMBUSTIBLE, 5);
-    expect(injection.asInjectionSource()().get(BODEGA)?.get(COMBUSTIBLE)).toBeGreaterThan(0);
+    expect(evaporados).toEqual([COMBUSTIBLE]);
   });
 
   it("la misma cantidad en una sección del DOBLE de volumen da la mitad de fracción", () => {

@@ -2050,3 +2050,64 @@
 
 ### `game/src/ui/widgets/install-picker-modal.ts` (modificado)
 - `blocked` admite `"queue-reserved"` y `InstallPickerLabels` gana `blockedQueueReserved`.
+
+## Subfase 14a-3 — Cambio de estado de sustancia (L↔S↔G)
+
+### `engine/src/chemistry/phase/` (nuevo)
+- `phase-change.types.ts` — `PhaseChangePoints`, `PhaseTransition` y `AuthoredSubstanceData` (el tipo
+  que vuelve obligatorios `state` + los dos puntos en las entradas de catálogo, y solo ahí).
+- `phase-change-parameters.ts` — `DEFAULT_PHASE_POINTS_BY_STATE` (perfil de las sustancias
+  sintetizadas en runtime), `PHASE_EXPANSION_KPA_PER_UNIT`/`_DURATION_SECONDS`,
+  `FREEZE_DESTROYS_RESERVOIR_AT_WORST_WEAR`.
+- `matter-state.ts` — `phasePointsOf` (punto único de resolución catálogo/fallback),
+  `effectiveMatterState`, `nominalStateOf`, `phaseTransitionOf`, `isFrozenAt`.
+- `phase-events.types.ts` — `SubstancePhaseChangeEvent` (sustancia suelta en una sección) y
+  `ReservoirContentPhaseChangeEvent` (contenido de un tanque, con si dañó o destruyó el contenedor).
+
+### `engine/src/chemistry/catalog/` (modificado)
+- `element-catalog.ts` / `compound-catalog.ts` — las 49 entradas declaran sus dos puntos de
+  transición; `CRYOGENIC_SUBSTANCE_IDS` nombra las excepciones deliberadas al test de coherencia.
+
+### `engine/src/mission/phase-expansion-pressure.ts` (nuevo)
+- `PhaseExpansionPressureSource` — primera FUENTE de presión del motor: un derrame que se evapora
+  aporta kPa negativos durante un pulso, compuesto con los sumideros existentes.
+
+### `engine/src/mission/mission-phase-runtime.ts` (nuevo)
+- `MissionPhaseRuntime` — vigila el contenido de los reservorios contra la temperatura de su sección
+  y actúa solo en el CRUCE del umbral: emite evento y aplica `worsenWear`. Estado previo por instancia,
+  de simulación y no persistido.
+
+### `engine/src/reservoir/frozen-content.ts` (nuevo)
+- `isSubstanceFrozenAt` (predicado desnudo) y `frozenContentOf` (resuelve instancia → sección →
+  temperatura → puntos). Función ÚNICA que consumen el efecto de tarea, el panel de acciones y el
+  glifo del plano.
+
+### `engine/src/mission/section-gas-injection.ts` (modificado)
+- `isAirborneSubstance` deriva el estado de la temperatura y deja de aceptar la vía por tag `VOLAT`;
+  `hasEvaporated` distingue "soltar un gas" de "el charco hirvió". `GasInjectionDeps` gana
+  `sectionTemperatureOf` y `onEvaporate`.
+
+### `engine/src/mission/mission-reaction-runtime.ts` (modificado)
+- Ventana de ignición con vencimiento (`ignitedUntilSeconds`), autoignición por temperatura
+  (`hasIgnitionSource`) y consumo real de los reactivos sobre `atmosphere.gases` (`consumeReactants`).
+
+### `engine/src/mission/ship-task-effect.ts` (modificado)
+- `FrozenReservoirContentError` + `assertContentNotFrozen` en las cuatro tareas que mueven sustancia;
+  `SubstanceFlowDeps` gana `substanceOf` y `sectionTemperatureOf`.
+
+### `engine/src/instance-state/` (modificado)
+- Cuarto `InstanceStateFlag`: `frozen-content`, con `frozenContentOf` como consulta nueva.
+
+### `engine/src/atmosphere/thermal-parameters.ts` (modificado)
+- `AUTOIGNITION_CELSIUS` (90, medido) y `SPARK_IGNITION_SECONDS`.
+
+### `game/src/particles/effects/phase-change-effect.ts` (nuevo)
+- `substancePhaseChangeEffect` (vapor ascendente con el color de la sustancia) y
+  `reservoirContentPhaseChangeEffect` (escarcha sobre la pieza, densidad según el daño).
+
+### `game/src/render/component-state-visuals.ts` (modificado)
+- Fila `frozen-content`: `FROST_LAYER_COLOR` + glifo ❄ a brillo pleno y sus dos etiquetas de detalle.
+
+### `game/src/mission/mission-runtime.ts` (modificado)
+- `phaseEvents`, `phaseRuntime`, `phaseExpansion`, `frozenContentFor`, `instanceCellOf`;
+  `sectionAtmosphereInfo` suma `selfIgniting` y el estado de las sustancias en el aire.

@@ -229,6 +229,21 @@ export interface ReservoirPanelInfo {
    */
   readonly substanceId?: ChemicalSubstanceId;
   readonly analyzed?: boolean;
+  /**
+   * Contenido CONGELADO (Subfase 14a-3): la sección está por debajo del punto
+   * de fusión de la sustancia, así que no se puede mover hasta que la sala se
+   * caliente. Lleva los DOS números porque un color o una palabra no responden
+   * "¿cuánto me falta?" — el jugador necesita saber a qué temperatura está y a
+   * cuál se destraba.
+   *
+   * Lo resuelve `frozenContentOf` en `/engine`, la MISMA función que rechaza la
+   * tarea si el estado cambia entre encolar y ejecutar: dos evaluaciones
+   * paralelas serían el bug de "el panel ofrece extraer y la tarea no hace nada".
+   */
+  readonly frozen?: {
+    readonly temperatureCelsius: number;
+    readonly meltingPointCelsius: number;
+  };
 }
 
 /**
@@ -289,6 +304,8 @@ export interface ActionPanelLabels {
    */
   readonly extractionBlocked: (reason: "empty" | "unanalyzed" | "unknown-composition") => string;
   readonly transferBlocked: (reason: "empty" | "no-target") => string;
+  /** Motivo PROPIO del congelado, con sus dos temperaturas (14a-3). */
+  readonly frozenBlocked: (temperatureCelsius: number, meltingPointCelsius: number) => string;
   readonly applyBlocked: (reason: "empty") => string;
   /** Línea de contexto del bloque de reservorio: qué hace cada acción y cómo se rellena si está vacío. */
   readonly reservoirHint: (hasContents: boolean) => string;
@@ -733,13 +750,28 @@ export function renderMissionActionPanel(
       claim(cursorY);
     };
 
+    // 14a-3: se resuelve ANTES de los botones de hazard porque "Purgar" también
+    // mueve sustancia y se dibuja arriba — si el motivo se calculara junto al
+    // bloque de reservorio, la purga quedaría habilitada sobre un contenido
+    // sólido y la tarea fallaría al ejecutarse (la UI mintiendo, patrón 1).
+    const frozenLabel = content.reservoir?.frozen
+      ? labels.frozenBlocked(
+          content.reservoir.frozen.temperatureCelsius,
+          content.reservoir.frozen.meltingPointCelsius,
+        )
+      : undefined;
+
     // Cortar la energía de la sección no asegura una FUENTE con carga propia,
     // así que para una batería se ofrece la descarga y no el corte.
     if (hazards.includes("dismantle-spark") && !content.canDischargeSource) {
       stackButton(labels.cutPower, () => callbacks.onCutPower(content.instanceId));
     }
     if (hazards.includes("dismantle-spill")) {
-      stackButton(labels.purgeReservoir, () => callbacks.onPurgeReservoir(content.instanceId));
+      stackButtonEnabled(
+        frozenLabel ?? labels.purgeReservoir,
+        !frozenLabel,
+        () => callbacks.onPurgeReservoir(content.instanceId),
+      );
     }
     // Una FUENTE (batería, panel solar) no se asegura cortando la sección: su
     // carga es propia (13d, fix de playtest ronda 1). El llamador marca cuándo
@@ -785,9 +817,13 @@ export function renderMissionActionPanel(
       // que el jugador no descubra que primero tiene que analizar, y lo que
       // hizo que tras purgar el panel pareciera haberse quedado sin opciones.
       const hasContents = reservoir.amount > 0;
+      // 14a-3: el congelado bloquea las CUATRO acciones que mueven sustancia, y
+      // gana al resto de los motivos — mientras esté sólido, analizar el
+      // contenido o buscarle destino no destraba nada. El motivo es propio y no
+      // recicla "vacío": cada uno manda al jugador a hacer algo distinto.
       stackButtonEnabled(
-        hasContents ? labels.applySubstance : labels.applyBlocked("empty"),
-        hasSelectedActor && hasContents,
+        frozenLabel ?? (hasContents ? labels.applySubstance : labels.applyBlocked("empty")),
+        hasSelectedActor && hasContents && !frozenLabel,
         () => callbacks.onApplySubstance(content.instanceId),
       );
       const transferBlocked = !hasContents
@@ -796,8 +832,9 @@ export function renderMissionActionPanel(
           ? "no-target"
           : undefined;
       stackButtonEnabled(
-        transferBlocked ? labels.transferBlocked(transferBlocked) : labels.transferSubstance,
-        hasSelectedActor && !transferBlocked,
+        frozenLabel ??
+          (transferBlocked ? labels.transferBlocked(transferBlocked) : labels.transferSubstance),
+        hasSelectedActor && !transferBlocked && !frozenLabel,
         () => callbacks.onStartTransferMode(content.instanceId),
       );
       // ANTES de "Extraer", porque es su paso previo: analizar es lo que
@@ -811,10 +848,11 @@ export function renderMissionActionPanel(
         );
       }
       stackButtonEnabled(
-        reservoir.extractionBlocked
-          ? labels.extractionBlocked(reservoir.extractionBlocked)
-          : labels.extractElements,
-        hasSelectedActor && !reservoir.extractionBlocked,
+        frozenLabel ??
+          (reservoir.extractionBlocked
+            ? labels.extractionBlocked(reservoir.extractionBlocked)
+            : labels.extractElements),
+        hasSelectedActor && !reservoir.extractionBlocked && !frozenLabel,
         () => callbacks.onExtractElements(content.instanceId),
       );
 

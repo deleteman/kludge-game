@@ -41,7 +41,7 @@ import {
   isWiringMaterial,
   wornCapacity,
 } from "engine";
-import type { ConduitConnection, ConduitId, DoorRuntime } from "engine";
+import type { ConduitConnection, ConduitId, DoorRuntime, SectionId } from "engine";
 import { t } from "../i18n/i18n.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
@@ -666,7 +666,7 @@ export class MissionInteractionController {
     return {
       kind: "section",
       name: t(section.nameKey),
-      atmosphere: this.mission.sectionAtmosphereInfo(section.id),
+      atmosphere: this.sectionAtmosphereTooltip(section.id),
       breach: this.mission.breachCovering([position]),
     };
   }
@@ -678,11 +678,39 @@ export class MissionInteractionController {
    */
   private noteworthySectionAtmosphere(position: GridPosition): SectionAtmosphereTooltip | undefined {
     const section = sectionContainingCell(this.mission.shipFloorplan, position);
-    const atmosphere = section && this.mission.sectionAtmosphereInfo(section.id);
-    if (!atmosphere || (!atmosphere.vacuum && atmosphere.trend === "stable")) {
+    const atmosphere = section && this.sectionAtmosphereTooltip(section.id);
+    // 14a-3: una sala que enciende sola, o con algo suelto en el aire, es tan
+    // "digna de contarse" como una que se está vaciando. Sin sumarlas acá, la
+    // ficha de una pieza en medio de una nube de disolvente no diría nada.
+    if (
+      !atmosphere ||
+      (!atmosphere.vacuum &&
+        atmosphere.trend === "stable" &&
+        !atmosphere.selfIgniting &&
+        (atmosphere.substanceStates?.length ?? 0) === 0)
+    ) {
       return undefined;
     }
     return atmosphere;
+  }
+
+  /**
+   * Traduce la lectura del motor al contrato del tooltip (14a-3). La conversión
+   * de `ChemicalSubstanceId` a nombre y de `MatterState` a palabra vive acá y no
+   * en el runtime porque el motor no arma strings de UI (CLAUDE.md).
+   */
+  private sectionAtmosphereTooltip(sectionId: SectionId): SectionAtmosphereTooltip | undefined {
+    const info = this.mission.sectionAtmosphereInfo(sectionId);
+    if (!info) {
+      return undefined;
+    }
+    return {
+      ...info,
+      substanceStates: info.substanceStates.map((entry) => ({
+        name: this.mission.substanceNameOf(entry.substanceId) ?? String(entry.substanceId),
+        state: t(`ui.floorplan.mission.matter-state.${entry.state}`),
+      })),
+    };
   }
 
   /**
@@ -952,6 +980,8 @@ export class MissionInteractionController {
       amount: content?.amount ?? 0,
       capacity,
       extractionBlocked: this.mission.extractionBlockedFor(instanceId),
+      // 14a-3: la MISMA función que usa el efecto de tarea para rechazar.
+      frozen: this.mission.frozenContentFor(instanceId),
       canTransfer: this.mission.transferCandidatesFor(instanceId).length > 0,
       // 13e ronda 4: para poder ofrecer "Analizar" acá mismo y no obligar a
       // pasar por la lista de sustancias del HUD.
@@ -1309,6 +1339,12 @@ export class MissionInteractionController {
         transferBlocked: (reason) =>
           t(`ui.floorplan.mission.inspector.transfer-blocked.${reason}`),
         applyBlocked: (reason) => t(`ui.floorplan.mission.inspector.apply-blocked.${reason}`),
+        // 14a-3: con los DOS números. Un motivo sin la lectura numérica deja al
+        // jugador sin saber cuánto le falta para destrabarlo.
+        frozenBlocked: (temperatureCelsius, meltingPointCelsius) =>
+          t("ui.floorplan.mission.inspector.frozen-blocked")
+            .replace("{temperature}", temperatureCelsius.toFixed(1))
+            .replace("{melting}", String(meltingPointCelsius)),
         reservoirHint: (hasContents) =>
           hasContents
             ? t("ui.floorplan.mission.inspector.reservoir-hint").replace(

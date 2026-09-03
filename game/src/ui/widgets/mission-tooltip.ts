@@ -141,6 +141,21 @@ export interface SectionAtmosphereTooltip {
   readonly temperatureCelsius: number;
   /** Algún evento está aportando calor AHORA. Eje distinto de "está caliente", igual que `vacuum` lo es de `trend`. */
   readonly heating: boolean;
+  /**
+   * La sala está tan caliente que enciende sola lo que sea inflamable
+   * (Subfase 14a-3, `AUTOIGNITION_CELSIUS`). Eje aparte de `heating` y de la
+   * propia temperatura: el número ya está en pantalla, pero un umbral necesita
+   * su CONSECUENCIA en palabras — "126 °C" no le dice al jugador que el
+   * disolvente que acaba de evaporar ahí va a prenderse solo.
+   */
+  readonly selfIgniting: boolean;
+  /**
+   * Sustancias en el aire de la sección y el estado en que están AHÍ (14a-3).
+   * Es la mitad visible del cambio de estado: sin esto, el jugador ve que su
+   * charco desapareció y no tiene dónde leer que ahora es un gas inflamable
+   * flotando en la sala.
+   */
+  readonly substanceStates?: ReadonlyArray<{ readonly name: string; readonly state: string }>;
 }
 
 export interface MissionTooltipLabels {
@@ -161,6 +176,10 @@ export interface MissionTooltipLabels {
   readonly sectionTemperature: (celsius: number) => string;
   /** "Calentándose": hay una fuente de calor activa en la sección ahora mismo. */
   readonly sectionHeating: string;
+  /** "Enciende sola: cualquier inflamable arde acá" (14a-3). */
+  readonly sectionSelfIgniting: string;
+  /** "Vapor de disolvente (gas)" — sustancia presente y su estado efectivo (14a-3). */
+  readonly substanceState: (name: string, state: string) => string;
   /** Brecha de casco en la celda bajo el cursor. */
   readonly sectionBreach: (sealed: boolean) => string;
   /**
@@ -473,6 +492,18 @@ export function renderMissionTooltip(
       // `pressure-recovering`: "esto todavía está pasando".
       if (content.atmosphere.heating) {
         lines.push({ text: `• ${labels.sectionHeating}`, color: CRISIS_WARNING_CSS });
+      }
+      // 14a-3: la consecuencia del umbral, en palabras. Va en rojo y no en
+      // ámbar porque no es "esto está pasando" sino "cualquier cosa inflamable
+      // que entre acá arde", que es del mismo orden que el vacío.
+      if (content.atmosphere.selfIgniting) {
+        lines.push({ text: `⚠ ${labels.sectionSelfIgniting}`, color: CRISIS_FATAL_CSS });
+      }
+      for (const substance of content.atmosphere.substanceStates ?? []) {
+        lines.push({
+          text: `• ${labels.substanceState(substance.name, substance.state)}`,
+          color: LABEL_COLOR,
+        });
       }
     }
     const breach = content.kind === "wire" ? undefined : content.breach;

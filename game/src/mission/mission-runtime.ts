@@ -105,6 +105,14 @@ import type {
   InstanceState,
   PlacedComponentInstance,
 } from "engine";
+import {
+  AUTOIGNITION_CELSIUS,
+  effectiveMatterState,
+  frozenContentOf,
+  MissionPhaseRuntime,
+  PhaseExpansionPressureSource,
+} from "engine";
+import type { FrozenContentInfo, MatterState, PhaseDomainEvent } from "engine";
 import type {
   ComponentWear,
   CellBlockedQuery,
@@ -312,6 +320,8 @@ export class MissionRuntime {
   readonly atmosphereRuntime: MissionAtmosphereRuntime;
   /** Escritores de temperatura por evento (Subfase 14a-1) — alimenta el `SectionHeatSource`. */
   readonly thermalRuntime: MissionThermalRuntime;
+  /** Cambio de estado del contenido de los reservorios (Subfase 14a-3). */
+  readonly phaseRuntime: MissionPhaseRuntime;
   /** Cicatriz de RE por componente instalado (Fase 11b) — primer llamador de `StructuralIntegrity`. */
   readonly structuralRuntime: MissionStructuralRuntime;
   /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
@@ -346,6 +356,13 @@ export class MissionRuntime {
   readonly powerEvents = new EventEmitter<PowerDomainEvent>();
   /** Riesgo al canibalizar (Subfase 13d: chispa/derrame/fuga al desmontar una pieza viva) — `/game` los pinta. */
   readonly salvageEvents = new EventEmitter<SalvageDomainEvent>();
+  /**
+   * Cambio de estado de sustancia (Subfase 14a-3): un charco que se evapora, el
+   * contenido de un tanque que se solidifica. Bus propio y no reusar el de
+   * reacciones porque no son reacciones — no consumen reactivos ni producen una
+   * sustancia nueva, cambian de fase la misma.
+   */
+  readonly phaseEvents = new EventEmitter<PhaseDomainEvent>();
   /** Daño y colapso de secciones (Subfase 13f) — `/game` los pinta. */
   readonly integrityEvents = new EventEmitter<IntegrityDomainEvent>();
   /**
@@ -442,7 +459,32 @@ export class MissionRuntime {
     // volcar nitrógeno líquido no producía ningún efecto en ningún sistema.
     onSpill: (sectionId, substanceId, amount) =>
       this.thermalRuntime.applySubstanceSpill(sectionId, substanceId, amount),
+    // Subfase 14a-3: el destino del derrame lo decide la temperatura de la sala,
+    // no el campo estático del catálogo. Verter nitrógeno líquido en una sala
+    // templada lo evapora, así que además de enfriar DESPLAZA oxígeno.
+    sectionTemperatureOf: (sectionId) =>
+      this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius,
+    // Y si se evaporó, expande: primera fuente de presión del motor (GDD 5.6).
+    // El evento va aparte del sumidero porque son dos consumidores del mismo
+    // hecho — la física y la partícula.
+    onEvaporate: (sectionId, substanceId, amount) => {
+      this.phaseExpansion.register(sectionId, amount, this.lastElapsedSeconds);
+      this.phaseEvents.emit({
+        kind: "substance-phase-change",
+        sectionId,
+        substanceId,
+        transition: "boil",
+        amount,
+        elapsedSeconds: this.lastElapsedSeconds,
+      });
+    },
   });
+  /**
+   * Expansión por evaporación (Subfase 14a-3). Se declara acá arriba, junto a
+   * `gasInjection`, porque es su consumidor directo y porque el sumidero
+   * compuesto del runtime de atmósfera lo necesita ya construido.
+   */
+  private readonly phaseExpansion = new PhaseExpansionPressureSource();
   /**
    * Operaciones de fluido en curso (13e, deuda #10) — de acá sale el caudal
    * REAL con que se anima la capa `fluido` del plano, en vez de la heurística
@@ -676,6 +718,11 @@ export class MissionRuntime {
           () => this.sectionIntegrityRuntime.openBreaches(),
           this.componentRegistry,
         ),
+        // Subfase 14a-3: expansión de un derrame que se evapora. Es la primera
+        // fuente de presión del motor (aporta en negativo); el techo del propio
+        // runtime la corta en la presión estándar, así que represuriza una sala
+        // baja y no crea sobrepresión.
+        this.phaseExpansion.asSinkSource(),
       ),
       // Subfase 13e: sustancias VERTIDAS sobre la sección ("Aplicar aquí").
       // Es el primer escritor real de un `ChemicalSubstanceId` en
@@ -711,6 +758,18 @@ export class MissionRuntime {
         outputOf: (nodeId) => this.signalRuntime.outputOf(nodeId),
       }),
     );
+    // Subfase 14a-3: vigila el contenido de los reservorios contra la
+    // temperatura de su sección. Va después de `thermalRuntime` porque lee la
+    // atmósfera que aquel escribe, y antes de los runtimes de tarea porque el
+    // congelado gatea lo que el jugador puede hacer con la sustancia.
+    this.phaseRuntime = new MissionPhaseRuntime({
+      shipState: this.shipState,
+      shipFloorplan: this.shipFloorplan,
+      sectionTemperatureOf: (sectionId) =>
+        this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius,
+      substanceOf: (substanceId) => this.chemicalRegistry.get(substanceId),
+      emitter: this.phaseEvents,
+    });
     this.salvageEvents.on("dismantle-leak", (event) => this.leakSink.register(event));
     this.structuralRuntime = new MissionStructuralRuntime(
       this.shipState,
@@ -816,6 +875,13 @@ export class MissionRuntime {
           // Función y no objeto: se consulta en CADA ejecución de tarea, para
           // que analizar una sustancia a mitad de misión cuente de inmediato.
           composition: () => this.substanceCompositionContext(),
+          // Subfase 14a-3: con estas dos, las tareas que mueven sustancia
+          // rechazan un contenido CONGELADO. Es la misma función que consulta el
+          // panel de acciones para deshabilitar la fila, no una segunda
+          // evaluación que pueda discrepar de ella.
+          substanceOf: (substanceId) => this.chemicalRegistry.get(substanceId),
+          sectionTemperatureOf: (sectionId) =>
+            this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius,
         },
         // Subfase 13h: `set-valve`/`force-door`/`repair-door` escriben en los
         // runtimes vivos, no en el blueprint — al blueprint bajan al guardar.
@@ -1001,6 +1067,9 @@ export class MissionRuntime {
       tick: (ctx) => {
         this.lastElapsedSeconds = ctx.elapsedSeconds;
         this.leakSink.advanceTo(ctx.elapsedSeconds);
+        // Mismo motivo que `leakSink` (14a-3): el tiempo entra desde el core
+        // loop para que la pausa táctica congele el vencimiento de la expansión.
+        this.phaseExpansion.advanceTo(ctx.elapsedSeconds);
         // Subfase 13h: una compuerta instalada a mitad de misión tiene que
         // pasar a ser puerta, y una desmontada dejar de serlo. Se compara la
         // REFERENCIA del array: `Blueprint` es inmutable, así que cambia solo
@@ -1068,6 +1137,9 @@ export class MissionRuntime {
     // puente a `failureEvents` (ya suscrito en el constructor, no en el
     // tick), se registra al final junto a `overloadRuntime`.
     this.coreLoop.registerTickable(this.reactionRuntime);
+    // 14a-3: después de la atmósfera y del térmico, que son quienes mueven la
+    // temperatura que este runtime lee.
+    this.coreLoop.registerTickable(this.phaseRuntime);
 
     const spawnSectionId = this.shipFloorplan.sections[0]?.id;
     for (const actor of this.activeCrew) {
@@ -1390,6 +1462,19 @@ export class MissionRuntime {
          * sigue activo.
          */
         readonly heating: boolean;
+        /**
+         * La sala enciende sola lo inflamable que haya en ella (14a-3). Va
+         * aparte de `heating` y del propio número por la misma razón que
+         * `vacuum` va aparte de `trend`: es la CONSECUENCIA del umbral, y un
+         * umbral sin su consecuencia en palabras deja al jugador con un color y
+         * sin saber qué significa cruzarlo.
+         */
+        readonly selfIgniting: boolean;
+        /** Sustancias en el aire y el estado en que están a esta temperatura. */
+        readonly substanceStates: ReadonlyArray<{
+          readonly substanceId: ChemicalSubstanceId;
+          readonly state: MatterState;
+        }>;
       }
     | undefined {
     const atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId);
@@ -1408,6 +1493,22 @@ export class MissionRuntime {
       vacuum: atmosphere.pressureKpa <= HAZARD_PARAMETERS.vacuum.onsetKpa,
       temperatureCelsius: atmosphere.temperatureCelsius,
       heating: this.thermalRuntime.heatRateOf(sectionId) > 0,
+      // El MISMO umbral que consulta `MissionReactionRuntime` para decidir si
+      // hay fuente de ignición: si el tooltip lo dice, el motor prende.
+      selfIgniting: atmosphere.temperatureCelsius >= AUTOIGNITION_CELSIUS,
+      substanceStates: [...atmosphere.gases.keys()]
+        .map((gasKey) => {
+          const substance = this.chemicalRegistry.get(gasKey as ChemicalSubstanceId);
+          return substance
+            ? {
+                substanceId: substance.id,
+                state: effectiveMatterState(substance, atmosphere.temperatureCelsius),
+              }
+            : undefined;
+        })
+        .filter((entry): entry is { substanceId: ChemicalSubstanceId; state: MatterState } =>
+          Boolean(entry),
+        ),
     };
   }
 
@@ -1784,6 +1885,21 @@ export class MissionRuntime {
     return extractionBlockedReason(content.substanceId, this.substanceCompositionContext());
   }
 
+  /**
+   * ¿El contenido de este reservorio está congelado? (Subfase 14a-3).
+   *
+   * Delega en `frozenContentOf` de `/engine`, que es la MISMA función que el
+   * efecto de tarea usa para rechazar: el panel no puede ofrecer una acción que
+   * la tarea vaya a rechazar, ni al revés (patrón 1).
+   */
+  frozenContentFor(instanceId: PlacedComponentInstanceId): FrozenContentInfo | undefined {
+    return frozenContentOf(this.shipState.get(), this.shipFloorplan, instanceId, {
+      substanceOf: (substanceId) => this.chemicalRegistry.get(substanceId),
+      sectionTemperatureOf: (sectionId) =>
+        this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius,
+    });
+  }
+
   /** Composición ya revelada de una sustancia analizada — `undefined` si sigue oculta. */
   compositionOf(substanceId: ChemicalSubstanceId): ReadonlyArray<ChemicalSubstanceId> | undefined {
     try {
@@ -1918,6 +2034,16 @@ export class MissionRuntime {
         estimatedDurationSeconds: this.modulatedDuration("extract-elements", actorId),
       }),
     );
+  }
+
+  /**
+   * Celda ancla de una instancia colocada (14a-3): dónde se pinta un efecto
+   * cuyo sujeto es la PIEZA y no la sala.
+   */
+  instanceCellOf(instanceId: PlacedComponentInstanceId): GridPosition | undefined {
+    return this.shipState
+      .get()
+      .placedComponents.find((entry) => entry.instanceId === instanceId)?.placement.position;
   }
 
   /** Sección que contiene una instancia colocada (para encolar el corte de energía desde la UI). */
@@ -2761,6 +2887,10 @@ export class MissionRuntime {
       // `MissionSignalRuntime`, para que el glifo del plano y el motor no
       // puedan discrepar sobre quién está recibiendo señal.
       signalStarvationOf: (instanceId) => this.fanoutRuntime.starvationOf(instanceId),
+      // 14a-3: la MISMA función que el panel de acciones y que el efecto de
+      // tarea. Tres consumidores, una sola evaluación — el glifo del plano no
+      // puede decir "congelado" mientras el botón deja verter.
+      frozenContentOf: (instanceId) => this.frozenContentFor(instanceId),
     });
   }
 

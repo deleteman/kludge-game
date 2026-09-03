@@ -1368,16 +1368,67 @@ la primera. Sale del Bloque 1 de la Subfase 14d.
 
 Suite: motor **1234** (158 archivos), juego **169** (17 archivos). `tsc`, `eslint` y `build` limpios.
 
-##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) — pendiente
+##### Subfase 14a-3: Cambio de estado de sustancia (L↔S↔G) ✅ CERRADA (2026-09-03)
 
 Separada de 14a-2 al planificarla (decisión del operador, 2026-08-31): no es un acoplamiento, es un subsistema.
-Hoy `ChemicalSubstanceData.state` es un dato ESTÁTICO de catálogo, no hay puntos de fusión/ebullición en ningún
-lado y no existe ningún consumidor del estado. Necesita su propio ciclo de preguntas antes de planificarse:
-- Datos nuevos por sustancia (¿punto de fusión y ebullición por entrada de catálogo, o buckets por tag?).
-- Qué consume el estado: GDD 5.6 pide "líquido → sólido detiene flujo; sólido → gas genera presión/expansión",
-  o sea que toca `reservoir-ledger`, el flujo por conductos y el sumidero de presión.
-- Enganche natural ya identificado: `isAirborneSubstance` (`mission/section-gas-injection.ts`) discrimina por
-  `state`, así que un estado vivo cambiaría solo el destino de un derrame.
+`ChemicalSubstanceData.state` era un dato ESTÁTICO de catálogo con **un solo consumidor semántico** en todo el
+motor (`isAirborneSubstance`), sin puntos de fusión/ebullición en ningún lado.
+
+**Lo que la subfase resultó ser, tras la pregunta del operador al revisar el plan** (*"¿estamos teniendo en
+cuenta la interacción de los estados con el entorno — chispazos, la temperatura de otra sala por una explosión?"*):
+no es variedad química, es el **eslabón que faltaba** entre el eje térmico de 14a-1/14a-2 y la cadena de ignición
+que ya estaba viva desde 14a-2. `sectionReactants` solo lee `atmosphere.gases`, y un líquido derramado nunca
+entraba ahí — o sea que **derramar combustible y provocar un chispazo no hacía absolutamente nada**. Al volver
+dinámico el estado, evaporarlo lo mete en la atmósfera y queda inflamable *por la cadena que ya existe*, sin
+tocar ninguna regla de reacción.
+
+Decisiones del operador en la planificación: puntos obligatorios para las 49 entradas; los cuatro consumidores
+del estado; **sin piezas nuevas** (la mecánica cuelga del enfriador, la combustión y el vertido, que ya tienen
+motivo de existir — evita el patrón 60); la expansión **solo represuriza**, sin sobrepresión; el reservorio
+sellado **aísla el calor pero no el frío**; la ignición **dura lo que dura el fenómeno**; y el calor por encima
+de un umbral **ES fuente de ignición** por sí solo.
+
+Qué entró:
+* **Módulo `chemistry/phase/`**: `effectiveMatterState` (estado derivado de la temperatura), `phasePointsOf`
+  (punto ÚNICO de resolución catálogo/fallback), `phaseTransitionOf`, y los dos eventos de dominio. `state` pasa
+  a documentarse como "estado dentro de un contenedor sellado"; la autoridad de runtime es la derivación.
+* **Datos**: las 49 entradas declaran sus dos puntos, obligatorios por tipo (`AuthoredSubstanceData`), con test
+  de coherencia contra el `state` declarado a 21 °C salvo `CRYOGENIC_SUBSTANCE_IDS` (el nitrógeno líquido se
+  almacena líquido y suelto en una sala normal es gas — GDD línea 166).
+* **Destino del derrame**: verter nitrógeno líquido en una sala templada la enfría **y** desplaza oxígeno.
+* **Presión por expansión**: primera FUENTE de presión del motor. El techo la corta en el estándar, así que su
+  valor jugable es represurizar una sala baja tras sellar una brecha.
+* **Flujo bloqueado por congelación**: las cuatro tareas que mueven sustancia rechazan un contenido sólido con
+  motivo PROPIO y sus dos números. La MISMA función alimenta el panel, el glifo del plano y el efecto de tarea.
+* **Rotura del tanque**: `worsenWear` por CRUCE del umbral, con registro por instancia (evento de borde, no un
+  goteo por frame). El estado previo se siembra al cargar: guardar en una sala fría no cobra daño.
+* **Ciclo de vida de la ignición**: `ignitedSectionIds` era un `Set` que **nunca se limpiaba** — una sala con
+  historial de chispazo quedaba inflamable el resto de la misión, y con la evaporación eso pasaba a ser el
+  camino normal para arder sin causa presente.
+* **Autoignición térmica**: lo que hace que un incendio se PROPAGUE de sala en sala por la conducción que ya
+  existía desde 14a-1.
+* **Consumo real del combustible** (hueco preexistente): `CombustionRule` declaraba `consumedReactantIds` y
+  **nadie lo aplicaba**. Con autoignición encima habría sido una cascada sin final; ahora el ciclo se cierra
+  solo (derramar → evaporar → arder → agotarse → apagarse) y "apagar el fuego" existe.
+* **Cae la vía por tag `VOLAT`** de `isAirborneSubstance`, heurística de 13e que suplía a los puntos de
+  ebullición inexistentes: mantenerla dejaba al combustible inflamable a 21 °C, o sea la mecánica muerta.
+
+**Dos números salieron de MEDIR, y el primer candidato de cada uno estaba mal**: `AUTOIGNITION_CELSIUS` 120 →
+**90** (con la conducción real, una combustión violenta deja la sala en 124 °C y la vecina en 54: a 120 la
+propagación era imposible); y la ebullición del combustible 95 → **75**, para que quede DEBAJO de la
+autoignición — entre 75 y 89 hay vapor inflamable y ninguna fuente, que es el hueco donde el jugador decide
+cuándo encender.
+
+Legibilidad: dos efectos de partículas nuevos, cuarto estado del sistema genérico de `InstanceStateFlag`
+(`frozen-content`, copo a brillo pleno), el tooltip de sección dice qué hay en el aire y en qué estado y avisa
+cuando la sala enciende sola, y el panel bloquea con motivo y números. i18n es+en.
+
+Stock del Cap. 1 para TRES montajes simultáneos (deuda #44 actualizada): válvula 2→6, junta 7→14, tubo flexible
+4→8, tubo rígido 4→6, motor 2→3 — la válvula era el techo real en dos reservorios en toda la nave.
+
+Suite: motor 1234 → **1265** (162 archivos), juego 169 sin cambios. `tsc`, `eslint` y `build` limpios.
+Deudas nuevas registradas: **#46** (el charco no es una entidad del motor: derramar en frío y calentar después
+no evapora nada), **#47** (sobrepresión diferida) y **#48** (sustancias con puntos deliberadamente inalcanzables).
 
 #### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
 

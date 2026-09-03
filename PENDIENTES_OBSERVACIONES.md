@@ -1028,6 +1028,18 @@ creció otra vez para pagar las recetas de los tres compuestos que hacen falta:
 | `valvula-simple` | 1 | **2** | + 1 reservorio de disolvente |
 | `motor-pequeno` | 0 | **2** | 2 enfriadores (×1) — **rompe a propósito el "stock 0" deliberado del capítulo** |
 | `tubo-rigido` | 0 | **4** | 2 tanques criogénicos (×2) |
+
+**Actualizado en la Subfase 14a-3 (2026-09-03).** El cambio de estado se verifica COMPARANDO salas en estados
+distintos (una congelada, una templada, una en ebullición), y el techo real eran DOS reservorios en toda la nave:
+el de agua y el de disolvente comparten receta y la válvula simple estaba en 2. Sube a tres montajes simultáneos:
+
+| Pieza | Antes de 14a-3 | Ahora | Para qué |
+|---|---|---|---|
+| `valvula-simple` | 2 | **6** | 3 reservorios de agua + 3 de disolvente (×1 c/u) |
+| `junta-hermetica` | 7 | **14** | los 6 reservorios (×2) + 3 tanques criogénicos (×2) + la fuga sembrada |
+| `tubo-flexible` | 4 | **8** | los 6 reservorios (×1) + 3 enfriadores (×1) |
+| `tubo-rigido` | 4 | **6** | 3 tanques criogénicos (×2) |
+| `motor-pequeno` | 2 | **3** | 3 enfriadores (×1) — única fuente de frío del juego |
 | `cable-cobre` | 0 | **4** | cargar un conductor por encima de su capacidad y verlo cortarse |
 
 El caso más grave es `motor-pequeno`: estaba a 0 **por diseño**, para forzar el loop "sin stock → inspeccionar →
@@ -1090,3 +1102,49 @@ construcción —el evaluador calcula la salida de todo nodo que no sea emisor�
 guarda receptor→receptor de `orientSignalWiring`. Levantarla, más la capacidad de salida por pieza,
 da el tronco explícito que se buscaba **reusando el catálogo existente**, que es lo que el principio 1
 pedía. El caso de uso que faltaba llegó del playtest, no de un diseño anticipado.
+
+
+## Deuda #46 — Un charco derramado no existe como entidad del motor (Subfase 14a-3)
+
+**Estado:** ABIERTA. Limitación conocida, registrada al implementar el cambio de estado.
+
+`TransientGasInjection` es un buffer PUNTUAL: decide en el instante del vertido si la sustancia entra a la
+atmósfera o "cae al piso", y lo segundo no se guarda en ningún lado — el charco es solo un decal de `/game`
+(`salvage-hazard-effect.ts`), sin estado en el `Blueprint`.
+
+Consecuencia concreta para 14a-3: **derramar en frío y calentar después no evapora nada.** El jugador tiene que
+verter con la sala ya caliente, porque el líquido que cayó al piso dejó de existir para el motor en ese mismo
+tick. La cadena "cebar una sala y encenderla más tarde" funciona con el vapor YA en el aire (que sí persiste y
+difunde), no con un charco esperando.
+
+Qué haría falta: una entidad de charco por celda o por sección, persistida en el `Blueprint`, que el runtime de
+fase evalúe cada tick igual que hoy evalúa el contenido de los reservorios. No es trabajo de esta subfase — es un
+subsistema con su propio guardado, su propia representación visual y su propio coste de limpieza.
+
+## Deuda #47 — No existe la sobrepresión (Subfase 14a-3, decisión del operador)
+
+**Estado:** DIFERIDA por decisión explícita del operador, 2026-09-03.
+
+El GDD §5.6 dice "sólido → gas puede generar presión/expansión". 14a-3 implementa la expansión, pero el bucle del
+sumidero clampea en `PRESSURE_RECOVERY_CEILING_KPA`, que ES la presión estándar: evaporar en una sala sana no
+mueve la aguja. Ante las dos opciones el operador eligió la acotada — la expansión sirve para REPRESURIZAR una
+sala que quedó baja tras sellar una brecha, y no se abre un eje de daño nuevo.
+
+Lo que queda pendiente si alguna vez se quiere la lectura literal del GDD: un techo de presión POR SECCIÓN (mismo
+molde que `SectionPressureFloorSource` de 13f) más un consumidor real del exceso — daño estructural, brecha, o una
+puerta que no abre contra la diferencia de presión. Sin ese consumidor, subir el techo sería un número que nadie
+lee.
+
+## Deuda #48 — Sustancias con puntos de transición deliberadamente inalcanzables (Subfase 14a-3)
+
+**Estado:** ABIERTA, informativa. No es un bug: es una decisión declarada que conviene no perder.
+
+Las 49 entradas del catálogo químico declaran punto de fusión y de ebullición, pero la ventana térmica realmente
+alcanzable del motor va de -80 °C (clamp) a ~161 °C (pico de una combustión violenta). Los metales, sales y gases
+nobles llevan sus valores reales, muy fuera de esa ventana: son inertes al eje térmico A PROPÓSITO, y sus números
+están ahí por trazabilidad, no como mecánica.
+
+Las que SÍ tienen su transición dentro de la ventana —y por lo tanto son las únicas con las que el jugador puede
+jugar hoy— están fijadas por un test: agua, combustible de motor, disolvente volátil y bromo. Si el balanceo de la
+Fase 23 mueve `COMBUSTION_HEAT` o `COOLER_RATE_CELSIUS_PER_SECOND`, ese test es el que avisa de que la ventana se
+movió y hay que revisar esta lista.

@@ -109,6 +109,9 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.state.needs": "needs",
   "ui.floorplan.mission.state.granted": "section grants",
   "ui.floorplan.mission.state.unsignaled": "No signal: the emitter is overloaded",
+  "ui.floorplan.mission.state.frozen-content": "Contents frozen: cannot be moved",
+  "ui.floorplan.mission.state.melts-at": "melts at",
+  "ui.floorplan.mission.state.now-at": "now at",
   "ui.floorplan.mission.signal-node.emitter": "emits",
   "ui.floorplan.mission.signal-node.actuator-output": "output",
   "ui.floorplan.mission.signal-node.receptor": "input",
@@ -198,6 +201,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.inspector.transfer-blocked.no-target": "Transfer (no reachable target)",
   "ui.floorplan.mission.inspector.apply-substance": "Pour into the section",
   "ui.floorplan.mission.inspector.apply-blocked.empty": "Pour (empty)",
+  "ui.floorplan.mission.inspector.frozen-blocked":
+    "Frozen ({temperature} °C · melts at {melting} °C)",
   "ui.floorplan.mission.inspector.reservoir-hint": "Extracting breaks down {amount} units into elements for the chemistry bench, without emptying the tank.",
   "ui.floorplan.mission.inspector.reservoir-hint-empty": "Empty. Refill it by transferring from another reservoir.",
   "ui.floorplan.mission.inspector.extract-elements": "Extract {amount} elements",
@@ -250,6 +255,11 @@ export const EN: Readonly<Record<string, string>> = {
 
   "ui.floorplan.notification.dismantled": "Dismantled",
   "ui.floorplan.notification.dismantle-spark": "Spark while dismantling!",
+  "ui.floorplan.notification.reservoir-frozen": "Contents frozen",
+  "ui.floorplan.notification.reservoir-frozen-detail":
+    "The liquid expanded as it solidified and strained the tank: the part is more worn.",
+  "ui.floorplan.notification.reservoir-frozen-destroyed":
+    "The tank could not take another freeze and broke.",
   "ui.floorplan.notification.dismantle-spill": "Spill while dismantling!",
   "ui.floorplan.notification.dismantle-leak": "Leak opened while dismantling!",
   // Subfase 13f — section life, hull breach and atmospheric hazard.
@@ -277,6 +287,11 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.vacuum": "Vacuum: lethal to crew",
   "ui.floorplan.mission.tooltip.temperature": "Temperature: {celsius} °C",
   "ui.floorplan.mission.tooltip.heating": "Active heat source",
+  "ui.floorplan.mission.tooltip.self-igniting": "Self-igniting: anything flammable burns here",
+  "ui.floorplan.mission.tooltip.substance-state": "{substance} in the air ({state})",
+  "ui.floorplan.mission.matter-state.S": "solid",
+  "ui.floorplan.mission.matter-state.L": "liquid",
+  "ui.floorplan.mission.matter-state.G": "gas",
   "ui.floorplan.mission.tooltip.breach-open": "Open hull breach",
   "ui.floorplan.mission.tooltip.breach-sealed": "Breach patched",
   "ui.floorplan.notification.breach-patch-failed": "That part does not seal the breach",

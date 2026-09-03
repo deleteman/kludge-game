@@ -29,6 +29,15 @@ export interface InstanceStateQueries {
    * booleano es lo que hace accionable el aviso — igual que en `unpowered`, lo
    * útil no es "no recibe señal" sino cuánto sobra.
    */
+  /**
+   * Contenido congelado (14a-3): `undefined` si no lo está, y si lo está, la
+   * temperatura actual de la sección y el punto de fusión de la sustancia. Los
+   * DOS números por la misma razón que en `unsignaled`: lo accionable no es
+   * "está congelado" sino cuánto falta para que deje de estarlo.
+   */
+  readonly frozenContentOf: (
+    instanceId: PlacedComponentInstance["instanceId"],
+  ) => { readonly temperatureCelsius: number; readonly meltingPointCelsius: number } | undefined;
   readonly signalStarvationOf: (
     instanceId: PlacedComponentInstance["instanceId"],
   ) => { readonly demand: number; readonly capacity: number } | undefined;
@@ -59,6 +68,19 @@ export function deriveInstanceStates(
   // jugador buscaría el problema donde no está.
   if (queries.isInstanceOverloaded(instance.instanceId)) {
     states.push({ flag: "overloaded" });
+  }
+
+  // El contenido congelado va justo después de la cicatriz de sobrecarga: es lo
+  // único que inutiliza a un reservorio POR COMPLETO —no se puede verter, ni
+  // trasvasar, ni purgar, ni extraer— así que si además le falta energía o
+  // señal, lo primero que hay que contar es que su carga es un bloque de hielo.
+  const frozen = queries.frozenContentOf(instance.instanceId);
+  if (frozen) {
+    states.push({
+      flag: "frozen-content",
+      required: frozen.meltingPointCelsius,
+      available: frozen.temperatureCelsius,
+    });
   }
 
   // Sin señal va DESPUÉS de la sobrecarga y ANTES de la falta de energía: es un

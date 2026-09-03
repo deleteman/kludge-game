@@ -27,10 +27,16 @@
  * pista de por qué. El pedido del operador fue explícito: "un icono nuevo, como
  * el rayo cuando no tienen energía", y que los dos estados **puedan convivir**.
  *
+ * `frozen-content` (Subfase 14a-3) es el cuarto, y vuelve a cobrar la promesa:
+ * el contenido de un reservorio en una sala bajo el punto de fusión queda
+ * sólido y no se puede mover. Sin el flag, el jugador vería un tanque con
+ * sustancia dentro cuyos botones están todos grises, y el panel es justamente
+ * lo que NO tiene que hacer falta abrir para entender el plano.
+ *
  * Candidatos que siguen pendientes con la infraestructura ya lista: pieza
  * sobre una brecha sin sellar, reservorio vacío.
  */
-export type InstanceStateFlag = "unpowered" | "overloaded" | "unsignaled";
+export type InstanceStateFlag = "unpowered" | "overloaded" | "unsignaled" | "frozen-content";
 
 /**
  * Detalle numérico opcional de un estado. Existe porque el aviso útil no es
@@ -46,12 +52,14 @@ export interface InstanceState {
   /**
    * Lo que se PIDE. `unpowered`: las unidades que demanda la pieza.
    * `unsignaled`: la demanda total colgada del emisor que la gobierna — el
-   * número que hay que bajar.
+   * número que hay que bajar. `frozen-content`: la temperatura a la que se
+   * destraba (el punto de fusión de la sustancia).
    */
   readonly required?: number;
   /**
    * Lo que HAY. `unpowered`: unidades otorgadas a su sección este tick.
-   * `unsignaled`: la capacidad de salida de ese emisor.
+   * `unsignaled`: la capacidad de salida de ese emisor. `frozen-content`: la
+   * temperatura ACTUAL de la sección.
    */
   readonly available?: number;
 }

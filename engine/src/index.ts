@@ -225,11 +225,13 @@ export { DIFFUSION_RATE_PER_SECOND, diffuse } from "./atmosphere/diffusion.js";
 // Subfase 14a-1 — dominio de temperatura: parámetros del sexto eje del motor.
 export {
   COMBUSTION_HEAT,
+  AUTOIGNITION_CELSIUS,
   COOLER_RATE_CELSIUS_PER_SECOND,
   MIN_THERMAL_APERTURE,
   NOMINAL_TEMPERATURE_CELSIUS,
   OVERLOAD_HEAT,
   PASSIVE_DRIFT_PER_SECOND,
+  SPARK_IGNITION_SECONDS,
   SUBSTANCE_THERMAL_EFFECT,
   TEMPERATURE_CEILING_CELSIUS,
   TEMPERATURE_FLOOR_CELSIUS,
@@ -639,6 +641,7 @@ export { MutableCrewState } from "./mission/mutable-crew-state.js";
 export { MutableEnemyState } from "./mission/mutable-enemy-state.js";
 export {
   createShipTaskEffect,
+  FrozenReservoirContentError,
   InsufficientStockError,
   // Subfase 13d: `/game` lo reusa para el badge de riesgo del panel de acciones.
   dismantleHazardContext,
@@ -731,9 +734,41 @@ export type { SubstanceCompositionContext } from "./reservoir/substance-composit
 export {
   composeGasInjections,
   GAS_FRACTION_PER_SUBSTANCE_UNIT,
+  hasEvaporated,
   TransientGasInjection,
 } from "./mission/section-gas-injection.js";
 export type { SectionGasInjectionSource } from "./mission/section-gas-injection.js";
+// Subfase 14a-3: cambio de estado de sustancia (L<->S<->G, GDD 5.6).
+export {
+  effectiveMatterState,
+  isFrozenAt,
+  nominalStateOf,
+  phasePointsOf,
+  phaseTransitionOf,
+} from "./chemistry/phase/matter-state.js";
+export type {
+  AuthoredSubstanceData,
+  PhaseChangePoints,
+  PhaseTransition,
+} from "./chemistry/phase/phase-change.types.js";
+export type {
+  PhaseDomainEvent,
+  ReservoirContentPhaseChangeEvent,
+  SubstancePhaseChangeEvent,
+} from "./chemistry/phase/phase-events.types.js";
+export {
+  DEFAULT_NOMINAL_STATE,
+  DEFAULT_PHASE_POINTS_BY_STATE,
+  FREEZE_DESTROYS_RESERVOIR_AT_WORST_WEAR,
+  PHASE_EXPANSION_DURATION_SECONDS,
+  PHASE_EXPANSION_KPA_PER_UNIT,
+} from "./chemistry/phase/phase-change-parameters.js";
+export { CRYOGENIC_SUBSTANCE_IDS } from "./chemistry/catalog/element-catalog.js";
+export { frozenContentOf, isSubstanceFrozenAt } from "./reservoir/frozen-content.js";
+export type { FrozenContentDeps, FrozenContentInfo } from "./reservoir/frozen-content.js";
+export { PhaseExpansionPressureSource } from "./mission/phase-expansion-pressure.js";
+export { MissionPhaseRuntime } from "./mission/mission-phase-runtime.js";
+export type { PhaseRuntimeDeps } from "./mission/mission-phase-runtime.js";
 export { FluidOperationRegistry } from "./mission/fluid-operations.js";
 export type { FluidFlow } from "./mission/fluid-operations.js";
 export { CrisisRuntime } from "./mission/crisis-runtime.js";
@@ -961,6 +996,7 @@ export type {
 export { ENEMY_SEED_BY_CHAPTER_ID } from "./enemies/campaign/chapter-02-enemy-seed.js";
 export type { EnemySeed } from "./enemies/campaign/chapter-02-enemy-seed.js";
 
+import type { PhaseDomainEvent } from "./chemistry/phase/phase-events.types.js";
 import type { SignalDomainEvent } from "./signals/signal-events.types.js";
 import type { ReactionDomainEvent } from "./chemistry/reaction/reaction-events.types.js";
 import type { AtmosphereDomainEvent } from "./atmosphere/atmosphere-events.types.js";
@@ -1046,4 +1082,5 @@ export type DomainEvent =
   | PowerDomainEvent
   | SalvageDomainEvent
   | IntegrityDomainEvent
-  | DoorDomainEvent;
+  | DoorDomainEvent
+  | PhaseDomainEvent;

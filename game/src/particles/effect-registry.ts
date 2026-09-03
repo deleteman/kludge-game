@@ -13,6 +13,10 @@ import { kineticImpactEffect, magneticAccelerationEffect } from "./effects/kinet
 import { neutralizationEffect } from "./effects/neutralization-effect.js";
 import { overloadEffect } from "./effects/overload-effect.js";
 import {
+  reservoirContentPhaseChangeEffect,
+  substancePhaseChangeEffect,
+} from "./effects/phase-change-effect.js";
+import {
   dismantleLeakEffect,
   dismantleSparkEffect,
   dismantleSpillEffect,
@@ -59,6 +63,10 @@ const EFFECTS_BY_KIND: {
   // Subfase 13f — daño y colapso de una sección.
   "section-damaged": sectionDamagedEffect,
   "section-breached": sectionBreachedEffect,
+  // Subfase 14a-3 — cambio de estado (GDD 5.6): un charco que se evapora y el
+  // contenido de un tanque que se solidifica.
+  "substance-phase-change": substancePhaseChangeEffect,
+  "reservoir-content-phase-change": reservoirContentPhaseChangeEffect,
 };
 
 /** Dispara el efecto registrado para `event.kind`, si existe uno todavía. */

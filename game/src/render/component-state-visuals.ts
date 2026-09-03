@@ -5,6 +5,7 @@ import {
   COMPONENT_CONDITION_TINT,
   COMPONENT_WEAR_TINT,
   DOOR_STATE_COLOR,
+  FROST_LAYER_COLOR,
   hexToCss,
   OVERLOADED_CONDUCTOR_LIGHT_COLOR,
   UNSIGNALED_COMPONENT_TINT,
@@ -112,6 +113,26 @@ const STATE_VISUAL: Readonly<Record<InstanceStateFlag, ComponentStateVisual>> = 
     detailKeys: {
       required: "ui.floorplan.mission.state.signal-demand",
       available: "ui.floorplan.mission.state.signal-capacity",
+    },
+  },
+  /**
+   * Contenido congelado (Subfase 14a-3). Reusa `FROST_LAYER_COLOR`, que es el
+   * MISMO azul de la escarcha por celda y de las partículas de congelación: el
+   * jugador ya asocia ese tono con "acá hace un frío que importa", y que el
+   * tinte, el glifo y el aviso hablen el mismo color convierte tres señales
+   * sueltas en una sola lectura (mismo criterio que `overloaded` con su ámbar).
+   *
+   * El copo es inequívoco y no depende del color, que es lo que salva al estado
+   * cuando la pieza está en una sala oscura: el tinte se multiplica por la luz
+   * de la celda, el glifo va a brillo pleno.
+   */
+  "frozen-content": {
+    tint: FROST_LAYER_COLOR,
+    icon: "❄",
+    noticeKey: "ui.floorplan.mission.state.frozen-content",
+    detailKeys: {
+      required: "ui.floorplan.mission.state.melts-at",
+      available: "ui.floorplan.mission.state.now-at",
     },
   },
   unpowered: {

@@ -1370,6 +1370,40 @@ export class FloorplanScene extends Phaser.Scene {
           });
         }
       }),
+      // Subfase 14a-3: cambio de estado. El de sustancia suelta se pinta en el
+      // centroide de la sección (es la sala la que hierve); el del contenido de
+      // un reservorio, sobre la CELDA DE LA PIEZA — el sujeto del fenómeno es el
+      // tanque, y pintar una cicatriz sobre el objeto equivocado se lee como un
+      // bug en lo que hay debajo (la lección de la ronda 3 de 14a-4).
+      this.mission.phaseEvents.onAny((event) => {
+        const cell =
+          event.kind === "reservoir-content-phase-change"
+            ? this.mission.instanceCellOf(event.instanceId)
+            : (() => {
+                const section = this.mission.shipFloorplan.sections.find(
+                  (entry) => entry.id === event.sectionId,
+                );
+                return section && sectionCentroidCell(section);
+              })();
+        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        if (event.kind === "reservoir-content-phase-change" && event.damagedContainer) {
+          // Solo se avisa cuando hubo CONSECUENCIA: congelarse y descongelarse
+          // sin daño ya se cuenta con la partícula y el glifo, y una notificación
+          // por cada cruce sería ruido en una sala que oscila alrededor del punto.
+          this.notifications?.push({
+            title: t("ui.floorplan.notification.reservoir-frozen"),
+            lines: [
+              t(
+                event.destroyedContainer
+                  ? "ui.floorplan.notification.reservoir-frozen-destroyed"
+                  : "ui.floorplan.notification.reservoir-frozen-detail",
+              ),
+            ],
+            type: event.destroyedContainer ? "error" : "warning",
+          });
+          this.redrawOverlay();
+        }
+      }),
       // Subfase 13f (deuda #16): peligro atmosférico sobre la tripulación. Es
       // el bus que faltaba — hasta ahora `toxic-threshold`/`corrosive-exposure`
       // solo existían en la galería de partículas.
@@ -2198,6 +2232,13 @@ export class FloorplanScene extends Phaser.Scene {
         sectionTemperature: (celsius) =>
           t("ui.floorplan.mission.tooltip.temperature").replace("{celsius}", String(Math.round(celsius))),
         sectionHeating: t("ui.floorplan.mission.tooltip.heating"),
+        // 14a-3: la consecuencia del umbral en palabras, y el estado de lo que
+        // hay suelto en el aire.
+        sectionSelfIgniting: t("ui.floorplan.mission.tooltip.self-igniting"),
+        substanceState: (name, state) =>
+          t("ui.floorplan.mission.tooltip.substance-state")
+            .replace("{substance}", name)
+            .replace("{state}", state),
         sectionBreach: (sealed) =>
           t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
         instanceState: (state) => instanceStateLabel(state),
