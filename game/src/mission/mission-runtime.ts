@@ -107,12 +107,22 @@ import type {
 } from "engine";
 import {
   AUTOIGNITION_CELSIUS,
+  conductorHeatBySection,
+  getGasFraction,
+  NOMINAL_TEMPERATURE_CELSIUS,
+  PASSIVE_DRIFT_PER_SECOND,
+  edgeHeatCelsiusPerSecond,
   effectiveMatterState,
   frozenContentOf,
   MissionPhaseRuntime,
   PhaseExpansionPressureSource,
 } from "engine";
-import type { FrozenContentInfo, MatterState, PhaseDomainEvent } from "engine";
+import type {
+  CombustionAtmosphere,
+  FrozenContentInfo,
+  MatterState,
+  PhaseDomainEvent,
+} from "engine";
 import type {
   ComponentWear,
   CellBlockedQuery,
@@ -750,13 +760,22 @@ export class MissionRuntime {
     // cableados, con señal activa). La decisión de "activo" vive en `/engine`
     // (`thermal-regulators.ts`) y no en este closure: es una regla de dominio, y
     // una regla dentro de un closure de `/game` es código sin test.
-    this.thermalRuntime = new MissionThermalRuntime(this.reactionEvents, this.failureEvents, () =>
-      activeThermalRegulatorsBySection(this.shipState.get(), {
-        registry: this.componentRegistry,
-        floorplan: this.shipFloorplan,
-        isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
-        outputOf: (nodeId) => this.signalRuntime.outputOf(nodeId),
-      }),
+    this.thermalRuntime = new MissionThermalRuntime(
+      this.reactionEvents,
+      this.failureEvents,
+      () =>
+        activeThermalRegulatorsBySection(this.shipState.get(), {
+          registry: this.componentRegistry,
+          floorplan: this.shipFloorplan,
+          isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+          outputOf: (nodeId) => this.signalRuntime.outputOf(nodeId),
+        }),
+      // Ronda 1 de playtest de 14a-3, octavo escritor: el cableado disipa calor
+      // según su carga. Es la contraparte real del enfriador y la respuesta a
+      // "¿qué puedo poner en una sala para que encienda sola?". Las consignas de
+      // dev entran por el MISMO canal, para que la herramienta ejercite el
+      // camino de producción y no un atajo.
+      () => this.sustainedHeatBySection(),
     );
     // Subfase 14a-3: vigila el contenido de los reservorios contra la
     // temperatura de su sección. Va después de `thermalRuntime` porque lee la
@@ -1470,10 +1489,22 @@ export class MissionRuntime {
          * sin saber qué significa cruzarlo.
          */
         readonly selfIgniting: boolean;
-        /** Sustancias en el aire y el estado en que están a esta temperatura. */
+        /**
+         * Fracción de O2 y su bucket de combustión (ronda 1 de playtest de
+         * 14a-3): el operador reportó "no veo los niveles de O2", y es el dato
+         * que decide si algo puede arder (GDD 5.5). El bucket sale del MISMO
+         * `oxygenToCombustionBucket` que consume la regla de combustión, no de un
+         * corte propio de la UI.
+         */
+        readonly oxygenFraction: number;
+        readonly oxygenBucket: CombustionAtmosphere;
+        /** °C/s que el CABLEADO está metiendo en esta sala (14a-3 ronda 1). */
+        readonly wiringHeatCelsiusPerSecond: number;
+        /** Sustancias en el aire, su estado a esta temperatura y su concentración. */
         readonly substanceStates: ReadonlyArray<{
           readonly substanceId: ChemicalSubstanceId;
           readonly state: MatterState;
+          readonly concentration: number;
         }>;
       }
     | undefined {
@@ -1496,20 +1527,142 @@ export class MissionRuntime {
       // El MISMO umbral que consulta `MissionReactionRuntime` para decidir si
       // hay fuente de ignición: si el tooltip lo dice, el motor prende.
       selfIgniting: atmosphere.temperatureCelsius >= AUTOIGNITION_CELSIUS,
-      substanceStates: [...atmosphere.gases.keys()]
-        .map((gasKey) => {
+      oxygenFraction: getGasFraction(atmosphere, GAS.OXYGEN),
+      oxygenBucket: sectionCombustionAtmosphere(atmosphere),
+      // La CAUSA donde el jugador la va a buscar: quien ve la sala subir de
+      // temperatura pregunta por la sala, no por el cable (patrón 66).
+      wiringHeatCelsiusPerSecond: this.conductorHeatBySection().get(sectionId) ?? 0,
+      substanceStates: [...atmosphere.gases.entries()]
+        .map(([gasKey, concentration]) => {
           const substance = this.chemicalRegistry.get(gasKey as ChemicalSubstanceId);
           return substance
             ? {
                 substanceId: substance.id,
                 state: effectiveMatterState(substance, atmosphere.temperatureCelsius),
+                concentration,
               }
             : undefined;
         })
-        .filter((entry): entry is { substanceId: ChemicalSubstanceId; state: MatterState } =>
-          Boolean(entry),
+        .filter(
+          (
+            entry,
+          ): entry is {
+            substanceId: ChemicalSubstanceId;
+            state: MatterState;
+            concentration: number;
+          } => Boolean(entry),
         ),
     };
+  }
+
+  /**
+   * Por qué secciones pasa cada cable (ronda 1 de playtest de 14a-3), publicado
+   * por la escena en `rebuildWireCellIndex`.
+   *
+   * **Se recibe, no se deriva.** El recorrido de un cable lo calcula la capa de
+   * render (`conduit-path.ts` rutea por los conductos del plano), y volver a
+   * inferirlo acá sería tener dos versiones de la misma geometría que pueden
+   * discrepar — el patrón 54 en su forma más directa. Mismo criterio DI con que
+   * el motor recibe el volumen de una sección o su atmósfera.
+   *
+   * Mientras nadie lo registre, el cableado no calienta: fail-open igual que el
+   * resto de las dependencias opcionales del motor. Un test de motor que monte
+   * la regla lo hace inyectando su propio `sectionsOfEdge`.
+   */
+  private wireSectionIndex: ReadonlyMap<SignalEdgeId, ReadonlyArray<SectionId>> = new Map();
+
+  /** Lo llama la escena cada vez que reconstruye los recorridos de cable. */
+  setWireSectionIndex(index: ReadonlyMap<SignalEdgeId, ReadonlyArray<SectionId>>): void {
+    this.wireSectionIndex = index;
+  }
+
+  /**
+   * Consignas de temperatura de DESARROLLO (ronda 1 de playtest de 14a-3).
+   *
+   * Existe porque la única forma de calentar una sala era la tecla H, que emite
+   * un pulso de combustión: la deriva pasiva disipa la mitad del exceso en ~14 s,
+   * así que ninguna secuencia manual de varios pasos entra en esa ventana. El
+   * operador lo reportó exacto: *"la temp aumenta y disminuye muy rápido con la
+   * tecla H, así que para cuando el tripulante hace el vertido, la temp ya
+   * bajó"*. Es el patrón 24 — la herramienta no ejercitaba el camino que la
+   * subfase construyó.
+   *
+   * **Entra por el mismo canal que cualquier otra fuente de calor**, no
+   * escribiendo `temperatureCelsius` a mano: si escribiera el campo, la deriva
+   * pasiva pelearía contra ella cada tick y el playtest estaría verificando algo
+   * que el motor no hace. Acá se calcula la tasa que MANTIENE el equilibrio en
+   * la consigna, que es exactamente lo que haría una máquina real.
+   *
+   * Estado solo de `/game` y no se persiste: es una herramienta, no una mecánica.
+   */
+  private readonly devTemperatureTargets = new Map<SectionId, number>();
+
+  /** Fija (o libera, con `undefined`) la consigna de dev de una sección. */
+  setDevTemperatureTarget(sectionId: SectionId, targetCelsius: number | undefined): void {
+    if (targetCelsius === undefined) {
+      this.devTemperatureTargets.delete(sectionId);
+    } else {
+      this.devTemperatureTargets.set(sectionId, targetCelsius);
+    }
+  }
+
+  /** Consigna vigente de una sección, para el ciclo de la tecla y el aviso en pantalla. */
+  devTemperatureTargetOf(sectionId: SectionId): number | undefined {
+    return this.devTemperatureTargets.get(sectionId);
+  }
+
+  /** ¿Hay alguna consigna puesta? El aviso permanente lo usa para no dejarse olvidada. */
+  get devTemperatureTargetCount(): number {
+    return this.devTemperatureTargets.size;
+  }
+
+  /**
+   * Tasa que sostiene cada consigna, resolviendo el equilibrio contra la deriva
+   * pasiva: una fuente de `R` °C/s estabiliza la sala en `nominal + R / drift`,
+   * así que para una consigna `T` hace falta `R = (T - nominal) × drift`. Es la
+   * misma cuenta con la que se calibraron el enfriador (14a-2) y el calor del
+   * cableado, no un número aparte.
+   */
+  private devTemperatureRates(): ReadonlyMap<SectionId, number> {
+    const rates = new Map<SectionId, number>();
+    for (const [sectionId, target] of this.devTemperatureTargets) {
+      rates.set(sectionId, (target - NOMINAL_TEMPERATURE_CELSIUS) * PASSIVE_DRIFT_PER_SECOND);
+    }
+    return rates;
+  }
+
+  /**
+   * °C/s que aporta el cableado a cada sección (14a-3 ronda 1). La regla vive en
+   * `/engine` (`power/conductor-heat.ts`) y acá solo se le pasa la geometría:
+   * una regla de dominio dentro de un closure de `/game` es código sin test por
+   * construcción (patrón 43).
+   */
+  private conductorHeatBySection(): ReadonlyMap<SectionId, number> {
+    return conductorHeatBySection(this.shipState.get(), this.componentRegistry, (edgeId) =>
+      this.wireSectionIndex.get(edgeId) ?? [],
+    );
+  }
+
+  /**
+   * Todo el calor CONTINUO de la nave, agregado por sección: el del cableado más
+   * las consignas de dev. Un solo mapa porque `MissionThermalRuntime` tiene un
+   * único canal de aporte continuo — dos fuentes escribiendo el mismo canal es
+   * el patrón que ya costó una ronda con el tinte de sprites (patrón 16).
+   */
+  private sustainedHeatBySection(): ReadonlyMap<SectionId, number> {
+    const rates = new Map(this.conductorHeatBySection());
+    for (const [sectionId, rate] of this.devTemperatureRates()) {
+      rates.set(sectionId, (rates.get(sectionId) ?? 0) + rate);
+    }
+    return rates;
+  }
+
+  /**
+   * °C/s que este cable concreto está disipando, para su tooltip (14a-3 ronda 1).
+   * Un color es una alerta; el número es la lectura (patrón 66).
+   */
+  wireHeatOf(edgeId: SignalEdgeId): number {
+    return edgeHeatCelsiusPerSecond(this.shipState.get(), edgeId, this.componentRegistry);
   }
 
   /** Celdas de TODAS las brechas abiertas, para el marcador persistente del plano. */

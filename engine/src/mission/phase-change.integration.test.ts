@@ -154,7 +154,8 @@ function buildScene() {
     },
     onSpill: (sectionId, substanceId, amount) =>
       thermal.applySubstanceSpill(sectionId, substanceId, amount),
-    sectionTemperatureOf: (sectionId) => atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
+    sectionTemperatureOf: (sectionId): number | undefined =>
+      atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
     onEvaporate: (sectionId, substanceId, amount) => {
       expansion.register(sectionId, amount, now);
       phaseEvents.emit({
@@ -191,7 +192,8 @@ function buildScene() {
   const phaseRuntime = new MissionPhaseRuntime({
     shipState,
     shipFloorplan: plan,
-    sectionTemperatureOf: (sectionId) => atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
+    sectionTemperatureOf: (sectionId): number | undefined =>
+      atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
     substanceOf: (substanceId) => CHEMICALS.get(substanceId),
     emitter: phaseEvents,
   });

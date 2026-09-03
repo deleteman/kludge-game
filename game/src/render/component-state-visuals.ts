@@ -1,6 +1,7 @@
 import type { ComponentCondition, ComponentWear, InstanceState, InstanceStateFlag } from "engine";
 
 import { t } from "../i18n/i18n.js";
+import { formatMeasure } from "../ui/number-format.js";
 import {
   COMPONENT_CONDITION_TINT,
   COMPONENT_WEAR_TINT,
@@ -180,6 +181,11 @@ export function visualForState(flag: InstanceStateFlag): ComponentStateVisual {
  * número se compone acá — mismo criterio que la etiqueta de presión del
  * tooltip. Sin el número el aviso describe el síntoma y no da la salida: lo
  * accionable es cuánto le falta a la sección, no que "no tiene energía".
+ *
+ * Ronda 1 de playtest de 14a-3: los dos números pasan por `formatMeasure`. Los
+ * detalles nacieron en 13h con dos consumidores que solo traían ENTEROS, así que
+ * interpolarlos crudos funcionaba por casualidad; `frozen-content` es el primero
+ * que trae una temperatura del motor y el operador vio `-10.9483472938279`.
  */
 export function instanceStateLabel(state: InstanceState): string {
   const visual = visualForState(state.flag);
@@ -187,7 +193,7 @@ export function instanceStateLabel(state: InstanceState): string {
   if (state.required === undefined || state.available === undefined || !visual.detailKeys) {
     return text;
   }
-  return `${text}: ${t(visual.detailKeys.required)} ${state.required} · ${t(visual.detailKeys.available)} ${state.available}`;
+  return `${text}: ${t(visual.detailKeys.required)} ${formatMeasure(state.required)} · ${t(visual.detailKeys.available)} ${formatMeasure(state.available)}`;
 }
 
 /**

@@ -64,6 +64,13 @@ import {
  * grafo por arista no aparece en el presupuesto de frame.
  */
 const SIGNAL_WIRE_COLOR_REFRESH_SECONDS = 0.25;
+
+/**
+ * Consignas de la tecla de dev T (ronda 1 de playtest de 14a-3), en orden de
+ * ciclo. `undefined` al final = liberar la sección. Ver `cycleDevTemperature`
+ * para por qué son estos tres números y no otros.
+ */
+const DEV_TEMPERATURE_TARGETS: ReadonlyArray<number | undefined> = [80, 120, -20, undefined];
 /**
  * Radio, en celdas, dentro del cual un cable quemado busca contra qué descargar
  * un arco (14a-4 ronda 3). Corto a propósito: una descarga que cruza media nave
@@ -104,6 +111,9 @@ import {
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
 import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
+import { createWireHeatEffect } from "../particles/effects/wire-heat-effect.js";
+import type { WireHeatState } from "../particles/effects/wire-heat-effect.js";
+import { formatMeasure } from "../ui/number-format.js";
 import { DEV_EVENT_SAMPLES } from "./dev-event-samples.js";
 import { firePouredSubstance } from "../particles/effects/salvage-hazard-effect.js";
 import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
@@ -573,6 +583,12 @@ export class FloorplanScene extends Phaser.Scene {
   private readonly conduitFlowEffects = new Map<string, StateDrivenEffect<ConduitPathFlowState>>();
   /** Efecto de flujo animado por CABLE de señal (Fase 11f.6), clave `edge.id` — ver `syncSignalWireFlowEffects`. */
   private readonly signalWireFlowEffects = new Map<SignalEdgeId, StateDrivenEffect<ConduitPathFlowState>>();
+  /**
+   * Partículas de CALOR por cable (ronda 1 de playtest de 14a-3), clave
+   * `edge.id`. Hermano de `signalWireFlowEffects` y con el mismo ciclo de vida:
+   * se crea al aparecer el cable y se libera al desmontarse su dueño.
+   */
+  private readonly signalWireHeatEffects = new Map<SignalEdgeId, StateDrivenEffect<WireHeatState>>();
   /** Cuenta atrás del repintado de color de cables (14a-4) — ver `refreshSignalWireColors`. */
   private signalWireColorCooldown = 0;
   /**
@@ -1188,6 +1204,8 @@ export class FloorplanScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-G", () => this.scene.start("particle-gallery"));
     this.input.keyboard?.on("keydown-F", () => this.toggleDevTargetMode("event-sample"));
     this.input.keyboard?.on("keydown-H", () => this.toggleDevTargetMode("section-damage"));
+    // 14a-3: sostener la temperatura de una sección. Ver `cycleDevTemperature`.
+    this.input.keyboard?.on("keydown-T", () => this.toggleDevTargetMode("hold-temperature"));
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
@@ -1348,7 +1366,19 @@ export class FloorplanScene extends Phaser.Scene {
           (entry) => entry.id === event.sectionId,
         );
         const cell = event.kind === "section-breached" ? event.breachCell : section && sectionCentroidCell(section);
-        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        if (cell) {
+          // 14a-3: el daño de sección es de la SALA y ahora se reparte por sus
+          // celdas; la brecha trae su celda exacta y sigue siendo puntual, que
+          // es justo donde el jugador tiene que instalar el parche.
+          fireEventEffect(
+            this,
+            cell,
+            event,
+            event.kind === "section-breached"
+              ? this.worldEffectOptions
+              : this.sectionEffectOptions(event.sectionId),
+          );
+        }
         fireEventSound(this, event);
         if (event.kind === "section-breached") {
           // Una brecha es tan grave como una combustión violenta: mismo
@@ -1385,7 +1415,19 @@ export class FloorplanScene extends Phaser.Scene {
                 );
                 return section && sectionCentroidCell(section);
               })();
-        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        if (cell) {
+          fireEventEffect(
+            this,
+            cell,
+            event,
+            // La evaporación es un fenómeno de SALA y lleva su superficie; el
+            // contenido de un tanque que se congela es de la PIEZA y no debe
+            // llevarla (ver `sectionEffectOptions`).
+            event.kind === "substance-phase-change"
+              ? this.sectionEffectOptions(event.sectionId)
+              : this.worldEffectOptions,
+          );
+        }
         if (event.kind === "reservoir-content-phase-change" && event.damagedContainer) {
           // Solo se avisa cuando hubo CONSECUENCIA: congelarse y descongelarse
           // sin daño ya se cuenta con la partícula y el glifo, y una notificación
@@ -1412,7 +1454,8 @@ export class FloorplanScene extends Phaser.Scene {
           (entry) => entry.id === event.sectionId,
         );
         const cell = section && sectionCentroidCell(section);
-        if (cell) fireEventEffect(this, cell, event, this.worldEffectOptions);
+        // 14a-3: un peligro atmosférico también es de sala (gas tóxico, corrosión).
+        if (cell) fireEventEffect(this, cell, event, this.sectionEffectOptions(event.sectionId));
         fireEventSound(this, event);
         this.notifications?.push({
           title: t(`ui.floorplan.notification.${event.kind}`),
@@ -2235,10 +2278,20 @@ export class FloorplanScene extends Phaser.Scene {
         // 14a-3: la consecuencia del umbral en palabras, y el estado de lo que
         // hay suelto en el aire.
         sectionSelfIgniting: t("ui.floorplan.mission.tooltip.self-igniting"),
-        substanceState: (name, state) =>
+        substanceState: (name, state, percent) =>
           t("ui.floorplan.mission.tooltip.substance-state")
             .replace("{substance}", name)
-            .replace("{state}", state),
+            .replace("{state}", state)
+            .replace("{percent}", String(percent)),
+        sectionOxygen: (percent, bucket) =>
+          t("ui.floorplan.mission.tooltip.oxygen")
+            .replace("{percent}", String(percent))
+            .replace("{bucket}", bucket),
+        sectionWiringHeat: (celsiusPerSecond) =>
+          t("ui.floorplan.mission.tooltip.wiring-heat").replace(
+            "{rate}",
+            formatMeasure(celsiusPerSecond),
+          ),
         sectionBreach: (sealed) =>
           t(sealed ? "ui.floorplan.mission.tooltip.breach-sealed" : "ui.floorplan.mission.tooltip.breach-open"),
         instanceState: (state) => instanceStateLabel(state),
@@ -2278,9 +2331,12 @@ export class FloorplanScene extends Phaser.Scene {
               : "ui.floorplan.mission.tooltip.signal-inactive",
           )}`,
         wireLoad: (load, capacity) =>
-          `${t("ui.floorplan.mission.tooltip.wire-load")}: ${load} / ${
-            Number.isInteger(capacity) ? capacity : capacity.toFixed(1)
-          }`,
+          `${t("ui.floorplan.mission.tooltip.wire-load")}: ${load} / ${formatMeasure(capacity)}`,
+        wireHeat: (celsiusPerSecond) =>
+          t("ui.floorplan.mission.tooltip.wire-heat").replace(
+            "{rate}",
+            formatMeasure(celsiusPerSecond),
+          ),
         wireOverloadWarning: t("ui.floorplan.mission.tooltip.wire-overload-warning"),
         wireLoadExplained: t("ui.floorplan.mission.tooltip.wire-load-explained"),
         wireBurned: t("ui.floorplan.mission.tooltip.wire-burned"),
@@ -2745,8 +2801,22 @@ export class FloorplanScene extends Phaser.Scene {
     this.modeBadge = badge;
   }
 
+  /**
+   * Texto de estado del encabezado. Cuando no hay nada que decir, cae al aviso
+   * de las consignas de dev vigentes (ronda 1 de playtest de 14a-3): una
+   * herramienta que sostiene el mundo en un estado artificial y NO se ve activa
+   * se queda encendida y falsea el playtest siguiente. Va acá, en el punto único
+   * donde se escribe el estado, para que ningún llamador tenga que acordarse.
+   */
   private setStatus(text: string): void {
-    this.statusText?.setText(text);
+    this.statusText?.setText(text || this.devStatusText());
+  }
+
+  private devStatusText(): string {
+    const count = this.mission.devTemperatureTargetCount;
+    return count === 0
+      ? ""
+      : t("ui.floorplan.dev.temperature-active").replace("{count}", String(count));
   }
 
   private updatePlayPauseButton(): void {
@@ -3854,6 +3924,24 @@ export class FloorplanScene extends Phaser.Scene {
   };
 
   /**
+   * Las mismas opciones, más la superficie de la sección (ronda 1 de playtest de
+   * 14a-3). Se usa para los eventos cuyo sujeto es LA SALA, para que su efecto
+   * se reparta por sus celdas reales en vez de pintarse en el centroide.
+   *
+   * Se resuelve acá y no en cada suscripción porque el criterio es uno solo:
+   * cualquier evento que llegue con `sectionId` y sin celda propia describe la
+   * sala entera. Los eventos puntuales (un chispazo, el contenido de un tanque)
+   * siguen usando `worldEffectOptions` tal cual — pasarles el área sería el
+   * error inverso, pintar sobre la sala algo que le pasó a una pieza.
+   */
+  private sectionEffectOptions(sectionId: SectionId): EventEffectOptions {
+    const section = this.mission.shipFloorplan.sections.find((entry) => entry.id === sectionId);
+    return section
+      ? { ...this.worldEffectOptions, area: { cells: section.cells } }
+      : this.worldEffectOptions;
+  }
+
+  /**
    * Tinte PROPIO de cada objeto teñible del plano, antes de aplicarle la luz
    * (Fase 12d, cierre — Obs 16). Existe porque `setTint` es un recurso ya
    * disputado: lo escriben el tinte por `condition` del overlay, el estado
@@ -3973,10 +4061,12 @@ export class FloorplanScene extends Phaser.Scene {
    * el click elige el sitio (pedido del operador). Molde de los otros modos de
    * selección de destino del mapa, ESC incluido.
    */
-  private devTargetMode?: "event-sample" | "section-damage";
+  private devTargetMode?: "event-sample" | "section-damage" | "hold-temperature";
 
   /** Arma una herramienta de dev, o la desarma si ya lo estaba (misma tecla). */
-  private toggleDevTargetMode(mode: "event-sample" | "section-damage"): void {
+  private toggleDevTargetMode(
+    mode: "event-sample" | "section-damage" | "hold-temperature",
+  ): void {
     this.devTargetMode = this.devTargetMode === mode ? undefined : mode;
     this.setStatus(this.devTargetMode ? t(`ui.floorplan.dev.armed.${this.devTargetMode}`) : "");
   }
@@ -3988,8 +4078,46 @@ export class FloorplanScene extends Phaser.Scene {
     this.devTargetMode = undefined;
     this.setStatus("");
     if (mode === "event-sample") this.fireDevEventSample(cell);
+    else if (mode === "hold-temperature") this.cycleDevTemperature(cell);
     else this.fireDevSectionDamage(cell);
     return true;
+  }
+
+  /**
+   * Ciclo de consignas de la tecla de dev T (ronda 1 de playtest de 14a-3).
+   *
+   * Los tres valores no son redondos por gusto: cada uno abre uno de los tres
+   * estados que esta subfase construyó, y están elegidos contra los umbrales del
+   * motor, no a ojo.
+   *  - **80 °C**: por encima de la ebullición del disolvente (56) y del
+   *    combustible (75) y por debajo de `AUTOIGNITION_CELSIUS` (90) — hay vapor
+   *    inflamable y hace falta una chispa.
+   *  - **120 °C**: por encima de la autoignición, la sala enciende sola y
+   *    conduce a la vecina.
+   *  - **-20 °C**: por debajo del punto de fusión del agua, congela el contenido
+   *    de un reservorio sin depender del enfriador.
+   *
+   * El cuarto paso del ciclo es LIBERAR: una herramienta que solo se puede
+   * encender se queda encendida y falsea el playtest siguiente.
+   */
+  private cycleDevTemperature(cell: GridPosition): void {
+    const section = this.mission.sectionAt(cell);
+    if (!section) {
+      this.notifications?.push({ title: t("ui.floorplan.dev.no-section"), type: "warning" });
+      return;
+    }
+    const current = this.mission.devTemperatureTargetOf(section.id);
+    const index = current === undefined ? -1 : DEV_TEMPERATURE_TARGETS.indexOf(current);
+    const next = DEV_TEMPERATURE_TARGETS[index + 1];
+    this.mission.setDevTemperatureTarget(section.id, next);
+    this.setStatus("");
+    this.notifications?.push({
+      title:
+        next === undefined
+          ? t("ui.floorplan.dev.temperature-released")
+          : t("ui.floorplan.dev.temperature-held").replace("{celsius}", String(next)),
+      type: "info",
+    });
   }
 
   private fireDevEventSample(cell: GridPosition): void {
@@ -4196,18 +4324,32 @@ export class FloorplanScene extends Phaser.Scene {
     return midpoint ? { x: Math.floor(midpoint.x / CELL), y: Math.floor(midpoint.y / CELL) } : undefined;
   }
 
-  /** Índice celda→cable para el tooltip (14a-4 ronda 1). Ver `wireByCell`. */
+  /**
+   * Índice celda→cable para el tooltip (14a-4 ronda 1). Ver `wireByCell`.
+   *
+   * Ronda 1 de playtest de 14a-3: en la misma pasada se publica el índice
+   * INVERSO cable→secciones que necesita el calor del cableado. Sale de acá y no
+   * de un recorrido propio porque es exactamente el mismo dato ya calculado —
+   * dos recorridos separados podrían discrepar sobre por dónde pasa un cable, y
+   * entonces el tooltip diría una cosa y la sala se calentaría por otra.
+   */
   private rebuildWireCellIndex(): void {
     const index = new Map<string, SignalEdgeId>();
+    const sectionsByEdge = new Map<SignalEdgeId, SectionId[]>();
     for (const edge of this.mission.blueprint.signalGraph.edges) {
+      const sections = new Set<SectionId>();
       for (const cell of signalWireCells(this.signalWireRouteFor(edge))) {
         // Sin pisar: si dos cables comparten celda gana el primero. Preferible a
         // un tooltip que parpadea entre dos cables según el orden de iteración.
         const key = `${cell.x},${cell.y}`;
         if (!index.has(key)) index.set(key, edge.id);
+        const section = this.mission.sectionAt(cell);
+        if (section) sections.add(section.id);
       }
+      if (sections.size > 0) sectionsByEdge.set(edge.id, [...sections]);
     }
     this.wireByCell = index;
+    this.mission.setWireSectionIndex(sectionsByEdge);
   }
 
   private syncSignalWireFlowEffects(): void {
@@ -4224,12 +4366,27 @@ export class FloorplanScene extends Phaser.Scene {
       const effect = createConduitPathFlowEffect(path, this.registerFlowToken);
       effect.start(this, path[0]!);
       this.signalWireFlowEffects.set(edge.id, effect);
+      // 14a-3: el calor del cable comparte topología con su flujo, así que
+      // comparte también el punto donde se crea y se libera. Su área son las
+      // celdas del CUERPO: pintarlo sobre los extremos haría parecer que las
+      // piezas que une son las que se calientan.
+      const bodyCells = signalWireBodyCells(path);
+      if (bodyCells.length > 0) {
+        const heat = createWireHeatEffect(this.registerParticleEmitter);
+        heat.start(this, bodyCells[0]!, { cells: bodyCells });
+        this.signalWireHeatEffects.set(edge.id, heat);
+      }
     }
     // Cables removidos (dueño desmontado): detener y liberar su efecto.
     for (const [edgeId, effect] of this.signalWireFlowEffects) {
       if (currentEdgeIds.has(edgeId)) continue;
       effect.stop();
       this.signalWireFlowEffects.delete(edgeId);
+    }
+    for (const [edgeId, effect] of this.signalWireHeatEffects) {
+      if (currentEdgeIds.has(edgeId)) continue;
+      effect.stop();
+      this.signalWireHeatEffects.delete(edgeId);
     }
   }
 
@@ -4273,6 +4430,16 @@ export class FloorplanScene extends Phaser.Scene {
         ? { active: false, intensity: 0 }
         : signalWireFlowIntensity(edge, this.mission);
       effect.update({ active, intensity, kind: "senal", visible }, deltaSeconds);
+      // 14a-3: y su calor, que NO depende de que la señal esté activa — un cable
+      // disipa por llevar corriente, no por estar transmitiendo un 1. Un cable
+      // quemado sí deja de disiparlo: el motor ya lo saca del grafo activo.
+      this.signalWireHeatEffects.get(edge.id)?.update(
+        {
+          celsiusPerSecond: burned ? 0 : this.mission.wireHeatOf(edge.id),
+          visible,
+        },
+        deltaSeconds,
+      );
     }
   }
 

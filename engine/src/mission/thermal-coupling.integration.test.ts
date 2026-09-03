@@ -208,7 +208,8 @@ function buildScene(options: SceneOptions) {
     // derrame se decidiría al nominal de la nave y no a la temperatura de la
     // sala — o sea que el fixture probaría una base distinta de la de
     // producción, que es justo donde viven los agujeros de cobertura.
-    sectionTemperatureOf: (sectionId) => atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
+    sectionTemperatureOf: (sectionId): number | undefined =>
+      atmosphere.atmosphereOf(sectionId)?.temperatureCelsius,
   });
   const atmosphere = new MissionAtmosphereRuntime(
     plan,

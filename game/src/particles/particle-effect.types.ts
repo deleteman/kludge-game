@@ -48,6 +48,20 @@ export interface EventEffectOptions {
   readonly tint?: number;
   /** Ver `ObjectCreatedHook`. `fireEventEffect` es el camino genérico que no asignaba cámara. */
   readonly onObjectCreated?: ObjectCreatedHook;
+  /**
+   * Superficie de la sección donde ocurre el evento (ronda 1 de playtest de
+   * 14a-3). Opcional: un evento PUNTUAL (una chispa, el contenido de un tanque
+   * que se congela) se queda con su `position` y no debe recibirla.
+   *
+   * Existe porque la ronda 1 de 14a-2 corrigió este mismo defecto solo para los
+   * efectos *state-driven* —`StateDrivenEffect.start` ya recibía un `EffectArea`—
+   * y los dirigidos por evento se quedaron sin la mitad del arreglo. Resultado:
+   * la evaporación de 14a-3 se pintaba como un burst de ±14 px en el centroide
+   * de una sala de 30-60 celdas, y el operador reportó que "el vapor es muy poco
+   * visible". Un fenómeno de sala no puede pintarse como un punto, venga de un
+   * evento o de un estado.
+   */
+  readonly area?: EffectArea;
 }
 
 export interface EventDrivenEffect<K extends DomainEvent["kind"] = DomainEvent["kind"]> {

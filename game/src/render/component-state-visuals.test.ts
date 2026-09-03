@@ -115,6 +115,28 @@ describe("instanceStateLabel", () => {
   it("un estado sin detalle numérico se queda en su frase, sin sufijos vacíos", () => {
     expect(instanceStateLabel({ flag: "unpowered" })).not.toContain("undefined");
   });
+
+  it("una temperatura del motor se redondea a una décima (ronda 1 de playtest de 14a-3)", () => {
+    // El operador vio `-10.9483472938279` en el aviso de contenido congelado.
+    // Los detalles nacieron en 13h con consumidores que solo traían enteros, así
+    // que interpolar el número crudo funcionaba por casualidad hasta que llegó
+    // el primer float.
+    const label = instanceStateLabel({
+      flag: "frozen-content",
+      required: 0,
+      available: -10.9483472938279,
+    });
+    expect(label).toContain("-10.9");
+    expect(label).not.toContain("-10.94");
+  });
+
+  it("un entero sigue leyéndose como entero, sin `.0` sobrante", () => {
+    // Las unidades de energía y la demanda de señal son contables: un decimal
+    // ahí sería ruido.
+    const label = instanceStateLabel(UNPOWERED);
+    expect(label).toContain("2");
+    expect(label).not.toContain("2.0");
+  });
 });
 
 /**

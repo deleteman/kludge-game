@@ -47,6 +47,15 @@ interface HeatPulse {
  */
 export type ActiveThermalRegulatorSource = () => ReadonlyMap<SectionId, number>;
 
+/**
+ * Aporte continuo de °C/s por sección, ya resuelto por quien lo produce (ronda 1
+ * de playtest de 14a-3). A diferencia de `ActiveThermalRegulatorSource` —que
+ * devuelve una CUENTA de máquinas y deja la tasa a este runtime— acá el valor ya
+ * viene en °C/s, porque el calor de un cable depende de su carga y su material y
+ * no hay un "por unidad" que multiplicar.
+ */
+export type SectionHeatContributionSource = () => ReadonlyMap<SectionId, number>;
+
 export class MissionThermalRuntime implements Tickable {
   private pulses: HeatPulse[] = [];
   /**
@@ -69,6 +78,17 @@ export class MissionThermalRuntime implements Tickable {
      * ya costó una ronda de playtest con el tinte de sprites.
      */
     private readonly activeRegulators?: ActiveThermalRegulatorSource,
+    /**
+     * Calor que disipa el CABLEADO (ronda 1 de playtest de 14a-3, octavo
+     * escritor). Misma forma y mismo motivo que `activeRegulators`: es un estado
+     * continuo, no un pulso, y entra por acá y no como un segundo
+     * `SectionHeatSource` para que siga habiendo un único productor del mapa de
+     * °C/s.
+     *
+     * La regla vive en `power/conductor-heat.ts` con sus tests; este runtime
+     * solo suma lo que esa función ya decidió.
+     */
+    private readonly conductorHeat?: SectionHeatContributionSource,
   ) {
     reactionEvents?.on("combustion", (event) => {
       const spec = COMBUSTION_HEAT[event.intensity];
@@ -138,7 +158,8 @@ export class MissionThermalRuntime implements Tickable {
 
   tick(ctx: TickContext): void {
     const regulators = this.activeRegulators?.() ?? EMPTY_REGULATORS;
-    if (this.pulses.length === 0 && regulators.size === 0) {
+    const wiring = this.conductorHeat?.() ?? EMPTY_REGULATORS;
+    if (this.pulses.length === 0 && regulators.size === 0 && wiring.size === 0) {
       // Un mapa nuevo vacío y no el anterior: si el último pulso venció, la
       // tasa tiene que caer a 0, no quedarse pegada en la del tick pasado.
       if (this.lastRates.size > 0) {
@@ -152,6 +173,11 @@ export class MissionThermalRuntime implements Tickable {
     // ganarle o perder por separado.
     for (const [sectionId, count] of regulators) {
       rates.set(sectionId, (rates.get(sectionId) ?? 0) + count * COOLER_RATE_CELSIUS_PER_SECOND);
+    }
+    // El cableado suma igual que todo lo demás: un enfriador puede pelearle a un
+    // tronco cargado, y dos troncos pueden ganarle al enfriador.
+    for (const [sectionId, celsiusPerSecond] of wiring) {
+      rates.set(sectionId, (rates.get(sectionId) ?? 0) + celsiusPerSecond);
     }
     const alive: HeatPulse[] = [];
     for (const pulse of this.pulses) {

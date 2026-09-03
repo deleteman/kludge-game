@@ -767,6 +767,12 @@ export { CRYOGENIC_SUBSTANCE_IDS } from "./chemistry/catalog/element-catalog.js"
 export { frozenContentOf, isSubstanceFrozenAt } from "./reservoir/frozen-content.js";
 export type { FrozenContentDeps, FrozenContentInfo } from "./reservoir/frozen-content.js";
 export { PhaseExpansionPressureSource } from "./mission/phase-expansion-pressure.js";
+// Ronda 1 de playtest de 14a-3: el cableado como fuente de calor.
+export {
+  conductorHeatBySection,
+  CONDUCTOR_HEAT_PARAMETERS,
+  edgeHeatCelsiusPerSecond,
+} from "./power/conductor-heat.js";
 export { MissionPhaseRuntime } from "./mission/mission-phase-runtime.js";
 export type { PhaseRuntimeDeps } from "./mission/mission-phase-runtime.js";
 export { FluidOperationRegistry } from "./mission/fluid-operations.js";
@@ -822,7 +828,7 @@ export type {
 } from "./mission/mission-atmosphere-runtime.js";
 // Subfase 14a-1 — escritores de temperatura por evento (combustión, sobrecarga, neutralización).
 export { MissionThermalRuntime } from "./mission/mission-thermal-runtime.js";
-export type { ActiveThermalRegulatorSource } from "./mission/mission-thermal-runtime.js";
+export type { SectionHeatContributionSource, ActiveThermalRegulatorSource } from "./mission/mission-thermal-runtime.js";
 // Subfase 14a-2: acoplamientos térmicos.
 export { edgeElectricalLoad } from "./power/conductor-load.js";
 export {

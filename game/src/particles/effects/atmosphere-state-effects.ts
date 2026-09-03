@@ -1,10 +1,16 @@
 import type Phaser from "phaser";
 
 import type { EffectArea, GridPosition, ParticleEmitterHook, StateDrivenEffect } from "../particle-effect.types.js";
-import { type EffectScene, pickTexture, spreadRange, textureScale, toPixel } from "../particle-utils.js";
+import { type EffectScene, pickTexture, textureScale, toPixel } from "../particle-utils.js";
 import { CIRCLE_TEXTURES, SMOKE_TEXTURES } from "../particle-texture-registry.js";
 import { HAZARD_PARAMETERS, TEMPERATURE_CEILING_CELSIUS, TEMPERATURE_FLOOR_CELSIUS } from "engine";
-import { coverageQuantity, sectionEmitZone, thresholdSeverity } from "./atmosphere-effect-coverage.js";
+import { HEAT_VAPOR_TINT } from "../../render/palette.js";
+import {
+  coverageQuantity,
+  emitterOrigin,
+  sectionCoverageSpread,
+  thresholdSeverity,
+} from "./atmosphere-effect-coverage.js";
 
 /**
  * Tres fenómenos state-driven de GDD 11.1 leídos de `SectionAtmosphere` cada
@@ -26,27 +32,6 @@ import { coverageQuantity, sectionEmitZone, thresholdSeverity } from "./atmosphe
 export interface GasCloudState {
   readonly concentration: number;
   readonly tint: number;
-}
-
-/**
- * Origen del emisor. Con cobertura de sección va en (0,0) porque
- * `sectionEmitZone` devuelve coordenadas de MUNDO y Phaser las suma a la
- * posición del emisor; sin ella, en el punto de siempre.
- */
-function emitterOrigin(px: number, py: number, area: EffectArea | undefined): [number, number] {
-  return area ? [0, 0] : [px, py];
-}
-
-/**
- * Dispersión de las partículas: la sección entera si el llamador pasó sus
- * celdas, el radio puntual de antes si no.
- *
- * El fallback no es una concesión: la galería de partículas (Fase 8) y los
- * tests instancian estos efectos sin ninguna sección detrás, y romperlos para
- * arreglar la partida sería cambiar un problema por otro.
- */
-function spread(area: EffectArea | undefined, radiusPx: number): Record<string, unknown> {
-  return area ? { emitZone: sectionEmitZone(area) } : { x: spreadRange(radiusPx), y: spreadRange(radiusPx) };
 }
 
 /**
@@ -117,7 +102,7 @@ export function createGasLeakEffect(onEmitterCreated?: ParticleEmitterHook): Sta
           alpha: { start: 0.35, end: 0 },
           quantity,
           tint: state.tint,
-          ...spread(area, 6 + shown * 20),
+          ...sectionCoverageSpread(area, 6 + shown * 20),
         });
         emitter.setAlpha(opacity);
         onEmitterCreated?.(emitter);
@@ -205,7 +190,7 @@ export function createFreezingEffect(
           tint: 0xbfe8ff,
           quantity,
           frequency: 100,
-          ...spread(area, 10),
+          ...sectionCoverageSpread(area, 10),
         });
         onEmitterCreated?.(emitter);
       }
@@ -256,10 +241,10 @@ export function createHeatVaporEffect(
           angle: { min: 260, max: 280 },
           scale: { start: textureScale(16), end: textureScale(30) },
           alpha: { start: 0.3, end: 0 },
-          tint: 0xf0f0f0,
+          tint: HEAT_VAPOR_TINT,
           quantity,
           frequency: 80,
-          ...spread(area, 8),
+          ...sectionCoverageSpread(area, 8),
         });
         onEmitterCreated?.(emitter);
       }

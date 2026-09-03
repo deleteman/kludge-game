@@ -18,6 +18,7 @@ import {
   LABEL_COLOR,
   WIRE_LOAD_WARNING_RATIO,
 } from "../../render/palette.js";
+import { WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND } from "../../particles/effects/wire-heat-effect.js";
 import { stateNoticeCss, visualForState } from "../../render/component-state-visuals.js";
 import { renderCompositionLines } from "./composition-list.js";
 import type { CompositionIngredient } from "./mission-action-panel.js";
@@ -85,6 +86,13 @@ export type TooltipContent =
       readonly burned: boolean;
       /** La sección lo está degradando por frío o calor ahora mismo. */
       readonly thermallyDerated: boolean;
+      /**
+       * °C/s que este cable está disipando sobre su sala (ronda 1 de playtest de
+       * 14a-3). Es la otra mitad de la lectura de la carga: el jugador ve las
+       * partículas de calor sobre el recorrido y necesita el número para saber
+       * cuánto está calentando y por qué.
+       */
+      readonly heatCelsiusPerSecond: number;
     }
   | {
       readonly kind: "section";
@@ -150,12 +158,25 @@ export interface SectionAtmosphereTooltip {
    */
   readonly selfIgniting: boolean;
   /**
-   * Sustancias en el aire de la sección y el estado en que están AHÍ (14a-3).
-   * Es la mitad visible del cambio de estado: sin esto, el jugador ve que su
-   * charco desapareció y no tiene dónde leer que ahora es un gas inflamable
-   * flotando en la sala.
+   * Oxígeno de la sala: el porcentaje y el bucket de combustión ya traducido
+   * (ronda 1 de playtest de 14a-3, "no veo los niveles de O2"). Es el dato que
+   * decide si algo puede arder, y el que explica por qué inundar una sala de
+   * vapor apaga un fuego en vez de alimentarlo.
    */
-  readonly substanceStates?: ReadonlyArray<{ readonly name: string; readonly state: string }>;
+  readonly oxygen?: { readonly percent: number; readonly bucket: string };
+  /** °C/s que el cableado de la sala está aportando (14a-3 ronda 1). */
+  readonly wiringHeatCelsiusPerSecond?: number;
+  /**
+   * Sustancias en el aire de la sección, su estado AHÍ y su concentración
+   * (14a-3). Es la mitad visible del cambio de estado: sin esto, el jugador ve
+   * que su charco desapareció y no tiene dónde leer que ahora es un gas
+   * inflamable flotando en la sala.
+   */
+  readonly substanceStates?: ReadonlyArray<{
+    readonly name: string;
+    readonly state: string;
+    readonly percent: number;
+  }>;
 }
 
 export interface MissionTooltipLabels {
@@ -178,8 +199,12 @@ export interface MissionTooltipLabels {
   readonly sectionHeating: string;
   /** "Enciende sola: cualquier inflamable arde acá" (14a-3). */
   readonly sectionSelfIgniting: string;
-  /** "Vapor de disolvente (gas)" — sustancia presente y su estado efectivo (14a-3). */
-  readonly substanceState: (name: string, state: string) => string;
+  /** "Disolvente en el aire (gas, 18%)" — sustancia presente, estado efectivo y concentración (14a-3). */
+  readonly substanceState: (name: string, state: string, percent: number) => string;
+  /** "Oxígeno: 12% (bajo)" (14a-3 ronda 1). */
+  readonly sectionOxygen: (percent: number, bucket: string) => string;
+  /** "El cableado aporta +3 °C/s" (14a-3 ronda 1). */
+  readonly sectionWiringHeat: (celsiusPerSecond: number) => string;
   /** Brecha de casco en la celda bajo el cursor. */
   readonly sectionBreach: (sealed: boolean) => string;
   /**
@@ -204,6 +229,8 @@ export interface MissionTooltipLabels {
   readonly signalEmitting: (emitting: boolean) => string;
   /** "Carga: 5 / 6". */
   readonly wireLoad: (load: number, capacity: number) => string;
+  /** "Disipa +0.8 °C/s en esta sala" (14a-3 ronda 1). */
+  readonly wireHeat: (celsiusPerSecond: number) => string;
   /** Qué pasa si la carga supera la capacidad. */
   readonly wireOverloadWarning: string;
   /** Por qué la carga es la que es: un cable lleva lo que cuelga aguas abajo. */
@@ -437,6 +464,16 @@ export function renderMissionTooltip(
         // que cuelga aguas abajo de él, ni por qué entonces la carga nunca
         // subía. Es la frase que convierte siete cifras iguales en una regla.
         lines.push({ text: `• ${labels.wireLoadExplained}`, color: LABEL_COLOR });
+        // 14a-3: cuánto calor está metiendo en la sala. Va SOLO cuando el efecto
+        // de partículas también se ve, con el mismo umbral: si el jugador ve el
+        // shimmer tiene que encontrar acá el número, y si no lo ve, esta línea
+        // sería ruido sobre un aporte que no cambia nada.
+        if (content.heatCelsiusPerSecond >= WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND) {
+          lines.push({
+            text: `≈ ${labels.wireHeat(content.heatCelsiusPerSecond)}`,
+            color: CRISIS_WARNING_CSS,
+          });
+        }
       }
       if (content.wear !== "nuevo") {
         lines.push({
@@ -499,11 +536,34 @@ export function renderMissionTooltip(
       if (content.atmosphere.selfIgniting) {
         lines.push({ text: `⚠ ${labels.sectionSelfIgniting}`, color: CRISIS_FATAL_CSS });
       }
+      // El oxígeno va junto a la temperatura y la presión: son las tres lecturas
+      // de "¿qué le pasa a este aire?", y la de O2 es la que faltaba.
+      const oxygen = content.atmosphere.oxygen;
+      if (oxygen) {
+        lines.push({
+          text: `• ${labels.sectionOxygen(oxygen.percent, oxygen.bucket)}`,
+          // Rojo cuando ya no se puede respirar ni arder nada: es del mismo
+          // orden que el vacío. Ámbar cuando está enriquecida, que es un peligro
+          // de signo contrario (todo arde más fácil).
+          color:
+            oxygen.bucket === "none" || oxygen.bucket === "low"
+              ? CRISIS_FATAL_CSS
+              : oxygen.bucket === "high"
+                ? CRISIS_WARNING_CSS
+                : LABEL_COLOR,
+        });
+      }
       for (const substance of content.atmosphere.substanceStates ?? []) {
         lines.push({
-          text: `• ${labels.substanceState(substance.name, substance.state)}`,
+          text: `• ${labels.substanceState(substance.name, substance.state, substance.percent)}`,
           color: LABEL_COLOR,
         });
+      }
+      // De dónde sale el calor, si sale del cableado: es la causa que el jugador
+      // busca mirando la sala y que hasta acá solo se podía leer cable por cable.
+      const wiringHeat = content.atmosphere.wiringHeatCelsiusPerSecond ?? 0;
+      if (wiringHeat >= WIRE_HEAT_VISIBLE_CELSIUS_PER_SECOND) {
+        lines.push({ text: `≈ ${labels.sectionWiringHeat(wiringHeat)}`, color: CRISIS_WARNING_CSS });
       }
     }
     const breach = content.kind === "wire" ? undefined : content.breach;

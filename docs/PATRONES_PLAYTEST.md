@@ -19,16 +19,16 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 | 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80 |
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
 | 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62 |
-| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78 |
+| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84 |
 | 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39 |
 | 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
 | 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71 |
-| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81 |
+| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85 |
 | 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77 |
 | 12 | El contenido autorado manda; si no encaja, el código grita en vez de degradarse | 47, 52, 53, 54 |
-| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83 |
+| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86 |
 
 Los patrones 1 a 9 aparecen abajo como lista numerada (son los ejes originales de la Fase 12-13b); del
 10 en adelante, cada uno lleva su propio encabezado `**Patrón N — …**`.
@@ -958,3 +958,48 @@ Cuando llegue feedback nuevo, agregar el patrón detectado a esta lista **en el 
 arreglar el caso puntual. (Esto ya falló DOS veces: la lista se creó tras la ronda 4 y no se actualizó en las
 rondas 5-7, ni tampoco en la 8 — en ambos casos hizo falta que el operador preguntara "¿guardaste esto?".
 Actualizar esta memoria es parte del cierre, al mismo nivel que el changelog y el commit, no un extra.)
+
+**Patrón 84 — un arreglo que solo llega a una de las dos familias de un sistema garantiza que la otra
+repita el bug** (14a-3 ronda 1; es el patrón 31 con causa estructural, y esta vez el hermano roto lo
+escribí yo DESPUÉS de haber aprendido la lección). La ronda 1 de 14a-2 corrigió "un fenómeno de sala
+pintado como un punto" en los tres efectos de atmósfera, y lo hizo bien: extrajo la cobertura a un módulo
+compartido. Pero solo cableó el área en los efectos *state-driven* — `StateDrivenEffect.start` recibe un
+`EffectArea` y `EventEffectOptions` no tenía ninguno—, así que cuando 14a-3 agregó la evaporación como
+efecto por EVENTO, el módulo compartido no era alcanzable y volví a inventar un radio a ojo: un burst de
+±14 px en el centroide de una sala de 30-60 celdas. El operador reportó exactamente lo mismo que dos
+subfases antes ("el vapor es muy poco visible"). Reglas:
+- Al extraer un helper para arreglar una familia de consumidores, preguntar si existe una SEGUNDA familia
+  que resuelve el mismo problema por otra vía. Si existe y no puede llegar al helper, el helper solo
+  arregló la mitad y la otra mitad va a divergir en cuanto alguien la toque.
+- El olor característico: dos tipos que representan lo mismo (`StateDrivenEffect.start(…, area)` y
+  `EventEffectOptions`) y solo uno lo lleva. No es una asimetría de diseño, es la mitad de un arreglo.
+- Corolario del corolario: los tres efectos que ya estaban bien (`section-damaged`, los hazards
+  atmosféricos) también pintaban en el centroide y nadie lo había reportado — al cablear el área hubo que
+  arreglarlos en la misma pasada, que es el patrón 31 en su forma normal.
+
+**Patrón 85 — una fórmula que es correcta en el caso general puede no tener ningún caso REAL donde se
+sostenga** (14a-3 ronda 1, encontrado por el eje 10 del checklist antes de que el operador lo jugara). El
+calor del cableado (`carga² / capacidad`) se calibró contra "tres compuertas detrás de un relé", que da
+una carga de 7 sobre un cable de capacidad 6. `OverloadRule` corta con `load > capacity`: ese montaje se
+quema en el primer tick, así que el número estaba calibrado contra un escenario que en partida no existe.
+Un test verde y una cuenta correcta sobre un mundo imposible. Reglas:
+- Al calibrar una magnitud contra un montaje concreto, verificar que ese montaje sea ESTABLE bajo las
+  otras reglas del motor — y anclarlo con un aserto propio (acá: que la carga del tronco no supere su
+  capacidad), no dejarlo en la prosa del docblock.
+- El fixture tiene que usar las piezas que el capítulo tiene EN STOCK. Con compuertas (consumo 2) no
+  existe ningún número de consumidores que dé exactamente 6 con el chip sumando 1; con los LEDs que el
+  Cap. 1 sí tiene (consumo 1) sale justo. Un fixture con piezas que el jugador no puede conseguir
+  describe un montaje que nadie va a armar.
+- Corolario sobre la conclusión intuitiva: "la resistencia eléctrica es el calefactor" era falso. A igual
+  carga calienta un orden de magnitud más que la fibra, pero en su PROPIO límite el cobre calienta más,
+  porque `C²/C = C` crece con la capacidad. Antes de vender una consecuencia jugable, evaluar la fórmula
+  en el límite de cada pieza y no solo comparando a igualdad de una variable.
+
+**Patrón 86 — "tsc limpio" no es lo mismo que "corrí tsc después de mi último cambio"** (14a-3, detectado
+en la ronda 1). El cierre de 14a-3 declaró `tsc` limpio y no lo estaba: los dos últimos archivos que
+edité eran tests de integración, quedaron con una inferencia circular (`gasInjection` referenciando un
+`atmosphere` declarado más abajo) y **vitest no typechequea**, así que la suite entera seguía en verde. Mi
+última corrida de `tsc` era anterior a esas ediciones. Regla: los tres verificadores se corren DESPUÉS del
+último cambio, juntos y en la misma pasada, y el número que se reporta es el de esa corrida — no el
+recuerdo de una anterior. Corolario específico de este repo: un archivo `.test.ts` puede romper `tsc` sin
+romper ningún test, así que "los tests pasan" no cubre el typecheck de los tests.

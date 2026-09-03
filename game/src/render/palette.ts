@@ -284,6 +284,22 @@ export const FROST_MIN_ALPHA = 0.12;
 export const FROST_MAX_ALPHA = 0.42;
 
 /**
+ * Tinte del CALOR en partículas: el vapor de una sala caliente (Fase 8) y, desde
+ * la ronda 1 de playtest de 14a-3, el de un cable disipando.
+ *
+ * Blanco cálido y NO el ámbar del proyecto: ese ámbar ya significa "sobrecargado
+ * / quemado" sobre un cable (`OVERLOADED_CONDUCTOR_LIGHT_COLOR`) y "degradado"
+ * sobre una pieza, así que un cable trabajando caliente se vería idéntico a uno
+ * ya cortado — el principio 6 en su forma inversa. Es el contrapunto exacto de
+ * `FROST_LAYER_COLOR`: los dos extremos del mismo eje, y el jugador los asocia a
+ * la temperatura de la sala porque son los mismos tonos que ya la describen.
+ *
+ * Vivía como literal repetido en `atmosphere-state-effects.ts`; sube a la paleta
+ * al ganar su segundo consumidor.
+ */
+export const HEAT_VAPOR_TINT = 0xf0f0f0;
+
+/**
  * Luz ambiental de "sección sin energía" (Fase 12a, corrección post-playtest — el texto original de la
  * fase la pedía como ejemplo de "estados de daño de fondo" y había quedado sin implementar). Violeta
  * apagado, no ámbar/rojo: es AUSENCIA de energía, no una alarma activa como la sobrecarga o el overlay

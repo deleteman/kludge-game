@@ -109,6 +109,13 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // señal consume una pieza, así que esta fila ya no es stock de prueba: es lo
   // que decide cuántos montajes puede intentar. Ver deuda #44.
   "cable-cobre": { nuevo: 9 },
+  // Ronda 1 de playtest de 14a-3: la resistencia eléctrica es material de
+  // CABLEADO (14a-4) y no estaba en stock, así que "cableá un tronco con
+  // resistencia" era un paso de prueba imposible. Entra con 4 unidades — un
+  // tronco y tres ramas — porque desde esta ronda un conductor DISIPA calor
+  // según su carga, y la resistencia es la que llega a estar caliente con la
+  // mitad de consumidores colgados (capacidad 3 contra los 6 del cobre).
+  "resistencia-electrica": { nuevo: 4 },
 } as AtomicPartsStock;
 
 /**

@@ -65,6 +65,7 @@ import {
   stateNoticeCss,
   visualForState,
 } from "../render/component-state-visuals.js";
+import { formatMeasure } from "../ui/number-format.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 import type { MissionRuntime } from "./mission-runtime.js";
 import { AUDIO_KEYS } from "../audio/audio-asset-registry.js";
@@ -646,6 +647,9 @@ export class MissionInteractionController {
       return {
         kind: "wire",
         name: this.mission.definitionOf(conductorId)?.name ?? conductorId,
+        // 14a-3: la MISMA función que alimenta las partículas de calor sobre el
+        // recorrido, para que el número y el shimmer no puedan discrepar.
+        heatCelsiusPerSecond: this.mission.wireHeatOf(edge.id),
         wear: edgeConductorWear(edge),
         load: status?.load ?? 0,
         capacity: status?.capacity ?? 0,
@@ -706,9 +710,14 @@ export class MissionInteractionController {
     }
     return {
       ...info,
+      oxygen: {
+        percent: Math.round(info.oxygenFraction * 100),
+        bucket: t(`ui.floorplan.mission.oxygen-bucket.${info.oxygenBucket}`),
+      },
       substanceStates: info.substanceStates.map((entry) => ({
         name: this.mission.substanceNameOf(entry.substanceId) ?? String(entry.substanceId),
         state: t(`ui.floorplan.mission.matter-state.${entry.state}`),
+        percent: Math.round(entry.concentration * 100),
       })),
     };
   }
@@ -1737,7 +1746,7 @@ export class MissionInteractionController {
     const effective = wornCapacity(conductor.maxCapacity, wear);
     // Un decimal: `wornCapacity` da 5.1 para un cable `usado`, y redondear a
     // entero volvería indistinguibles dos filas que el motor sí distingue.
-    const shown = Number.isInteger(effective) ? `${effective}` : effective.toFixed(1);
+    const shown = formatMeasure(effective);
     return [
       `${t("ui.floorplan.mission.wire-picker.capacity")}: ${shown}`,
       // `CT` decide a partir de qué temperatura el cable pierde la mitad de su

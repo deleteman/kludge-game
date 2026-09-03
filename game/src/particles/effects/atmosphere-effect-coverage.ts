@@ -1,5 +1,5 @@
 import type { EffectArea, GridPosition } from "../particle-effect.types.js";
-import { CELL } from "../particle-utils.js";
+import { CELL, spreadRange } from "../particle-utils.js";
 
 /**
  * Cómo un fenómeno de ATMÓSFERA cubre su sala (ronda 1 de playtest de 14a-2).
@@ -92,3 +92,31 @@ export function thresholdSeverity(value: number, onset: number, extreme: number)
   if (span === 0) return 1;
   return Math.min(1, Math.max(0, (value - onset) / span));
 }
+
+/**
+ * Origen del emisor. Con cobertura de sección va en (0,0) porque
+ * `sectionEmitZone` devuelve coordenadas de MUNDO y Phaser las suma a la
+ * posición del emisor; sin ella, en el punto de siempre.
+ */
+export function emitterOrigin(px: number, py: number, area: EffectArea | undefined): [number, number] {
+  return area ? [0, 0] : [px, py];
+}
+
+/**
+ * Dispersión de las partículas: la sección entera si el llamador pasó sus
+ * celdas, el radio puntual de antes si no.
+ *
+ * El fallback no es una concesión: la galería de partículas (Fase 8) y los
+ * tests instancian estos efectos sin ninguna sección detrás, y romperlos para
+ * arreglar la partida sería cambiar un problema por otro.
+ *
+ * Ronda 1 de playtest de 14a-3: las dos funciones vivían privadas en
+ * `atmosphere-state-effects.ts`, así que un efecto dirigido por EVENTO que
+ * quisiera cubrir su sala tenía que reinventarlas — y por eso la evaporación
+ * nació pintando un punto. Su sitio es este módulo, que es el que responde
+ * "cuánta superficie ocupa un fenómeno", sin importar qué lo dispare.
+ */
+export function sectionCoverageSpread(area: EffectArea | undefined, radiusPx: number): Record<string, unknown> {
+  return area ? { emitZone: sectionEmitZone(area) } : { x: spreadRange(radiusPx), y: spreadRange(radiusPx) };
+}
+

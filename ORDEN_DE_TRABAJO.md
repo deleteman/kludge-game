@@ -681,9 +681,48 @@ cuando la sala enciende sola, y el panel bloquea con motivo y números. i18n es+
 Stock del Cap. 1 para TRES montajes simultáneos (deuda #44 actualizada): válvula 2→6, junta 7→14, tubo flexible
 4→8, tubo rígido 4→6, motor 2→3 — la válvula era el techo real en dos reservorios en toda la nave.
 
-Suite: motor 1234 → **1265** (162 archivos), juego 169 sin cambios. `tsc`, `eslint` y `build` limpios.
+Suite: motor 1234 → **1265** (162 archivos), juego 169 sin cambios. `eslint` y `build` limpios; **`tsc` NO lo
+estaba** y el cierre lo declaró limpio por error — ver la ronda 1.
 Deudas nuevas registradas: **#46** (el charco no es una entidad del motor: derramar en frío y calentar después
 no evapora nada), **#47** (sobrepresión diferida) y **#48** (sustancias con puntos deliberadamente inalcanzables).
+
+###### Ronda 1 de playtest de 14a-3 ✅ CERRADA (2026-09-03)
+
+Cuatro reportes: tres bugs míos y una pregunta —*"¿qué puedo poner en una sala para que encienda sola?"*— cuya
+respuesta honesta era **nada**. Eso último es lo que cambió el alcance: la autoignición estaba completa en el
+motor y sin ningún sujeto que el jugador pudiera colocar (patrón 60 un nivel más arriba).
+
+* **Decimales sin redondear** en el aviso de congelado. `instanceStateLabel` interpolaba los detalles crudos:
+  nacieron en 13h con consumidores que solo traían ENTEROS y funcionaba por casualidad hasta el primer float.
+  Al arreglarlo aparecieron **tres copias** de la misma regla de formato en tres archivos → `formatMeasure`.
+* **El vapor casi no se veía**: reintroduje el patrón 62 que la ronda 1 de 14a-2 ya había corregido. La causa de
+  fondo: aquel arreglo solo llegó a los efectos *state-driven*, porque `EventEffectOptions` no transportaba
+  área. Ahora sí, y la cobertura de sala sube al módulo compartido; se corrigen de paso `section-damaged` y los
+  hazards atmosféricos, con el mismo defecto y sin reportar.
+* **El conductor disipa calor** (decisión: pieza real **y** tecla de dev, y por PROPIEDADES). `carga²/capacidad
+  × transferencia(CT)`, o sea I²R. Octavo escritor térmico, con la geometría del recorrido inyectada desde
+  `/game` en la misma pasada que ya calculaba celda→cable.
+* **Indicador visual del cable** (pedido explícito): partículas ascendentes sobre las celdas del CUERPO, en canal
+  propio y no un segundo color; el número en su tooltip; y el agregado en el tooltip de la SECCIÓN, que es donde
+  el jugador busca la causa.
+* **Tecla de dev T**: sostiene una sección en 80 / 120 / -20 °C. La H emite un pulso que se disipa en ~14 s, así
+  que ninguna secuencia manual entraba en esa ventana (patrón 24). Entra por el mismo canal de calor continuo
+  resolviendo la tasa de equilibrio, no escribiendo `temperatureCelsius`.
+* **O2 y concentraciones** en el tooltip de sección, con el bucket de combustión que ya usa la regla.
+
+**La calibración se rehízo DOS veces y las dos por el mismo checklist, no por el operador.** La primera
+(`0.3 °C/s` por unidad) salió de un montaje de tres compuertas cuya carga con el chip es 7 contra una capacidad
+de 6: `OverloadRule` corta con `load > capacity`, así que era un número correcto sobre un escenario que en
+partida dura un tick. La definitiva (`0.45`) se calibra contra cinco LEDs detrás de un relé —carga **exactamente**
+6, y es lo que el Cap. 1 tiene en stock—: la sala se sostiene en **82 °C** (vapor inflamable, sin autoignición),
+dos montajes la llevan a ~144 y enciende sola, y un solo LED cableado la deja en ~28, lejos del sensor. Con un
+aserto propio que fija que el tronco no se pasa de su capacidad.
+
+También del checklist: `resistencia-electrica` NO estaba en el stock del Cap. 1, así que "cableá un tronco con
+resistencia" era un paso de prueba imposible (patrón 20/55). Entra con 4 unidades.
+
+Suite: motor 1265 → **1278**, juego 169 → **171** (1449 en total, 180 archivos). `tsc`, `eslint` y `build`
+limpios — verificados los tres esta vez.
 
 #### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
 

@@ -500,6 +500,14 @@ el de agua y el de disolvente comparten receta y la válvula simple estaba en 2.
 | `tubo-flexible` | 4 | **8** | los 6 reservorios (×1) + 3 enfriadores (×1) |
 | `tubo-rigido` | 4 | **6** | 3 tanques criogénicos (×2) |
 | `motor-pequeno` | 2 | **3** | 3 enfriadores (×1) — única fuente de frío del juego |
+
+**Actualizado en la ronda 1 de playtest de 14a-3 (2026-09-03).** `resistencia-electrica` es material de CABLEADO
+desde 14a-4 y no estaba en stock, así que "cableá un tronco con resistencia" era un paso de prueba imposible
+(el patrón de la receta que no ejecuté). Entra porque desde esa ronda un conductor DISIPA calor según su carga:
+
+| Pieza | Antes | Ahora | Para qué |
+|---|---|---|---|
+| `resistencia-electrica` | 0 | **4** | un tronco + tres ramas del cable que llega a estar caliente con la mitad de consumidores colgados |
 | `cable-cobre` | 0 | **4** | cargar un conductor por encima de su capacidad y verlo cortarse |
 
 El caso más grave es `motor-pequeno`: estaba a 0 **por diseño**, para forzar el loop "sin stock → inspeccionar →
