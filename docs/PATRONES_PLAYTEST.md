@@ -19,13 +19,13 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 | 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88 |
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
 | 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62 |
-| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84 |
+| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91 |
 | 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39 |
 | 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
-| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87 |
-| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85, 87 |
+| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87, 92 |
+| 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85, 87, 89, 90 |
 | 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77 |
 | 12 | El contenido autorado manda; si no encaja, el código grita en vez de degradarse | 47, 52, 53, 54 |
 | 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86 |
@@ -1049,3 +1049,37 @@ indicadores prometen coherencia ("si ves el shimmer, el número está ahí"), el
 que ser la misma magnitud, aunque muestren cosas distintas. Y antes de dar por bueno un desacuerdo entre
 dos números de la UI, comprobar si el desacuerdo es real o si simplemente son dos magnitudes distintas mal
 etiquetadas.
+
+**Patrón 89 — Alcanzabilidad no termina en la pieza: el ESTÍMULO también tiene que existir** (14b-1,
+ronda 1). El sensor químico se cerró verificando lo de siempre —que el motor lo simulara, que declarara
+`footprint`, que su receta se pagara con el stock del capítulo— y todo eso estaba bien. El operador lo
+montó, lo cableó a un LED, vació un reservorio en la sala y no pasó nada: **no existía en el Cap.1 ninguna
+sustancia que el sensor pudiera detectar**. Un lector sin nada que leer es tan inusable como una pieza sin
+footprint, y es más difícil de ver porque la pieza funciona perfecto. Para todo componente que REACCIONA a
+un estado del mundo, la checklist de alcanzabilidad tiene dos mitades: ¿puede el jugador conseguir la
+pieza? y ¿puede el jugador PRODUCIR la condición que la activa? La segunda hay que verificarla contra el
+contenido del capítulo, no contra el catálogo.
+
+**Patrón 90 — Un predicado sobre una capa del motor hereda las restricciones de esa capa** (14b-1, ronda
+1). El sensor filtra por tag `TOX`/`CORR`, que es la condición que el diseño pedía, pero lee de
+`atmosphere.gases` — y ahí solo entra lo que está en estado GASEOSO. Casi todos los TOX/CORR del catálogo
+son líquidos a temperatura ambiente (ácido 110 °C, desinfectante 78, bromo 59): se derraman al piso y
+nunca llegan al aire, así que el predicado real era "TOX/CORR **y gaseoso**" y nadie lo había escrito. Al
+elegir la condición de disparo de un sensor, enumerar qué del catálogo la cumple DE VERDAD por el canal
+que el sensor consume, no por la propiedad que se está filtrando.
+
+**Patrón 91 — Arreglar un caso tres veces seguidas es la señal de que faltaba anclar la CLASE** (14b-1,
+auto-revisión de cierre). 14a-1 le dio `footprint` al sensor térmico, 14b-1 al químico, y al pasar el
+checklist aparecieron el de movimiento y el de presión/gas rotos igual, con sus `triggerType` simulados
+desde 13g y 11h. Cada arreglo puntual había sido correcto y ninguno había preguntado "¿a quién más le
+pasa esto?". La salida no fue un quinto parche sino un test que recorre el registro y falla si alguna
+pieza con un `triggerType` simulado no declara `footprint`, con la única excepción de diseño documentada
+en el propio test. Cuando el mismo arreglo aparece por tercera vez, el entregable deja de ser el arreglo y
+pasa a ser el invariante que lo hace imposible.
+
+**Patrón 92 — Un test que inyecta el estímulo directo no puede ver que el estímulo es inalcanzable**
+(14b-1, ronda 1). El test de integración inyectaba amoníaco en la sección y pasaba en verde: amoníaco es
+TOX y gaseoso, así que el sensor disparaba. Pero el jugador no tiene forma de conseguir amoníaco. Es el
+eje 9 aplicado a los DATOS y no a las dependencias: un test de integración que construye su propio mundo
+demuestra que el mecanismo funciona, nunca que el contenido lo habilita. Las dos cosas necesitan tests
+distintos, y el de contenido tiene que derivar del catálogo y del stock reales.

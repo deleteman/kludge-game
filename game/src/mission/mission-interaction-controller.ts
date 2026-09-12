@@ -701,6 +701,9 @@ export class MissionInteractionController {
       (!atmosphere.vacuum &&
         atmosphere.trend === "stable" &&
         !atmosphere.selfIgniting &&
+        // 14b-1: una sala contaminada por encima del umbral del sensor también
+        // tiene algo que contar, aunque todo lo demás esté quieto.
+        !atmosphere.chemicalAlarm &&
         (atmosphere.substanceStates?.length ?? 0) === 0)
     ) {
       return undefined;

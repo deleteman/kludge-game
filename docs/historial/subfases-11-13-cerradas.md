@@ -783,3 +783,68 @@ Suite: `/engine` 1072 → **1080**.
 
 
 
+
+## Subfase 14b-1: Sensor químico real — `spectral` deja de estar en fail-open ✅ CERRADA (2026-09-12)
+
+Sexto eje cruzado del motor: la química pasa a poder DISPARAR una señal. No se creó ninguna pieza: el
+`escaner-espectro` existía en el catálogo desde el arranque del proyecto con `triggerType: "spectral"`, y como
+ningún resolvedor conocía ese tipo caía en el fail-open de `allEmittersActive` — **permanentemente disparado**
+desde siempre. Cablearlo a un LED encendía el LED para el resto de la partida, hubiera o no contaminación. Es
+exactamente el mismo bug que 14a-1 encontró en el sensor térmico.
+
+* **Parámetros** (`atmosphere/chemical-sensor-parameters.ts`): `CHEMICAL_SENSOR_TAGS = ["TOX","CORR"]` y
+  `CHEMICAL_SENSOR_TRIGGER_CONCENTRATION = 0.05`. El umbral no es libre: queda por encima de
+  `REACTANT_PRESENCE_FLOOR` (0.02, debajo de eso el motor ya considera la traza inexistente) y 6× por debajo de
+  `REACTION_PARAMETERS.toxicity.incapacitationConcentration` (0.3) — **el sensor tiene que avisar antes de que
+  la tripulación caiga, no confirmarlo después**. Comparte valor con `CORROSIVE_ONSET_CONCENTRATION`, que es
+  donde un corrosivo empieza a comerse el casco: que el sensor dispare justo cuando empieza el daño real es lo
+  que hace que su lectura signifique algo.
+* **Lector** (`mission/chemical-emitter-input-source.ts`): `chemicalAwareEmitterInputs`, copia estructural de
+  `temperatureAwareEmitterInputs` más el registro químico (los contaminantes viven en `atmosphere.gases` como
+  ids de sustancia; sin resolverlos no hay forma de distinguir un tóxico de vapor de agua). Reusa
+  `sectionTaggedConcentration`, que ya existía. `chemicalSensorReading` se exporta y la consumen el disparo Y
+  el tooltip: una sola fórmula, la UI no puede discrepar del motor.
+* **Decisión de trigger type**: `"spectral"`, no `"quimico"` como pedía el texto original — el resto del
+  catálogo está en inglés y el GDD §7.3 ya describía al escáner como el sensor de composición química.
+* **Legibilidad**: línea nueva en el tooltip de sección con la CONSECUENCIA del umbral (mismo criterio que
+  `selfIgniting` de 14a-3: el porcentaje por sustancia ya estaba, pero un número suelto no dice dónde está la
+  línea de disparo), alimentada por la misma función del motor. En es/en.
+* Suite: 1456 → **1467**.
+* **Sprite faltante**: `game/assets/sprites/components/escaner-espectro.png` — usa el placeholder tinteable.
+
+### Ronda 1 de playtest de 14b-1 ✅ (2026-09-12)
+
+*"Monté el escáner, lo conecté a un led, puse un reservorio de disolvente, lo vacié en la sala y no pasó nada."*
+El operador hizo todo bien: el disolvente volátil es `VOLAT`+`COMB`, no `TOX`/`CORR`. Pero al buscar qué SÍ
+debería haber usado apareció el problema real: **no había ninguna sustancia detectable alcanzable en el Cap. 1**.
+El sensor era inusable aunque estuviera bien simulado y bien construible — la misma trampa de alcanzabilidad de
+14a-1, un paso más atrás: se verificó que la PIEZA fuera construible y nunca que el ESTÍMULO existiera.
+
+Dos condiciones hacen falta para que dispare, y solo se había pensado la primera:
+1. Tag `TOX` o `CORR`.
+2. **Estar en estado gaseoso**: el sensor lee `atmosphere.gases`. Casi todos los TOX/CORR del catálogo son
+   líquidos a temperatura ambiente (ácido de laboratorio hierve a 110 °C, desinfectante 78, bromo 59) y un
+   líquido derramado va al piso, nunca entra a la atmósfera, nunca llega al sensor.
+
+Fix, de datos: `tanque-anestesico` no declaraba `footprint` (deuda #42) y resulta ser la única fuente alcanzable
+de un TOX **gaseoso** — el anestésico médico hierve a -88 °C. Su receta es idéntica a la del reservorio de
+disolvente (flexible ×1 + válvula ×1 + junta ×2), ya pagable: cambio de visibilidad, no de economía.
+
+El test de integración no lo vio porque **inyecta amoníaco directo**, una sustancia que el jugador no puede
+conseguir (eje 9: un test que inyecta su propia versión de la dependencia no puede ver el bug). El test nuevo
+recorre el catálogo entero y exige la cadena COMPLETA —instalable + pagable con el stock del capítulo + tag
+detectable + gaseoso a temperatura nominal—, y se verificó que **falla sin el arreglo**.
+
+### Auto-revisión de cierre (eje 4, coherencia entre hermanos)
+
+El checklist destapó que tres subfases seguidas venían arreglando el MISMO defecto de a uno. Al cerrar seguían
+invisibles en el selector dos sensores cuyo `triggerType` el motor **sí** simula: `sensor-movimiento-laser`
+(`motion`, simulado desde 13g) y `sensor-presion-gas` (`pressure`, simulado desde 11h). Se les dio `footprint`.
+
+Más importante que los dos arreglos: se ancló la **clase** con un test en `emitter-sensing.test.ts` que recorre
+el registro y falla si alguna pieza con un `triggerType` simulado no declara `footprint`. Si mañana se suma un
+trigger type al conjunto de los simulados o un sensor nuevo al catálogo, falla ahí y no en un playtest. Única
+excepción documentada: `torreta-automatizada`, que el GDD §7.5 marca como *ensamblaje complejo* y que se arma
+en la mesa a propósito (caso de validación 1) — queda como pregunta abierta en pendientes, no silenciada.
+
+Suite final: **1468** (182 archivos), `tsc` de los dos workspaces y `eslint` limpios.

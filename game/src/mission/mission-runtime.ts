@@ -34,6 +34,9 @@ import {
   allEmittersActive,
   pressureAwareEmitterInputs,
   temperatureAwareEmitterInputs,
+  chemicalAwareEmitterInputs,
+  chemicalSensorReading,
+  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
   motionAwareEmitterInputs,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
   CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
@@ -572,6 +575,14 @@ export class MissionRuntime {
     // La cebolla se arma en pasos nombrados y no anidada: con tres capas ya
     // era ilegible cuál envolvía a cuál, y cada capa solo pisa los nodos de su
     // `triggerType`, así que el orden entre ellas no cambia el resultado.
+    // El catálogo químico se arma ACÁ y no más abajo (donde estaba hasta 14b-1)
+    // porque la cebolla de emisores pasa a necesitar `chemicalRegistry` como
+    // valor, no como callback perezoso, y `buildChemicalCatalog()` no depende de
+    // nada de lo que se construye antes: es catálogo puro.
+    const chemicalCatalog = buildChemicalCatalog();
+    this.chemicalRegistry = chemicalCatalog.registry;
+    this.chemicalFactory = chemicalCatalog.factory;
+    this.reactionResolver = new ReactionResolver({ namedRecipeIndex: chemicalCatalog.namedRecipeIndex });
     const atmosphereOf = (sectionId: SectionId) => this.atmosphereRuntime.atmosphereOf(sectionId);
     const withMotion = motionAwareEmitterInputs(
       this.shipState,
@@ -600,6 +611,20 @@ export class MissionRuntime {
       this.componentRegistry,
       withPressure,
     );
+    // Subfase 14b-1: la cuarta capa. `escaner-espectro` arrastraba el MISMO
+    // fail-open que el sensor térmico antes de 14a-1 — estaba permanentemente
+    // disparado desde el arranque del proyecto. Necesita además el registro
+    // químico porque los contaminantes viven en `atmosphere.gases` como ids de
+    // sustancia, y sin resolverlos no hay forma de distinguir un tóxico de
+    // vapor de agua.
+    const withChemical = chemicalAwareEmitterInputs(
+      this.shipState,
+      this.shipFloorplan,
+      atmosphereOf,
+      this.componentRegistry,
+      this.chemicalRegistry,
+      withTemperature,
+    );
     // Ronda 1 de playtest de 14a-4: la salida de señal de un actuador. Va al
     // FINAL de la cebolla y lee el estado REAL del mundo (una puerta trabada o
     // sin motor no emite, aunque la señal le ordene abrirse). `doorRuntime`
@@ -609,7 +634,7 @@ export class MissionRuntime {
     this.emitterInputs = actuatorEmitterInputs(
       this.shipState,
       (instanceId) => this.doorRuntime?.isActuatorActive(instanceId),
-      withTemperature,
+      withChemical,
     );
     // Fase 13b: `powerRuntime` reemplaza el objeto inline de `PowerScarSource`
     // (antes leía `unpoweredSectionIds` directo) y además gatea por instancia
@@ -629,10 +654,6 @@ export class MissionRuntime {
       this.powerRuntime,
       this.fanoutRuntime,
     );
-    const chemicalCatalog = buildChemicalCatalog();
-    this.chemicalRegistry = chemicalCatalog.registry;
-    this.chemicalFactory = chemicalCatalog.factory;
-    this.reactionResolver = new ReactionResolver({ namedRecipeIndex: chemicalCatalog.namedRecipeIndex });
     this.projectileWorld = new MissionProjectileWorld(
       this.shipState,
       this.signalRuntime,
@@ -1512,6 +1533,14 @@ export class MissionRuntime {
          */
         readonly selfIgniting: boolean;
         /**
+         * La contaminación de la sala cruza el umbral del sensor químico
+         * (14b-1). Mismo argumento que `selfIgniting`: es la CONSECUENCIA del
+         * umbral. Las concentraciones por sustancia ya se publican más abajo,
+         * pero un porcentaje suelto no dice dónde está la línea que hace
+         * disparar al escáner que el jugador acaba de cablear.
+         */
+        readonly chemicalAlarm: boolean;
+        /**
          * Fracción de O2 y su bucket de combustión (ronda 1 de playtest de
          * 14a-3): el operador reportó "no veo los niveles de O2", y es el dato
          * que decide si algo puede arder (GDD 5.5). El bucket sale del MISMO
@@ -1549,6 +1578,12 @@ export class MissionRuntime {
       // El MISMO umbral que consulta `MissionReactionRuntime` para decidir si
       // hay fuente de ignición: si el tooltip lo dice, el motor prende.
       selfIgniting: atmosphere.temperatureCelsius >= AUTOIGNITION_CELSIUS,
+      // La MISMA función que usa el input-source para decidir el disparo, no
+      // una segunda fórmula: un tooltip que dijera "sobre el umbral" con el
+      // sensor apagado sería la UI mintiendo sobre el motor (patrón 1).
+      chemicalAlarm:
+        chemicalSensorReading(atmosphere, this.chemicalRegistry) >
+        CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
       oxygenFraction: getGasFraction(atmosphere, GAS.OXYGEN),
       oxygenBucket: sectionCombustionAtmosphere(atmosphere),
       // La CAUSA donde el jugador la va a buscar: quien ve la sala subir de

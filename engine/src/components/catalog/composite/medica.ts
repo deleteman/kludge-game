@@ -30,6 +30,16 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     contains: "anestesico-medico" as ChemicalSubstanceId,
     name: "Tanque de anestésico",
     data: {
+      // Ronda 1 de playtest de 14b-1: sin `footprint` era invisible en el
+      // selector (deuda #42), y resulta que es la ÚNICA fuente alcanzable de
+      // una sustancia que el sensor químico pueda detectar. El anestésico es
+      // TOX y, sobre todo, es GAS a temperatura ambiente (hierve a -88 °C):
+      // los demás TOX/CORR del catálogo son líquidos que se derraman al piso y
+      // nunca llegan a la atmósfera, o sea que nunca llegan al sensor.
+      // Su receta es la MISMA que la del reservorio de disolvente
+      // (flexible ×1 + válvula ×1 + junta ×2), ya pagable con el stock del
+      // Cap. 1: esto es un cambio de visibilidad, no de economía.
+      footprint: { width: 1, height: 1 },
       functional: [{ tag: "RES", resourceType: "G", capacity: 80, dischargeRate: 5 }],
       material: { CE: "N" },
     },

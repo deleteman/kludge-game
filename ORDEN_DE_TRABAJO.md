@@ -783,22 +783,69 @@ existía en `thresholdSeverity`.
 Suite: **1456** (180 archivos), motor 1278 → 1281, juego 171 → 175. `tsc` de los dos workspaces, `eslint` y
 `build` limpios.
 
-#### Subfase 14b: Sensor Químico y Enfriador Cableable (Química↔Señales)
+#### Subfase 14b: Sensor Químico, Válvula Automática y Configuración por Instancia (Química↔Señales)
 
-* **Química → Señales:** nuevo `triggerType: "quimico"` en `EmitterProperty` + pieza "sensor químico" + `chemicalAwareEmitterInputs` (mismo molde que `pressureAwareEmitterInputs`), disparado por `contaminantAt`/`airborneSubstanceAt` sobre umbral.
-* **Señales → Química:** actuador `ACT` "válvula automática" — con señal activa ejecuta `drawFrom`/`emptyReservoir` (`reservoir-ledger.ts`) o bloquea `apply-substance`. Generaliza `SignalOutputReader`, hoy consumido solo por cinética (bobina electromagnética).
-* Con esto el Cap.2 gana un tercer tipo de sensor (junto al de movimiento y el térmico de 14a) para su diseño de nivel AND/OR/NOT, y el Cap.1 gana la primera herramienta de corte automático de una fuga.
+Cierra el último acoplamiento cruzado antes del Cap.2: que la química pueda **disparar** una señal y que una
+señal pueda **actuar** sobre la química. Con esto el Cap.2 gana un tercer tipo de sensor (junto al de
+movimiento y el térmico de 14a) para su diseño de nivel AND/OR/NOT, y el Cap.1 gana la primera herramienta de
+corte automático de una fuga.
 
-* **Sumado en el triaje de 2026-08-21 — MVP de componentes configurables por instancia (deuda #15).** Diferido
-  desde 11h y reconfirmado como diferido en 12a; 12e resolvió solo la semántica de color (el LED activo ya no
-  es verde). Lo que sigue abierto: elegir por instancia el color y la condición de disparo (`>`, `<`, `=`), con
-  datos de configuración por instancia (bump de `schemaVersion` del blueprint), UI de configuración de la
-  instancia colocada, y que el LED lea el **valor numérico real** por el mismo mecanismo de resolución por tag
-  funcional que ya usa la Pantalla LCD (`resolveLcdDisplayValue`). Entra en esta subfase porque es exactamente
-  el mismo trabajo que ella ya hace —umbrales sobre una lectura del mundo (`triggerType: "quimico"`) y
-  generalizar `SignalOutputReader`—, no un pedido de UI suelto. **Mantiene su propio ciclo de preguntas**
-  (¿solo el LED o cualquier receptor con salida numérica?, ¿configurable en cualquier momento o solo antes de
-  instalar?) antes de plan de implementación.
+Partida en tres entregas jugables al planificarla (decisión del operador, 2026-09-10), mismo criterio que 14a.
+
+Cuatro correcciones al texto original tras auditar el código:
+- **La pieza sensor ya existía**: `escaner-espectro` (`EM`, `triggerType: "spectral"`). No se crea un
+  `triggerType: "quimico"` — se reusa `spectral`, igual que 14a-1 reusó `thermal` en vez de `"temperatura"`.
+- `triggerType` es **`string` libre**, no un union: no hay tipo que extender. El registro real de qué simula
+  el motor son los `ReadonlySet<string>` de `mission/emitter-sensing.ts`.
+- `contaminantAt`/`airborneSubstanceAt` viven en **`/game`**, no sirven para un input-source del motor. Lo que
+  sí sirve y ya existía es `sectionTaggedConcentration` (`atmosphere/tagged-concentration.ts`).
+- **Bloqueante encontrado, no declarado**: `deriveSignalNodes` nunca asigna `behavior` y `/game` no lo escribe
+  en ningún lado, así que **todo nodo que el jugador coloca es `passthrough` (OR)** y AND/OR/NOT son
+  inconstruibles. El motor tiene las reglas enteras; falta solo la UI. 14c está especificada sobre eso, o sea
+  que la configuración por instancia pasa a ser camino crítico pre-demo, no un pulido posterior.
+
+##### Subfase 14b-1: Sensor químico real — `spectral` deja de estar en fail-open ✅ CERRADA (2026-09-12)
+
+##### Subfase 14b-2: Válvula automática (Señales → Química)
+
+Versión automática de la tarea `apply-substance`: sin tripulante, continua, gobernada por señal. Cierra el lazo
+**sensor químico → chip → válvula**.
+
+* Identidad por propiedades (molde: `mission/thermal-regulators.ts`), nunca por id: `isAutomaticValveDefinition`
+  / `isAutomaticValveActive`, con la semántica de tres valores de `doorSignalOutput` — **sin cable no vierte**,
+  al revés que el regulador térmico.
+* `MissionValveRuntime` (`Tickable`, molde `MissionThermalRuntime`): por tick `drawFrom` + `gasInjection.inject`,
+  reusando el camino de `ship-task-effect.ts` incluido `assertContentNotFrozen`. Registrar **antes** de
+  `atmosphereRuntime`.
+* Conectarla a `actuatorEmitterInputs`: hoy su único lector es `doorRuntime.isActuatorActive`, y el docblock ya
+  dice que "una válvula no tiene todavía un runtime del que leer 'estoy actuando'". Sin esto, el emisor de
+  salida de la válvula se resuelve a `false` para siempre.
+* Integración que justifica la subfase: tóxico → escáner dispara → válvula vierte neutralizante → la
+  concentración baja → el sensor se apaga → la válvula para. **14b-1 dejó medido que hoy eso es imposible**: la
+  difusión reparte el contaminante entre secciones pero no lo elimina, así que sin esta pieza una fuga no se
+  resuelve nunca.
+
+##### Subfase 14b-3: Configuración por instancia — chip, LED y sensor
+
+Cierra la deuda #15 y **desbloquea 14c**. Un solo mecanismo para los tres casos; se implementa en ese orden y,
+si hay que cortar, se corta por el final.
+
+* **Dos almacenes a propósito**: el chip usa `SignalNode.behavior`, que ya existe y ya persiste (sin bump). El
+  LED y el sensor necesitan un mapa disperso por instancia en el `Blueprint`, precedente
+  `PowerState.instancePriorities` → **bump `schemaVersion` 11 → 12** con el patrón tolerante de
+  `blueprint-serializer.ts`. De paso: `save/campaign-save-factory.ts` todavía escribe `schemaVersion: 10`,
+  quedó desactualizado en 14a-4.
+* **Qué es configurable se deriva de las propiedades, no del id**: nodo de señal con entradas ⇒ `behavior`;
+  `EM` de un `triggerType` simulado ⇒ umbral + comparador; `REC` de salida visible ⇒ color + condición. Así el
+  sensor de presión y el térmico ganan configuración gratis, y una creación de la mesa también.
+* **UI**: extender la variante `{kind:"instance"}` de `ActionPanelContent`, que ya tiene sub-secciones
+  (`reservoir`, `door`, `states`). Precedente de edición por instancia: `renderPowerPriorityList`. Configurable
+  en cualquier momento sobre la instancia ya colocada.
+* **Arreglo obligatorio de paso**: `resolveLcdDisplayValue` tiene su copia privada de `"pressure"` y busca en
+  `ATOMIC_COMPONENT_CATALOG`, así que **una LCD cableada al `sensor-presion-gas` compuesto no muestra nada**.
+  Migrarlo a `emitterRangeOf` + `PRESSURE_TRIGGER_TYPES` y extender `LcdDisplayValue` con las variantes
+  `temperature` (existe desde 14a-1 y nadie la expuso) y `chemical`.
+* **Diferido explícito a post-demo**: la configuración por RANGOS del resto de los sensores.
 
 #### Subfase 14c: Capítulo 2 — "Ecos en el Pasillo"
 

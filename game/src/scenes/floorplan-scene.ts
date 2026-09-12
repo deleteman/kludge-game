@@ -2278,6 +2278,7 @@ export class FloorplanScene extends Phaser.Scene {
         // 14a-3: la consecuencia del umbral en palabras, y el estado de lo que
         // hay suelto en el aire.
         sectionSelfIgniting: t("ui.floorplan.mission.tooltip.self-igniting"),
+        sectionChemicalAlarm: t("ui.floorplan.mission.tooltip.chemical-alarm"),
         substanceState: (name, state, percent) =>
           t("ui.floorplan.mission.tooltip.substance-state")
             .replace("{substance}", name)

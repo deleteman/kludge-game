@@ -19,6 +19,11 @@ import {
 import { isCompositeEntity } from "../../composition/composable-entity.types.js";
 import { consumeStock, stockOf } from "../../inventory/inventory-ledger.js";
 import { DEFAULT_WEAR } from "../../wear/wear.types.js";
+import { ALL_COMPOSITE_SPECS } from "../../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../../chemistry/catalog/build-chemical-catalog.js";
+import { effectiveMatterState } from "../../chemistry/phase/matter-state.js";
+import { NOMINAL_TEMPERATURE_CELSIUS } from "../../atmosphere/thermal-parameters.js";
+import { CHEMICAL_SENSOR_TAGS } from "../../atmosphere/chemical-sensor-parameters.js";
 import type { CrisisState } from "../crisis-state.types.js";
 import type { CrisisEvalContext } from "../crisis-rule.js";
 import type { Blueprint } from "../../blueprint/blueprint.types.js";
@@ -193,5 +198,104 @@ describe("Capítulo 1 — material de prueba del eje térmico (Subfase 14a-1)", 
 
   it("el stock inicial alcanza para al menos 3 indicadores LED, uno por sensor", () => {
     expect(stockOf(CHAPTER_01_INITIAL_ATOMIC_STOCK, "indicador-led" as ComponentId)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * Subfase 14b-1, misma clase de corte que la ronda 1 de 14a-1 y por eso mismo
+ * molde: `escaner-espectro` pasa a simularse de verdad, así que tiene que ser
+ * alcanzable. No declaraba `footprint` (invisible en el selector) y DOS de los
+ * tres ingredientes de su receta estaban en stock cero.
+ *
+ * El segundo test construye los dos sensores contra el MISMO stock, no cada uno
+ * contra una copia limpia: comparten `chip-circuito-generico`, y hacerlos por
+ * separado daría verde con un stock que en la partida real no alcanza para los
+ * dos. Los números salen de las recetas del catálogo, no repetidos acá.
+ */
+describe("Capítulo 1 — material de prueba del sensor químico (Subfase 14b-1)", () => {
+  const registry = buildComponentCatalog().registry;
+  const SPECTRAL_SCANNER = "escaner-espectro" as ComponentId;
+  const THERMAL_SENSOR = "sensor-termico-precision" as ComponentId;
+
+  function recipeOf(componentId: ComponentId) {
+    const definition = registry.get(componentId);
+    if (!definition || !isCompositeEntity(definition)) {
+      throw new Error(`${componentId} dejó de ser un compuesto de catálogo`);
+    }
+    return definition.recipe;
+  }
+
+  it("el escáner de espectro declara footprint, o sea que sobrevive al filtro del selector", () => {
+    expect(registry.get(SPECTRAL_SCANNER)?.data.footprint).toBeDefined();
+  });
+
+  /**
+   * Ronda 1 de playtest de 14b-1. El operador montó el escáner, lo cableó a un
+   * LED, vació un reservorio de disolvente en la sala y no pasó nada — y tenía
+   * razón: el disolvente es `VOLAT`+`COMB`, no `TOX`/`CORR`. Pero el problema
+   * de fondo era peor: NINGUNA sustancia detectable era alcanzable en el Cap. 1,
+   * así que el sensor era inusable aunque estuviera bien simulado y bien
+   * construible. Es la misma clase de corte que 14a-1, pero un paso más atrás:
+   * lo que faltaba no era la pieza, era el ESTÍMULO.
+   *
+   * El test de integración no lo vio porque inyecta amoníaco directo — una
+   * sustancia que el jugador no puede conseguir (eje 9: un test que inyecta su
+   * propia versión de la dependencia no puede ver el bug).
+   *
+   * Este test recorre el catálogo entero y exige la cadena COMPLETA: un
+   * compuesto instalable, pagable con el stock del capítulo, que traiga de
+   * fábrica una sustancia con tag detectable y que esa sustancia esté en estado
+   * GASEOSO a temperatura nominal — un TOX líquido se derrama al piso y nunca
+   * llega a la atmósfera, o sea que nunca llega al sensor.
+   */
+  it("hay al menos una fuente ALCANZABLE de una sustancia que el sensor químico detecta", () => {
+    const chemicalRegistry = buildChemicalCatalog().registry;
+    const detectable = ALL_COMPOSITE_SPECS.filter((spec) => {
+      if (!spec.data.footprint || !spec.contains) {
+        return false;
+      }
+      const substance = chemicalRegistry.get(spec.contains);
+      if (!substance) {
+        return false;
+      }
+      const hasSensorTag = substance.data.tags.some((tag) =>
+        (CHEMICAL_SENSOR_TAGS as ReadonlyArray<string>).includes(tag.name),
+      );
+      const airborne =
+        effectiveMatterState(substance, NOMINAL_TEMPERATURE_CELSIUS) === "G";
+      if (!hasSensorTag || !airborne) {
+        return false;
+      }
+      let stock = CHAPTER_01_INITIAL_ATOMIC_STOCK;
+      for (const ingredient of spec.recipe.ingredients) {
+        const next = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+        if (!next) {
+          return false;
+        }
+        stock = next;
+      }
+      return true;
+    });
+
+    expect(
+      detectable.map((spec) => spec.id),
+      "ningún compuesto instalable del Cap. 1 trae una sustancia que el sensor químico pueda detectar en el aire",
+    ).not.toHaveLength(0);
+  });
+
+  it("el stock inicial alcanza para 3 escáneres Y 3 sensores térmicos a la vez", () => {
+    let stock = CHAPTER_01_INITIAL_ATOMIC_STOCK;
+    for (const [componentId, label] of [
+      [SPECTRAL_SCANNER, "escáner"],
+      [THERMAL_SENSOR, "sensor térmico"],
+    ] as const) {
+      for (let built = 0; built < 3; built += 1) {
+        for (const ingredient of recipeOf(componentId).ingredients) {
+          const next = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+          expect(next, `falta ${ingredient.ref} para el ${label} #${built + 1}`).not.toBeNull();
+          stock = next!;
+        }
+      }
+    }
   });
 });

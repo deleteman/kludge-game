@@ -448,6 +448,14 @@ obvia. Dos evaluadas:
 propio no pide footprint. O sea que dejaron de necesitarlo. El resto de la deuda sigue **ABIERTA**: quedan
 ~19 compuestos invisibles, y sigue dependiendo de decidirse junto con la #43.
 
+**Actualización 14b-1 (2026-09-12):** cuatro compuestos más ganaron `footprint`, y esta vez con un criterio que
+recorta la deuda de verdad en vez de parchar el caso: **toda pieza cuyo `triggerType` el motor SIMULA tiene que
+ser instalable**. Eran `escaner-espectro` (`spectral`), `sensor-movimiento-laser` (`motion`, simulado desde 13g),
+`sensor-presion-gas` (`pressure`, desde 11h) y `tanque-anestesico` (única fuente alcanzable de un TOX gaseoso).
+Esa clase quedó **cerrada con un test** en `engine/src/mission/emitter-sensing.test.ts`, así que no puede volver
+a abrirse en silencio. Lo que sigue ABIERTO es el resto del catálogo: ~15 compuestos sin `footprint` que no son
+sensores, y ahí sí la salida sigue dependiendo de decidirse junto con la #43.
+
 Decidir junto con la deuda #43, no por separado.
 
 ## Deuda #43 — El selector de instalación necesita un buscador por nombre (Subfase 14a-1, ronda 1 de playtest)
@@ -475,6 +483,14 @@ poder playtestear el eje térmico con varias pruebas simultáneas en la misma pa
 | `indicador-led` | 1 | **6** | un LED por sensor y que sobre |
 | `chip-circuito-generico` | 0 | **8** | receta del sensor térmico (×2 c/u) |
 | `placa-disipadora` | 0 | **9** | receta del sensor térmico (×1) + enfriador (×2) + tanque criogénico (×1) |
+
+**Actualizado en la Subfase 14b-1 (2026-09-12).** Tercera subida, por la misma razón de siempre — hacer
+fabricable un sensor que el motor ya simulaba: `lente-optica` 0 → **6** y `bateria-celda-simple` 0 → **3**
+(receta del `escaner-espectro`), y `chip-circuito-generico` 8 → **14** porque pasó a compartirlo con el sensor
+térmico. **Ojo al re-nivelar**: `bateria-celda-simple` es `RES(E)`, o sea OFERTA eléctrica (1 `powerUnits` cada
+una), así que esas 3 unidades aflojan el presupuesto de energía del capítulo como efecto secundario — no es
+solo material de receta. Hay un test que exige que las recetas se paguen **contra el mismo stock**, así que
+bajar estos números falla ahí antes que en un playtest.
 
 **Actualizado en la Subfase 14a-2 (2026-08-31).** El operador pidió explícitamente que el escenario de
 acoplamientos térmicos se pudiera montar con piezas reales en vez de con contenido scripteado, así que el stock
@@ -624,3 +640,35 @@ recalibrada en esta ronda— parece inalcanzable si uno mira sólo la lista de p
 en la mesa (`placa-disipadora` ×2 + motor ×1 + tubo flexible ×1 + chip ×1). Lo que falta es que el juego lo diga:
 hoy sólo consta en un comentario del capítulo. Cuando 14b haga cableable al enfriador, conviene resolverlo con
 contenido —una entrada de bitácora o un objetivo— y no dejarlo dependiendo de que el jugador explore la mesa.
+
+
+## Pregunta abierta #45 — ¿La torreta automatizada debería ser instalable directo del catálogo? (Subfase 14b-1, auto-revisión de cierre)
+
+**Estado:** ABIERTA. Decisión de diseño, no de código. Registrada 2026-09-12.
+
+El test de clase que cerró 14b-1 (`engine/src/mission/emitter-sensing.test.ts`) exige que toda pieza con un
+`triggerType` simulado declare `footprint`. `torreta-automatizada` es la **única excepción** y está anotada como
+tal en el propio test, no silenciada: el GDD 7.5 la marca como *ensamblaje complejo* y el caso de validación 1
+consiste precisamente en armarla en la mesa a partir de un sensor compuesto + un cañón + un soporte. Darle
+`footprint` la volvería una fila más del selector y saltearía la composición que la pieza existe para enseñar.
+
+Si el operador decide que también debe poder instalarse directo, el cambio es de una línea (darle `footprint`)
+más borrar la lista `WORKBENCH_ONLY` del test. Mientras tanto queda como está.
+
+## Observación #46 — El tanque de anestésico es equipo Médico y aparece en la nave de Investigación (Subfase 14b-1, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Decisión de contenido. Registrada 2026-09-12.
+
+`installableCatalogComposites` **no filtra por arquetipo**: lista todo `ALL_COMPOSITE_SPECS`. Al darle
+`footprint` al `tanque-anestesico` para que el Cap.1 tuviera una fuente de contaminante detectable, quedó
+instalable en la nave de Investigación, que es la del capítulo. Funciona y no rompe nada, pero es equipo de la
+nave Médica apareciendo donde no corresponde por arquetipo.
+
+Dos caminos, los dos de diseño y ninguno urgente:
+- Que el Cap.1 tenga su propia fuente de contaminante coherente con Investigación (un reactivo de laboratorio
+  **gaseoso**; hoy los reactivos del arquetipo son todos líquidos y por eso no servían).
+- Filtrar el selector por arquetipo, que es un cambio más grande y afecta a todo el catálogo.
+
+Relacionado: el **bromo** (TOX líquido, hierve a 59 °C) sería la fuente elegante — derramarlo y calentar la sala
+lo evapora, encadenando el cambio de estado de 14a-3 con el sensor de 14b-1. Hoy necesita extracción de
+elementos, que el Cap.1 no otorga.

@@ -12,7 +12,10 @@ import {
   emitterCoverageCells,
   emitterRangeOf,
   emitterReaches,
+  CHEMICAL_TRIGGER_TYPES,
   PRESENCE_TRIGGER_TYPES,
+  PRESSURE_TRIGGER_TYPES,
+  THERMAL_TRIGGER_TYPES,
 } from "./emitter-sensing.js";
 
 const REGISTRY = buildComponentCatalog().registry;
@@ -98,5 +101,59 @@ describe("emitter-sensing (13g ronda 1 de playtest)", () => {
     const inB = new Set(b.map((cell) => `${cell.x},${cell.y}`));
     expect(a.some((cell) => !inB.has(`${cell.x},${cell.y}`))).toBe(true);
     expect(overlap.length).toBeLessThan(a.length);
+  });
+});
+
+/**
+ * Auto-revisión de cierre de 14b-1, eje 4 (coherencia entre hermanos).
+ *
+ * Tres subfases seguidas arreglaron el MISMO defecto de a uno: una pieza cuyo
+ * `triggerType` el motor simula de verdad pero que no declara `footprint`, así
+ * que `buildInstallOptions` la descarta con un `continue` mudo y el jugador no
+ * puede instalarla nunca (14a-1 el térmico, 14b-1 el químico, y al cerrar
+ * aparecieron el de movimiento y el de presión/gas todavía rotos).
+ *
+ * Este test ancla la CLASE en vez del caso: si mañana se agrega un
+ * `triggerType` al conjunto de los simulados, o un sensor nuevo al catálogo,
+ * falla acá en vez de en un playtest. Es la diferencia entre arreglar el bug y
+ * cerrar la puerta por la que entra.
+ */
+describe("todo sensor que el motor SIMULA tiene que ser instalable (eje 4)", () => {
+  const SIMULATED_TRIGGER_TYPES = new Set([
+    ...PRESENCE_TRIGGER_TYPES,
+    ...PRESSURE_TRIGGER_TYPES,
+    ...THERMAL_TRIGGER_TYPES,
+    ...CHEMICAL_TRIGGER_TYPES,
+  ]);
+
+  /**
+   * Única excepción, y es de DISEÑO, no un olvido: el GDD (7.5) marca la
+   * torreta como *ensamblaje complejo* — se arma en la mesa de creación a
+   * partir de un sensor compuesto más un cañón más un soporte, que es
+   * literalmente el caso de validación 1. Instalarla de una fila del catálogo
+   * saltearía la composición que la pieza existe para enseñar.
+   *
+   * Queda anotada acá y como pregunta abierta en `PENDIENTES_OBSERVACIONES.md`
+   * en vez de silenciada: si el operador decide que también debe ser
+   * instalable directo, se le da `footprint` y se borra esta lista.
+   */
+  const WORKBENCH_ONLY = new Set(["torreta-automatizada"]);
+
+  it("ninguna pieza con un triggerType simulado se queda sin footprint", () => {
+    const invisible = REGISTRY.all()
+      .filter((definition) => !WORKBENCH_ONLY.has(definition.id))
+      .filter((definition) =>
+        definition.data.functional?.some(
+          (property) =>
+            property.tag === "EM" && SIMULATED_TRIGGER_TYPES.has(property.triggerType),
+        ),
+      )
+      .filter((definition) => !definition.data.footprint)
+      .map((definition) => definition.id);
+
+    expect(
+      invisible,
+      "estas piezas las simula el motor pero el selector de instalación las descarta en silencio",
+    ).toEqual([]);
   });
 });

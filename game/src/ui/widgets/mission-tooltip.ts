@@ -171,6 +171,15 @@ export interface SectionAtmosphereTooltip {
    */
   readonly selfIgniting: boolean;
   /**
+   * La contaminación de la sala supera el umbral del sensor químico
+   * (Subfase 14b-1, `CHEMICAL_SENSOR_TRIGGER_CONCENTRATION`). Mismo criterio
+   * que `selfIgniting`: las concentraciones por sustancia ya están más abajo en
+   * el tooltip, pero un porcentaje suelto no le dice al jugador dónde está la
+   * línea que hace disparar al escáner que acaba de instalar. El umbral
+   * necesita su consecuencia en palabras.
+   */
+  readonly chemicalAlarm: boolean;
+  /**
    * Oxígeno de la sala: el porcentaje y el bucket de combustión ya traducido
    * (ronda 1 de playtest de 14a-3, "no veo los niveles de O2"). Es el dato que
    * decide si algo puede arder, y el que explica por qué inundar una sala de
@@ -212,6 +221,8 @@ export interface MissionTooltipLabels {
   readonly sectionHeating: string;
   /** "Enciende sola: cualquier inflamable arde acá" (14a-3). */
   readonly sectionSelfIgniting: string;
+  /** "Contaminación sobre el umbral: un sensor químico acá dispara" (14b-1). */
+  readonly sectionChemicalAlarm: string;
   /** "Disolvente en el aire (gas, 18%)" — sustancia presente, estado efectivo y concentración (14a-3). */
   readonly substanceState: (name: string, state: string, percent: number) => string;
   /** "Oxígeno: 12% (bajo)" (14a-3 ronda 1). */
@@ -549,6 +560,13 @@ export function renderMissionTooltip(
       // que entre acá arde", que es del mismo orden que el vacío.
       if (content.atmosphere.selfIgniting) {
         lines.push({ text: `⚠ ${labels.sectionSelfIgniting}`, color: CRISIS_FATAL_CSS });
+      }
+      // 14b-1: la consecuencia del umbral químico. Ámbar y no rojo porque el
+      // peligro real de la sustancia ya lo dicen sus propias líneas más abajo
+      // (y la toxicidad letal vive en otro umbral); esto informa dónde está la
+      // línea de disparo del sensor, que es lo que el jugador cablea.
+      if (content.atmosphere.chemicalAlarm) {
+        lines.push({ text: `• ${labels.sectionChemicalAlarm}`, color: CRISIS_WARNING_CSS });
       }
       // El oxígeno va junto a la temperatura y la presión: son las tres lecturas
       // de "¿qué le pasa a este aire?", y la de O2 es la que faltaba.

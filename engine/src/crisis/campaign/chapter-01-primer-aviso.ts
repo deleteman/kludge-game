@@ -81,8 +81,24 @@ export const CHAPTER_01_INITIAL_ATOMIC_STOCK: AtomicPartsStock = {
   // atómico al instalarlo. 8+4 alcanza para CUATRO sensores; los 6 LEDs son para
   // cablear una prueba distinta por sensor y que sobre alguno.
   "indicador-led": { nuevo: 6 },
-  "chip-circuito-generico": { nuevo: 8 },
+  "chip-circuito-generico": { nuevo: 14 },
   "placa-disipadora": { nuevo: 9 },
+  // Subfase 14b-1: material del sensor QUÍMICO. `escaner-espectro` es compuesto
+  // y se paga de su receta (`lente-optica` ×2 + `chip-circuito-generico` ×2 +
+  // `bateria-celda-simple` ×1), y sus dos primeros ingredientes estaban en
+  // stock CERO — o sea que la pieza era infabricable aunque el motor pasara a
+  // simularla. Es el mismo corte que tuvo el sensor térmico en la ronda 1 de
+  // 14a-1: que el motor lo simule no significa que el jugador pueda llegar.
+  // Los niveles alcanzan para TRES escáneres, que es lo que hace falta para
+  // comparar una sala contaminada contra una limpia y una intermedia.
+  // El chip sube 8 → 14 porque ahora lo comparten dos recetas: cuatro sensores
+  // térmicos (×2) más tres escáneres (×2).
+  // OJO: `bateria-celda-simple` es `RES(E)`, o sea OFERTA eléctrica (1
+  // `powerUnits` cada una). Tres unidades aflojan un poco el presupuesto de
+  // energía del capítulo (13b) como efecto secundario de hacer fabricable el
+  // sensor. Es deuda de balance asumida, anotada en la deuda #44.
+  "lente-optica": { nuevo: 6 },
+  "bateria-celda-simple": { nuevo: 3 },
   // Subfase 14a-2: material para montar el escenario de acoplamientos térmicos
   // sin depender de contenido scripteado (decisión del operador). Los tres
   // compuestos que hacen falta son de catálogo y se pagan de estas piezas:

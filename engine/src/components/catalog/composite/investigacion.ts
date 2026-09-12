@@ -13,6 +13,13 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "sensor-movimiento-laser" as ComponentId,
     name: "Sensor de movimiento láser",
     data: {
+      // Auto-revisión de cierre de 14b-1 (eje 4, coherencia entre hermanos):
+      // los tres sensores de sección que el motor simula de verdad tenían que
+      // quedar en el mismo estado, y este seguía invisible en el selector. Su
+      // `triggerType: "motion"` se simula desde 13g y el jugador nunca pudo
+      // instalarlo — el mismo corte que tuvieron el térmico (14a-1) y el
+      // químico (14b-1), arreglado uno por uno sin mirar a los hermanos.
+      footprint: { width: 1, height: 1 },
       functional: [
         // 13g ronda 1: 15 → 6. Este sensor pasa a simularse por primera vez (su
         // `triggerType: "motion"` nunca estuvo cubierto), así que hereda el
@@ -57,6 +64,11 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "sensor-presion-gas" as ComponentId,
     name: "Sensor de presión/gas",
     data: {
+      // Mismo caso que `sensor-movimiento-laser` acá arriba: `pressure` se
+      // simula desde 11h y la pieza era inalcanzable. Sin stock de sus
+      // ingredientes igual aparece como fila BLOQUEADA con motivo, que es
+      // estrictamente mejor que no aparecer (deuda #42).
+      footprint: { width: 1, height: 1 },
       functional: [
         { tag: "EM", range: 5, triggerType: "pressure", frequency: 1 },
         { tag: "REC", threshold: 0.5, responseDelayMs: 100 },
@@ -109,7 +121,20 @@ export const INVESTIGACION_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     id: "escaner-espectro" as ComponentId,
     name: "Escáner de espectro",
     data: {
+      // Subfase 14b-1: sin `footprint` esta pieza era invisible en el selector
+      // de instalación (`buildInstallOptions` descarta con un `continue` mudo
+      // todo compuesto que no lo declare, deuda #42) — exactamente el corte que
+      // dejó inusable al sensor térmico en la ronda 1 de 14a-1. El motor pasa a
+      // simularla de verdad en esta subfase, así que tiene que ser instalable.
+      // 1×1 como el resto de los sensores.
+      footprint: { width: 1, height: 1 },
       functional: [
+        // `range: 12` no interviene en el disparo: un sensor químico lee la
+        // atmósfera de SU sección, y el rango solo se usa como predicado de
+        // "¿es este tipo de sensor?" (igual que en el de presión y el térmico,
+        // que tampoco lo consumen). Tampoco pinta un área de cobertura —
+        // `/game` solo la dibuja para los sensores de PRESENCIA—, así que no hay
+        // radio pintado que discrepe de lo que el sensor detecta.
         { tag: "EM", range: 12, triggerType: "spectral", frequency: 1 },
         { tag: "REC", threshold: 0.4, responseDelayMs: 150 },
       ],

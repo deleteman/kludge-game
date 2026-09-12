@@ -306,6 +306,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.heating": "Fuente de calor activa",
   // 14a-3: umbral de autoignición y estado de las sustancias en el aire.
   "ui.floorplan.mission.tooltip.self-igniting": "Enciende sola: cualquier inflamable arde acá",
+  // 14b-1: dónde está la línea de disparo del sensor químico.
+  "ui.floorplan.mission.tooltip.chemical-alarm": "Contaminación sobre el umbral: un sensor químico acá dispara",
   "ui.floorplan.mission.tooltip.substance-state": "{substance} en el aire ({state}, {percent}%)",
   "ui.floorplan.mission.tooltip.oxygen": "Oxígeno: {percent}% ({bucket})",
   "ui.floorplan.mission.tooltip.wiring-heat": "El cableado aporta +{rate} °C/s",

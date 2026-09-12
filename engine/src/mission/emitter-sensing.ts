@@ -48,6 +48,25 @@ export const PRESSURE_TRIGGER_TYPES: ReadonlySet<string> = new Set(["pressure"])
 export const THERMAL_TRIGGER_TYPES: ReadonlySet<string> = new Set(["thermal"]);
 
 /**
+ * `triggerType` que el motor resuelve contra la composición química del aire de
+ * la sección (Subfase 14b-1).
+ *
+ * `"spectral"` —el que ya autoraba `escaner-espectro`— y NO `"quimico"` como
+ * pedía el texto del orden de trabajo, por la misma razón que el térmico eligió
+ * `"thermal"` sobre `"temperatura"`: el resto de los trigger types del catálogo
+ * están en inglés, y el GDD (§7.3, "Escáner de espectro, `EM` trigger=composición
+ * química") ya describía esta pieza como el sensor químico de la nave. Inventar
+ * un tipo nuevo habría dejado al escáner donde estaba.
+ *
+ * Y donde estaba era el fail-open: como ningún resolvedor conocía `"spectral"`,
+ * `escaner-espectro` caía en `allEmittersActive` y estaba **permanentemente
+ * disparado** desde el arranque del proyecto — el mismo bug que 14a-1 encontró
+ * en el sensor térmico. Este set es lo que lo saca de ahí (deuda #40: quedan 14
+ * de 17 trigger types sin simular).
+ */
+export const CHEMICAL_TRIGGER_TYPES: ReadonlySet<string> = new Set(["spectral"]);
+
+/**
  * Alcance declarado del `EM` de una pieza cuyo `triggerType` esté en
  * `triggerTypes`, o `undefined` si la pieza no es ese tipo de sensor (o no
  * resuelve en el registro).

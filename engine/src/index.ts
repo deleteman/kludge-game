@@ -801,12 +801,23 @@ export { motionAwareEmitterInputs } from "./mission/motion-emitter-input-source.
 // Subfase 14a-1 — sensor térmico real: hasta acá caía en el fail-open y estaba
 // permanentemente disparado.
 export { temperatureAwareEmitterInputs } from "./mission/temperature-emitter-input-source.js";
+// Subfase 14b-1 — sensor químico real (`escaner-espectro`): mismo fail-open que
+// tenía el térmico antes de 14a-1.
+export {
+  chemicalAwareEmitterInputs,
+  chemicalSensorReading,
+} from "./mission/chemical-emitter-input-source.js";
+export {
+  CHEMICAL_SENSOR_TAGS,
+  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
+} from "./atmosphere/chemical-sensor-parameters.js";
 // 13g ronda 1 — resolución de sensores, compartida entre el motor (que decide
 // el disparo) y `/game` (que dibuja el área de alcance): una sola fórmula.
 export {
   emitterCoverageCells,
   emitterRangeOf,
   emitterReaches,
+  CHEMICAL_TRIGGER_TYPES,
   PRESENCE_TRIGGER_TYPES,
   PRESSURE_TRIGGER_TYPES,
   THERMAL_TRIGGER_TYPES,

@@ -289,6 +289,8 @@ export const EN: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.tooltip.temperature": "Temperature: {celsius} °C",
   "ui.floorplan.mission.tooltip.heating": "Active heat source",
   "ui.floorplan.mission.tooltip.self-igniting": "Self-igniting: anything flammable burns here",
+  // 14b-1: where the chemical sensor's trigger line sits.
+  "ui.floorplan.mission.tooltip.chemical-alarm": "Contamination above threshold: a chemical sensor here fires",
   "ui.floorplan.mission.tooltip.substance-state": "{substance} in the air ({state}, {percent}%)",
   "ui.floorplan.mission.tooltip.oxygen": "Oxygen: {percent}% ({bucket})",
   "ui.floorplan.mission.tooltip.wiring-heat": "Wiring adds +{rate} °C/s",
