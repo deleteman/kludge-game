@@ -5,6 +5,7 @@ import { formatMeasure } from "../ui/number-format.js";
 import {
   COMPONENT_CONDITION_TINT,
   COMPONENT_WEAR_TINT,
+  CRISIS_WARNING_COLOR,
   DOOR_STATE_COLOR,
   FROST_LAYER_COLOR,
   hexToCss,
@@ -143,6 +144,39 @@ const STATE_VISUAL: Readonly<Record<InstanceStateFlag, ComponentStateVisual>> = 
     detailKeys: {
       required: "ui.floorplan.mission.state.needs",
       available: "ui.floorplan.mission.state.granted",
+    },
+  },
+  /**
+   * Válvula automática VERTIENDO (Subfase 14b-2). Es el único estado de la
+   * tabla que no es un problema, y el color lo dice: verde de diagnóstico, el
+   * mismo que 12e fijó como "esto está bien" — el resto de los estados son
+   * ámbar, gris o cian de alarma. Sin `tint` sobre el sprite a propósito: teñir
+   * la pieza entera de verde la haría gritar más que una que está rota, y lo
+   * que hay que ver de un vertido es el chorro, que ya lo pinta la partícula.
+   * El glifo alcanza para decir cuál de las válvulas es.
+   */
+  pouring: {
+    icon: "⇣",
+    noticeKey: "ui.floorplan.mission.state.pouring",
+    detailKeys: {
+      required: "ui.floorplan.mission.state.remaining",
+      available: "ui.floorplan.mission.state.capacity",
+    },
+  },
+  /**
+   * Reservorio por debajo de `RESERVOIR_LOW_FRACTION` (Subfase 14b-2). Ámbar de
+   * advertencia y no rojo: todavía queda algo y el jugador puede cortar el cable
+   * a tiempo. Convive con `pouring` a propósito — ver que está vertiendo Y que
+   * se está quedando sin nada son dos hechos distintos, y el segundo es el que
+   * urge porque gastarlo es irreversible (principio 5).
+   */
+  "reservoir-low": {
+    tint: CRISIS_WARNING_COLOR,
+    icon: "◍",
+    noticeKey: "ui.floorplan.mission.state.reservoir-low",
+    detailKeys: {
+      required: "ui.floorplan.mission.state.remaining",
+      available: "ui.floorplan.mission.state.capacity",
     },
   },
 };

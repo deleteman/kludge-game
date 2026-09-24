@@ -30,7 +30,7 @@ export const SIGNAL_NODE_RADIUS_PX = 7;
  * el radio: lo justo para que los dos círculos se distingan y sigan cayendo
  * dentro de su celda, sin que parezcan estar en la celda de al lado.
  */
-const SHARED_CELL_OFFSET_PX = 8;
+export const SHARED_CELL_OFFSET_PX = 8;
 
 export interface PositionedSignalNode {
   readonly id: SignalNodeId;
@@ -88,24 +88,54 @@ export function layoutSignalNodes(
 }
 
 /**
- * Cómo se llama un nodo para el jugador (14a-4 ronda 2). Los tres roles del
- * grafo no alcanzan: `emitter` cubre tanto un sensor —que produce el dato— como
- * la salida de un actuador —que reporta lo que ya hizo—, y en el menú de
- * elección de una puerta esas dos etiquetas son justamente las que hay que
- * distinguir de su entrada.
+ * Rol tal como el JUGADOR lo percibe (ronda 1 de playtest de 14b-2). Los tres
+ * roles del grafo no alcanzan: `emitter` colapsa el sensor —que produce el
+ * dato— con la salida de un actuador —que reporta lo que ya hizo—, y son
+ * justamente las dos que hay que distinguir de la entrada al cablear.
+ *
+ * Existe como función propia, y no repetida dentro de cada consumidor, porque
+ * el color, la FORMA y la etiqueta tienen que salir del mismo discriminante.
+ * Tres copias del mismo `isActuatorOutputNode` derivarían a la primera
+ * corrección y dejarían un punto pintado de un rol y rotulado de otro — la UI
+ * discrepando consigo misma (patrón 1).
+ */
+export type SignalNodePresentationRole =
+  | "emitter"
+  | "actuator-output"
+  | "receptor"
+  | "conductor";
+
+export function signalNodePresentationRole(
+  node: Pick<PositionedSignalNode, "id" | "role">,
+): SignalNodePresentationRole {
+  if (node.role === "emitter") {
+    return isActuatorOutputNode(node.id) ? "actuator-output" : "emitter";
+  }
+  return node.role === "receptor" ? "receptor" : "conductor";
+}
+
+/**
+ * Cómo se llama un nodo para el jugador (14a-4 ronda 2).
  *
  * Devuelve la CLAVE y no el texto: el motor y esta capa no arman strings de UI
  * (CLAUDE.md), la traducción la hace el llamador.
  */
-export function signalNodeRoleKey(node: PositionedSignalNode): string {
-  if (node.role === "emitter") {
-    return isActuatorOutputNode(node.id)
-      ? "ui.floorplan.mission.signal-node.actuator-output"
-      : "ui.floorplan.mission.signal-node.emitter";
-  }
-  return node.role === "receptor"
-    ? "ui.floorplan.mission.signal-node.receptor"
-    : "ui.floorplan.mission.signal-node.conductor";
+export function signalNodeRoleKey(node: Pick<PositionedSignalNode, "id" | "role">): string {
+  return `ui.floorplan.mission.signal-node.${signalNodePresentationRole(node)}`;
+}
+
+/**
+ * Frase corta que distingue qué HACE cada rol (ronda 2 de playtest de 14b-2).
+ *
+ * "emite" y "salida" leídos solos suenan casi lo mismo, pero un nodo mide algo
+ * del mundo y el otro reporta lo que un actuador ya hizo — distinción real: una
+ * pieza con `EM`+`ACT` (torreta-automatizada, dron-reconocimiento) tiene los
+ * dos nodos a la vez. Colapsar las etiquetas a solo "entrada"/"salida" les
+ * daría el mismo nombre en la misma pieza, así que la aclaración va en una
+ * segunda línea del tooltip en vez de tocar el rótulo corto.
+ */
+export function signalNodeRoleDetailKey(node: Pick<PositionedSignalNode, "id" | "role">): string {
+  return `ui.floorplan.mission.signal-node.${signalNodePresentationRole(node)}-detail`;
 }
 
 /**

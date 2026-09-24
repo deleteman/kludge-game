@@ -848,3 +848,94 @@ excepción documentada: `torreta-automatizada`, que el GDD §7.5 marca como *ens
 en la mesa a propósito (caso de validación 1) — queda como pregunta abierta en pendientes, no silenciada.
 
 Suite final: **1468** (182 archivos), `tsc` de los dos workspaces y `eslint` limpios.
+
+
+
+## Subfase 14b-2: Válvula automática (Señales → Química) ✅ CERRADA (2026-09-24)
+
+Versión automática de la tarea `apply-substance`: sin tripulante, continua, gobernada por señal. Cierra el lazo
+**sensor químico → chip → válvula** que 14b-1 dejó medido como imposible sin ella (la difusión reparte un
+contaminante entre secciones pero no lo elimina).
+
+* Identidad por propiedades (molde: `mission/thermal-regulators.ts`), nunca por id: `isAutomaticValveDefinition`
+  / `isAutomaticValveActive` (`engine/src/mission/automatic-valve.ts`), con la semántica de tres valores de
+  `doorSignalOutput` — **sin cable no vierte**, al revés que el regulador térmico (principio 5: no vaciar el
+  tanque solo).
+* `MissionValveRuntime` (`engine/src/mission/mission-valve-runtime.ts`, `Tickable`, molde `MissionThermalRuntime`):
+  por tick `drawFrom` + `gasInjection.inject`. `VALVE_FLOW_UNITS_PER_SECOND = 2`. Emite `ValvePourEvent` solo
+  cuando efectivamente sacó algo — un tanque vacío o una válvula inactiva no emiten nada, sin señal explícita de
+  "fin de vertido": la ausencia de eventos en un tick ES la señal.
+* Conectada a `actuatorEmitterInputs`: antes su único lector era `doorRuntime.isActuatorActive`. `isActuatorActive`
+  de la válvula devuelve `undefined` (no `false`) para cualquier instancia que no sea una válvula automática —
+  crítico, porque se compone con `??` con el lector de puertas y un `false` habría apagado el emisor de salida de
+  TODAS las puertas de la nave.
+* Reconciliación `oxigeno`↔`O2` generalizada a REGLA (`atmosphericGasKeyOf`/`isBaselineGasKey`,
+  `engine/src/atmosphere/atmosphere-composition.types.ts`, aplicada en el único escritor
+  `TransientGasInjection.inject`), no excepción: cualquier sustancia que SEA uno de los 3 gases basales se
+  escribe en su clave basal al entrar a la atmósfera.
+* `RESERVOIR_LOW_FRACTION = 0.2` y flags `pouring`/`reservoir-low` en `derive-instance-states.ts` — mismo
+  criterio de "los dos números, no un booleano" que el resto de `InstanceStateQueries`.
+* **Purga medida** en la nave canónica de Investigación (298 celdas, 11 secciones): tanque de anestésico completo
+  (80u) + válvula a 120u/2u·s⁻¹ solo cierra el lazo bajo el umbral del sensor (0.05) en la ESCLUSA (6 celdas,
+  pico 0.910, purga a los 37s con 46u restantes). El resto de las secciones (20-52 celdas) queda en 0.054-0.064
+  sin importar cuánto suba la capacidad de la válvula — piso de equilibrio de nave completa = 80×0.2/298 = 0.0537.
+  Deuda de CONTENIDO, no de código: anotada en pendientes.
+* Suite: 1468 → 1489 (185 archivos) al cierre de la implementación base.
+
+### Ronda 1 de playtest de 14b-2 — legibilidad del modo cableado ✅ (2026-09-2x)
+
+El operador reportó dos cosas al montar el escenario: "perdí el menú circular, no sé qué estoy cableando" y el
+tooltip del generador de oxígeno mostraba `{value}` literal en vez del número.
+
+* **El `{value}`**: `instanceStateLabel` (`render/component-state-visuals.ts`) compone el número aparte —
+  `t()` no interpola. Las claves nuevas de 14b-2 (`state.remaining`/`state.capacity`) llevaban un placeholder
+  que nadie reemplazaba; sus hermanas ya eran planas ("pide", "funde a"). Fix de una línea + test de clase
+  nuevo: ninguna etiqueta de detalle puede llevar `{`.
+* **El menú circular NUNCA desapareció** — sigue conectado desde 14a-4 ronda 2. La causa real es geométrica: la
+  zona donde `candidates.length > 1` (lo único que abre el menú) mide ~4px de ancho en el CENTRO de la celda,
+  donde no hay ningún punto dibujado (`SHARED_CELL_OFFSET_PX = 8`, radio de click 10). Apuntarle a un punto real
+  —el gesto natural— siempre resuelve 1 candidato y nunca abre el menú.
+* Fix (decisión del operador: forma + color, más tooltip): `signalNodePresentationRole`
+  (`render/signal-node-layout.ts`) separa el emisor de un sensor de la salida de un actuador — el `role` del
+  grafo colapsaba ambos en `"emitter"`. Forma por rol en `mission-overlay-renderer.ts` (círculo relleno /
+  anillo hueco / cuadrado) y color propio (`SIGNAL_NODE_PRESENTATION_COLORS`). Tooltip de nodo nuevo
+  (`{kind:"signal-node"}` en `mission-tooltip.ts`) que nombra el rol ANTES de clickear, vía
+  `mission-interaction-controller.ts#signalNodeTooltipAt`.
+* **Bug nuevo encontrado al auditar** (no reportado): el menú no llamaba `swallowCurrentClick()`, así que el
+  `pointerup` del mismo click de elegir una opción volvía a entrar en `handleWireModeClick` y cableaba además
+  un nodo de la celda vecina. Fix: `swallowCurrentClick()` en `onPick` y `onCancel` del menú.
+* Suite: 1489 → 1495 (185 archivos).
+
+### Ronda 2 de playtest de 14b-2 — 5 observaciones sobre el escenario completo ✅ (2026-09-24)
+
+El operador probó el lazo entero (sensor→válvula→purga) en la esclusa y reportó 5 puntos. Auditoría con 3
+exploradores en paralelo sobre el código real: 3 bugs con causa raíz confirmada, 1 aclaración de UI (no bug),
+1 comportamiento de letalidad ya documentado (no tocado).
+
+* **Panel de reservorio con decimales de basura** (`24.273279999999`): un consumidor MÁS VIEJO que el fix de
+  `formatMeasure` de 14a-3 — el panel "Contiene: X — cantidad/capacidad" (13e) usaba `String(amount)`. Mismo
+  helper ya existente, otro call site que nunca lo recibió. `number-format.ts` no tenía test propio pese a ser
+  el único choke point: se le agregó uno.
+* **Tooltip de SECCIÓN con el oxígeno congelado**: `redrawKey` en `floorplan-scene.ts#updateTooltip` incluía
+  presión/temperatura/vacío pero no `atmosphere.oxygen`, así que con el mouse quieto el tooltip nunca detectaba
+  el cambio. Mismo eje que el `redrawKey` de nodo de la ronda 1, ahora en la atmósfera de sección.
+* **Alarma sonora (`gasLeakAmbient`) en loop infinito**: el tóxico vertido nunca llega a concentración EXACTA 0
+  (principio 5, consecuencias permanentes: solo se redistribuye por difusión) y `createGasLeakSound` solo paraba
+  con `concentration <= 0`. Fix: la alarma corta con el MISMO umbral que usa el sensor químico para decidir
+  peligro (`CHEMICAL_SENSOR_TRIGGER_CONCENTRATION`), no un "0" literal — dos piezas de UI, un solo criterio
+  (patrón 1).
+* **"Emite" vs "salida" del tooltip de nodo**: no es bug. Ya hay piezas reales con 3 nodos por componente
+  (`torreta-automatizada`, `dron-reconocimiento`: `EM`+`ACT`), así que colapsar a solo "entrada"/"salida"
+  repetiría el nombre en la misma pieza — el problema de ambigüedad de la ronda 1, reaparecido por nombre en vez
+  de por geometría. Fix (decisión del operador): segunda línea de detalle en el tooltip de nodo
+  (`signalNodeRoleDetailKey`), sin tocar el rótulo corto de un vistazo.
+* **Muerte casi instantánea de un tripulante al verter**: NO es bug — es la letalidad ya medida (pico 0.910 en
+  la esclusa, letal 0.6). Deuda de contenido, sin tocar.
+* **Sistema de debug nuevo** (`game/src/debug/`), pedido por el operador para validar playtests sin depender de
+  descripciones de memoria: `buildGameStateSnapshot` reusa `MissionRuntime.toUpdatedSave` (el MISMO serializador
+  del guardado real) más `live.instanceStates` (lo único que el save no persiste). `downloadGameStateSnapshot`
+  dispara una descarga de navegador — sin IPC nuevo a Electron, porque el flujo real de prueba es `vite dev`
+  suelto — atada a la tecla `K` en `floorplan-scene.ts`. Validado contra un dump real de playtest: las 11
+  secciones de la nave con el tóxico ya por debajo del umbral del sensor, confirmando el fix de la alarma en
+  juego real (no solo en teoría).
+* Suite: 1495 → **1503** (187 archivos).

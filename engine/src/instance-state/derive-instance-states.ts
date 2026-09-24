@@ -41,7 +41,28 @@ export interface InstanceStateQueries {
   readonly signalStarvationOf: (
     instanceId: PlacedComponentInstance["instanceId"],
   ) => { readonly demand: number; readonly capacity: number } | undefined;
+  /**
+   * Válvula automática vertiendo AHORA (Subfase 14b-2), con lo que le queda al
+   * reservorio y su capacidad. Los dos números por el mismo motivo que en los
+   * demás: lo accionable no es "está vertiendo" sino cuánto le queda antes de
+   * que el gasto sea irreversible.
+   *
+   * `undefined` en todo lo que no sea una válvula vertiendo — incluida una
+   * válvula cerrada, que no es un estado notable: una pieza quieta y correcta no
+   * tiene por qué llevar un ícono.
+   */
+  readonly pouringValveOf: (
+    instanceId: PlacedComponentInstance["instanceId"],
+  ) => { readonly remaining: number; readonly capacity: number } | undefined;
 }
+
+/**
+ * Por debajo de qué fracción de su capacidad un reservorio se considera BAJO
+ * (Subfase 14b-2). Un quinto: suficiente para que el aviso llegue con margen de
+ * reacción y no tan pronto como para que un tanque a medio usar viva en alarma
+ * — un indicador encendido casi siempre no informa nada (eje 7).
+ */
+export const RESERVOIR_LOW_FRACTION = 0.2;
 
 /**
  * Estados notables de una pieza, derivados del mundo (Subfase 13h, ronda 3 de
@@ -110,6 +131,21 @@ export function deriveInstanceStates(
       required,
       available: queries.sectionGrantedUnitsAt(instance),
     });
+  }
+
+  // Vertiendo va al final: es el único estado de esta lista que NO es un
+  // problema. Los cinco anteriores cuentan por qué una pieza no hace lo que
+  // debería; éste cuenta que está haciendo su trabajo, y si además está
+  // congelada o sin energía, eso manda.
+  const pouring = queries.pouringValveOf(instance.instanceId);
+  if (pouring) {
+    states.push({ flag: "pouring", required: pouring.remaining, available: pouring.capacity });
+    // El aviso de reserva baja va pegado al de vertido y no en su lugar: hay que
+    // poder ver que está vertiendo Y que se está quedando sin nada. Son dos
+    // hechos distintos y colapsarlos escondería el que urge (principio 5).
+    if (pouring.capacity > 0 && pouring.remaining <= pouring.capacity * RESERVOIR_LOW_FRACTION) {
+      states.push({ flag: "reservoir-low", required: pouring.remaining, available: pouring.capacity });
+    }
   }
 
   return states;

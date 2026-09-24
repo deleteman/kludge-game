@@ -33,10 +33,25 @@
  * sustancia dentro cuyos botones están todos grises, y el panel es justamente
  * lo que NO tiene que hacer falta abrir para entender el plano.
  *
+ * `pouring` y `reservoir-low` (Subfase 14b-2) son el quinto y el sexto, y
+ * vienen juntos porque son las dos mitades de la misma promesa. `pouring` es la
+ * mitad positiva: una válvula automática abierta está GASTANDO, y sin el flag
+ * el jugador vería el tanque bajar sin saber cuál de sus piezas lo está
+ * vaciando. `reservoir-low` es la mitad de aviso, y existe por el principio 5:
+ * vaciar un reservorio es irreversible, así que el jugador tiene que enterarse
+ * ANTES de quedarse sin nada, no después. Un aviso que llega cuando el tanque
+ * ya está en cero no es un aviso, es un parte de daños.
+ *
  * Candidatos que siguen pendientes con la infraestructura ya lista: pieza
- * sobre una brecha sin sellar, reservorio vacío.
+ * sobre una brecha sin sellar.
  */
-export type InstanceStateFlag = "unpowered" | "overloaded" | "unsignaled" | "frozen-content";
+export type InstanceStateFlag =
+  | "unpowered"
+  | "overloaded"
+  | "unsignaled"
+  | "frozen-content"
+  | "pouring"
+  | "reservoir-low";
 
 /**
  * Detalle numérico opcional de un estado. Existe porque el aviso útil no es

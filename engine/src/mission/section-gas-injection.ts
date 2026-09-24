@@ -23,6 +23,7 @@ import type {
   ChemicalSubstanceId,
 } from "../chemistry/chemical-substance.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import { atmosphericGasKeyOf } from "../atmosphere/atmosphere-composition.types.js";
 import { NOMINAL_TEMPERATURE_CELSIUS } from "../atmosphere/thermal-parameters.js";
 import { effectiveMatterState, nominalStateOf } from "../chemistry/phase/matter-state.js";
 
@@ -194,7 +195,14 @@ export class TransientGasInjection {
     const volume = Math.max(1, this.deps.sectionVolumeOf?.(sectionId) ?? 1);
     const bySubstance = this.pending.get(sectionId) ?? new Map<ChemicalSubstanceId, number>();
     const fraction = (amount * GAS_FRACTION_PER_SUBSTANCE_UNIT) / volume;
-    bySubstance.set(substanceId, (bySubstance.get(substanceId) ?? 0) + fraction);
+    // 14b-2: una sustancia que ES uno de los tres gases de fondo entra en SU
+    // clave basal, no al lado. Este es el único punto del motor donde una
+    // sustancia cruza a la atmósfera, así que es el único lugar donde hay que
+    // aplicarlo — ver `atmosphericGasKeyOf`. Sin esto, verter oxígeno agregaba
+    // una entrada `oxigeno` que DESPLAZABA al `O2` real y volvía la sala menos
+    // respirable mientras la UI informaba lo contrario.
+    const gasKey = atmosphericGasKeyOf(substanceId) as ChemicalSubstanceId;
+    bySubstance.set(gasKey, (bySubstance.get(gasKey) ?? 0) + fraction);
     this.pending.set(sectionId, bySubstance);
   }
 

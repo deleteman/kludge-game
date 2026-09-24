@@ -184,4 +184,34 @@ describe("`unsignaled` y la convivencia de estados (14a-4 ronda 2)", () => {
     expect(label).toContain("3");
     expect(label).not.toContain(t("ui.floorplan.mission.state.granted"));
   });
+
+  /**
+   * Ronda 1 de playtest de 14b-2. `instanceStateLabel` COMPONE el número aparte
+   * —`t()` no interpola, como dice su propio docblock— así que una etiqueta de
+   * detalle con un `{value}` adentro se imprime literal: el operador vio
+   * "quedan {value} 46 · de {value} 120".
+   *
+   * El test recorre TODOS los flags en vez de arreglar los dos que fallaron:
+   * ancla la clase (ninguna clave de detalle puede llevar placeholder) y no el
+   * caso, que es lo que evita que el próximo estado lo reintroduzca.
+   */
+  it("ninguna etiqueta de detalle imprime un placeholder sin reemplazar", () => {
+    const FLAGS: readonly InstanceStateFlag[] = [
+      "unpowered",
+      "overloaded",
+      "unsignaled",
+      "frozen-content",
+      "pouring",
+      "reservoir-low",
+    ];
+    for (const flag of FLAGS) {
+      const label = instanceStateLabel({ flag, required: 46, available: 120 });
+      expect(label, `el aviso de "${flag}" lleva un placeholder literal`).not.toContain("{");
+      const visual = visualForState(flag);
+      if (visual.detailKeys) {
+        expect(label).toContain("46");
+        expect(label).toContain("120");
+      }
+    }
+  });
 });

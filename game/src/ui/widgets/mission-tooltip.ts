@@ -108,6 +108,28 @@ export type TooltipContent =
       readonly heatTotalCelsiusPerSecond: number;
     }
   | {
+      /**
+       * Nodo de señal bajo el cursor, SOLO en modo cableado (ronda 1 de
+       * playtest de 14b-2). Gana a la ficha de la pieza mientras dure el modo:
+       * ahí la pregunta del jugador no es "qué pieza hay acá" sino "qué voy a
+       * cablear si hago click", y con 9 piezas del catálogo apilando entrada y
+       * salida en una celda, el nombre del componente no la responde.
+       */
+      readonly kind: "signal-node";
+      /** "emite" / "salida" / "entrada" / "paso", ya traducido. */
+      readonly roleLabel: string;
+      /**
+       * Frase corta que distingue el rol (ronda 2 de playtest de 14b-2): "emite"
+       * y "salida" suenan parecidos aunque uno mide el mundo y el otro reporta
+       * lo que un actuador ya hizo, distinción real en piezas EM+ACT.
+       */
+      readonly roleDetail: string;
+      /** Pieza dueña del nodo, para ubicarlo cuando hay varias juntas. */
+      readonly ownerName?: string;
+      /** Hay más de un nodo a tiro: este click va a abrir el menú de elección. */
+      readonly ambiguous: boolean;
+    }
+  | {
       readonly kind: "section";
       readonly name: string;
       /**
@@ -221,6 +243,8 @@ export interface MissionTooltipLabels {
   readonly sectionHeating: string;
   /** "Enciende sola: cualquier inflamable arde acá" (14a-3). */
   readonly sectionSelfIgniting: string;
+  /** "Hay otro nodo acá: al hacer click vas a poder elegir" (14b-2 ronda 1). */
+  readonly signalNodeAmbiguous: string;
   /** "Contaminación sobre el umbral: un sensor químico acá dispara" (14b-1). */
   readonly sectionChemicalAlarm: string;
   /** "Disolvente en el aire (gas, 18%)" — sustancia presente, estado efectivo y concentración (14a-3). */
@@ -310,6 +334,65 @@ export function renderMissionTooltip(
 ): Phaser.GameObjects.Container {
   const container = scene.add.container(0, 0);
   let y = PADDING;
+
+  // Ronda 1 de playtest de 14b-2: el tooltip de NODO sale antes que todo lo
+  // demás y devuelve temprano. No comparte el encabezado de nombre porque su
+  // sujeto no es una pieza ni una sala: es una de las caras de una pieza, y
+  // mezclarlo con la ficha del componente es exactamente lo que dejaba al
+  // jugador sin saber cuál de los dos puntos iba a cablear.
+  if (content.kind === "signal-node") {
+    const header = scene.add
+      .text(PADDING, y, content.roleLabel.toUpperCase(), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "13px",
+        color: HEADER_COLOR,
+        fontStyle: "bold",
+        wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
+      })
+      .setOrigin(0, 0);
+    container.add(header);
+    y += header.height + 2;
+    // Detalle del rol (ronda 2 de 14b-2): atenuado y en fuente chica porque es
+    // la aclaración para quien la necesita, no compite con el rótulo corto.
+    const detail = scene.add
+      .text(PADDING, y, content.roleDetail, {
+        fontFamily: "sans-serif",
+        fontSize: "10px",
+        color: LABEL_COLOR,
+        wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
+      })
+      .setOrigin(0, 0)
+      .setAlpha(0.75);
+    container.add(detail);
+    y += detail.height + 4;
+    for (const { text, color } of [
+      ...(content.ownerName ? [{ text: `• ${content.ownerName}`, color: LABEL_COLOR }] : []),
+      // El aviso de ambigüedad es el ANUNCIO del menú, no una queja: sin él, el
+      // menú circular aparecía por sorpresa y el jugador no sabía qué lo abría.
+      ...(content.ambiguous
+        ? [{ text: `• ${labels.signalNodeAmbiguous}`, color: CRISIS_WARNING_CSS }]
+        : []),
+    ]) {
+      const line = scene.add
+        .text(PADDING, y, text, {
+          fontFamily: "sans-serif",
+          fontSize: "11px",
+          color,
+          wordWrap: { width: TOOLTIP_WIDTH - PADDING * 2 },
+        })
+        .setOrigin(0, 0);
+      container.add(line);
+      y += line.height + 4;
+    }
+    container.addAt(
+      scene.add
+        .rectangle(0, 0, TOOLTIP_WIDTH, y + PADDING, 0x0a0a0f, 0.92)
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, 0x2a3040, 1),
+      0,
+    );
+    return container;
+  }
 
   const nameText = content.kind === "instance" ? `${CONDITION_ICON[content.condition]} ${content.name}` : content.name;
   const nameColor = content.kind === "instance" ? CONDITION_COLOR[content.condition] : HEADER_COLOR;

@@ -806,24 +806,7 @@ Cuatro correcciones al texto original tras auditar el código:
 
 ##### Subfase 14b-1: Sensor químico real — `spectral` deja de estar en fail-open ✅ CERRADA (2026-09-12)
 
-##### Subfase 14b-2: Válvula automática (Señales → Química)
-
-Versión automática de la tarea `apply-substance`: sin tripulante, continua, gobernada por señal. Cierra el lazo
-**sensor químico → chip → válvula**.
-
-* Identidad por propiedades (molde: `mission/thermal-regulators.ts`), nunca por id: `isAutomaticValveDefinition`
-  / `isAutomaticValveActive`, con la semántica de tres valores de `doorSignalOutput` — **sin cable no vierte**,
-  al revés que el regulador térmico.
-* `MissionValveRuntime` (`Tickable`, molde `MissionThermalRuntime`): por tick `drawFrom` + `gasInjection.inject`,
-  reusando el camino de `ship-task-effect.ts` incluido `assertContentNotFrozen`. Registrar **antes** de
-  `atmosphereRuntime`.
-* Conectarla a `actuatorEmitterInputs`: hoy su único lector es `doorRuntime.isActuatorActive`, y el docblock ya
-  dice que "una válvula no tiene todavía un runtime del que leer 'estoy actuando'". Sin esto, el emisor de
-  salida de la válvula se resuelve a `false` para siempre.
-* Integración que justifica la subfase: tóxico → escáner dispara → válvula vierte neutralizante → la
-  concentración baja → el sensor se apaga → la válvula para. **14b-1 dejó medido que hoy eso es imposible**: la
-  difusión reparte el contaminante entre secciones pero no lo elimina, así que sin esta pieza una fuga no se
-  resuelve nunca.
+##### Subfase 14b-2: Válvula automática (Señales → Química) ✅ CERRADA (2026-09-24)
 
 ##### Subfase 14b-3: Configuración por instancia — chip, LED y sensor
 

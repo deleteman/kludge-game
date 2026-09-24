@@ -26,6 +26,7 @@ import {
   sectionDamagedEffect,
 } from "./effects/section-breach-effect.js";
 import { spontaneousIgnitionEffect } from "./effects/spontaneous-ignition-effect.js";
+import { valvePourEffect } from "./effects/valve-pour-effect.js";
 import {
   structuralDegradedEffect,
   structuralFailureEffect,
@@ -67,6 +68,9 @@ const EFFECTS_BY_KIND: {
   // contenido de un tanque que se solidifica.
   "substance-phase-change": substancePhaseChangeEffect,
   "reservoir-content-phase-change": reservoirContentPhaseChangeEffect,
+  // Subfase 14b-2 — una válvula automática vertiendo: chorro a presión desde la
+  // pieza, distinto del derrame que cae y del vapor que sube.
+  "valve-pour": valvePourEffect,
 };
 
 /** Dispara el efecto registrado para `event.kind`, si existe uno todavía. */

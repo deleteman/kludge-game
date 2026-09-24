@@ -16,19 +16,19 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 
 | # | Eje | Patrones |
 |---|---|---|
-| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88 |
+| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88, 96, 97 |
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
 | 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62 |
-| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91 |
-| 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39 |
-| 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82 |
+| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91, 95 |
+| 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39, 94 |
+| 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82, 93 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
 | 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87, 92 |
 | 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85, 87, 89, 90 |
 | 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77 |
 | 12 | El contenido autorado manda; si no encaja, el código grita en vez de degradarse | 47, 52, 53, 54 |
-| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86 |
+| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86, 98 |
 
 Los patrones 1 a 9 aparecen abajo como lista numerada (son los ejes originales de la Fase 12-13b); del
 10 en adelante, cada uno lleva su propio encabezado `**Patrón N — …**`.
@@ -1083,3 +1083,62 @@ TOX y gaseoso, así que el sensor disparaba. Pero el jugador no tiene forma de c
 eje 9 aplicado a los DATOS y no a las dependencias: un test de integración que construye su propio mundo
 demuestra que el mecanismo funciona, nunca que el contenido lo habilita. Las dos cosas necesitan tests
 distintos, y el de contenido tiene que derivar del catálogo y del stock reales.
+
+**Patrón 93 — Una infraestructura conectada con una condición de disparo geométricamente casi inalcanzable
+es infraestructura AUSENTE para el jugador** (14b-2, ronda 1). El menú circular de elección de nodo nunca
+se borró: seguía conectado desde 14a-4 ronda 2. Pero solo se abre con `candidates.length > 1`, y con los
+nodos separados `SHARED_CELL_OFFSET_PX` del centro y un radio de click apenas mayor, esa zona mide ~4px
+de ancho EN EL CENTRO de la celda — justo donde no hay ningún punto dibujado. Apuntarle a un punto real,
+el gesto natural de cablear, resuelve directo y nunca la alcanza. El operador reportó "perdí el menú"
+sobre un código que no había tocado esa función en absoluto: el llamador existía, pero la geometría real
+lo volvía inalcanzable en la práctica. Al conectar algo que depende de una zona de intersección (dos
+radios, dos umbrales, dos rangos), medir el TAMAÑO de esa zona contra el gesto real del jugador, no solo
+que la condición sea lógicamente alcanzable.
+
+**Patrón 94 — Un overlay que no traga su propio click filtra el mismo gesto al mapa de abajo** (14b-2,
+ronda 1, encontrado al auditar y no reportado). El menú circular respondía en `pointerdown` sin llamar
+`swallowCurrentClick()`, así que el `pointerup` del MISMO click de elegir una opción volvía a entrar en
+el handler de mapa con el píxel del dot elegido —a `MENU_RADIUS_PX` del ancla, fuera de la celda
+original— y caía al fallback de celda vecina, cableando un nodo extra que el jugador nunca eligió. Los
+otros cuatro overlays contextuales de la escena SÍ tragaban su click; este, agregado más tarde, quedó
+afuera de la lista. Al agregar un overlay nuevo que intercepta un gesto, sumarlo a la lista de los que
+tragan su click en el mismo cambio — no es un paso opcional del molde.
+
+**Patrón 95 — Un fix de formato de número no cubre automáticamente a todos sus consumidores** (14b-2,
+ronda 2). `formatMeasure` existe desde 14a-3 y ya absorbía tres copias de la misma regla a mano. El panel
+del inspector de reservorio (`reservoirContents`, Subfase 13e) es MÁS VIEJO que ese fix y seguía usando
+`String(amount)` crudo — nadie lo tocó porque el fix de 14a-3 arregló el síntoma que motivó el cambio, no
+buscó CADA lugar que compone un número de motor en texto. Antes de dar un bug de formato por cerrado,
+buscar (`grep`) todos los `String(...)`/interpolación directa de la MISMA clase de dato en el resto del
+código, no solo el call site reportado.
+
+**Patrón 96 — La misma clase de bug de `redrawKey` insuficiente volvió a aparecer, dos rondas después, en
+un campo hermano del mismo widget** (14b-2, ronda 2; recurrencia del **patrón 41**, 13f ronda 4). Ahí fue
+la presión de sección la que faltaba en la clave de redibujo del tooltip; acá fue el oxígeno
+(`atmosphere.oxygen`), en el mismo `atmosphereKey` de `floorplan-scene.ts`, que ya incluía presión,
+tendencia, vacío y temperatura pero no el campo que un generador de oxígeno vertiendo cambia en vivo. El
+patrón 41 pedía "revisar la clave de redibujo al meterle estado vivo a un widget" — la regla no se volvió
+un chequeo de CLASE (¿todo campo que un widget muestra y puede cambiar sin mover el mouse está en su
+clave?), así que cada campo nuevo repite la pregunta desde cero. Al agregar un campo vivo a un tooltip
+existente, auditar TODOS los campos que ya muestra contra su clave de redibujo, no solo el que se está
+agregando.
+
+**Patrón 97 — Dos mecanismos de UI que deciden "peligro" por separado terminan en desacuerdo, aunque cada
+uno esté implementado correctamente** (14b-2, ronda 2). El sensor químico apaga su alarma VISUAL con
+`CHEMICAL_SENSOR_TRIGGER_CONCENTRATION` (0.05). El loop de sonido ambiental de fuga (`gas-leak-sound.ts`)
+paraba con `concentration <= 0` — un contrato genérico razonable en abstracto, pero la sustancia vertida
+nunca llega a 0 exacto (principio 5: solo se redistribuye por difusión), así que la alarma sonora sonaba
+para siempre a volumen decreciente mucho después de que el peligro real —según el propio sensor— ya había
+pasado. Los dos mecanismos estaban bien construidos por separado y en desacuerdo entre sí. Cuando dos
+piezas de UI/audio reaccionan al mismo fenómeno de peligro, hacerlas leer la MISMA constante de umbral, no
+cada una la que le resulte conveniente a su propio contrato genérico.
+
+**Patrón 98 — Antes de simplificar una etiqueta por claridad, verificar contra el catálogo real cuántos
+casos rompería la simplificación** (14b-2, ronda 2). El operador propuso colapsar "emite"/"salida" del
+rótulo de nodo a solo "entrada"/"salida", más fácil de entender a primera vista. Antes de aceptarlo,
+`deriveSignalNodes` mostró que ya hay piezas reales con 3 nodos por componente (`torreta-automatizada`,
+`dron-reconocimiento`: `EM`+`ACT` da emisor + entrada + salida) — colapsar habría dejado DOS nodos con el
+mismo nombre en la MISMA pieza, reapareciendo el problema de ambigüedad que la ronda 1 acababa de resolver,
+esta vez por nombre en vez de por geometría. La simplificación que suena más clara en abstracto puede
+perder una distinción que el motor sí modela; el catálogo real, no la intuición sobre el caso típico, es
+lo que decide si una simplificación es segura.

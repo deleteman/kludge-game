@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   ATOMIC_COMPONENT_CATALOG,
+  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
   GRID_CELL_SIZE_PX,
   HAZARD_PARAMETERS,
   TEMPERATURE_FLOOR_CELSIUS,
@@ -92,7 +93,11 @@ import {
 } from "../mission/conduit-flow-heuristics.js";
 import { drawSignalLayer, renderMissionOverlay } from "../render/mission-overlay-renderer.js";
 import { createSignalNodeMenu } from "../ui/widgets/signal-node-menu.js";
-import { layoutSignalNodes, signalNodeRoleKey } from "../render/signal-node-layout.js";
+import {
+  layoutSignalNodes,
+  signalNodePresentationRole,
+  signalNodeRoleKey,
+} from "../render/signal-node-layout.js";
 import type { PositionedSignalNode } from "../render/signal-node-layout.js";
 import { renderProjectileTokens } from "../render/projectile-renderer.js";
 import { renderTrajectoryGhost } from "../render/projectile-trajectory-renderer.js";
@@ -109,6 +114,8 @@ import {
   CREW_TOKEN_HEIGHT_PX,
 } from "../render/crew-sprite.js";
 import { dismantleEffect, installEffect } from "../particles/effects/fabrication-effect.js";
+import { buildGameStateSnapshot } from "../debug/game-state-snapshot.js";
+import { downloadGameStateSnapshot } from "../debug/game-state-dump-io.js";
 import { clickReaction } from "../ui/ui-effects.js";
 import { fireEventEffect } from "../particles/effect-registry.js";
 import { createWireHeatEffect } from "../particles/effects/wire-heat-effect.js";
@@ -176,6 +183,7 @@ import {
   UNPOWERED_SECTION_LIGHT_RADIUS_PX,
   UNPOWERED_SECTION_TINT,
   unpoweredSectionLightIntensity,
+  SIGNAL_NODE_PRESENTATION_COLORS,
   WIRE_HIGHLIGHT_COLOR,
 } from "../render/palette.js";
 import { metaGameStateMachine } from "../meta/meta-game.js";
@@ -1206,6 +1214,9 @@ export class FloorplanScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-H", () => this.toggleDevTargetMode("section-damage"));
     // 14a-3: sostener la temperatura de una sección. Ver `cycleDevTemperature`.
     this.input.keyboard?.on("keydown-T", () => this.toggleDevTargetMode("hold-temperature"));
+    // Ronda 2 de playtest de 14b-2: volcado de gamestate para validación
+    // automática. Ver `dumpGameStateForDebug`.
+    this.input.keyboard?.on("keydown-K", () => this.dumpGameStateForDebug());
     this.input.keyboard?.on("keydown-ESC", () => {
       // Ronda 8 (playtest #3): ESC cancela primero el modo de trasvase activo
       // — solo si no hay ninguno abierto cae al comportamiento previo de pausa.
@@ -1405,6 +1416,15 @@ export class FloorplanScene extends Phaser.Scene {
       // un reservorio, sobre la CELDA DE LA PIEZA — el sujeto del fenómeno es el
       // tanque, y pintar una cicatriz sobre el objeto equivocado se lee como un
       // bug en lo que hay debajo (la lección de la ronda 3 de 14a-4).
+      // Subfase 14b-2: el chorro de una válvula automática, sobre la CELDA DE LA
+      // PIEZA. Mismo criterio que el congelado de un tanque: el sujeto es la
+      // máquina, y el jugador tiene que poder ver CUÁL de sus válvulas se abrió.
+      this.mission.valveEvents.onAny((event) => {
+        const cell = this.mission.instanceCellOf(event.instanceId);
+        if (cell) {
+          fireEventEffect(this, cell, event, this.worldEffectOptions);
+        }
+      }),
       this.mission.phaseEvents.onAny((event) => {
         const cell =
           event.kind === "reservoir-content-phase-change"
@@ -2217,7 +2237,14 @@ export class FloorplanScene extends Phaser.Scene {
       return;
     }
     const cell = this.pointerCell(pointer);
-    const content = this.interaction.tooltipContentAt(cell);
+    // 14b-2 ronda 1: el píxel exacto, no solo la celda. En modo cableado el
+    // tooltip resuelve QUÉ NODO está bajo el cursor, y con dos nodos en una
+    // misma celda la celda sola no distingue la entrada de la salida.
+    const pointerWorld = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const content = this.interaction.tooltipContentAt(cell, {
+      x: pointerWorld.x,
+      y: pointerWorld.y,
+    });
     if (!content) {
       this.hideTooltip();
       return;
@@ -2236,12 +2263,17 @@ export class FloorplanScene extends Phaser.Scene {
     // apagaría el aviso hasta mover el mouse de celda.
     // 14a-4 ronda 1: el tooltip de un CABLE no lleva atmósfera ni brecha, pero sí
     // carga viva — su propia firma va más abajo.
-    const atmosphere = content.kind === "wire" ? undefined : content.atmosphere;
+    const atmosphere =
+      content.kind === "wire" || content.kind === "signal-node" ? undefined : content.atmosphere;
     const atmosphereKey = atmosphere
       ? `${Math.round(atmosphere.pressureKpa)}:${atmosphere.trend}:${atmosphere.vacuum}` +
         // 14a-1: sin la temperatura en la clave, el tooltip abierto sobre una
         // sección que se calienta seguiría mostrando el valor del primer frame.
-        `:${Math.round(atmosphere.temperatureCelsius)}:${atmosphere.heating}`
+        `:${Math.round(atmosphere.temperatureCelsius)}:${atmosphere.heating}` +
+        // Ronda 2 de playtest de 14b-2: el oxígeno tampoco estaba acá, así que un
+        // generador vertiendo con el mouse quieto encima dejaba el tooltip con el
+        // porcentaje del primer frame — misma mentira que la temperatura de 14a-1.
+        `:${atmosphere.oxygen?.percent ?? ""}:${atmosphere.oxygen?.bucket ?? ""}`
       : "";
     const statesKey =
       content.kind === "instance"
@@ -2253,8 +2285,14 @@ export class FloorplanScene extends Phaser.Scene {
     // que 14a-1 arregló con la temperatura.
     const wireKey =
       content.kind === "wire" ? `${content.load}/${Math.round(content.capacity * 10)}:${content.burned}` : "";
-    const breachKey = content.kind === "wire" ? "" : (content.breach?.sealed ?? "");
-    const redrawKey = `${atmosphereKey}|${breachKey}|${statesKey}|${wireKey}`;
+    const breachKey =
+      content.kind === "wire" || content.kind === "signal-node" ? "" : (content.breach?.sealed ?? "");
+    // 14b-2 ronda 1: el nodo bajo el cursor cambia SIN cambiar de celda (los dos
+    // nodos de una pieza 1x1 comparten celda), así que sin esto el tooltip se
+    // quedaría nombrando el primero que se señaló.
+    const nodeKey =
+      content.kind === "signal-node" ? `${content.roleLabel}:${content.ambiguous}` : "";
+    const redrawKey = `${atmosphereKey}|${breachKey}|${statesKey}|${wireKey}|${nodeKey}`;
     if (
       !this.tooltip ||
       this.tooltipCell?.x !== cell.x ||
@@ -2279,6 +2317,7 @@ export class FloorplanScene extends Phaser.Scene {
         // hay suelto en el aire.
         sectionSelfIgniting: t("ui.floorplan.mission.tooltip.self-igniting"),
         sectionChemicalAlarm: t("ui.floorplan.mission.tooltip.chemical-alarm"),
+        signalNodeAmbiguous: t("ui.floorplan.mission.signal-node.ambiguous"),
         substanceState: (name, state, percent) =>
           t("ui.floorplan.mission.tooltip.substance-state")
             .replace("{substance}", name)
@@ -2384,10 +2423,22 @@ export class FloorplanScene extends Phaser.Scene {
     // Es parte de por qué acertarle a un nodo era tan difícil.
     for (const positioned of layoutSignalNodes(this.mission.blueprint.signalGraph.nodes)) {
       const isSource = positioned.id === sourceId;
+      // Ronda 1 de playtest de 14b-2: el anillo toma el color del ROL en vez de
+      // un ámbar único para todos. Se dibuja encima de los puntos y con más
+      // radio que ellos (11/13 contra 7), así que un color único era una capa
+      // opaca sobre la distinción que la capa de abajo ya hacía — el jugador
+      // veía dos anillos idénticos y ningún indicio de cuál era la entrada.
+      //
+      // El ORIGEN ya elegido conserva su grosor y su relleno: "elegido" contra
+      // "elegible" es un eje distinto del rol y tiene que poder leerse a la vez
+      // que él, no en su lugar.
+      const roleColor =
+        SIGNAL_NODE_PRESENTATION_COLORS[signalNodePresentationRole(positioned)] ??
+        WIRE_HIGHLIGHT_COLOR;
       const ring = this.add
         .circle(positioned.x, positioned.y, isSource ? 13 : 11)
-        .setStrokeStyle(isSource ? 4 : 2, WIRE_HIGHLIGHT_COLOR, 1)
-        .setFillStyle(WIRE_HIGHLIGHT_COLOR, isSource ? 0.3 : 0)
+        .setStrokeStyle(isSource ? 4 : 2, roleColor, 1)
+        .setFillStyle(roleColor, isSource ? 0.3 : 0)
         .setDepth(RENDER_DEPTH.problemMarker);
       this.markAsWorldObject(ring);
       this.wireNodeHighlights.push(ring);
@@ -2407,10 +2458,22 @@ export class FloorplanScene extends Phaser.Scene {
       { roleLabel: (node) => t(signalNodeRoleKey(node)) },
       {
         onPick: (node) => {
+          // Ronda 1 de playtest de 14b-2: el menú responde en `pointerdown` y,
+          // sin tragarse el click, el `pointerup` del MISMO gesto volvía a
+          // entrar en `handleWireModeClick` con el píxel del dot elegido — que
+          // está a 34 px del ancla, o sea fuera de la celda original. Ahí no hay
+          // candidatos y caía al `find` por celda de la celda VECINA, cableando
+          // un nodo que el jugador nunca eligió. Los otros cuatro overlays de la
+          // escena ya lo tragaban; éste era el que faltaba.
+          this.swallowCurrentClick();
           this.closeSignalNodeMenu();
           this.interaction.applyWireNode(node.id);
         },
-        onCancel: () => this.closeSignalNodeMenu(),
+        onCancel: () => {
+          // Descartar también: si no, cerrar el menú tendía un cable.
+          this.swallowCurrentClick();
+          this.closeSignalNodeMenu();
+        },
       },
     );
     this.markAsWorldObject(this.signalNodeMenu);
@@ -2688,6 +2751,23 @@ export class FloorplanScene extends Phaser.Scene {
         this.breachMarkers.delete(key);
       }
     }
+  }
+
+  /**
+   * Volcado de gamestate para validación automática (ronda 2 de playtest de
+   * 14b-2, tecla `K`). Arma el snapshot con `buildGameStateSnapshot` (reusa
+   * `toUpdatedSave`, el mismo serializador del guardado real) y dispara su
+   * descarga — el nombre exacto queda en el status bar como confirmación.
+   */
+  private dumpGameStateForDebug(): void {
+    const base = campaignSession.current;
+    if (!base) {
+      this.setStatus(t("ui.floorplan.mission.debug-dump.no-session"));
+      return;
+    }
+    const snapshot = buildGameStateSnapshot(this.mission, base);
+    const filename = downloadGameStateSnapshot(snapshot);
+    this.setStatus(t("ui.floorplan.mission.debug-dump.done").replace("{filename}", filename));
   }
 
   /**
@@ -4241,7 +4321,20 @@ export class FloorplanScene extends Phaser.Scene {
       );
       // El SONIDO sigue atado al contaminante peligroso: el siseo de fuga
       // tóxica es una alarma, y sonarla por vapor de agua sería mentir.
-      effects.gasLeakSound.update({ concentration: this.mission.contaminantAt(sectionId)?.concentration ?? 0 });
+      //
+      // Ronda 2 de playtest de 14b-2: la sustancia vertida nunca desaparece de
+      // verdad (principio 5, solo se redistribuye por difusión), así que en una
+      // nave grande la concentración jamás toca 0 exacto y la alarma sonaba para
+      // siempre. El corte de la alarma tiene que ser el mismo que ya usa el
+      // sensor químico para decidir "peligro" (Patrón 1: un solo criterio, no
+      // uno por pieza de UI) — no el "0" literal que usa `gasLeakSound` como
+      // contrato genérico de "estado apagado".
+      const contaminant = this.mission.contaminantAt(sectionId);
+      const alarmConcentration =
+        contaminant && contaminant.concentration >= CHEMICAL_SENSOR_TRIGGER_CONCENTRATION
+          ? contaminant.concentration
+          : 0;
+      effects.gasLeakSound.update({ concentration: alarmConcentration });
     }
   }
 

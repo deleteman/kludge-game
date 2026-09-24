@@ -112,6 +112,8 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.transfer-mode-blocked.unreachable": "No hay conducto de fluido hasta ese reservorio.",
   "ui.floorplan.mission.transfer-mode-blocked.different-substance": "Ese reservorio contiene otra sustancia — purgalo antes.",
   "ui.floorplan.mission.no-actor-selected": "Seleccioná un tripulante en el panel para poder actuar.",
+  "ui.floorplan.mission.debug-dump.done": "Volcado de gamestate: {filename}",
+  "ui.floorplan.mission.debug-dump.no-session": "No hay partida activa para volcar",
   "ui.floorplan.mission.state.unpowered": "Sin energía",
   "ui.floorplan.mission.state.overloaded": "Cortado por sobrecarga",
   "ui.floorplan.mission.state.needs": "pide",
@@ -125,9 +127,14 @@ export const ES: Readonly<Record<string, string>> = {
   "ui.floorplan.mission.state.now-at": "ahora a",
   // Nombres de nodo para el menú circular de elección (14a-4 ronda 2).
   "ui.floorplan.mission.signal-node.emitter": "emite",
+  "ui.floorplan.mission.signal-node.emitter-detail": "mide algo del mundo",
   "ui.floorplan.mission.signal-node.actuator-output": "salida",
+  "ui.floorplan.mission.signal-node.actuator-output-detail": "reporta lo que este actuador ya hizo",
+  "ui.floorplan.mission.signal-node.ambiguous": "Hay otro nodo acá: al hacer click vas a poder elegir",
   "ui.floorplan.mission.signal-node.receptor": "entrada",
+  "ui.floorplan.mission.signal-node.receptor-detail": "una señal lo gobierna",
   "ui.floorplan.mission.signal-node.conductor": "paso",
+  "ui.floorplan.mission.signal-node.conductor-detail": "repite la señal, no decide nada",
   "ui.floorplan.mission.state.signal-demand": "demanda colgada",
   "ui.floorplan.mission.state.signal-capacity": "el emisor sostiene",
   "ui.floorplan.mission.no-path": "Sin ruta al destino",
@@ -307,6 +314,11 @@ export const ES: Readonly<Record<string, string>> = {
   // 14a-3: umbral de autoignición y estado de las sustancias en el aire.
   "ui.floorplan.mission.tooltip.self-igniting": "Enciende sola: cualquier inflamable arde acá",
   // 14b-1: dónde está la línea de disparo del sensor químico.
+  // 14b-2: estados de la válvula automática.
+  "ui.floorplan.mission.state.pouring": "Vertiendo",
+  "ui.floorplan.mission.state.reservoir-low": "Reserva baja",
+  "ui.floorplan.mission.state.remaining": "quedan",
+  "ui.floorplan.mission.state.capacity": "de",
   "ui.floorplan.mission.tooltip.chemical-alarm": "Contaminación sobre el umbral: un sensor químico acá dispara",
   "ui.floorplan.mission.tooltip.substance-state": "{substance} en el aire ({state}, {percent}%)",
   "ui.floorplan.mission.tooltip.oxygen": "Oxígeno: {percent}% ({bucket})",

@@ -672,3 +672,35 @@ Dos caminos, los dos de diseño y ninguno urgente:
 Relacionado: el **bromo** (TOX líquido, hierve a 59 °C) sería la fuente elegante — derramarlo y calentar la sala
 lo evapora, encadenando el cambio de estado de 14a-3 con el sensor de 14b-1. Hoy necesita extracción de
 elementos, que el Cap.1 no otorga.
+
+## Observación #51 — El volcado completo de un reservorio tóxico solo es purgable bajo el umbral del sensor en salas chicas (Subfase 14b-2, ronda 1 y 2 de playtest)
+
+**Estado:** ABIERTA. Decisión de contenido, no de código. Registrada 2026-09-24.
+
+Medido contra la nave canónica de Investigación (298 celdas, 11 secciones): volcar el tanque de anestésico
+completo (80u) y dejar que la válvula automática purgue (120u a 2u/s) solo baja la concentración bajo el
+umbral del sensor químico (0.05) en la **esclusa** (6 celdas: pico 0.910, purga a los 37s con 46u restantes).
+El resto de las secciones (20-52 celdas) queda en 0.054-0.064 sin importar cuánto suba la capacidad de la
+válvula — el piso de equilibrio de nave completa es 80×0.2/298 = 0.0537, por encima del umbral. La sustancia
+no desaparece (principio 5), solo se redistribuye, así que en una sala grande el lazo sensor→válvula→purga
+nunca cierra con este tanque.
+
+Además, el pico de 0.910 en la esclusa es MUY superior al umbral letal (0.6): un tripulante que se queda en la
+sala durante el vertido muere casi al instante, confirmado en playtest real.
+
+Dos caminos, los dos de diseño y ninguno urgente:
+- Bajar la capacidad del tanque de anestésico (o su tasa de vertido) para que el pico quede por debajo de lo
+  letal y el lazo cierre en salas más grandes que la esclusa.
+- Dejarlo como está: es una crisis real con una ventana de reacción corta, y el escenario de demo del Cap.1
+  puede estar pensado justo para la esclusa.
+
+## Pregunta abierta #52 — ¿Unificar `workbench-renderer.ts` con la distinción forma+color de nodos de señal? (Subfase 14b-2, ronda 1 de playtest)
+
+**Estado:** ABIERTA. Registrada 2026-09-24.
+
+La ronda 1 de playtest de 14b-2 le dio a los nodos de señal del PLANO una forma por rol además de color
+(`signalNodePresentationRole`, `SIGNAL_NODE_PRESENTATION_COLORS`) — antes solo tenían color
+(`SIGNAL_NODE_COLORS`), y la salida de un actuador compartía el amarillo del emisor de un sensor. La MESA DE
+CREACIÓN (`game/src/render/workbench-renderer.ts`) sigue dibujando sus nodos con la tabla vieja, sin la
+distinción nueva. CLAUDE.md (principio 7) pide que plano y mesa compartan la misma lógica de grid/conexión —
+no se tocó porque no fue parte del alcance reportado por el operador, que probó el escenario en el plano.

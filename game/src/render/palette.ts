@@ -132,6 +132,33 @@ export const SIGNAL_NODE_COLORS: Readonly<Record<SignalNodeRole, number>> = {
 };
 
 /**
+ * Color por rol de PRESENTACIÓN (ronda 1 de playtest de 14b-2).
+ *
+ * `SIGNAL_NODE_COLORS` va por rol del grafo, y ahí la salida de un actuador es
+ * un `emitter` más: compartía el amarillo con el emisor de un sensor, así que
+ * en una válvula —entrada + salida en la misma celda— el color no separaba las
+ * dos caras de la pieza. El operador lo reportó como "no sé qué estoy
+ * cableando".
+ *
+ * El ámbar de la salida es deliberadamente un vecino del amarillo del emisor y
+ * no un color nuevo: las dos SON salidas de señal, y alejarlas del todo diría
+ * que son cosas sin relación. Lo que las separa de verdad es la forma
+ * (`mission-overlay-renderer.ts`), que es lo que sobrevive a una sala oscura —
+ * el tinte se multiplica por la luz de la celda. El color acompaña.
+ *
+ * Fuera del contrato de diagnóstico de 12e a propósito: esto es IDENTIDAD de
+ * rol, no estado. Reusar el verde de "todo bien" o el ámbar de alerta sobre un
+ * nodo haría que un receptor sano se leyera como una advertencia — la misma
+ * razón por la que `palette.ts` separa las dos familias en su cabecera.
+ */
+export const SIGNAL_NODE_PRESENTATION_COLORS: Readonly<Record<string, number>> = {
+  emitter: SIGNAL_NODE_COLORS.emitter,
+  "actuator-output": 0xd98c3a,
+  receptor: SIGNAL_NODE_COLORS.receptor,
+  conductor: SIGNAL_NODE_COLORS.conductor,
+};
+
+/**
  * Tinte por `condition` de una instancia colocada (Fase 10d, principio 6 de
  * CLAUDE.md: un actuador atascado nunca debe lucer igual que uno operativo).
  * `ok` no tiñe — usa el color de sección normal ya asignado por índice.

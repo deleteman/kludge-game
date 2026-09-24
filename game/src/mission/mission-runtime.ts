@@ -36,6 +36,7 @@ import {
   temperatureAwareEmitterInputs,
   chemicalAwareEmitterInputs,
   chemicalSensorReading,
+  MissionValveRuntime,
   CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
   motionAwareEmitterInputs,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
@@ -124,6 +125,7 @@ import type {
   FrozenContentInfo,
   MatterState,
   PhaseDomainEvent,
+  ValvePourEvent,
 } from "engine";
 import type {
   ComponentWear,
@@ -357,6 +359,13 @@ export class MissionRuntime {
   readonly thermalRuntime: MissionThermalRuntime;
   /** Cambio de estado del contenido de los reservorios (Subfase 14a-3). */
   readonly phaseRuntime: MissionPhaseRuntime;
+  /**
+   * Válvulas automáticas gobernadas por señal (Subfase 14b-2) — el sentido
+   * Señales → Química. Nombre largo a propósito: `valveRuntime` ya es el de las
+   * válvulas MANUALES de conducto de ventilación (13h), que son otra cosa —
+   * aquéllas regulan el paso entre secciones, éstas vierten una sustancia.
+   */
+  readonly automaticValveRuntime: MissionValveRuntime;
   /** Cicatriz de RE por componente instalado (Fase 11b) — primer llamador de `StructuralIntegrity`. */
   readonly structuralRuntime: MissionStructuralRuntime;
   /** Cicatriz de sobrecarga scripteada por contenido (Fase 12a) — primer llamador de `OverloadRule`. */
@@ -398,6 +407,12 @@ export class MissionRuntime {
    * sustancia nueva, cambian de fase la misma.
    */
   readonly phaseEvents = new EventEmitter<PhaseDomainEvent>();
+  /**
+   * Vertidos de válvula automática (Subfase 14b-2). Bus propio y no reusar el
+   * de fase: son dos fenómenos distintos y el principio 6 pide que se vean
+   * distinto — una purga deliberada no es un charco evaporándose.
+   */
+  readonly valveEvents = new EventEmitter<ValvePourEvent>();
   /** Daño y colapso de secciones (Subfase 13f) — `/game` los pinta. */
   readonly integrityEvents = new EventEmitter<IntegrityDomainEvent>();
   /**
@@ -633,7 +648,17 @@ export class MissionRuntime {
     // resto de la cebolla toma funciones y no valores.
     this.emitterInputs = actuatorEmitterInputs(
       this.shipState,
-      (instanceId) => this.doorRuntime?.isActuatorActive(instanceId),
+      // Subfase 14b-2: la válvula es el SEGUNDO lector real de este canal. Su
+      // docblock decía desde 14a-4 que "una válvula no tiene todavía un runtime
+      // del que leer 'estoy actuando'", así que su emisor de salida se resolvía
+      // a `false` para siempre; ahora emite cuando vierte de verdad, y se puede
+      // encadenar "la purga arrancó" con cualquier otra cosa.
+      // El `??` respeta los tres valores: `undefined` de un lector significa "yo
+      // no sé de esta pieza", no "está apagada", así que la consulta pasa al
+      // siguiente en vez de cortarse.
+      (instanceId) =>
+        this.automaticValveRuntime?.isActuatorActive(instanceId) ??
+        this.doorRuntime?.isActuatorActive(instanceId),
       withChemical,
     );
     // Fase 13b: `powerRuntime` reemplaza el objeto inline de `PowerScarSource`
@@ -820,6 +845,23 @@ export class MissionRuntime {
       // camino de producción y no un atajo.
       () => this.sustainedHeatBySection(),
     );
+    // Subfase 14b-2: la válvula automática, sentido Señales → Química. Encola
+    // sobre el MISMO `gasInjection` que la tarea `apply-substance`, así que
+    // verter por señal y verter a mano no pueden divergir — incluido el bloqueo
+    // por contenido congelado, que comparte deps con el panel de acciones.
+    this.automaticValveRuntime = new MissionValveRuntime(this.shipState, {
+      registry: this.componentRegistry,
+      floorplan: this.shipFloorplan,
+      isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
+      outputOf: (nodeId) => this.signalRuntime.outputOf(nodeId),
+      gasInjection: this.gasInjection,
+      frozen: {
+        substanceOf: (substanceId) => this.chemicalRegistry.get(substanceId),
+        sectionTemperatureOf: (sectionId) =>
+          this.atmosphereRuntime.atmosphereOf(sectionId)?.temperatureCelsius,
+      },
+      onPour: (event) => this.valveEvents.emit(event),
+    });
     // Subfase 14a-3: vigila el contenido de los reservorios contra la
     // temperatura de su sección. Va después de `thermalRuntime` porque lee la
     // atmósfera que aquel escribe, y antes de los runtimes de tarea porque el
@@ -1182,6 +1224,11 @@ export class MissionRuntime {
     // aporta su calor en el siguiente — un frame de retraso, el mismo que ya
     // tienen `sectionIntegrityRuntime` y `hazardRuntime`.
     this.coreLoop.registerTickable(this.thermalRuntime);
+    // Subfase 14b-2: las válvulas automáticas vierten ANTES de que la atmósfera
+    // difunda, exactamente por el mismo motivo que el runtime térmico va acá —
+    // lo que se suelta este tick tiene que repartirse este tick, no el que
+    // viene. Encolan sobre el mismo `gasInjection` que usa la tarea manual.
+    this.coreLoop.registerTickable(this.automaticValveRuntime);
     // Fase 11b: atmósfera viva ANTES que la cicatriz estructural, para que
     // `MissionStructuralRuntime` lea el nivel corrosivo YA difundido este tick.
     this.coreLoop.registerTickable(this.atmosphereRuntime);
@@ -3129,6 +3176,24 @@ export class MissionRuntime {
   instanceStates(instance: PlacedComponentInstance): InstanceState[] {
     return deriveInstanceStates(instance, {
       resolveDefinition: (id) => this.componentRegistry.get(id),
+      // Subfase 14b-2: vertiendo AHORA + cuánto le queda. El estado sale del
+      // mismo `isActuatorActive` que gobierna la partícula y el emisor de
+      // salida, así que el glifo no puede discrepar del chorro (patrón 1).
+      pouringValveOf: (instanceId) => {
+        if (this.automaticValveRuntime?.isActuatorActive(instanceId) !== true) {
+          return undefined;
+        }
+        const content = this.shipState
+          .get()
+          .reservoirContents.find((entry) => entry.componentInstanceId === instanceId);
+        const capacity = this.componentRegistry
+          .get(instance.componentDefinitionId)
+          ?.data.functional?.find((property) => property.tag === "RES");
+        return {
+          remaining: content?.amount ?? 0,
+          capacity: capacity?.tag === "RES" ? capacity.capacity : 0,
+        };
+      },
       isInstancePowered: (instanceId) => this.powerRuntime.isInstancePowered(instanceId),
       // Se lee del blueprint VIVO, no de una copia: `overloadedRefs` es la
       // cicatriz que `MissionOverloadRuntime` escribe en cuanto un conductor

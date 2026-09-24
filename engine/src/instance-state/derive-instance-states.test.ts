@@ -39,6 +39,7 @@ function queries(overrides: Partial<InstanceStateQueries> = {}): InstanceStateQu
     isInstanceOverloaded: () => false,
     sectionGrantedUnitsAt: () => 1,
     signalStarvationOf: () => undefined,
+    pouringValveOf: () => undefined,
     frozenContentOf: () => undefined,
     ...overrides,
   };
@@ -192,5 +193,36 @@ describe("deriveInstanceStates — `unsignaled` (14a-4 ronda 2)", () => {
       }),
     );
     expect(states.map((state) => state.flag)).toEqual(["overloaded", "unsignaled", "unpowered"]);
+  });
+
+  /**
+   * Subfase 14b-2. `pouring` es el único estado de la lista que NO es un
+   * problema, y por eso va al final: si la válvula además está sin energía,
+   * lo que hay que contar primero es que no funciona.
+   */
+  it("una válvula vertiendo lo anuncia, y el aviso va DESPUÉS de los problemas", () => {
+    const states = deriveInstanceStates(
+      instance(),
+      queries({
+        isInstancePowered: () => false,
+        pouringValveOf: () => ({ remaining: 80, capacity: 120 }),
+      }),
+    );
+    expect(states.map((state) => state.flag)).toEqual(["unpowered", "pouring"]);
+  });
+
+  it("con la reserva baja avisa ADEMÁS de vertiendo, no en su lugar", () => {
+    // Principio 5: gastar el reservorio es irreversible, así que el aviso tiene
+    // que llegar antes del cero. Ver que vierte Y que se está quedando sin nada
+    // son dos hechos distintos y colapsarlos escondería el que urge.
+    const states = deriveInstanceStates(
+      instance(),
+      queries({ pouringValveOf: () => ({ remaining: 10, capacity: 120 }) }),
+    );
+    expect(states.map((state) => state.flag)).toEqual(["pouring", "reservoir-low"]);
+  });
+
+  it("una válvula cerrada no lleva ningún estado: una pieza quieta y correcta no grita", () => {
+    expect(deriveInstanceStates(instance(), queries())).toEqual([]);
   });
 });

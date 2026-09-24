@@ -20,7 +20,11 @@ import {
   hasComponentSprite,
 } from "./component-sprite-registry.js";
 import { computeSignalWireRoute, dashedPolyline } from "./conduit-path.js";
-import { layoutSignalNodes, SIGNAL_NODE_RADIUS_PX } from "./signal-node-layout.js";
+import {
+  layoutSignalNodes,
+  signalNodePresentationRole,
+  SIGNAL_NODE_RADIUS_PX,
+} from "./signal-node-layout.js";
 import { resolveComponentVisual } from "./component-state-visuals.js";
 import type { WalkableGrid } from "./walkable-grid.js";
 import {
@@ -31,7 +35,7 @@ import {
   LABEL_COLOR,
   LED_INACTIVE_TINT,
   SECTION_FILL_COLORS,
-  SIGNAL_NODE_COLORS,
+  SIGNAL_NODE_PRESENTATION_COLORS,
   WALL_COLOR,
   wireLoadColor,
 } from "./palette.js";
@@ -403,8 +407,35 @@ export function drawSignalLayer(
   // toda puerta de 1 celda tiene dos — y antes solo se veía (y se clickeaba) el
   // primero. El reparto es el MISMO que usa el hit-test del modo cableado.
   for (const positioned of layoutSignalNodes(blueprint.signalGraph.nodes)) {
-    signalGraphics.fillStyle(SIGNAL_NODE_COLORS[positioned.role], 1);
-    signalGraphics.fillCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX);
+    // Ronda 1 de playtest de 14b-2: el rol se lee por la FORMA, no solo por el
+    // color. El color de un nodo se multiplica por la luz de su celda, así que
+    // en una sala a oscuras dos roles que solo se distinguen por tinte se ven
+    // iguales — el mismo argumento por el que los glifos de estado van a brillo
+    // pleno. Y la forma también sobrevive al daltonismo.
+    //
+    // El vocabulario, con la pieza como sujeto: lo que SALE de ella es redondo
+    // (emisor relleno = produce el dato; salida de actuador hueca = reporta lo
+    // que ya hizo, un eco y no una fuente) y lo que ENTRA es cuadrado. Antes de
+    // esto, una válvula mostraba dos puntos idénticos y el jugador no tenía
+    // forma de saber cuál era la entrada.
+    const presentation = signalNodePresentationRole(positioned);
+    signalGraphics.fillStyle(SIGNAL_NODE_PRESENTATION_COLORS[presentation]!, 1);
+    if (presentation === "receptor") {
+      const side = SIGNAL_NODE_RADIUS_PX * 1.7;
+      signalGraphics.fillRect(
+        positioned.x - side / 2,
+        positioned.y - side / 2,
+        side,
+        side,
+      );
+    } else if (presentation === "actuator-output") {
+      // Anillo: mismo diámetro exterior que el emisor para que no se lea como
+      // "más chico", con el centro vacío que lo separa del relleno macizo.
+      signalGraphics.lineStyle(3, SIGNAL_NODE_PRESENTATION_COLORS[presentation]!, 1);
+      signalGraphics.strokeCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX - 1.5);
+    } else {
+      signalGraphics.fillCircle(positioned.x, positioned.y, SIGNAL_NODE_RADIUS_PX);
+    }
     // Aro de carga de la salida (14a-4 ronda 2). El RELLENO sigue siendo el
     // color de rol —identidad, no estado, la distinción que `palette.ts` enuncia
     // en su cabecera— y el estado va en un canal aparte, con el mismo

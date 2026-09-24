@@ -283,6 +283,36 @@ describe("Capítulo 1 — material de prueba del sensor químico (Subfase 14b-1)
     ).not.toHaveLength(0);
   });
 
+  /**
+   * Subfase 14b-2, aplicando el patrón 89 que salió de la ronda 1 de 14b-1: no
+   * alcanza con que cada pieza sea construible por separado. El escenario que
+   * la subfase promete —detectar una fuga y purgarla sola— necesita las TRES
+   * piezas a la vez y todas salen del mismo stock. Montarlas contra copias
+   * limpias daría verde con un inventario que en la partida real no alcanza.
+   */
+  it("el lazo completo del Cap.1 es montable: escáner + fuente de tóxico + válvula", () => {
+    let stock = CHAPTER_01_INITIAL_ATOMIC_STOCK;
+    for (const [componentId, label] of [
+      ["escaner-espectro", "escáner (detecta)"],
+      ["tanque-anestesico", "tanque de anestésico (produce la fuga)"],
+      ["generador-oxigeno-precision", "válvula automática (purga)"],
+    ] as const) {
+      const definition = registry.get(componentId as ComponentId);
+      expect(definition?.data.footprint, `${label} no es instalable`).toBeDefined();
+      if (!definition || !isCompositeEntity(definition)) {
+        throw new Error(`${componentId} dejó de ser un compuesto de catálogo`);
+      }
+      for (const ingredient of definition.recipe.ingredients) {
+        const next = consumeStock(stock, ingredient.ref, ingredient.quantity, DEFAULT_WEAR);
+        expect(next, `falta ${ingredient.ref} para el ${label}`).not.toBeNull();
+        stock = next!;
+      }
+    }
+    // Y cable para unir el sensor con la válvula: sin conductor no hay lazo, y
+    // desde 14a-4 cada cable consume una pieza.
+    expect(stockOf(stock, "cable-cobre" as ComponentId)).toBeGreaterThan(0);
+  });
+
   it("el stock inicial alcanza para 3 escáneres Y 3 sensores térmicos a la vez", () => {
     let stock = CHAPTER_01_INITIAL_ATOMIC_STOCK;
     for (const [componentId, label] of [

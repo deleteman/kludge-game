@@ -1,8 +1,9 @@
 import Phaser from "phaser";
 
 import type { PositionedSignalNode } from "../../render/signal-node-layout.js";
+import { signalNodePresentationRole } from "../../render/signal-node-layout.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
-import { hexToCss, SIGNAL_NODE_COLORS } from "../../render/palette.js";
+import { hexToCss, SIGNAL_NODE_PRESENTATION_COLORS } from "../../render/palette.js";
 
 /**
  * Menú circular para elegir entre nodos de señal superpuestos (14a-4, ronda 2
@@ -74,7 +75,7 @@ export function createSignalNodeMenu(
     const y = Math.sin(angle) * MENU_RADIUS_PX;
 
     const dot = scene.add
-      .circle(x, y, OPTION_RADIUS_PX, SIGNAL_NODE_COLORS[node.role])
+      .circle(x, y, OPTION_RADIUS_PX, SIGNAL_NODE_PRESENTATION_COLORS[signalNodePresentationRole(node)]!)
       .setStrokeStyle(2, 0xffffff, 0.9)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
@@ -90,7 +91,7 @@ export function createSignalNodeMenu(
       .text(x, y + OPTION_RADIUS_PX + 2, labels.roleLabel(node), {
         fontFamily: "sans-serif",
         fontSize: "11px",
-        color: hexToCss(SIGNAL_NODE_COLORS[node.role]),
+        color: hexToCss(SIGNAL_NODE_PRESENTATION_COLORS[signalNodePresentationRole(node)]!),
         stroke: "#0a0d14",
         strokeThickness: 3,
       })

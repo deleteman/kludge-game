@@ -56,7 +56,12 @@ import {
   type SubstanceDetailLine,
 } from "../ui/widgets/mission-action-panel.js";
 import { renderInstallPickerModal, type InstallPickerOption } from "../ui/widgets/install-picker-modal.js";
-import { layoutSignalNodes, signalNodesAtPoint } from "../render/signal-node-layout.js";
+import {
+  layoutSignalNodes,
+  signalNodeRoleDetailKey,
+  signalNodeRoleKey,
+  signalNodesAtPoint,
+} from "../render/signal-node-layout.js";
 import type { PositionedSignalNode } from "../render/signal-node-layout.js";
 import type { ReservoirPanelInfo } from "../ui/widgets/mission-action-panel.js";
 import type { SectionAtmosphereTooltip, TooltipContent } from "../ui/widgets/mission-tooltip.js";
@@ -594,7 +599,26 @@ export class MissionInteractionController {
    * muestre todo). El COMPONENTE colocado ahí tiene prioridad sobre la ZONA que
    * lo contiene. `undefined` si la celda no tiene ni componente ni sección.
    */
-  tooltipContentAt(position: GridPosition): TooltipContent | undefined {
+  tooltipContentAt(
+    position: GridPosition,
+    /**
+     * Píxel exacto bajo el cursor (ronda 1 de playtest de 14b-2). Solo se usa
+     * en modo cableado, para resolver QUÉ NODO está señalando: el tooltip por
+     * celda no alcanza cuando una pieza apila entrada y salida en la misma
+     * celda, que es el caso de 9 piezas del catálogo. Opcional para no romper a
+     * los llamadores que no lo tienen (tests, cursor).
+     */
+    worldPoint?: { readonly x: number; readonly y: number },
+  ): TooltipContent | undefined {
+    // En modo cableado la pregunta del jugador no es "qué pieza hay acá" sino
+    // "qué voy a cablear si hago click". El nodo gana a la ficha de la pieza
+    // mientras dure el modo; fuera de él, nada cambia.
+    const nodeTooltip = worldPoint && this.wireModeValue
+      ? this.signalNodeTooltipAt(worldPoint)
+      : undefined;
+    if (nodeTooltip) {
+      return nodeTooltip;
+    }
     const instance = this.findInstanceAtCell(position);
     if (instance) {
       const definition = this.mission.definitionOf(instance.componentDefinitionId);
@@ -1020,6 +1044,53 @@ export class MissionInteractionController {
       : undefined;
   }
 
+  /**
+   * Qué nodo de señal está bajo el cursor, para decirlo ANTES de que el jugador
+   * clickee (ronda 1 de playtest de 14b-2).
+   *
+   * El operador reportó "es muy difícil saber qué estoy cableando cuando tengo
+   * componentes que reciben señal y emiten señal". Las etiquetas de rol existían
+   * desde 14a-4 (`signalNodeRoleKey`) pero su ÚNICO consumidor era el menú
+   * circular, que solo se abre en una franja de ~4 px en el centro de la celda:
+   * o sea que en la práctica nadie las veía nunca.
+   *
+   * Usa el MISMO `signalNodesAtPoint` que decide el click, no una segunda
+   * fórmula: si el tooltip dijera un nodo y el click tomara otro, sería peor que
+   * no tener tooltip (patrón 1). De ahí también el aviso de ambigüedad cuando
+   * hay más de un candidato — es el anuncio de que ese click abre el menú, en
+   * vez de que el menú aparezca por sorpresa.
+   */
+  private signalNodeTooltipAt(worldPoint: {
+    readonly x: number;
+    readonly y: number;
+  }): TooltipContent | undefined {
+    const positioned = layoutSignalNodes(this.mission.blueprint.signalGraph.nodes);
+    const candidates = signalNodesAtPoint(positioned, worldPoint.x, worldPoint.y);
+    const node = candidates[0];
+    if (!node) {
+      return undefined;
+    }
+    const owner = this.mission.blueprint.signalGraph.nodes.find(
+      (candidate) => candidate.id === node.id,
+    )?.ownerRef as PlacedComponentInstanceId | undefined;
+    const instance = owner
+      ? this.mission.blueprint.placedComponents.find(
+          (candidate) => candidate.instanceId === owner,
+        )
+      : undefined;
+    const definition = instance && this.mission.definitionOf(instance.componentDefinitionId);
+    return {
+      kind: "signal-node",
+      roleLabel: t(signalNodeRoleKey(node)),
+      roleDetail: t(signalNodeRoleDetailKey(node)),
+      ownerName:
+        definition?.name ??
+        (instance && this.nameByComponentId.get(instance.componentDefinitionId)) ??
+        instance?.componentDefinitionId,
+      ambiguous: candidates.length > 1,
+    };
+  }
+
   private findInstanceAtCell(position: GridPosition): PlacedComponentInstance | undefined {
     return this.mission.blueprint.placedComponents.find((instance) =>
       occupiedCells(instance.placement).some((cell) => cell.x === position.x && cell.y === position.y),
@@ -1348,8 +1419,8 @@ export class MissionInteractionController {
         reservoirContents: (substanceName, amount, capacity) =>
           t("ui.floorplan.mission.inspector.reservoir-contents")
             .replace("{substance}", substanceName)
-            .replace("{amount}", String(amount))
-            .replace("{capacity}", String(capacity)),
+            .replace("{amount}", formatMeasure(amount))
+            .replace("{capacity}", formatMeasure(capacity)),
         transferSubstance: t("ui.floorplan.mission.inspector.transfer-substance"),
         applySubstance: t("ui.floorplan.mission.inspector.apply-substance"),
         extractElements: t("ui.floorplan.mission.inspector.extract-elements").replace(

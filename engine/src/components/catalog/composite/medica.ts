@@ -231,6 +231,13 @@ export const MEDICA_CATALOG: ReadonlyArray<CompositeComponentSpec> = [
     contains: "oxigeno" as ChemicalSubstanceId,
     name: "Generador de oxígeno de precisión",
     data: {
+      // Subfase 14b-2: es la VÁLVULA AUTOMÁTICA del Cap.1 (`ACT` no direccional
+      // + `RES(G)`), y sin `footprint` era invisible en el selector como todo lo
+      // de la deuda #42. De las cuatro piezas que cumplen el predicado es la
+      // única con contenido GASEOSO, o sea la única que puede diluir un tóxico
+      // del aire: un líquido se derrama al piso y no entra a la atmósfera. Su
+      // receta ya era pagable con el stock del capítulo.
+      footprint: { width: 1, height: 1 },
       functional: [
         { tag: "ACT", power: 30, cadence: 4, directional: false },
         { tag: "RES", resourceType: "G", capacity: 120, dischargeRate: 8 },

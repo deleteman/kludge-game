@@ -211,7 +211,12 @@ export { CorrosiveSubstanceRule } from "./chemistry/reaction/rules/corrosive-sub
 export { SpontaneousIgnitionRule } from "./chemistry/reaction/rules/spontaneous-ignition.js";
 
 // Atmósfera (Bloque 3)
-export { GAS, STANDARD_OXYGEN_FRACTION } from "./atmosphere/atmosphere-composition.types.js";
+export {
+  GAS,
+  STANDARD_OXYGEN_FRACTION,
+  atmosphericGasKeyOf,
+  isBaselineGasKey,
+} from "./atmosphere/atmosphere-composition.types.js";
 export type { AtmosphereComposition, GasKey } from "./atmosphere/atmosphere-composition.types.js";
 export { getGasFraction, standardSectionAtmosphere } from "./atmosphere/section.types.js";
 export type {
@@ -811,6 +816,20 @@ export {
   CHEMICAL_SENSOR_TAGS,
   CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
 } from "./atmosphere/chemical-sensor-parameters.js";
+// Subfase 14b-2 — Señales → Química: la válvula automática, versión sin
+// tripulante y continua de la tarea `apply-substance`.
+export {
+  activeAutomaticValves,
+  isAutomaticValveActive,
+  isAutomaticValveDefinition,
+} from "./mission/automatic-valve.js";
+export type { ActiveValve, AutomaticValveDeps } from "./mission/automatic-valve.js";
+export { MissionValveRuntime, VALVE_FLOW_UNITS_PER_SECOND } from "./mission/mission-valve-runtime.js";
+export type {
+  ValvePourEvent,
+  ValveDomainEvent,
+  MissionValveRuntimeDeps,
+} from "./mission/mission-valve-runtime.js";
 // 13g ronda 1 — resolución de sensores, compartida entre el motor (que decide
 // el disparo) y `/game` (que dibuja el área de alcance): una sola fórmula.
 export {
@@ -1014,6 +1033,7 @@ export { ENEMY_SEED_BY_CHAPTER_ID } from "./enemies/campaign/chapter-02-enemy-se
 export type { EnemySeed } from "./enemies/campaign/chapter-02-enemy-seed.js";
 
 import type { PhaseDomainEvent } from "./chemistry/phase/phase-events.types.js";
+import type { ValveDomainEvent } from "./mission/mission-valve-runtime.js";
 import type { SignalDomainEvent } from "./signals/signal-events.types.js";
 import type { ReactionDomainEvent } from "./chemistry/reaction/reaction-events.types.js";
 import type { AtmosphereDomainEvent } from "./atmosphere/atmosphere-events.types.js";
@@ -1100,4 +1120,5 @@ export type DomainEvent =
   | SalvageDomainEvent
   | IntegrityDomainEvent
   | DoorDomainEvent
-  | PhaseDomainEvent;
+  | PhaseDomainEvent
+  | ValveDomainEvent;
