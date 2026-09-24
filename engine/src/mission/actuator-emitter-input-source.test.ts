@@ -69,6 +69,7 @@ function shipWithDoor(): MutableShipState {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

@@ -71,6 +71,7 @@ function buildFixtureBlueprint(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],
@@ -183,6 +184,28 @@ describe("mission: chemicalAwareEmitterInputs (Subfase 14b-1)", () => {
     );
 
     expect(inputs().get(OTHER_NODE)).toBe(true);
+    expect(inputs().get(SENSOR_NODE)).toBe(true);
+  });
+
+  it("14b-3: un umbral más alto por instancia ignora trazas que el de fábrica sí detectaría", () => {
+    const blueprint: Blueprint = {
+      ...buildFixtureBlueprint(),
+      instanceConfigs: [
+        { instanceId: SENSOR_INSTANCE, config: { kind: "sensor-threshold", comparator: ">", value: 0.3 } },
+      ],
+    };
+    let fraction = 0.1; // > 0.05 de fábrica, < 0.3 configurado
+    const inputs = chemicalAwareEmitterInputs(
+      new MutableShipState(blueprint),
+      buildFixtureFloorplan(),
+      (sectionId) => (sectionId === SECTION ? atmosphereWith(AMONIACO, fraction) : undefined),
+      REGISTRY,
+      CHEMICAL_REGISTRY,
+      () => new Map(),
+    );
+
+    expect(inputs().get(SENSOR_NODE)).toBe(false);
+    fraction = 0.4;
     expect(inputs().get(SENSOR_NODE)).toBe(true);
   });
 });

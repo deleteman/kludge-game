@@ -71,6 +71,7 @@ function blueprint(stored: number): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

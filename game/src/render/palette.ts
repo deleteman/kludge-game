@@ -213,6 +213,21 @@ export const LED_ACTIVE_TINT = CRISIS_WARNING_COLOR;
 export const LED_INACTIVE_TINT = 0x3a3f4a;
 
 /**
+ * Colores de encendido que el jugador puede elegir para un LED (14b-3). El color
+ * lo decide el jugador —es SU código de lectura— así que aquí no rige la
+ * semántica de crisis: el verde puede usarse como "todo bien" o como cualquier
+ * otra cosa que él quiera. Lo que sí rige es el principio 6: los cuatro tienen
+ * que leerse distintos entre sí y del gris apagado. El ámbar es el de fábrica y
+ * coincide con `LED_ACTIVE_TINT`.
+ */
+export const LED_COLOR_TINTS: Readonly<Record<"amber" | "green" | "red" | "blue", number>> = {
+  amber: LED_ACTIVE_TINT,
+  green: CRISIS_SAFE_COLOR,
+  red: CRISIS_FATAL_COLOR,
+  blue: 0x4aa3ff,
+};
+
+/**
  * Luz que emite un LED encendido (Fase 12d): un halo suave que apenas rebasa el
  * sprite para leerse como "encendido" sin quemar (feedback de playtest: antes
  * quedaba centrado en la esquina y demasiado fuerte). Radio un poco mayor que

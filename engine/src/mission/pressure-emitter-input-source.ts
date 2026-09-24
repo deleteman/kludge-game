@@ -5,18 +5,13 @@ import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import { sensorThresholdOf } from "../instance-config/instance-config-store.js";
+import { sensorFires } from "../instance-config/sensor-thresholds.js";
 import { emitterRangeOf, PRESSURE_TRIGGER_TYPES } from "./emitter-sensing.js";
 import type { EmitterInputSource } from "./mission-signal-runtime.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
-/**
- * Umbral de "fuga activa" para el Sensor de Presión (Subfase 11h, caso 19):
- * cualquier caída bajo la atmósfera estándar (`standardSectionAtmosphere`,
- * 101 kPa) cuenta como disparo — decisión explícita del operador, sin margen
- * de tolerancia. `Especificacion_datos_tecnicos.md` no define un umbral de
- * presión-peligro; si a futuro se agrega uno, reemplazar esta constante.
- */
-export const PRESSURE_SENSOR_TRIGGER_KPA = 101;
+export { PRESSURE_SENSOR_TRIGGER_KPA } from "../atmosphere/pressure-sensor-parameters.js";
 
 function isPressureSensor(
   componentDefinitionId: ComponentId,
@@ -63,7 +58,9 @@ export function pressureAwareEmitterInputs(
       }
       const section = sectionContainingCell(shipFloorplan, node.position);
       const pressureKpa = section && atmosphereOf(section.id)?.pressureKpa;
-      inputs.set(node.id, pressureKpa !== undefined && pressureKpa < PRESSURE_SENSOR_TRIGGER_KPA);
+      // 14b-3: umbral y comparador por instancia; sin tocar es "< 101 kPa", como siempre.
+      const threshold = sensorThresholdOf(blueprint.instanceConfigs, instance.instanceId, "pressure");
+      inputs.set(node.id, sensorFires("pressure", pressureKpa, threshold));
     }
     return inputs;
   };

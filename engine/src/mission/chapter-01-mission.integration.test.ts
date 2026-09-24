@@ -62,6 +62,7 @@ function chapter01InitialShip(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

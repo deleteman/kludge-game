@@ -121,6 +121,7 @@ function fixtureShip(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [{ sectionId: SECTION, units: 1 }],

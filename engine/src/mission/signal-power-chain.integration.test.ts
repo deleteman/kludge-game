@@ -108,6 +108,7 @@ function blueprintWith(unitsForSala: number): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: unitsForSala > 0 ? [{ sectionId: SALA, units: unitsForSala }] : [],

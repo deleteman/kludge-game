@@ -49,6 +49,7 @@ function buildFixtureBlueprint(componentDefinitionId = "fotorreceptor"): Bluepri
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

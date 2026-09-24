@@ -12,6 +12,7 @@ import { activeSignalGraph } from "../signals/active-signal-graph.js";
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionId } from "../atmosphere/section.types.js";
+import { signalBehaviorsEqual } from "../signals/set-node-behavior.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
 
 /**
@@ -204,12 +205,18 @@ export class MissionSignalRuntime implements Tickable, SignalOutputReader {
     this.rawGraph = current;
     this.overloadedRefs = blueprint.overloadedRefs;
     const active = activeSignalGraph(blueprint);
+    const previousNodeById = this.nodeById;
     this.graph = active;
     this.nodeById = new Map(active.nodes.map((node) => [node.id, node]));
     this.evaluator = new SignalEvaluator(active, this.emitter);
     const preserved = this.evaluator.createState();
     for (const [nodeId, nodeState] of this.state) {
-      if (preserved.has(nodeId)) {
+      if (!preserved.has(nodeId)) continue;
+      // 14b-3: reconfigurar un nodo (p.ej. latch → AND) invalida su memoria —
+      // un latch enganchado no debe sobrevivir a dejar de ser un latch.
+      const before = previousNodeById.get(nodeId)?.behavior;
+      const after = active.nodes.find((node) => node.id === nodeId)?.behavior;
+      if (signalBehaviorsEqual(before, after)) {
         preserved.set(nodeId, nodeState);
       }
     }

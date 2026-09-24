@@ -11,6 +11,14 @@ import type {
   PlacedComponentInstanceId,
   ConduitId,
   SignalEdgeId,
+  SignalBehavior,
+  SignalNodeId,
+  ConfigurableSensorKind,
+  SensorThresholdConfig,
+  LedColor,
+  LedSubstanceTag,
+  LedTrigger,
+  OutputIndicatorConfig,
   DoorId,
   DoorMode,
   DoorOverrideSource,
@@ -20,6 +28,24 @@ import { UI_FONT_FAMILY } from "../fonts.js";
 import { LABEL_COLOR, HEADER_COLOR, CRISIS_WARNING_CSS } from "../../render/palette.js";
 import { RENDER_DEPTH } from "../../render/render-depths.js";
 import { createKenneyButton } from "./kenney-button.js";
+import {
+  NODE_BEHAVIOR_OPTIONS,
+  behaviorForOption,
+  optionOf,
+  parameterOf,
+  stepBehaviorParameter,
+  type BehaviorParameter,
+  type NodeBehaviorOption,
+} from "./node-behavior-options.js";
+import { LED_COLORS, LED_SUBSTANCE_TAGS, defaultLedTrigger, defaultSensorThreshold } from "engine";
+import { layoutButtonGrid, layoutButtonRow } from "./button-row.js";
+import {
+  SENSOR_COMPARATOR_OPTIONS,
+  canStepSensorThreshold,
+  isDefaultSensorThreshold,
+  stepSensorThreshold,
+} from "./sensor-threshold-options.js";
+import { warnOnOverlappingButtons } from "./panel-overlap-check.js";
 import { createKenneyList } from "./kenney-list.js";
 import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
 import type { SceneWithRexUI } from "../scene-with-rex-ui.types.js";
@@ -135,6 +161,22 @@ export type ActionPanelContent =
        */
       readonly door?: DoorPanelInfo;
       /**
+       * Umbral configurable del sensor (14b-3), sólo si la pieza tiene uno.
+       * Derivado por el llamador de las propiedades de la pieza, no de su id.
+       */
+      readonly sensor?: { readonly kind: ConfigurableSensorKind; readonly threshold: SensorThresholdConfig };
+      /**
+       * Color y condición de encendido de un indicador LED (14b-3), sólo si la
+       * pieza es uno. `triggerKinds` ya viene filtrado por lo que tiene cableado:
+       * el panel no decide qué opciones existen.
+       */
+      readonly indicator?: {
+        readonly config: OutputIndicatorConfig;
+        readonly sensorKind: ConfigurableSensorKind | undefined;
+        readonly triggerKinds: ReadonlyArray<LedTrigger["kind"]>;
+        readonly lit: boolean;
+      };
+      /**
        * Estados notables ya resueltos a texto/color por el llamador (13h ronda
        * 3). El panel solo pinta — no conoce la tabla de estados ni la i18n,
        * mismo criterio que con los hazards de 13d.
@@ -169,6 +211,22 @@ export type ActionPanelContent =
       readonly name: string;
       /** Un cable quemado se pierde al retirarlo; uno sano vuelve con desgaste. */
       readonly burned: boolean;
+      /**
+       * Puerto de entrada del nodo destino (14b-3), sólo si ese nodo distingue
+       * puertos (Memoria, Contador). Lo deriva el llamador contra el grafo vivo.
+       */
+      readonly port?: { readonly options: ReadonlyArray<string>; readonly current: string };
+    }
+  | {
+      /**
+       * Un NODO de señal seleccionado (14b-3): configurar qué lógica aplica a
+       * sus entradas. `behavior` es el VIVO (lo deriva el llamador en cada
+       * dibujo), no una foto de cuando se abrió el panel.
+       */
+      readonly kind: "node";
+      readonly nodeId: SignalNodeId;
+      readonly name: string;
+      readonly behavior?: SignalBehavior;
     }
   | {
       readonly kind: "substance";
@@ -269,6 +327,30 @@ export interface AvailableSubstanceEntry {
 }
 
 export interface ActionPanelLabels {
+  /** Configuración de un nodo de señal (14b-3). */
+  readonly nodeBehaviorOption: (option: NodeBehaviorOption) => string;
+  readonly nodeBehaviorCurrent: (optionLabel: string) => string;
+  readonly nodeBehaviorParameter: (option: NodeBehaviorOption, parameter: BehaviorParameter) => string;
+  readonly nodeBehaviorHint: string;
+  /** Puerto de entrada de un cable hacia un nodo Memoria/Contador (14b-3). */
+  readonly wirePortHint: string;
+  /** Umbral configurable de un sensor (14b-3). */
+  readonly sensorHint: (kind: ConfigurableSensorKind) => string;
+  /** Umbral VIGENTE en texto, comparador incluido: el botón activo sólo está gris, y gris no dice cuál es. */
+  readonly sensorValue: (kind: ConfigurableSensorKind, comparator: string, value: number) => string;
+  readonly sensorRestore: string;
+  /** Color y condición de un indicador LED (14b-3). */
+  readonly ledHint: string;
+  readonly ledUnsupported: string;
+  readonly ledStatus: (lit: boolean, colorLabel: string) => string;
+  /** Condición vigente de un trigger sin controles numéricos (señal / sustancia), en texto. */
+  readonly ledCondition: (conditionLabel: string) => string;
+  readonly ledColor: (color: LedColor) => string;
+  readonly ledTriggerKind: (kind: LedTrigger["kind"]) => string;
+  readonly ledLevel: (high: boolean) => string;
+  readonly ledSubstance: (tag: LedSubstanceTag) => string;
+  readonly ledCompareHint: (kind: ConfigurableSensorKind) => string;
+  readonly wirePortOption: (port: string) => string;
   readonly idleTitle: string;
   readonly idleMessage: string;
   readonly instanceTitle: (name: string, condition: ComponentCondition) => string;
@@ -373,6 +455,14 @@ export interface ActionPanelCallbacks {
   readonly onSetValve: (conduitId: ConduitId, targetAperture: number) => void;
   /** Retirar el cable seleccionado (14a-4 ronda 1). */
   readonly onRemoveWire: (edgeId: SignalEdgeId) => void;
+  /** Fija la lógica de un nodo de señal (14b-3). Directo, sin tarea ni tripulante. */
+  readonly onSetNodeBehavior: (nodeId: SignalNodeId, behavior: SignalBehavior) => void;
+  /** Fija el puerto de entrada de un cable (14b-3). Directo, sin tarea ni tripulante. */
+  readonly onSetEdgePort: (edgeId: SignalEdgeId, port: string) => void;
+  /** Fija umbral y comparador de un sensor (14b-3). Directo, sin tarea ni tripulante. */
+  readonly onSetSensorThreshold: (instanceId: PlacedComponentInstanceId, config: SensorThresholdConfig) => void;
+  /** Fija color y trigger de un indicador LED (14b-3). Directo, sin tarea ni tripulante. */
+  readonly onSetLedConfig: (instanceId: PlacedComponentInstanceId, config: OutputIndicatorConfig) => void;
 }
 
 /**
@@ -399,6 +489,197 @@ export interface ActionPanelCallbacks {
  * apilado del panel (13d ronda 2: se mide la altura REAL, no se suman
  * constantes, porque el alto de un texto envuelto depende del idioma).
  */
+function renderSensorBlock(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  instanceId: PlacedComponentInstanceId,
+  sensor: { readonly kind: ConfigurableSensorKind; readonly threshold: SensorThresholdConfig },
+  layout: { readonly width: number; readonly cursorY: number },
+  labels: ActionPanelLabels,
+  callbacks: ActionPanelCallbacks,
+): number {
+  const { width } = layout;
+  const { kind, threshold } = sensor;
+  let cursorY = layout.cursorY;
+  const row = { left: 25, totalWidth: width - 50 };
+
+  const text = (value: string, fontSize: string, color: string): void => {
+    const object = scene.add
+      .text(width / 2, cursorY, value, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize,
+        color,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(object);
+    cursorY += object.height + 6;
+  };
+
+  text(labels.sensorHint(kind), "10px", LABEL_COLOR);
+  // El comparador vigente va deshabilitado, igual que la opción activa del nodo.
+  cursorY += layoutButtonRow(
+    scene,
+    container,
+    SENSOR_COMPARATOR_OPTIONS.map((comparator) => ({
+      label: comparator,
+      enabled: comparator !== threshold.comparator,
+      fontSize: "12px",
+      onClick: () => callbacks.onSetSensorThreshold(instanceId, { ...threshold, comparator }),
+    })),
+    { ...row, top: cursorY, columns: SENSOR_COMPARATOR_OPTIONS.length },
+  );
+
+  text(labels.sensorValue(kind, threshold.comparator, threshold.value), "12px", HEADER_COLOR);
+  cursorY += layoutButtonRow(
+    scene,
+    container,
+    [
+      {
+        label: "−",
+        enabled: canStepSensorThreshold(kind, threshold, -1),
+        fontSize: "13px",
+        onClick: () => callbacks.onSetSensorThreshold(instanceId, stepSensorThreshold(kind, threshold, -1)),
+      },
+      {
+        label: "+",
+        enabled: canStepSensorThreshold(kind, threshold, 1),
+        fontSize: "13px",
+        onClick: () => callbacks.onSetSensorThreshold(instanceId, stepSensorThreshold(kind, threshold, 1)),
+      },
+    ],
+    { ...row, top: cursorY, columns: 2 },
+  );
+  cursorY += layoutButtonRow(
+    scene,
+    container,
+    [
+      {
+        label: labels.sensorRestore,
+        enabled: !isDefaultSensorThreshold(kind, threshold),
+        onClick: () => callbacks.onSetSensorThreshold(instanceId, defaultSensorThreshold(kind)),
+      },
+    ],
+    { ...row, top: cursorY, columns: 1 },
+  );
+  return cursorY;
+}
+
+function renderIndicatorBlock(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  instanceId: PlacedComponentInstanceId,
+  indicator: NonNullable<Extract<ActionPanelContent, { kind: "instance" }>["indicator"]>,
+  layout: { readonly width: number; readonly cursorY: number },
+  labels: ActionPanelLabels,
+  callbacks: ActionPanelCallbacks,
+): number {
+  const { width } = layout;
+  const { config, sensorKind, triggerKinds, lit } = indicator;
+  const { trigger } = config;
+  let cursorY = layout.cursorY;
+  const row = { left: 25, totalWidth: width - 50 };
+  const apply = (next: OutputIndicatorConfig): void => callbacks.onSetLedConfig(instanceId, next);
+
+  const text = (value: string, fontSize: string, color: string): void => {
+    const object = scene.add
+      .text(width / 2, cursorY, value, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize,
+        color,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(object);
+    cursorY += object.height + 6;
+  };
+  const buttons = (
+    specs: ReadonlyArray<{ label: string; enabled: boolean; onClick: () => void }>,
+    fontSize = "11px",
+  ): void => {
+    cursorY += layoutButtonRow(scene, container, specs.map((spec) => ({ ...spec, fontSize })), {
+      ...row,
+      top: cursorY,
+      columns: specs.length,
+    });
+  };
+
+  text(labels.ledHint, "10px", LABEL_COLOR);
+  text(labels.ledStatus(lit, labels.ledColor(config.color)), "12px", HEADER_COLOR);
+  buttons(
+    LED_COLORS.map((color) => ({
+      label: labels.ledColor(color),
+      enabled: color !== config.color,
+      onClick: () => apply({ ...config, color }),
+    })),
+  );
+  // Sólo se ofrecen los tipos de trigger que tienen sentido con lo cableado. Si el
+  // jugador re-cableó y el trigger guardado ya no aplica, se avisa Y se ofrece la
+  // salida: sin esto quedaba atrapado en una condición que nunca se enciende.
+  const unsupported = !triggerKinds.includes(trigger.kind) || (trigger.kind === "substance" && sensorKind !== "chemical");
+  if (unsupported) text(`⚠ ${labels.ledUnsupported}`, "10px", CRISIS_WARNING_CSS);
+  if (triggerKinds.length > 1 || unsupported) {
+    buttons(
+      triggerKinds.map((kind) => ({
+        label: labels.ledTriggerKind(kind),
+        enabled: kind !== trigger.kind,
+        onClick: () => apply({ ...config, trigger: defaultLedTrigger(kind, sensorKind) }),
+      })),
+    );
+  }
+
+  if (trigger.kind === "level") {
+    text(labels.ledCondition(labels.ledLevel(trigger.high)), "11px", HEADER_COLOR);
+    buttons(
+      [true, false].map((high) => ({
+        label: labels.ledLevel(high),
+        enabled: high !== trigger.high,
+        onClick: () => apply({ ...config, trigger: { kind: "level", high } }),
+      })),
+    );
+  } else if (trigger.kind === "substance") {
+    text(labels.ledCondition(labels.ledSubstance(trigger.tag)), "11px", HEADER_COLOR);
+    buttons(
+      LED_SUBSTANCE_TAGS.map((tag) => ({
+        label: labels.ledSubstance(tag),
+        enabled: tag !== trigger.tag,
+        onClick: () => apply({ ...config, trigger: { kind: "substance", tag } }),
+      })),
+    );
+  } else if (sensorKind) {
+    // Comparación con un umbral PROPIO del LED sobre el valor real del sensor
+    // cableado; mismo control que el umbral del sensor (rangos y pasos del motor).
+    const asThreshold: SensorThresholdConfig = {
+      kind: "sensor-threshold",
+      comparator: trigger.comparator,
+      value: trigger.value,
+    };
+    const applyThreshold = (next: SensorThresholdConfig): void =>
+      apply({ ...config, trigger: { kind: "compare", comparator: next.comparator, value: next.value } });
+    text(labels.ledCompareHint(sensorKind), "10px", LABEL_COLOR);
+    buttons(
+      SENSOR_COMPARATOR_OPTIONS.map((comparator) => ({
+        label: comparator,
+        enabled: comparator !== trigger.comparator,
+        onClick: () => applyThreshold({ ...asThreshold, comparator }),
+      })),
+      "12px",
+    );
+    text(labels.sensorValue(sensorKind, trigger.comparator, trigger.value), "12px", HEADER_COLOR);
+    buttons(
+      [-1, 1].map((direction) => ({
+        label: direction === -1 ? "−" : "+",
+        enabled: canStepSensorThreshold(sensorKind, asThreshold, direction as -1 | 1),
+        onClick: () => applyThreshold(stepSensorThreshold(sensorKind, asThreshold, direction as -1 | 1)),
+      })),
+      "13px",
+    );
+  }
+  return cursorY;
+}
+
 function renderDoorBlock(
   scene: SceneWithRexUI,
   container: Phaser.GameObjects.Container,
@@ -526,7 +807,7 @@ export function renderMissionActionPanel(
     content.kind === "instance"
       ? labels.instanceTitle(content.name, content.condition)
       : // Subfase 13h: conducto y puerta autorada ya traen su nombre resuelto.
-        content.kind === "conduit" || content.kind === "substance"
+        content.kind === "conduit" || content.kind === "substance" || content.kind === "node"
         ? content.name
         : content.kind === "substances-list"
           ? labels.substancesTitle
@@ -887,6 +1168,36 @@ export function renderMissionActionPanel(
       );
       claim(cursorY);
     }
+
+    // Subfase 14b-3 — la pieza es un sensor con umbral configurable. Después de
+    // todo lo demás por el mismo criterio que la puerta: primero lo que se hace
+    // con la pieza como pieza, al final cómo se comporta como sensor.
+    if (content.sensor) {
+      cursorY = renderSensorBlock(
+        scene,
+        container,
+        content.instanceId,
+        content.sensor,
+        { width, cursorY },
+        labels,
+        callbacks,
+      );
+      claim(cursorY);
+    }
+
+    // Subfase 14b-3 — la pieza es un indicador LED: color y condición de encendido.
+    if (content.indicator) {
+      cursorY = renderIndicatorBlock(
+        scene,
+        container,
+        content.instanceId,
+        content.indicator,
+        { width, cursorY },
+        labels,
+        callbacks,
+      );
+      claim(cursorY);
+    }
   } else if (content.kind === "conduit") {
     const conduit = content;
     const openness = conduit.aperture;
@@ -946,6 +1257,33 @@ export function renderMissionActionPanel(
     container.add(costText);
     flowY += costText.height + 8;
 
+    // 14b-3: a qué entrada del nodo destino llega este cable. Sin esto un latch
+    // armado desde la UI sólo podía encenderse: todo cable contaba como "set".
+    if (wire.port) {
+      const port = wire.port;
+      const portHint = scene.add
+        .text(width / 2, flowY, labels.wirePortHint, {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "10px",
+          color: LABEL_COLOR,
+          align: "center",
+          wordWrap: { width: width - 20, useAdvancedWrap: true },
+        })
+        .setOrigin(0.5, 0);
+      container.add(portHint);
+      flowY += portHint.height + 6;
+      flowY += layoutButtonRow(
+        scene,
+        container,
+        port.options.map((option) => ({
+          label: labels.wirePortOption(option),
+          enabled: option !== port.current,
+          onClick: () => callbacks.onSetEdgePort(wire.edgeId, option),
+        })),
+        { left: 25, totalWidth: width - 50, top: flowY, columns: port.options.length },
+      );
+    }
+
     container.add(
       createKenneyButton(scene, width / 2, flowY + 15, labels.removeWire, {
         width: width - 40,
@@ -956,6 +1294,83 @@ export function renderMissionActionPanel(
       }),
     );
     flowY += 36;
+    claim(flowY);
+  } else if (content.kind === "node") {
+    const node = content;
+    const current = optionOf(node.behavior);
+    const hintText = scene.add
+      .text(width / 2, flowY, labels.nodeBehaviorHint, {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "10px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(hintText);
+    flowY += hintText.height + 6;
+
+    const currentText = scene.add
+      .text(width / 2, flowY, labels.nodeBehaviorCurrent(labels.nodeBehaviorOption(current)), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "12px",
+        color: HEADER_COLOR,
+        align: "center",
+      })
+      .setOrigin(0.5, 0);
+    container.add(currentText);
+    flowY += currentText.height + 8;
+
+    // Rejilla de dos columnas: siete opciones en una sola columna de botones
+    // empujaban el panel fuera de pantalla. La opción activa va deshabilitada —
+    // es lo más corto que dice "esto es lo que está puesto" sin otro widget.
+    flowY += layoutButtonGrid(
+      scene,
+      container,
+      NODE_BEHAVIOR_OPTIONS.map((option) => ({
+        label: labels.nodeBehaviorOption(option),
+        enabled: option !== current,
+        onClick: () => callbacks.onSetNodeBehavior(node.nodeId, behaviorForOption(option)),
+      })),
+      { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
+    );
+    flowY += 4;
+
+    // Parámetro numérico (retardo, periodo, umbral del contador): pasos ± en
+    // vez de un campo de texto, porque el panel se redibuja en cada cambio y un
+    // input a medio editar se destruiría (mismo motivo que 13b en los sliders).
+    const parameter = node.behavior ? parameterOf(node.behavior) : undefined;
+    if (node.behavior && parameter) {
+      const behavior = node.behavior;
+      const parameterText = scene.add
+        .text(width / 2, flowY, labels.nodeBehaviorParameter(current, parameter), {
+          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+          fontSize: "12px",
+          color: LABEL_COLOR,
+          align: "center",
+        })
+        .setOrigin(0.5, 0);
+      container.add(parameterText);
+      flowY += parameterText.height + 6;
+      flowY += layoutButtonRow(
+        scene,
+        container,
+        [
+          {
+            label: "−",
+            enabled: parameter.value > parameter.min,
+            fontSize: "13px",
+            onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, -1)),
+          },
+          {
+            label: "+",
+            fontSize: "13px",
+            onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, 1)),
+          },
+        ],
+        { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
+      );
+    }
     claim(flowY);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá
@@ -1008,6 +1423,7 @@ export function renderMissionActionPanel(
   // y bloquear los clicks sobre toda su superficie (si el clamp siguiera usando
   // el alto nominal, la parte que sobresale dejaría pasar el click al mapa).
   container.setData(ACTION_PANEL_HEIGHT_KEY, renderedHeight);
+  warnOnOverlappingButtons(container, `action-panel:${content.kind}`);
 
   return container;
 }

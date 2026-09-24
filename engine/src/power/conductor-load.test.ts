@@ -89,6 +89,7 @@ function blueprintWith(pieces: ReadonlyArray<Piece>): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

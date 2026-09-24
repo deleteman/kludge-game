@@ -74,7 +74,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
 
   const shipState: Blueprint = {
     metadata: {
-      schemaVersion: 10,
+      schemaVersion: 12,
       id: `${input.id}-ship`,
       name: `${input.name} — nave`,
       engineVersion: input.engineVersion,
@@ -135,6 +135,7 @@ export function createNewCampaignSave(input: CreateNewCampaignSaveInput): Campai
     // partida nueva arranca con la nave compartimentada.
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
   };
 
   return {

@@ -149,6 +149,7 @@ describe("case 8 — Sofocar sin extintor / Trampa de chispa", () => {
       unpoweredSectionIds: [],
       doorStates: [],
       valveApertures: [],
+      instanceConfigs: [],
       overloadedRefs: [],
       powerState: {
         sectionAllocations: [{ sectionId: SALA, units: 1 }],

@@ -130,6 +130,7 @@ function wiredShip(plan: ShipFloorplan, wired = true): { blueprint: Blueprint; d
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

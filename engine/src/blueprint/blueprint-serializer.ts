@@ -1,3 +1,5 @@
+import { COMPARATORS, type Comparator } from "../instance-config/instance-config.types.js";
+import { isOutputIndicatorShape } from "../instance-config/instance-config-validation.js";
 import { assertBlueprintIntegrity } from "./blueprint-integrity.js";
 import { DEFAULT_WEAR, isComponentWear } from "../wear/wear.types.js";
 import { DEFAULT_EDGE_CONDUCTOR_ID } from "../signals/edge-conductor.js";
@@ -56,6 +58,7 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
     powerState,
     doorStates,
     valveApertures,
+    instanceConfigs,
   } = value;
 
   if (!isPlainObject(metadata)) {
@@ -315,6 +318,32 @@ export function assertIsBlueprintShape(value: unknown): asserts value is Bluepri
         typeof entry.aperture !== "number"
       ) {
         throw new BlueprintParseError("Invalid entry in Blueprint.valveApertures");
+      }
+    }
+  }
+
+  // Configuración por instancia (14b-3, schemaVersion 12). Ausente = ninguna
+  // instancia tocada: todo sensor usa su umbral de fábrica, o sea el
+  // comportamiento de antes de existir el campo.
+  if (instanceConfigs === undefined) {
+    (value as { instanceConfigs: unknown }).instanceConfigs = [];
+  } else if (!Array.isArray(instanceConfigs)) {
+    throw new BlueprintParseError("Blueprint.instanceConfigs must be an array");
+  } else {
+    for (const entry of instanceConfigs) {
+      const config = isPlainObject(entry) ? entry.config : undefined;
+      const validSensorThreshold =
+        isPlainObject(config) &&
+        config.kind === "sensor-threshold" &&
+        COMPARATORS.includes(config.comparator as Comparator) &&
+        typeof config.value === "number" &&
+        Number.isFinite(config.value);
+      if (
+        !isPlainObject(entry) ||
+        typeof entry.instanceId !== "string" ||
+        !(validSensorThreshold || isOutputIndicatorShape(config))
+      ) {
+        throw new BlueprintParseError("Invalid entry in Blueprint.instanceConfigs");
       }
     }
   }

@@ -46,6 +46,7 @@ function blueprintWith(...placedComponents: PlacedComponentInstance[]): Blueprin
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { allocationsBySection: {}, componentPriorityByInstance: {}, permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   } as unknown as Blueprint;

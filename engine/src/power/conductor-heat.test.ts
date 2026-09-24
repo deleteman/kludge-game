@@ -103,6 +103,7 @@ function blueprintWith(conductorId: string, consumers: number): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

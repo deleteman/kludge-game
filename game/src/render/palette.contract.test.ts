@@ -20,6 +20,8 @@ import {
   WALL_COLOR,
   healthFractionColor,
   LED_ACTIVE_TINT,
+  LED_COLOR_TINTS,
+  LED_INACTIVE_TINT,
   CORE_LOOP_MODE_COLORS,
   COMPONENT_CONDITION_TINT,
   STRUCTURAL_LAYER_COLOR,
@@ -44,6 +46,13 @@ describe("contrato de color de crisis (Eje A)", () => {
     expect(healthFractionColor(0.9)).toBe(CRISIS_SAFE_COLOR);
     expect(healthFractionColor(0.4)).toBe(CRISIS_WARNING_COLOR);
     expect(healthFractionColor(0.1)).toBe(CRISIS_FATAL_COLOR);
+  });
+
+  it("14b-3: los cuatro colores elegibles del LED son distintos entre sí y del gris apagado, y el ámbar es el de fábrica", () => {
+    const tints = Object.values(LED_COLOR_TINTS);
+    expect(new Set(tints).size).toBe(tints.length);
+    expect(tints).not.toContain(LED_INACTIVE_TINT);
+    expect(LED_COLOR_TINTS.amber).toBe(LED_ACTIVE_TINT);
   });
 
   it("el Indicador LED activo usa el ámbar del contrato, nunca el verde de 'seguro' (regresión #15)", () => {

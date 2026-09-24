@@ -1,34 +1,21 @@
-import { ATOMIC_COMPONENT_CATALOG } from "../components/catalog/atomic-component-catalog.js";
-import type { ComponentId } from "../components/physical-component.types.js";
-import { sectionContainingCell } from "../floorplan/floorplan.types.js";
+import type { SectionId } from "../atmosphere/section.types.js";
+import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
-import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import { chemicalSensorReading } from "./chemical-emitter-input-source.js";
+import { resolveWiredSensorSource, type SensorReadingRegistries } from "./wired-sensor-source.js";
 
 /**
- * Valor legible que una Pantalla LCD puede mostrar (Subfase 11h). Union
- * discriminada, no un `number` suelto: el LCD (§2 del documento fuente)
- * puede terminar mostrando presión, nivel de reservorio, o estado de un
- * latch — cada variante se agrega cuando exista una fuente real que resolver
- * (ver puntos 9/10 de PENDIENTES_OBSERVACIONES.md para RES). Hoy solo existe
- * la variante `pressure`.
+ * Valor legible que una Pantalla LCD puede mostrar (Subfase 11h; temperatura y
+ * concentración química en 14b-3). Union discriminada, no un `number` suelto:
+ * cada variante se agrega cuando exista una fuente real que resolver (nivel de
+ * reservorio, estado de un latch: ver puntos 9/10 de PENDIENTES_OBSERVACIONES.md).
  */
-export type LcdDisplayValue = {
-  readonly kind: "pressure";
-  readonly sectionId: SectionId;
-  readonly pressureKpa: number;
-};
-
-const PRESSURE_TRIGGER_TYPE = "pressure";
-
-function isPressureSensor(componentDefinitionId: ComponentId): boolean {
-  const spec = ATOMIC_COMPONENT_CATALOG.find((entry) => entry.id === componentDefinitionId);
-  return (
-    spec?.data.functional?.some(
-      (property) => property.tag === "EM" && property.triggerType === PRESSURE_TRIGGER_TYPE,
-    ) ?? false
-  );
-}
+export type LcdDisplayValue =
+  | { readonly kind: "pressure"; readonly sectionId: SectionId; readonly pressureKpa: number }
+  | { readonly kind: "temperature"; readonly sectionId: SectionId; readonly temperatureCelsius: number }
+  /** Fracción del aire ocupada por el peor contaminante TOX/CORR — la misma lectura que dispara al escáner. */
+  | { readonly kind: "chemical"; readonly sectionId: SectionId; readonly concentration: number };
 
 /**
  * Resuelve qué valor real debe mostrar una Pantalla LCD instalada, siguiendo
@@ -46,31 +33,26 @@ export function resolveLcdDisplayValue(
   shipFloorplan: ShipFloorplan,
   lcdInstanceId: PlacedComponentInstanceId,
   atmosphereOf: (sectionId: SectionId) => SectionAtmosphere | undefined,
+  registries: SensorReadingRegistries,
 ): LcdDisplayValue | null {
-  const lcdNode = blueprint.signalGraph.nodes.find(
-    (node) => node.role === "receptor" && node.ownerRef === lcdInstanceId,
+  const source = resolveWiredSensorSource(
+    blueprint,
+    shipFloorplan,
+    lcdInstanceId,
+    atmosphereOf,
+    registries.componentRegistry,
   );
-  if (!lcdNode) {
-    return null;
+  if (!source) return null;
+  switch (source.sensorKind) {
+    case "pressure":
+      return { kind: "pressure", sectionId: source.sectionId, pressureKpa: source.atmosphere.pressureKpa };
+    case "thermal":
+      return { kind: "temperature", sectionId: source.sectionId, temperatureCelsius: source.atmosphere.temperatureCelsius };
+    case "chemical":
+      return {
+        kind: "chemical",
+        sectionId: source.sectionId,
+        concentration: chemicalSensorReading(source.atmosphere, registries.chemicalRegistry),
+      };
   }
-  const incomingEdge = blueprint.signalGraph.edges.find((edge) => edge.to === lcdNode.id);
-  if (!incomingEdge) {
-    return null;
-  }
-  const sourceNode = blueprint.signalGraph.nodes.find((node) => node.id === incomingEdge.from);
-  if (!sourceNode) {
-    return null;
-  }
-  const sourceInstance = blueprint.placedComponents.find(
-    (instance) => instance.instanceId === sourceNode.ownerRef,
-  );
-  if (!sourceInstance || !isPressureSensor(sourceInstance.componentDefinitionId)) {
-    return null;
-  }
-  const section = sectionContainingCell(shipFloorplan, sourceNode.position);
-  const pressureKpa = section && atmosphereOf(section.id)?.pressureKpa;
-  if (!section || pressureKpa === undefined) {
-    return null;
-  }
-  return { kind: "pressure", sectionId: section.id, pressureKpa };
 }

@@ -2,6 +2,8 @@ import type Phaser from "phaser";
 import type ScrollablePanel from "phaser3-rex-plugins/templates/ui/scrollablepanel/ScrollablePanel.js";
 import {
   effectiveResistance,
+  effectiveInputPort,
+  inputPortsOf,
   ATOMIC_COMPONENT_CATALOG,
   assertSignalWiringReachable,
   isCompositeEntity,
@@ -29,6 +31,7 @@ import type {
   SignalEdge,
   SignalEdgeId,
   SignalNodeId,
+  SignalBehavior,
 } from "engine";
 
 import {
@@ -561,6 +564,9 @@ export class MissionInteractionController {
   /** Cambia el nodo origen y notifica a la escena para reposicionar su highlight. */
   private setWireFirstNode(nodeId: SignalNodeId | undefined): void {
     this.wireFirstNodeId = nodeId;
+    // Sin nodo origen no hay nada que configurar: cualquier salida del cableado
+    // (deselección, cable tendido o retirado, salir del modo) cierra el panel de 14b-3.
+    if (nodeId === undefined) this.closeNodePanel();
     this.callbacks.onWireSelectionChanged();
   }
 
@@ -1145,6 +1151,10 @@ export class MissionInteractionController {
     if (!this.wireFirstNodeId) {
       this.setWireFirstNode(node.id);
       this.callbacks.setStatus(t("ui.floorplan.mission.wire-mode-hint-second"));
+      // 14b-3: elegir el nodo origen también abre su configuración. Es el mismo
+      // gesto que ya existía (no suma un paso al cableado) y un emisor no la
+      // tiene — su salida la fija el mundo, no una lógica elegible.
+      this.showNodePanel(node.id);
       return;
     }
     // Click sobre el mismo nodo: lo deselecciona (volvé a empezar).
@@ -1246,6 +1256,44 @@ export class MissionInteractionController {
     this.callbacks.setStatus("");
     this.callbacks.onWireModeChanged();
     this.callbacks.onTaskQueued();
+  }
+
+  /** Abre el panel de lógica del nodo, salvo emisores (14b-3). */
+  private showNodePanel(nodeId: SignalNodeId): void {
+    const node = this.mission.blueprint.signalGraph.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node || node.role === "emitter") return;
+    const owner = this.mission.blueprint.placedComponents.find((instance) => instance.instanceId === node.ownerRef);
+    const ownerName = owner
+      ? (this.mission.definitionOf(owner.componentDefinitionId)?.name ?? owner.componentDefinitionId)
+      : node.ownerRef;
+    this.setActionPanelContent({
+      kind: "node",
+      nodeId,
+      name: t("ui.floorplan.mission.node.title").replace("{name}", ownerName),
+    });
+  }
+
+  private liveNodeBehavior(nodeId: SignalNodeId): SignalBehavior | undefined {
+    return this.mission.blueprint.signalGraph.nodes.find((node) => node.id === nodeId)?.behavior;
+  }
+
+  /** Puertos que ofrece el destino de un cable, con el vigente; `undefined` si no distingue ninguno. */
+  private livePortInfo(edgeId: SignalEdgeId): { options: ReadonlyArray<string>; current: string } | undefined {
+    const { edges, nodes } = this.mission.blueprint.signalGraph;
+    const edge = edges.find((candidate) => candidate.id === edgeId);
+    const behavior = edge && nodes.find((node) => node.id === edge.to)?.behavior;
+    const options = inputPortsOf(behavior);
+    if (!edge || options.length === 0) return undefined;
+    return { options, current: effectiveInputPort(behavior, edge.toPort) ?? options[0]! };
+  }
+
+  private indicatorInfoFor(instanceId: PlacedComponentInstanceId) {
+    const led = this.mission.ledConfigOf(instanceId);
+    return led && { ...led, lit: this.mission.ledIndicatorState(instanceId).lit };
+  }
+
+  private closeNodePanel(): void {
+    if (this.actionPanelContent.kind === "node") this.setActionPanelContent({ kind: "idle" });
   }
 
   private setActionPanelContent(content: ActionPanelContent): void {
@@ -1380,10 +1428,23 @@ export class MissionInteractionController {
             // se deriva del mundo vivo como todo lo demás de este bloque, para
             // que el panel abierto no muestre una foto vieja.
             door: this.doorInfoForInstance(this.actionPanelContent.instanceId),
+            // 14b-3: umbral vigente del sensor, derivado en cada dibujo para que
+            // los botones ± reflejen el valor nuevo sin cerrar y reabrir el panel.
+            sensor: this.mission.sensorConfigOf(this.actionPanelContent.instanceId),
+            // 14b-3: idem para el LED — color, trigger y si está encendido AHORA.
+            indicator: this.indicatorInfoFor(this.actionPanelContent.instanceId),
           }
         : this.actionPanelContent.kind === "conduit"
           ? { ...this.actionPanelContent, ...this.conduitLiveState(this.actionPanelContent.conduitId) }
-          : this.actionPanelContent;
+          : this.actionPanelContent.kind === "wire"
+            ? { ...this.actionPanelContent, port: this.livePortInfo(this.actionPanelContent.edgeId) }
+            : this.actionPanelContent.kind === "node"
+              ? {
+                ...this.actionPanelContent,
+                // Vivo, como el resto: el panel no debe mostrar una lógica que ya cambió.
+                behavior: this.liveNodeBehavior(this.actionPanelContent.nodeId),
+              }
+              : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,
@@ -1467,8 +1528,63 @@ export class MissionInteractionController {
         conduitPressure: (a, b) =>
           `${Math.round(a)} kPa ${a > b ? "→" : a < b ? "←" : "="} ${Math.round(b)} kPa`,
         close: t("ui.floorplan.mission.inspector.close"),
+        nodeBehaviorOption: (option) => t(`ui.floorplan.mission.node.option.${option}`),
+        nodeBehaviorCurrent: (optionLabel) => t("ui.floorplan.mission.node.current").replace("{option}", optionLabel),
+        nodeBehaviorParameter: (option, parameter) =>
+          t(`ui.floorplan.mission.node.parameter.${option}`).replace("{value}", String(parameter.value)),
+        nodeBehaviorHint: t("ui.floorplan.mission.node.hint"),
+        wirePortHint: t("ui.floorplan.mission.wire-port.hint"),
+        sensorHint: (kind) => t(`ui.floorplan.mission.sensor.hint.${kind}`),
+        sensorValue: (kind, comparator, value) =>
+          t(`ui.floorplan.mission.sensor.value.${kind}`)
+            .replace("{comparator}", comparator)
+            .replace("{value}", String(value)),
+        sensorRestore: t("ui.floorplan.mission.sensor.restore"),
+        ledHint: t("ui.floorplan.mission.led.hint"),
+        ledUnsupported: t("ui.floorplan.mission.led.unsupported"),
+        ledStatus: (lit, colorLabel) =>
+          t(lit ? "ui.floorplan.mission.led.status-on" : "ui.floorplan.mission.led.status-off").replace("{color}", colorLabel),
+        ledCondition: (conditionLabel) => t("ui.floorplan.mission.led.condition").replace("{condition}", conditionLabel),
+        ledColor: (color) => t(`ui.floorplan.mission.led.color.${color}`),
+        ledTriggerKind: (kind) => t(`ui.floorplan.mission.led.trigger.${kind}`),
+        ledLevel: (high) => t(high ? "ui.floorplan.mission.led.level.high" : "ui.floorplan.mission.led.level.low"),
+        ledSubstance: (tag) => t(`ui.floorplan.mission.led.substance.${tag}`),
+        ledCompareHint: (kind) => t(`ui.floorplan.mission.led.compare-hint.${kind}`),
+        wirePortOption: (port) => t(`ui.floorplan.mission.wire-port.${port}`),
       },
       {
+        onSetLedConfig: (instanceId, config) => {
+          const issue = this.mission.setLedConfig(instanceId, config);
+          if (issue) {
+            this.callbacks.setStatus(t(`ui.floorplan.mission.led.rejected.${issue}`));
+            return;
+          }
+          this.redrawActionPanel();
+        },
+        onSetSensorThreshold: (instanceId, config) => {
+          const issue = this.mission.setSensorThreshold(instanceId, config);
+          if (issue) {
+            this.callbacks.setStatus(t(`ui.floorplan.mission.sensor.rejected.${issue}`));
+            return;
+          }
+          this.redrawActionPanel();
+        },
+        onSetEdgePort: (edgeId, port) => {
+          const issue = this.mission.setEdgePort(edgeId, port);
+          if (issue) {
+            this.callbacks.setStatus(t(`ui.floorplan.mission.wire-port.rejected.${issue}`));
+            return;
+          }
+          this.redrawActionPanel();
+        },
+        onSetNodeBehavior: (nodeId, behavior) => {
+          const issue = this.mission.setNodeBehavior(nodeId, behavior);
+          if (issue) {
+            this.callbacks.setStatus(t(`ui.floorplan.mission.node.rejected.${issue}`));
+            return;
+          }
+          this.redrawActionPanel();
+        },
         // Subfase 13h: las tres tareas nuevas. El panel se mantiene abierto —
         // el jugador suele encadenar (cerrar la válvula Y la puerta), y cerrarlo
         // en cada acción lo obligaría a volver a seleccionar.

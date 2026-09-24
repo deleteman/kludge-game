@@ -194,7 +194,7 @@ export interface SectionAtmosphereTooltip {
   readonly selfIgniting: boolean;
   /**
    * La contaminación de la sala supera el umbral del sensor químico
-   * (Subfase 14b-1, `CHEMICAL_SENSOR_TRIGGER_CONCENTRATION`). Mismo criterio
+   * (Subfase 14b-1; desde 14b-3 con el umbral de cada escáner, `sectionChemicalAlarm`). Mismo criterio
    * que `selfIgniting`: las concentraciones por sustancia ya están más abajo en
    * el tooltip, pero un porcentaje suelto no le dice al jugador dónde está la
    * línea que hace disparar al escáner que acaba de instalar. El umbral

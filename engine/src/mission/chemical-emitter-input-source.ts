@@ -8,12 +8,11 @@ import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
 import { sectionTaggedConcentration } from "../atmosphere/tagged-concentration.js";
-import {
-  CHEMICAL_SENSOR_TAGS,
-  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
-} from "../atmosphere/chemical-sensor-parameters.js";
+import { CHEMICAL_SENSOR_TAGS } from "../atmosphere/chemical-sensor-parameters.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import { sensorThresholdOf } from "../instance-config/instance-config-store.js";
+import { sensorFires } from "../instance-config/sensor-thresholds.js";
 import { emitterRangeOf, CHEMICAL_TRIGGER_TYPES } from "./emitter-sensing.js";
 import type { EmitterInputSource } from "./mission-signal-runtime.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
@@ -92,11 +91,11 @@ export function chemicalAwareEmitterInputs(
       }
       const section = sectionContainingCell(shipFloorplan, node.position);
       const atmosphere = section && atmosphereOf(section.id);
+      // 14b-3: umbral y comparador por instancia; sin tocar es "> 0.05", como siempre.
+      const threshold = sensorThresholdOf(blueprint.instanceConfigs, instance.instanceId, "chemical");
       inputs.set(
         node.id,
-        atmosphere !== undefined &&
-          chemicalSensorReading(atmosphere, chemicalRegistry) >
-            CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
+        sensorFires("chemical", atmosphere && chemicalSensorReading(atmosphere, chemicalRegistry), threshold),
       );
     }
     return inputs;

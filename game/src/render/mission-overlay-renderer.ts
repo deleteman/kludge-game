@@ -41,7 +41,10 @@ import {
 } from "./palette.js";
 
 /** `componentDefinitionId` del catálogo atómico (Subfase 11h) — únicos consumidos por este renderer. */
-export const LED_INDICATOR_COMPONENT_ID = "indicador-led" as ComponentId;
+// Vive en el motor desde 14b-3 (`isConfigurableIndicator`): el LED y la LCD tienen
+// las mismas propiedades, así que el id es lo único que los distingue.
+import { LED_INDICATOR_COMPONENT_ID } from "engine";
+export { LED_INDICATOR_COMPONENT_ID };
 export const LCD_DISPLAY_COMPONENT_ID = "pantalla-lcd" as ComponentId;
 
 /** Resultado del overlay de misión: `container` con todo, y `signalGraphics` (nodos + cables) aparte para poder atenuarlo con la capa `señales` del HUD (Fase 11f.3). */

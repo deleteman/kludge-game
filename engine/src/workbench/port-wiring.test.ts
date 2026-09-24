@@ -54,6 +54,7 @@ function blueprintWith(signalGraph: SignalGraph<PlacedComponentInstanceId>): Blu
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

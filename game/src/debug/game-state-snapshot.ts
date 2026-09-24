@@ -1,4 +1,11 @@
-import type { CampaignSaveState, InstanceState, PlacedComponentInstanceId } from "engine";
+import type {
+  CampaignSaveState,
+  ConfigurableSensorKind,
+  InstanceConfigEntry,
+  InstanceState,
+  PlacedComponentInstanceId,
+  SensorThresholdConfig,
+} from "engine";
 import type { MissionRuntime } from "../mission/mission-runtime.js";
 
 /**
@@ -21,6 +28,16 @@ export interface GameStateSnapshot {
   readonly save: CampaignSaveState;
   readonly live: {
     readonly instanceStates: Readonly<Record<PlacedComponentInstanceId, ReadonlyArray<InstanceState>>>;
+    /** Configuración por instancia tal cual está guardada (14b-3): sólo las instancias que el jugador tocó. */
+    readonly instanceConfigs: ReadonlyArray<InstanceConfigEntry>;
+    /**
+     * Umbral EFECTIVO de cada sensor configurable, tocado o no (14b-3). Sin esto
+     * hay que saber los valores de fábrica de memoria para interpretar
+     * `instanceConfigs`, que es exactamente lo que este volcado quiere evitar.
+     */
+    readonly sensorThresholds: Readonly<
+      Record<PlacedComponentInstanceId, { readonly kind: ConfigurableSensorKind; readonly threshold: SensorThresholdConfig }>
+    >;
   };
 }
 
@@ -32,10 +49,18 @@ export function buildGameStateSnapshot(mission: MissionRuntime, base: CampaignSa
       instanceStates[instance.instanceId] = states;
     }
   }
+  const sensorThresholds: Record<
+    PlacedComponentInstanceId,
+    { readonly kind: ConfigurableSensorKind; readonly threshold: SensorThresholdConfig }
+  > = {};
+  for (const instance of mission.blueprint.placedComponents) {
+    const sensor = mission.sensorConfigOf(instance.instanceId);
+    if (sensor) sensorThresholds[instance.instanceId] = sensor;
+  }
   return {
     schemaVersion: 1,
     capturedAt: new Date().toISOString(),
     save: mission.toUpdatedSave(base),
-    live: { instanceStates },
+    live: { instanceStates, instanceConfigs: mission.blueprint.instanceConfigs, sensorThresholds },
   };
 }

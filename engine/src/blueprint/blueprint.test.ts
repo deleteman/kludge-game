@@ -110,6 +110,12 @@ function buildFixtureBlueprint(): Blueprint {
       },
     ],
     valveApertures: [{ conduitId: "ventilacion:puente:pasillo-central:0" as ConduitId, aperture: 0 }],
+    instanceConfigs: [
+      {
+        instanceId: "sensor-1" as PlacedComponentInstanceId,
+        config: { kind: "sensor-threshold", comparator: ">=", value: 42 },
+      },
+    ],
   };
 }
 
@@ -296,5 +302,56 @@ describe("blueprint: serialize/deserialize round-trip", () => {
     broken.placedComponents = placedComponents;
 
     expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(BlueprintParseError);
+  });
+
+  it("14b-3: una partida pre-v12 sin instanceConfigs carga con el mapa vacío (todo sensor de fábrica)", () => {
+    const v11 = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+    delete v11.instanceConfigs;
+    (v11.metadata as Record<string, unknown>).schemaVersion = 11;
+
+    expect(deserializeBlueprint(JSON.stringify(v11)).instanceConfigs).toEqual([]);
+  });
+
+  it("14b-3: rechaza una config de instancia con comparador desconocido o valor no finito", () => {
+    for (const config of [
+      { kind: "sensor-threshold", comparator: "!=", value: 1 },
+      { kind: "sensor-threshold", comparator: ">", value: null },
+      { kind: "otra-cosa", comparator: ">", value: 1 },
+    ]) {
+      const broken = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+      broken.instanceConfigs = [{ instanceId: "x", config }];
+      expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(/instanceConfigs/);
+    }
+  });
+
+  it("14b-3: el indicador LED (color + trigger) sobrevive al round-trip junto al umbral de un sensor", () => {
+    const blueprint = buildFixtureBlueprint();
+    const withLed: Blueprint = {
+      ...blueprint,
+      instanceConfigs: [
+        ...blueprint.instanceConfigs,
+        {
+          instanceId: "led-1" as PlacedComponentInstanceId,
+          config: { kind: "output-indicator", color: "red", trigger: { kind: "compare", comparator: ">", value: 80 } },
+        },
+        {
+          instanceId: "led-2" as PlacedComponentInstanceId,
+          config: { kind: "output-indicator", color: "blue", trigger: { kind: "substance", tag: "CORR" } },
+        },
+      ],
+    };
+    expect(deserializeBlueprint(serializeBlueprint(withLed))).toEqual(withLed);
+  });
+
+  it("14b-3: rechaza un indicador con color o trigger inválido", () => {
+    for (const config of [
+      { kind: "output-indicator", color: "rosa", trigger: { kind: "level", high: true } },
+      { kind: "output-indicator", color: "red", trigger: { kind: "substance", tag: "OXIGENO" } },
+      { kind: "output-indicator", color: "red", trigger: { kind: "nada" } },
+    ]) {
+      const broken = buildFixtureBlueprint() as unknown as Record<string, unknown>;
+      broken.instanceConfigs = [{ instanceId: "x", config }];
+      expect(() => deserializeBlueprint(JSON.stringify(broken))).toThrow(/instanceConfigs/);
+    }
   });
 });

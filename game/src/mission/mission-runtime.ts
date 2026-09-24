@@ -1,5 +1,20 @@
 import {
   ALL_COMPOSITE_SPECS,
+  setNodeBehavior,
+  setEdgePort,
+  configurableSensorKindOf,
+  DEFAULT_OUTPUT_INDICATOR,
+  isConfigurableIndicator,
+  isValidOutputIndicator,
+  instanceConfigOf,
+  ledTriggerKindsFor,
+  resolveLcdDisplayValue,
+  resolveLedIndicatorState,
+  resolveWiredSensorSource,
+  sectionChemicalAlarm,
+  sensorThresholdOf,
+  withInstanceConfig,
+  isValidSensorThreshold,
   CANONICAL_SHIP_FLOORPLANS,
   CHAPTER_REGISTRY,
   CoreLoopModeMachine,
@@ -35,9 +50,7 @@ import {
   pressureAwareEmitterInputs,
   temperatureAwareEmitterInputs,
   chemicalAwareEmitterInputs,
-  chemicalSensorReading,
   MissionValveRuntime,
-  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
   motionAwareEmitterInputs,
   CHAPTER_01_SEAL_ACCEPTABLE_COMPONENT_IDS,
   CHAPTER_01_SEAL_DRAIN_RATE_KPA_PER_SECOND,
@@ -204,6 +217,15 @@ import type {
   FabricatorDomain,
   FluidFlow,
   SignalNodeId,
+  SignalBehavior,
+  SetNodeBehaviorIssue,
+  SetEdgePortIssue,
+  ConfigurableSensorKind,
+  SensorThresholdConfig,
+  LcdDisplayValue,
+  LedIndicatorState,
+  LedTrigger,
+  OutputIndicatorConfig,
   StockCostLine,
   SubstanceCompositionContext,
   PlacedFootprint,
@@ -1625,12 +1647,12 @@ export class MissionRuntime {
       // El MISMO umbral que consulta `MissionReactionRuntime` para decidir si
       // hay fuente de ignición: si el tooltip lo dice, el motor prende.
       selfIgniting: atmosphere.temperatureCelsius >= AUTOIGNITION_CELSIUS,
-      // La MISMA función que usa el input-source para decidir el disparo, no
+      // La MISMA lógica que usa el input-source para decidir el disparo, no
       // una segunda fórmula: un tooltip que dijera "sobre el umbral" con el
-      // sensor apagado sería la UI mintiendo sobre el motor (patrón 1).
-      chemicalAlarm:
-        chemicalSensorReading(atmosphere, this.chemicalRegistry) >
-        CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
+      // sensor apagado sería la UI mintiendo sobre el motor (patrón 1). Desde
+      // 14b-3 cada escáner tiene su umbral, así que esto es "algún escáner de la
+      // sala dispara con el suyo".
+      chemicalAlarm: this.chemicalAlarmIn(sectionId, atmosphere),
       oxygenFraction: getGasFraction(atmosphere, GAS.OXYGEN),
       oxygenBucket: sectionCombustionAtmosphere(atmosphere),
       // La CAUSA donde el jugador la va a buscar: quien ve la sala subir de
@@ -3286,6 +3308,153 @@ export class MissionRuntime {
   }
 
   /**
+   * Fija el comportamiento lógico de un nodo de señal (Subfase 14b-3: AND/OR/
+   * NOT, latch, delay...). Mutación directa del Blueprint vivo, sin tarea —
+   * misma decisión del operador que `reorderInstancePriority`: es configuración
+   * del circuito, no una reparación. `MissionSignalRuntime.syncGraph` detecta el
+   * grafo nuevo y descarta la memoria del nodo reconfigurado. Devuelve el
+   * motivo si el motor lo rechaza (emisor, parámetro inválido).
+   */
+  setNodeBehavior(nodeId: SignalNodeId, behavior: SignalBehavior): SetNodeBehaviorIssue | undefined {
+    const blueprint = this.shipState.get();
+    const result = setNodeBehavior(blueprint.signalGraph, nodeId, behavior);
+    if (!result.ok) return result.issue;
+    if (result.graph !== blueprint.signalGraph) {
+      this.shipState.set({ ...blueprint, signalGraph: result.graph });
+    }
+    return undefined;
+  }
+
+  /**
+   * Qué sensor configurable es esta instancia y su umbral vigente (14b-3), o
+   * `undefined` si la pieza no tiene umbral. Derivado de sus PROPIEDADES
+   * (`configurableSensorKindOf`), así que una creación de la mesa con un `EM`
+   * simulado también lo tiene.
+   */
+  sensorConfigOf(
+    instanceId: PlacedComponentInstanceId,
+  ): { readonly kind: ConfigurableSensorKind; readonly threshold: SensorThresholdConfig } | undefined {
+    const blueprint = this.shipState.get();
+    const instance = blueprint.placedComponents.find((candidate) => candidate.instanceId === instanceId);
+    const kind = instance && configurableSensorKindOf(instance.componentDefinitionId, this.componentRegistry);
+    if (!kind) return undefined;
+    return { kind, threshold: sensorThresholdOf(blueprint.instanceConfigs, instanceId, kind) };
+  }
+
+  /**
+   * Valor real que muestra una pantalla LCD (11h; temperatura y química en
+   * 14b-3), resuelto por el motor siguiendo su cableado. `null` si no está
+   * cableada a un sensor con lectura.
+   */
+  lcdDisplayValue(instanceId: PlacedComponentInstanceId): LcdDisplayValue | null {
+    return resolveLcdDisplayValue(
+      this.shipState.get(),
+      this.shipFloorplan,
+      instanceId,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      { componentRegistry: this.componentRegistry, chemicalRegistry: this.chemicalRegistry },
+    );
+  }
+
+  /**
+   * Estado vivo de un indicador LED: encendido y de qué color (14b-3). Es lo que
+   * pinta el plano cada frame; la lógica está en el motor
+   * (`resolveLedIndicatorState`) para que ningún criterio viva en `/game`.
+   */
+  ledIndicatorState(instanceId: PlacedComponentInstanceId): LedIndicatorState {
+    const blueprint = this.shipState.get();
+    const instance = blueprint.placedComponents.find((candidate) => candidate.instanceId === instanceId);
+    const node = blueprint.signalGraph.nodes.find((candidate) => candidate.role === "receptor" && candidate.ownerRef === instanceId);
+    const section = instance && sectionContainingCell(this.shipFloorplan, instance.placement.position);
+    // Alimentado = su demanda está satisfecha Y su sala no está en la cicatriz
+    // de energía: el trigger "sin señal" no puede encender un LED sin corriente.
+    const powered =
+      this.powerRuntime.isInstancePowered(instanceId) && !(section && blueprint.unpoweredSectionIds.includes(section.id));
+    return resolveLedIndicatorState(
+      blueprint,
+      this.shipFloorplan,
+      instanceId,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      { componentRegistry: this.componentRegistry, chemicalRegistry: this.chemicalRegistry },
+      { signalActive: node ? this.signalRuntime.outputOf(node.id) : false, powered },
+    );
+  }
+
+  /**
+   * Configuración vigente de un indicador LED y las opciones que ofrece según lo
+   * que tiene cableado (14b-3), o `undefined` si la pieza no es un indicador.
+   */
+  ledConfigOf(instanceId: PlacedComponentInstanceId):
+    | {
+        readonly config: OutputIndicatorConfig;
+        readonly sensorKind: ConfigurableSensorKind | undefined;
+        readonly triggerKinds: ReadonlyArray<LedTrigger["kind"]>;
+      }
+    | undefined {
+    const blueprint = this.shipState.get();
+    const instance = blueprint.placedComponents.find((candidate) => candidate.instanceId === instanceId);
+    if (!instance || !isConfigurableIndicator(instance.componentDefinitionId)) return undefined;
+    const stored = instanceConfigOf(blueprint.instanceConfigs, instanceId);
+    const sensorKind = resolveWiredSensorSource(
+      blueprint,
+      this.shipFloorplan,
+      instanceId,
+      (sectionId) => this.atmosphereRuntime.atmosphereOf(sectionId),
+      this.componentRegistry,
+    )?.sensorKind;
+    return {
+      config: stored?.kind === "output-indicator" ? stored : DEFAULT_OUTPUT_INDICATOR,
+      sensorKind,
+      triggerKinds: ledTriggerKindsFor(sensorKind),
+    };
+  }
+
+  /** Fija color y trigger de un indicador LED (14b-3). Directo y sin tarea, como el resto. */
+  setLedConfig(
+    instanceId: PlacedComponentInstanceId,
+    config: OutputIndicatorConfig,
+  ): "not-configurable" | "invalid-value" | undefined {
+    const current = this.ledConfigOf(instanceId);
+    if (!current) return "not-configurable";
+    if (!isValidOutputIndicator(config, current.sensorKind)) return "invalid-value";
+    const blueprint = this.shipState.get();
+    this.shipState.set({ ...blueprint, instanceConfigs: withInstanceConfig(blueprint.instanceConfigs, instanceId, config) });
+    return undefined;
+  }
+
+  /**
+   * Fija el umbral y comparador de un sensor (14b-3). Directo y sin tarea, como
+   * el resto de la configuración. El resolvedor de sensores lee `instanceConfigs`
+   * en cada tick, así que se nota en el siguiente sin reconstruir nada.
+   */
+  setSensorThreshold(
+    instanceId: PlacedComponentInstanceId,
+    config: SensorThresholdConfig,
+  ): "not-configurable" | "invalid-value" | undefined {
+    const current = this.sensorConfigOf(instanceId);
+    if (!current) return "not-configurable";
+    if (!isValidSensorThreshold(current.kind, config)) return "invalid-value";
+    const blueprint = this.shipState.get();
+    this.shipState.set({ ...blueprint, instanceConfigs: withInstanceConfig(blueprint.instanceConfigs, instanceId, config) });
+    return undefined;
+  }
+
+  /**
+   * Fija a qué puerto (set/reset, count/reset) del nodo destino llega un cable
+   * ya tendido (14b-3). Directo y sin tarea, como `setNodeBehavior`. Devuelve
+   * el motivo si el motor lo rechaza.
+   */
+  setEdgePort(edgeId: SignalEdgeId, port: string): SetEdgePortIssue | undefined {
+    const blueprint = this.shipState.get();
+    const result = setEdgePort(blueprint.signalGraph, edgeId, port);
+    if (!result.ok) return result.issue;
+    if (result.graph !== blueprint.signalGraph) {
+      this.shipState.set({ ...blueprint, signalGraph: result.graph });
+    }
+    return undefined;
+  }
+
+  /**
    * Peor contaminante presente en una sección (Fase 11b), para el efecto
    * state-driven de fuga de gas (`atmosphere-state-effects.ts`). Devuelve el
    * dato de dominio (concentración + tag químico); el tinte concreto por tag
@@ -3293,6 +3462,25 @@ export class MissionRuntime {
    * `hazard-effect.ts` para el mismo fenómeno — principio 6, no dos colores
    * distintos para lo mismo).
    */
+  /**
+   * ¿La sala está en alarma química? Ver `sectionChemicalAlarm`: una sola
+   * respuesta para el tooltip y para el siseo de fuga, y la misma que da el
+   * escáner a la señal. Sin atmósfera (sala sin dato) no hay alarma.
+   */
+  chemicalAlarmIn(sectionId: SectionId, atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId)): boolean {
+    return (
+      atmosphere !== undefined &&
+      sectionChemicalAlarm({
+        blueprint: this.shipState.get(),
+        shipFloorplan: this.shipFloorplan,
+        sectionId,
+        atmosphere,
+        componentRegistry: this.componentRegistry,
+        chemicalRegistry: this.chemicalRegistry,
+      })
+    );
+  }
+
   contaminantAt(sectionId: SectionId): { readonly concentration: number; readonly tag: "TOX" | "CORR" } | undefined {
     const atmosphere = this.atmosphereRuntime.atmosphereOf(sectionId);
     if (!atmosphere) {

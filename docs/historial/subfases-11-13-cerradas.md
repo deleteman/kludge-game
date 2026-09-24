@@ -939,3 +939,51 @@ exploradores en paralelo sobre el código real: 3 bugs con causa raíz confirmad
   secciones de la nave con el tóxico ya por debajo del umbral del sensor, confirmando el fix de la alarma en
   juego real (no solo en teoría).
 * Suite: 1495 → **1503** (187 archivos).
+
+##### Subfase 14b-3: Configuración por instancia — chip, LED y sensor ✅ CERRADA (2026-09-24)
+
+Cierra la deuda #15 y **desbloquea 14c**. Un solo mecanismo para los tres casos; se implementa en ese orden y,
+si hay que cortar, se corta por el final.
+
+* **Dos almacenes a propósito**: el chip usa `SignalNode.behavior`, que ya existe y ya persiste (sin bump). El
+  LED y el sensor necesitan un mapa disperso por instancia en el `Blueprint`, precedente
+  `PowerState.instancePriorities` → **bump `schemaVersion` 11 → 12** con el patrón tolerante de
+  `blueprint-serializer.ts`. De paso: `save/campaign-save-factory.ts` todavía escribe `schemaVersion: 10`,
+  quedó desactualizado en 14a-4.
+* **Qué es configurable se deriva de las propiedades, no del id**: nodo de señal con entradas ⇒ `behavior`;
+  `EM` de un `triggerType` simulado ⇒ umbral + comparador; `REC` de salida visible ⇒ color + condición. Así el
+  sensor de presión y el térmico ganan configuración gratis, y una creación de la mesa también.
+* **UI**: extender la variante `{kind:"instance"}` de `ActionPanelContent`, que ya tiene sub-secciones
+  (`reservoir`, `door`, `states`). Precedente de edición por instancia: `renderPowerPriorityList`. Configurable
+  en cualquier momento sobre la instancia ya colocada.
+* **Arreglo obligatorio de paso**: `resolveLcdDisplayValue` tiene su copia privada de `"pressure"` y busca en
+  `ATOMIC_COMPONENT_CATALOG`, así que **una LCD cableada al `sensor-presion-gas` compuesto no muestra nada**.
+  Migrarlo a `emitterRangeOf` + `PRESSURE_TRIGGER_TYPES` y extender `LcdDisplayValue` con las variantes
+  `temperature` (existe desde 14a-1 y nadie la expuso) y `chemical`.
+* **Diferido explícito a post-demo**: la configuración por RANGOS del resto de los sensores.
+
+**Lo que se hizo (difiere del plan en los puntos marcados):**
+
+* **Chip**: `setNodeBehavior` (`signals/set-node-behavior.ts`) y variante `kind:"node"` del panel de acciones, abierta al
+  elegir el nodo ORIGEN en modo cableado (mismo gesto que ya existía, sin sumar un paso). Ofrece AND/OR/NOT, memoria,
+  retardo, reloj y contador, con parámetro numérico por pasos ±. Reconfigurar descarta la memoria del nodo.
+* **Extra pedido por el operador — puertos de entrada** (`signals/edge-port.ts`): un latch armado desde la UI sólo podía
+  encenderse porque todo cable contaba como "set". El panel del CABLE elige set/reset (latch) o count/reset (contador);
+  reconfigurar el nodo devuelve al default los puertos que el behavior nuevo no lee.
+* **Sensor**: `Blueprint.instanceConfigs` (mapa disperso, schema 11→12 tolerante) con umbral y comparador por instancia
+  para presión, temperatura y química. Defaults = las constantes de antes (dirección incluida). Qué es configurable se
+  deriva de las propiedades (`configurableSensorKindOf`), compuestos y creaciones incluidos. `campaign-save-factory`
+  dejó de escribir schema 10.
+* **LED / LCD**: `LcdDisplayValue` gana `temperature` y `chemical`; `resolveLcdDisplayValue` deja de tener su copia privada de
+  "pressure" (arregla el LCD cableado al `sensor-presion-gas` compuesto). LED con 4 colores y trigger `level` / `compare` /
+  `substance` según lo cableado (`mission/led-indicator-state.ts`, Strategy en `instance-config/led-trigger.ts`).
+  **Cambio de orden respecto al plan**: sensor antes que LED, porque el `compare` del LED reutiliza el modelo comparador+umbral.
+* **Alarma de sala y tooltip** conectados a la lógica por instancia (`sectionChemicalAlarm`); sólo cuentan escáneres en
+  dirección de exceso (`>`, `>=`). El siseo de fuga pasó de "concentración presente" a "gas LLEGANDO" (`leak-activity.ts`).
+* **Botones**: `createKenneyButton` ajusta el texto al ancho (fuente menor, luego varias líneas, nunca recorta); filas apiladas
+  por alto real (`button-row.ts`); chequeo de solapes por consola (`panel-overlap-check.ts`).
+* **Volcado de debug**: `live.instanceConfigs` y `live.sensorThresholds`.
+* **Fuera de alcance, registrado**: Deuda #53 (limpiar `instanceConfigs` al desmontar), #54 (el LED se reconoce por id), #55
+  (trigger "=oxígeno" sin fuente que lo lea).
+* Suite: 1456 → **1577** (180 → 199 archivos). `tsc`, `eslint` y `build` limpios.
+

@@ -1,13 +1,11 @@
 import Phaser from "phaser";
 import {
   ATOMIC_COMPONENT_CATALOG,
-  CHEMICAL_SENSOR_TRIGGER_CONCENTRATION,
   GRID_CELL_SIZE_PX,
   HAZARD_PARAMETERS,
   TEMPERATURE_FLOOR_CELSIUS,
   advanceChapterProgress,
   elementStockOf,
-  resolveLcdDisplayValue,
   sectionContainingCell,
 } from "engine";
 import type { PlacedComponentInstance, SignalEdge, SignalEdgeId } from "engine";
@@ -127,6 +125,7 @@ import { fireEventSound } from "../audio/phenomenon-sound-registry.js";
 import { AUDIO_KEYS, preloadAudioAssets } from "../audio/audio-asset-registry.js";
 import { pickSoundKey } from "../audio/audio-utils.js";
 import { createGasLeakSound, type GasLeakSoundState } from "../audio/effects/gas-leak-sound.js";
+import { advanceLeakActivity, createLeakActivityState, type LeakActivityState } from "../audio/effects/leak-activity.js";
 import type { StateDrivenSound } from "../audio/audio-effect.types.js";
 import { fireEnvironmentalDamage } from "../particles/effects/environmental-damage-effect.js";
 import {
@@ -158,7 +157,7 @@ import {
   HEADER_COLOR,
   HOVER_HIGHLIGHT_COLOR,
   LABEL_COLOR,
-  LED_ACTIVE_TINT,
+  LED_COLOR_TINTS,
   LED_INACTIVE_TINT,
   LED_LIGHT_RADIUS_PX,
   LED_LIGHT_INTENSITY,
@@ -243,6 +242,8 @@ import { ActiveTaskVisuals } from "../mission/active-task-visuals.js";
 import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "../ui/widgets/crew-strip.js";
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
 import { renderFloorplanLayerTogglePanel } from "../ui/widgets/floorplan-layer-toggle-panel.js";
+import { formatLcdValue } from "../ui/lcd-format.js";
+import { atmosphereRedrawKey } from "../ui/tooltip-redraw-key.js";
 import { renderShipStatusHud } from "../ui/widgets/ship-status-hud.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
@@ -444,6 +445,8 @@ export class FloorplanScene extends Phaser.Scene {
   private ledIndicators: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle> = new Map();
   /** Luz emitida por cada LED activo (Fase 12d) — creada cuando enciende, destruida cuando apaga; participa de las sombras vía `registerLight`. */
   private readonly ledLights = new Map<PlacedComponentInstanceId, Phaser.GameObjects.PointLight>();
+  /** Color de la luz de cada LED encendido: si el jugador lo reconfigura, la luz se recrea (14b-3). */
+  private readonly ledLightColors = new Map<PlacedComponentInstanceId, number>();
   /** Texto de Pantalla LCD por instancia (Subfase 11h) — actualizado con throttle, ver `updateLcdDisplays`. */
   private lcdDisplays: ReadonlyMap<PlacedComponentInstanceId, Phaser.GameObjects.Text> = new Map();
   /** Sprites reales por instancia (13e ronda 8) — permite tintar la pieza misma al resaltar un candidato de trasvase, ver `updateTransferMode`. */
@@ -674,6 +677,8 @@ export class FloorplanScene extends Phaser.Scene {
    */
   private readonly crewToxicOverlays = new Map<CrewActorId, Phaser.GameObjects.Rectangle>();
 
+  /** Actividad de fuga por sala, para el siseo (`audio/effects/leak-activity.ts`). */
+  private readonly leakActivityBySection = new Map<SectionId, LeakActivityState>();
   /** Efectos state-driven de atmósfera por sección (Fase 11b) — un trío por sección, arrancado una vez en `create()`. */
   private readonly sectionAtmosphereEffects = new Map<
     SectionId,
@@ -2265,16 +2270,8 @@ export class FloorplanScene extends Phaser.Scene {
     // carga viva — su propia firma va más abajo.
     const atmosphere =
       content.kind === "wire" || content.kind === "signal-node" ? undefined : content.atmosphere;
-    const atmosphereKey = atmosphere
-      ? `${Math.round(atmosphere.pressureKpa)}:${atmosphere.trend}:${atmosphere.vacuum}` +
-        // 14a-1: sin la temperatura en la clave, el tooltip abierto sobre una
-        // sección que se calienta seguiría mostrando el valor del primer frame.
-        `:${Math.round(atmosphere.temperatureCelsius)}:${atmosphere.heating}` +
-        // Ronda 2 de playtest de 14b-2: el oxígeno tampoco estaba acá, así que un
-        // generador vertiendo con el mouse quieto encima dejaba el tooltip con el
-        // porcentaje del primer frame — misma mentira que la temperatura de 14a-1.
-        `:${atmosphere.oxygen?.percent ?? ""}:${atmosphere.oxygen?.bucket ?? ""}`
-      : "";
+    // Firma en `ui/tooltip-redraw-key.ts`: un campo vivo nuevo entra ahí (y su test lo exige).
+    const atmosphereKey = atmosphereRedrawKey(atmosphere);
     const statesKey =
       content.kind === "instance"
         ? (content.states ?? []).map((state) => `${state.flag}:${state.required}/${state.available}`).join(",")
@@ -4330,11 +4327,20 @@ export class FloorplanScene extends Phaser.Scene {
       // uno por pieza de UI) — no el "0" literal que usa `gasLeakSound` como
       // contrato genérico de "estado apagado".
       const contaminant = this.mission.contaminantAt(sectionId);
-      const alarmConcentration =
-        contaminant && contaminant.concentration >= CHEMICAL_SENSOR_TRIGGER_CONCENTRATION
-          ? contaminant.concentration
-          : 0;
-      effects.gasLeakSound.update({ concentration: alarmConcentration });
+      // 14b-3: "hay alarma" lo decide `chemicalAlarmIn` — algún escáner de la sala
+      // dispara con SU umbral, o el de fábrica si no hay escáner. El volumen
+      // sigue siendo el del contaminante peligroso.
+      const inAlarm = contaminant !== undefined && this.mission.chemicalAlarmIn(sectionId);
+      // El siseo es de una FUGA (gas llegando), no de la contaminación que queda:
+      // el residuo de una sustancia vertida nunca se va del todo y el siseo por
+      // concentración sonaba para siempre (playtest de 14b-3).
+      let leak = this.leakActivityBySection.get(sectionId);
+      if (!leak) {
+        leak = createLeakActivityState(contaminant?.concentration ?? 0);
+        this.leakActivityBySection.set(sectionId, leak);
+      }
+      const intensity = advanceLeakActivity(leak, contaminant?.concentration ?? 0, deltaSeconds);
+      effects.gasLeakSound.update({ intensity: inAlarm ? intensity : 0 });
     }
   }
 
@@ -4604,19 +4610,15 @@ export class FloorplanScene extends Phaser.Scene {
 
   private updateLedIndicators(): void {
     if (this.ledIndicators.size === 0) return;
-    const nodeByOwner = new Map(
-      this.mission.blueprint.signalGraph.nodes
-        .filter((node) => node.role === "receptor")
-        .map((node) => [node.ownerRef, node]),
-    );
     for (const [instanceId, sprite] of this.ledIndicators) {
-      const node = nodeByOwner.get(instanceId);
-      const active = node ? this.mission.signalRuntime.outputOf(node.id) : false;
-      const color = active ? LED_ACTIVE_TINT : LED_INACTIVE_TINT;
+      // 14b-3: encendido y color los decide el motor (`resolveLedIndicatorState`)
+      // según la configuración del LED y lo que tiene cableado; acá sólo se pinta.
+      const { lit, color: ledColor } = this.mission.ledIndicatorState(instanceId);
+      const activeTint = LED_COLOR_TINTS[ledColor];
       // Tinte BASE, no el visible: el color final (base × luz de la celda) lo
       // pinta `applyLightShading` — ver `baseTints`.
-      this.setBaseTint(sprite, color);
-      this.syncLedLight(instanceId, sprite, active);
+      this.setBaseTint(sprite, lit ? activeTint : LED_INACTIVE_TINT);
+      this.syncLedLight(instanceId, sprite, lit, activeTint);
     }
   }
 
@@ -4701,18 +4703,28 @@ export class FloorplanScene extends Phaser.Scene {
     instanceId: PlacedComponentInstanceId,
     sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle,
     active: boolean,
+    color: number,
   ): void {
-    const existing = this.ledLights.get(instanceId);
+    let existing = this.ledLights.get(instanceId);
+    // 14b-3: el color del LED es configurable, y la luz tiene que seguirlo: un
+    // halo ámbar sobre un LED verde son dos fenómenos que se ven distintos.
+    if (existing && this.ledLightColors.get(instanceId) !== color) {
+      existing.destroy();
+      this.ledLights.delete(instanceId);
+      existing = undefined;
+    }
     if (active && !existing) {
       // El sprite del LED es `setOrigin(0,0)` (su x/y es la esquina sup-izq),
       // así que la luz se centra sobre el sprite con medio display size.
       const cx = sprite.x + sprite.displayWidth / 2;
       const cy = sprite.y + sprite.displayHeight / 2;
-      const light = createDynamicLight(this, cx, cy, LED_ACTIVE_TINT, LED_LIGHT_RADIUS_PX, LED_LIGHT_INTENSITY, this.registerLight);
+      const light = createDynamicLight(this, cx, cy, color, LED_LIGHT_RADIUS_PX, LED_LIGHT_INTENSITY, this.registerLight);
       this.ledLights.set(instanceId, light);
+      this.ledLightColors.set(instanceId, color);
     } else if (!active && existing) {
       existing.destroy();
       this.ledLights.delete(instanceId);
+      this.ledLightColors.delete(instanceId);
     }
   }
 
@@ -4727,14 +4739,9 @@ export class FloorplanScene extends Phaser.Scene {
     this.lcdRedrawAccumulatorMs += deltaSeconds * 1000;
     if (this.lcdRedrawAccumulatorMs < 300) return;
     this.lcdRedrawAccumulatorMs = 0;
-    const atmosphereOf = (sectionId: SectionId) => this.mission.atmosphereRuntime.atmosphereOf(sectionId);
     for (const [instanceId, text] of this.lcdDisplays) {
-      const value = resolveLcdDisplayValue(this.mission.blueprint, this.mission.shipFloorplan, instanceId, atmosphereOf);
-      if (!value) {
-        text.setText(t("ui.floorplan.lcd.no-data"));
-        continue;
-      }
-      text.setText(`${value.pressureKpa.toFixed(1)} ${t("ui.floorplan.lcd.pressure-unit")}`);
+      const value = this.mission.lcdDisplayValue(instanceId);
+      text.setText(value ? formatLcdValue(value) : t("ui.floorplan.lcd.no-data"));
     }
   }
 

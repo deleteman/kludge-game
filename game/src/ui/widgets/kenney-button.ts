@@ -7,6 +7,10 @@ import { AUDIO_KEYS } from "../../audio/audio-asset-registry.js";
 import { pickSoundKey } from "../../audio/audio-utils.js";
 import { attachHoverJuice } from "../ui-effects.js";
 import { UI_POINTER_CURSOR_CSS } from "../custom-cursor.js";
+import { BUTTON_TEXT_PADDING_X, fitTextToWidth } from "./button-fit.js";
+
+/** Marca en `getData` para que el chequeo de solapes de un panel reconozca sus botones. */
+export const KENNEY_BUTTON_DATA_KEY = "kludgeButton";
 
 /**
  * El pack Kenney "Grey" es claro (gris plateado) — texto claro (`LABEL_COLOR`,
@@ -71,6 +75,30 @@ export function createKenneyButton(
       : undefined;
   if (icon && !enabled) icon.setAlpha(DISABLED_BACKGROUND_ALPHA);
 
+  // Un rexUI Label crece hasta abarcar su texto en vez de respetar `width`, y en
+  // una fila de botones eso los solapa (ver `button-fit.ts`). Se ajusta el texto
+  // al ancho pedido ANTES de crear el label: fuente menor y, si no alcanza, en
+  // varias líneas — nunca recortado. Un botón con varias líneas crece en alto,
+  // por eso las filas de botones se apilan con `layoutButtonRow`.
+  const labelText = scene.add.text(0, 0, label, {
+    fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+    fontSize: options.fontSize ?? "16px",
+    color: enabled ? BUTTON_TEXT_COLOR : BUTTON_TEXT_COLOR_DISABLED,
+    align: "center",
+  });
+  const availableTextWidth = width - 2 * BUTTON_TEXT_PADDING_X - (icon ? iconSize + 6 : 0);
+  const fitted = fitTextToWidth(
+    label,
+    Number.parseInt(options.fontSize ?? "16px", 10),
+    availableTextWidth,
+    (candidate, fontPx) => {
+      labelText.setFontSize(fontPx).setText(candidate);
+      return labelText.width;
+    },
+  );
+  labelText.setFontSize(fitted.fontPx).setText(label);
+  if (fitted.wrap) labelText.setWordWrapWidth(availableTextWidth, true);
+
   const button = scene.rexUI.add
     .label({
       x,
@@ -79,15 +107,12 @@ export function createKenneyButton(
       height,
       background,
       icon,
-      text: scene.add.text(0, 0, label, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: options.fontSize ?? "16px",
-        color: enabled ? BUTTON_TEXT_COLOR : BUTTON_TEXT_COLOR_DISABLED,
-      }),
+      text: labelText,
       align: "center",
       space: { left: 10, right: 10, top: 8, bottom: 8, icon: icon ? 6 : 0 },
     })
     .layout();
+  button.setData(KENNEY_BUTTON_DATA_KEY, true);
 
   if (enabled) {
     button

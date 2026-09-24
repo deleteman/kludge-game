@@ -9,6 +9,7 @@
 // el drenaje en recuperación real hasta la atmósfera estándar.
 import { describe, expect, it } from "vitest";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
 import {
   MissionAtmosphereRuntime,
   MissionSignalRuntime,
@@ -92,6 +93,7 @@ function buildBlueprint(sealInstance: Blueprint["placedComponents"][number] | nu
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -134,6 +136,7 @@ function buildSink(shipState: MutableShipState) {
 
 /** Catálogo REAL (13g ronda 1): los resolvedores de sensor leen del registro, no del catálogo atómico. */
 const REGISTRY = buildComponentCatalog().registry;
+const LCD_REGISTRIES = { componentRegistry: REGISTRY, chemicalRegistry: buildChemicalCatalog().registry };
 
 describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h)", () => {
   it("la presión cae mientras la junta está rota, el sensor/LCD/LED lo reflejan, y reparar (desmontar+instalar) la recupera", () => {
@@ -155,7 +158,7 @@ describe("case 20 — Fuga por junta rota (escenario de Capítulo 1, Subfase 11h
     }
     expect(atmosphereOf(SOPORTE_VITAL)?.pressureKpa).toBeCloseTo(101 - 10 * DRAIN_RATE, 5);
     expect(signalRuntime.outputOf(LED_NODE)).toBe(true); // sensor disparado (presión bajo 101 kPa)
-    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf)).toMatchObject({
+    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf, LCD_REGISTRIES)).toMatchObject({
       kind: "pressure",
       sectionId: SOPORTE_VITAL,
     });

@@ -15,6 +15,7 @@ import type { ComponentWear } from "../wear/wear.types.js";
 // compilar y no genera ciclo de módulos en runtime.
 import type { DoorSnapshot } from "../doors/door.types.js";
 import type { ValveSnapshot } from "../valves/valve.types.js";
+import type { InstanceConfigEntry } from "../instance-config/instance-config.types.js";
 
 /**
  * Blueprint schema — PRIMER INTENTO, PROVISIONAL (GDD sección 17: "formato
@@ -128,6 +129,12 @@ import type { ValveSnapshot } from "../valves/valve.types.js";
  * es la cicatriz que antes llevaba la pieza. Migración tolerante: una arista sin
  * conductor se rellena con `cable-cobre` nuevo, así que ninguna partida vieja se
  * rechaza ni cambia de comportamiento.
+ *
+ * Subfase 14b-3: `schemaVersion` 11→12 — se añade `Blueprint.instanceConfigs`, la
+ * configuración por instancia que el jugador afina (umbral y comparador de los
+ * sensores de sección). Es un mapa disperso: una instancia sin entrada usa el
+ * valor de fábrica, así que una partida vieja se carga con `[]` y se comporta
+ * exactamente igual que antes.
  */
 export interface BlueprintMetadata {
   readonly schemaVersion: number;
@@ -230,4 +237,9 @@ export interface Blueprint {
    * jugador, que gana sobre ella al cargar.
    */
   readonly valveApertures: ReadonlyArray<ValveSnapshot>;
+  /**
+   * Configuración por instancia (Subfase 14b-3): umbral y comparador de los
+   * sensores. Mapa disperso, ver `instance-config/instance-config.types.ts`.
+   */
+  readonly instanceConfigs: ReadonlyArray<InstanceConfigEntry>;
 }

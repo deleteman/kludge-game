@@ -62,6 +62,7 @@ function blueprintWith(burnedEdgeIds: ReadonlyArray<string>): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: burnedEdgeIds as unknown as Blueprint["overloadedRefs"],
     powerState: {
       sectionAllocations: [],

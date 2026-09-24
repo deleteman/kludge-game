@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MissionSignalRuntime, allEmittersActive } from "./mission-signal-runtime.js";
 import { MutableShipState } from "./mutable-ship-state.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
+import { setNodeBehavior } from "../signals/set-node-behavior.js";
 import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
@@ -39,6 +40,7 @@ function blueprintWith(graph: SignalGraph<PlacedComponentInstanceId>): Blueprint
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -218,5 +220,53 @@ describe("mission: MissionSignalRuntime", () => {
     expect(inputs.get(id("s1"))).toBe(true);
     expect(inputs.get(id("s2"))).toBe(true);
     expect(inputs.has(id("r1"))).toBe(false);
+  });
+
+  describe("14b-3: reconfigurar el behavior de un nodo en caliente", () => {
+    const edgeOf = (raw: string, from: string, to: string) => ({ id: raw as SignalEdgeId, from: id(from), to: id(to) });
+    const twoSensorsGraph = (): SignalGraph<PlacedComponentInstanceId> => ({
+      nodes: [node("a", "emitter"), node("b", "emitter"), node("chip", "receptor")],
+      edges: [edgeOf("e1", "a", "chip"), edgeOf("e2", "b", "chip")],
+    });
+    const onlyA = () => new Map([[id("a"), true], [id("b"), false]]);
+
+    it("un chip pasa de OR (por defecto) a AND y la salida deja de activarse con una sola entrada", () => {
+      const ship = new MutableShipState(blueprintWith(twoSensorsGraph()));
+      const runtime = new MissionSignalRuntime(ship, onlyA);
+      runtime.tick(tickOf(1));
+      runtime.tick(tickOf(2));
+      expect(runtime.outputOf(id("chip"))).toBe(true);
+
+      const result = setNodeBehavior(ship.get().signalGraph, id("chip"), { kind: "gate", mode: "AND" });
+      if (!result.ok) throw new Error("setNodeBehavior falló");
+      ship.set({ ...ship.get(), signalGraph: result.graph });
+      runtime.tick(tickOf(3));
+
+      expect(runtime.outputOf(id("chip"))).toBe(false);
+    });
+
+    it("cambiar un latch enganchado a otro behavior descarta su memoria; los nodos no tocados la conservan", () => {
+      const graph: SignalGraph<PlacedComponentInstanceId> = {
+        nodes: [node("a", "emitter"), node("latch", "receptor", { kind: "latch" }), node("otro", "receptor", { kind: "latch" })],
+        edges: [edgeOf("e1", "a", "latch"), edgeOf("e2", "a", "otro")],
+      };
+      const ship = new MutableShipState(blueprintWith(graph));
+      let sensorOn = true;
+      const runtime = new MissionSignalRuntime(ship, () => new Map([[id("a"), sensorOn]]));
+      runtime.tick(tickOf(1));
+      runtime.tick(tickOf(2));
+      sensorOn = false;
+      runtime.tick(tickOf(3));
+      expect(runtime.outputOf(id("latch"))).toBe(true);
+      expect(runtime.outputOf(id("otro"))).toBe(true);
+
+      const result = setNodeBehavior(ship.get().signalGraph, id("latch"), { kind: "gate", mode: "AND" });
+      if (!result.ok) throw new Error("setNodeBehavior falló");
+      ship.set({ ...ship.get(), signalGraph: result.graph });
+      runtime.tick(tickOf(4));
+
+      expect(runtime.outputOf(id("latch"))).toBe(false);
+      expect(runtime.outputOf(id("otro"))).toBe(true);
+    });
   });
 });

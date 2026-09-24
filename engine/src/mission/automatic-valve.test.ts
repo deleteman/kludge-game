@@ -67,6 +67,7 @@ function blueprint(options: { wired?: boolean; condition?: "ok" | "destroyed" } 
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

@@ -70,6 +70,7 @@ function blueprintWith(wear: ComponentWear = "nuevo", amount = 10): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

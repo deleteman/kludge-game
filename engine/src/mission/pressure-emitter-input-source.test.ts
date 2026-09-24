@@ -53,6 +53,7 @@ function buildFixtureBlueprint(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -122,6 +123,27 @@ describe("mission: pressureAwareEmitterInputs (Subfase 11h, caso 19)", () => {
     );
 
     expect(inputs().get(OTHER_NODE)).toBe(true);
+    expect(inputs().get(SENSOR_NODE)).toBe(true);
+  });
+
+  it("14b-3: el comparador por instancia permite un sensor de SOBREpresión", () => {
+    const blueprint: Blueprint = {
+      ...buildFixtureBlueprint(),
+      instanceConfigs: [
+        { instanceId: SENSOR_INSTANCE, config: { kind: "sensor-threshold", comparator: ">", value: 120 } },
+      ],
+    };
+    let pressureKpa = 95; // con el umbral de fábrica ("< 101") esto dispararía
+    const inputs = pressureAwareEmitterInputs(
+      new MutableShipState(blueprint),
+      buildFixtureFloorplan(),
+      (sectionId) => (sectionId === SECTION ? standardAtmosphere(pressureKpa) : undefined),
+      REGISTRY,
+      () => new Map(),
+    );
+
+    expect(inputs().get(SENSOR_NODE)).toBe(false);
+    pressureKpa = 130;
     expect(inputs().get(SENSOR_NODE)).toBe(true);
   });
 });

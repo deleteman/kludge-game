@@ -8,6 +8,14 @@ import type { SectionId } from "../atmosphere/section.types.js";
 import type { SectionAtmosphere } from "../atmosphere/section.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import { GAS } from "../atmosphere/atmosphere-composition.types.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
+import type { ChemicalSubstanceId } from "../chemistry/chemical-substance.types.js";
+
+const REGISTRIES = {
+  componentRegistry: buildComponentCatalog().registry,
+  chemicalRegistry: buildChemicalCatalog().registry,
+};
 
 const SENSOR_INSTANCE = "sensor-instance" as PlacedComponentInstanceId;
 const LCD_INSTANCE = "lcd-instance" as PlacedComponentInstanceId;
@@ -56,6 +64,7 @@ function baseBlueprint(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -86,6 +95,7 @@ describe("mission: resolveLcdDisplayValue (Subfase 11h, caso 19)", () => {
       fixtureFloorplan(),
       LCD_INSTANCE,
       (sectionId) => (sectionId === SECTION ? atmosphere(87) : undefined),
+      REGISTRIES,
     );
 
     expect(value).toEqual({ kind: "pressure", sectionId: SECTION, pressureKpa: 87 });
@@ -95,7 +105,7 @@ describe("mission: resolveLcdDisplayValue (Subfase 11h, caso 19)", () => {
     const blueprint = baseBlueprint();
     const unwired: Blueprint = { ...blueprint, signalGraph: { ...blueprint.signalGraph, edges: [] } };
 
-    const value = resolveLcdDisplayValue(unwired, fixtureFloorplan(), LCD_INSTANCE, () => atmosphere(101));
+    const value = resolveLcdDisplayValue(unwired, fixtureFloorplan(), LCD_INSTANCE, () => atmosphere(101), REGISTRIES);
 
     expect(value).toBeNull();
   });
@@ -123,8 +133,64 @@ describe("mission: resolveLcdDisplayValue (Subfase 11h, caso 19)", () => {
       },
     };
 
-    const value = resolveLcdDisplayValue(rewired, fixtureFloorplan(), LCD_INSTANCE, () => atmosphere(101));
+    const value = resolveLcdDisplayValue(rewired, fixtureFloorplan(), LCD_INSTANCE, () => atmosphere(101), REGISTRIES);
 
     expect(value).toBeNull();
+  });
+
+  /** Cambia el sensor cableado al LCD y devuelve el blueprint resultante. */
+  function withSensor(componentDefinitionId: string): Blueprint {
+    const blueprint = baseBlueprint();
+    return {
+      ...blueprint,
+      placedComponents: blueprint.placedComponents.map((instance) =>
+        instance.instanceId === SENSOR_INSTANCE
+          ? { ...instance, componentDefinitionId: componentDefinitionId as ComponentId }
+          : instance,
+      ),
+    };
+  }
+
+  it("REGRESIÓN 14b-3: un LCD cableado al sensor de presión COMPUESTO muestra la presión (antes no mostraba nada)", () => {
+    // `sensor-presion-gas` es compuesto y no está en `ATOMIC_COMPONENT_CATALOG`:
+    // la copia privada de `isPressureSensor` sólo miraba los átomos.
+    const value = resolveLcdDisplayValue(
+      withSensor("sensor-presion-gas"),
+      fixtureFloorplan(),
+      LCD_INSTANCE,
+      () => atmosphere(87),
+      REGISTRIES,
+    );
+    expect(value).toEqual({ kind: "pressure", sectionId: SECTION, pressureKpa: 87 });
+  });
+
+  it("un LCD cableado al sensor térmico muestra la temperatura real de la sala", () => {
+    const value = resolveLcdDisplayValue(
+      withSensor("sensor-termico-precision"),
+      fixtureFloorplan(),
+      LCD_INSTANCE,
+      () => ({ ...atmosphere(101), temperatureCelsius: 73 }),
+      REGISTRIES,
+    );
+    expect(value).toEqual({ kind: "temperature", sectionId: SECTION, temperatureCelsius: 73 });
+  });
+
+  it("un LCD cableado al escáner de espectro muestra la concentración del peor contaminante, no la de agua ni la de O2", () => {
+    const air = (substance: string, fraction: number): SectionAtmosphere => ({
+      gases: new Map([[GAS.OXYGEN, 0.21], [substance, fraction]]),
+      temperatureCelsius: 21,
+      pressureKpa: 101,
+    });
+    const read = (substance: ChemicalSubstanceId, fraction: number) =>
+      resolveLcdDisplayValue(
+        withSensor("escaner-espectro"),
+        fixtureFloorplan(),
+        LCD_INSTANCE,
+        () => air(substance, fraction),
+        REGISTRIES,
+      );
+    expect(read("amoniaco" as ChemicalSubstanceId, 0.12)).toEqual({ kind: "chemical", sectionId: SECTION, concentration: 0.12 });
+    // El agua está en el aire pero no es contaminante: el escáner no la ve.
+    expect(read("agua" as ChemicalSubstanceId, 0.3)).toEqual({ kind: "chemical", sectionId: SECTION, concentration: 0 });
   });
 });

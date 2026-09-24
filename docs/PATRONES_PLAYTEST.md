@@ -16,19 +16,19 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 
 | # | Eje | Patrones |
 |---|---|---|
-| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88, 96, 97 |
+| 1 | La UI nunca miente sobre el estado del motor | 1, 10, 41, 66, 80, 88, 96, 97, 101 |
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
-| 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62 |
-| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91, 95 |
+| 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62, 99 |
+| 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91, 95, 102 |
 | 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39, 94 |
 | 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82, 93 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
-| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87, 92 |
+| 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87, 92, 101 |
 | 10 | Alcanzabilidad: que el motor lo simule no significa que el jugador pueda llegar | 42, 55, 59, 60, 67, 69, 81, 85, 87, 89, 90 |
-| 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77 |
+| 11 | Ciclo de vida completo: lo que se reserva se libera, lo que se cancela se despinta | 6, 22, 27, 33, 70, 76, 77, 100 |
 | 12 | El contenido autorado manda; si no encaja, el código grita en vez de degradarse | 47, 52, 53, 54 |
-| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86, 98 |
+| 13 | Proceso: verificar antes de afirmar, releer la razón vieja, preguntar el alcance | 15, 18, 28, 30, 34, 36, 40, 43, 56, 57, 58, 61, 63, 64, 83, 86, 98, 103 |
 
 Los patrones 1 a 9 aparecen abajo como lista numerada (son los ejes originales de la Fase 12-13b); del
 10 en adelante, cada uno lleva su propio encabezado `**Patrón N — …**`.
@@ -1142,3 +1142,43 @@ mismo nombre en la MISMA pieza, reapareciendo el problema de ambigüedad que la 
 esta vez por nombre en vez de por geometría. La simplificación que suena más clara en abstracto puede
 perder una distinción que el motor sí modela; el catálogo real, no la intuición sobre el caso típico, es
 lo que decide si una simplificación es segura.
+
+**Patrón 99 — Un widget que "pide" un ancho no lo garantiza: el arreglo va en el ladrillo común, no en cada panel, y nunca recorta** (14b-3, ronda 1). Los botones de modo del panel del cable se solapaban. La causa no
+era la aritmética de posiciones sino que un `rexUI Label` NO respeta `width`: crece hasta abarcar su texto, y
+una columna angosta con "Reiniciar (reset)" empujaba a los vecinos. El primer arreglo recortaba con "…" y el
+operador lo rechazó: un botón recortado, sin tooltip, no se puede leer ni entender. Perder alto es preferible
+a perder texto. El arreglo definitivo tiene DOS capas: prevención en `createKenneyButton` (fuente menor, luego
+varias líneas) y filas que se apilan por su alto REAL (`layoutButtonRow`), más detección (`warnOnOverlapping
+Buttons`) para el error de posiciones que ninguna medida de texto previene. Antes de arreglar un solape en un
+panel, preguntar si el ladrillo del que salen todos los botones puede garantizarlo.
+
+**Patrón 100 — Un fenómeno que es un FLUJO no puede manejarse con el nivel presente de un stock que nunca se
+vacía** (14b-3, ronda 3). Segunda vez que el siseo de fuga queda en loop (ver 97). La primera fue por el corte
+en "0 exacto"; esta, con el corte ya en el umbral del sensor, porque el anestésico se repartió por TODA la nave
+y varias salas quedaron entre 0.05 y 0.11: sobre el umbral, para siempre, y el sonido seguía la concentración.
+Medido en el dump del propio operador, no supuesto. La pregunta correcta no es "¿a partir de qué nivel suena?"
+sino "¿esto es un evento o un estado?": una fuga es gas que LLEGA. El volumen ahora sigue la subida de
+concentración (`leak-activity.ts`) y se apaga solo. Vale para cualquier efecto continuo atado a algo que el
+principio 5 impide que desaparezca.
+
+**Patrón 101 — La tercera vez que el mismo defecto reaparece, el arreglo es un test de CLASE, no otro campo**
+(14b-3, ronda 4). El tooltip del escáner no se actualizaba en vivo: a la clave de redibujo le faltaban la alarma
+química y las sustancias del aire. Ya había pasado con la temperatura (14a-1) y con el oxígeno (14b-2), y el
+patrón 96 lo había diagnosticado igual. Agregar el campo que faltaba habría dejado el defecto esperando al
+siguiente. La clave pasó a `atmosphereRedrawKey` y su test recorre TODOS los campos del tipo con un objeto de
+variantes tipado exhaustivo: agregar un campo al tipo sin darle variante no compila, y uno que no mueve la
+firma falla. Al ver el mismo bug por tercera vez, escribir el chequeo que lo vuelve imposible en silencio.
+
+**Patrón 102 — Cuando una constante de peligro pasa a ser configurable, los avisos que se apoyaban en ella
+heredan una dirección que ya no controlan** (14b-3, ronda 2). Conecté la alarma de sala y su tooltip a los
+umbrales por instancia, y un escáner configurado en `<` (o `<=`, `=`) declaraba la sala en alarma con aire
+limpio: la lectura es 0 y "< 0.05" se cumple. El umbral configurable es lógica de cableado del jugador ("aire
+limpio", "justo en tal valor"), no un umbral de fuga. Un aviso que habla del ENTORNO sólo puede apoyarse en
+configuraciones que preservan su sentido (dirección de exceso), y necesita un valor de respaldo cuando ninguna
+califica. Test de regresión que falla sin el arreglo.
+
+**Patrón 103 — Un verificador que corre desde otro directorio puede estar probando otro código** (14b-3, cierre).
+Los tests de `game` pasaban desde `game/` y 8 fallaban desde la RAÍZ: `engine` se resolvía contra `engine/dist`,
+un artefacto ignorado por git y desactualizado, en vez de contra el código fuente. "Verde" sólo significa algo
+si es el verificador que vale (el del skill de cierre corre desde la raíz). Reconstruir `dist` antes de correr
+el conjunto completo, y no dar por buenos números obtenidos desde un solo directorio.

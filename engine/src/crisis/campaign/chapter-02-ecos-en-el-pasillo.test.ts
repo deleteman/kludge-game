@@ -34,6 +34,7 @@ function shipWith(archetype: (typeof SHIP_ARCHETYPES)[number], edges: Blueprint[
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };

@@ -3,9 +3,10 @@ import type { ComponentId, PhysicalComponentDefinition } from "../components/phy
 import { sectionContainingCell } from "../floorplan/floorplan.types.js";
 import type { ShipFloorplan } from "../floorplan/floorplan.types.js";
 import type { SectionAtmosphere, SectionId } from "../atmosphere/section.types.js";
-import { THERMAL_SENSOR_TRIGGER_CELSIUS } from "../atmosphere/thermal-parameters.js";
 import type { PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
+import { sensorThresholdOf } from "../instance-config/instance-config-store.js";
+import { sensorFires } from "../instance-config/sensor-thresholds.js";
 import { emitterRangeOf, THERMAL_TRIGGER_TYPES } from "./emitter-sensing.js";
 import type { EmitterInputSource } from "./mission-signal-runtime.js";
 import type { MutableShipState } from "./mutable-ship-state.js";
@@ -59,10 +60,9 @@ export function temperatureAwareEmitterInputs(
       }
       const section = sectionContainingCell(shipFloorplan, node.position);
       const temperatureCelsius = section && atmosphereOf(section.id)?.temperatureCelsius;
-      inputs.set(
-        node.id,
-        temperatureCelsius !== undefined && temperatureCelsius > THERMAL_SENSOR_TRIGGER_CELSIUS,
-      );
+      // 14b-3: umbral y comparador por instancia; sin tocar es "> 60 °C", como siempre.
+      const threshold = sensorThresholdOf(blueprint.instanceConfigs, instance.instanceId, "thermal");
+      inputs.set(node.id, sensorFires("thermal", temperatureCelsius, threshold));
     }
     return inputs;
   };

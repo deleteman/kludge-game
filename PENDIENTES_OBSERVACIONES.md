@@ -694,6 +694,8 @@ Dos caminos, los dos de diseño y ninguno urgente:
 - Dejarlo como está: es una crisis real con una ventana de reacción corta, y el escenario de demo del Cap.1
   puede estar pensado justo para la esclusa.
 
+**Actualización 14b-3 (2026-09-24):** el jugador ya puede SUBIR el umbral de cada escáner (`instanceConfigs`, hasta 1.0), lo que le da una palanca para el purgado por debajo del sensor en salas chicas. No cambia el diagnóstico: el tanque sigue vertiendo más de lo que la sala chica puede diluir bajo el umbral de FÁBRICA, y la alarma de sala sin escáner sigue usando ese umbral.
+
 ## Pregunta abierta #52 — ¿Unificar `workbench-renderer.ts` con la distinción forma+color de nodos de señal? (Subfase 14b-2, ronda 1 de playtest)
 
 **Estado:** ABIERTA. Registrada 2026-09-24.
@@ -704,3 +706,44 @@ La ronda 1 de playtest de 14b-2 le dio a los nodos de señal del PLANO una forma
 CREACIÓN (`game/src/render/workbench-renderer.ts`) sigue dibujando sus nodos con la tabla vieja, sin la
 distinción nueva. CLAUDE.md (principio 7) pide que plano y mesa compartan la misma lógica de grid/conexión —
 no se tocó porque no fue parte del alcance reportado por el operador, que probó el escenario en el plano.
+
+## Deuda #53 — `instanceConfigs` no se limpia al desmontar una instancia (Subfase 14b-3)
+
+**Estado:** ABIERTA. Registrada 2026-09-24.
+
+`Blueprint.instanceConfigs` (umbral y comparador por instancia, schema 12) guarda una entrada por instancia
+tocada, pero desmontar la pieza NO borra su entrada: queda huérfana en el Blueprint y en el guardado. Hoy es
+inofensivo — los ids de instancia no se reutilizan, así que nadie la lee — pero el mapa sólo crece.
+`PowerState.instancePriorities` tiene la misma característica y tampoco se verificó su limpieza.
+
+Ya existe la herramienta: `withoutInstanceConfig` (`engine/src/instance-config/instance-config-store.ts`),
+con test. Falta llamarla desde el efecto de desmontaje en `mission/ship-task-effect.ts`, junto a donde se
+quitan la instancia y sus nodos de señal, y un test de que el mapa queda sin la entrada. Al resolverlo,
+revisar de paso `instancePriorities`.
+
+## Deuda #54 — El LED se reconoce por id y no por propiedades (Subfase 14b-3)
+
+**Estado:** ABIERTA. Registrada 2026-09-24.
+
+La orden de trabajo pedía derivar "qué es configurable" de las propiedades, no del id. Para los sensores se
+cumplió (`configurableSensorKindOf`). Para el LED NO se pudo: `indicador-led` y `pantalla-lcd` son un `REC` con
+exactamente el mismo umbral y el mismo `responseDelayMs`, así que ninguna propiedad los distingue — lo que los
+separa es qué DIBUJAN. Quedó como excepción consciente: `LED_INDICATOR_COMPONENT_ID` /
+`isConfigurableIndicator` en `engine/src/instance-config/configurable-of.ts` (antes la constante vivía en
+`/game`, `mission-overlay-renderer.ts`, que ahora la importa del motor).
+
+Consecuencia: una creación de la mesa que incluya un LED (o un compuesto con LED dentro) no gana la
+configuración de color y condición. Resolverlo bien exige una propiedad que diga "salida visible" en los datos
+del componente (¿un `REC` con un campo `display: "led" | "text"`?), decisión de diseño de datos que no se tomó
+acá.
+
+## Pregunta abierta #55 — Un trigger de LED "=oxígeno" necesita una fuente que hoy no existe (Subfase 14b-3)
+
+**Estado:** ABIERTA. Registrada 2026-09-24.
+
+El operador pidió, para un LED cableado a algo químico, triggers del tipo "=oxígeno" o "=CORR". Se implementó
+"=Tóxico" y "=Corrosivo" (`LedTrigger` `substance`, sobre los tags que ya lee el escáner de espectro:
+`TOX`/`CORR`). "=oxígeno" NO: el escáner sólo mide contaminantes TOX/CORR, y ningún sensor del catálogo lee la
+fracción de O2 de una sala. Hace falta una fuente nueva (¿un `triggerType` de composición de aire?), que es una
+pieza de diseño, no un ajuste del LED. El trigger `compare` sobre un sensor de esa clase ya funcionaría sin
+tocar el LED.

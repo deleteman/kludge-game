@@ -41,6 +41,7 @@ function shipWith(placedComponents: Blueprint["placedComponents"]): CrisisEvalCo
       unpoweredSectionIds: [],
       doorStates: [],
       valveApertures: [],
+      instanceConfigs: [],
       overloadedRefs: [],
       powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
     },

@@ -161,6 +161,7 @@ function blueprintFor({ ledCount, withCryoTank, withCooler }: SceneOptions): Blu
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

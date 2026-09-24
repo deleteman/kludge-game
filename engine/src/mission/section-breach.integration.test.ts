@@ -97,6 +97,7 @@ function blueprintWith(placedComponents: PlacedComponentInstance[]): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],

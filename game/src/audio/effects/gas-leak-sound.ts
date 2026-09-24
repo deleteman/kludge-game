@@ -4,7 +4,12 @@ import type { StateDrivenSound } from "../audio-effect.types.js";
 import { AUDIO_KEYS } from "../audio-asset-registry.js";
 
 export interface GasLeakSoundState {
-  readonly concentration: number;
+  /**
+   * Intensidad de la fuga 0..1 (`leak-activity.ts`): cuánto gas está LLEGANDO,
+   * no cuánto hay. Antes era la concentración presente y el siseo no se apagaba
+   * nunca en una sala que quedaba contaminada.
+   */
+  readonly intensity: number;
 }
 
 const MAX_VOLUME = 0.35;
@@ -16,7 +21,7 @@ type VolumeControlledSound = Phaser.Sound.BaseSound & { setVolume(value: number)
  * Loop ambiental de fuga de gas — sonido gemelo de `createGasLeakEffect`
  * (`particles/effects/atmosphere-state-effects.ts`), mismo criterio
  * state-driven (sin `DomainEvent` propio, GDD 11.1: un evento por tick sería
- * ruido). Volumen ∝ concentración; se detiene por completo con `concentration
+ * ruido). Volumen ∝ intensidad de la fuga; se detiene por completo con `intensity
  * <= 0`, igual que el emisor de partículas se detiene con `emitter.stop()`.
  *
  * Gap de asset (ver `audio-asset-registry.ts`): el pack no trae un siseo de
@@ -32,11 +37,11 @@ export function createGasLeakSound(): StateDrivenSound<GasLeakSoundState> {
     },
     update(state: GasLeakSoundState): void {
       if (!sound) return;
-      if (state.concentration <= 0) {
+      if (state.intensity <= 0) {
         if (sound.isPlaying) sound.stop();
         return;
       }
-      const volume = Math.min(state.concentration, 1) * MAX_VOLUME;
+      const volume = Math.min(state.intensity, 1) * MAX_VOLUME;
       (sound as VolumeControlledSound).setVolume(volume);
       if (!sound.isPlaying) sound.play();
     },

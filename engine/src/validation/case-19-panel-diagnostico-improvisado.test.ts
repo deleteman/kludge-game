@@ -17,6 +17,7 @@
 //    después de que el sensor se dispara (semántica síncrona del evaluador).
 import { describe, expect, it } from "vitest";
 import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
+import { buildChemicalCatalog } from "../chemistry/catalog/build-chemical-catalog.js";
 import {
   MissionSignalRuntime,
   MutableShipState,
@@ -92,6 +93,7 @@ function buildBlueprint(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: { sectionAllocations: [], instancePriorities: [], permanentlyDisconnectedSectionIds: [], dischargedSourceIds: [] },
   };
@@ -119,6 +121,7 @@ function buildFloorplan(): ShipFloorplan {
 
 /** Catálogo REAL (13g ronda 1): los resolvedores de sensor leen del registro, no del catálogo atómico. */
 const REGISTRY = buildComponentCatalog().registry;
+const LCD_REGISTRIES = { componentRegistry: REGISTRY, chemicalRegistry: buildChemicalCatalog().registry };
 
 describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
   it("el LCD sigue la presión real de la fuga y el LED se enciende al detectarla", () => {
@@ -137,7 +140,7 @@ describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
     // Tick 1: sin fuga todavía — el LCD ya lee 101 kPa (canal de lectura
     // directa, no depende del grafo booleano), pero el LED sigue apagado.
     signalRuntime.tick({ dtSeconds: 1, elapsedSeconds: 1 });
-    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf)).toEqual({
+    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf, LCD_REGISTRIES)).toEqual({
       kind: "pressure",
       sectionId: INVERNADERO,
       pressureKpa: 101,
@@ -147,7 +150,7 @@ describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
     // La fuga arranca: la presión cae tick a tick.
     pressureKpa = 90;
     signalRuntime.tick({ dtSeconds: 1, elapsedSeconds: 2 });
-    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf)).toEqual({
+    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf, LCD_REGISTRIES)).toEqual({
       kind: "pressure",
       sectionId: INVERNADERO,
       pressureKpa: 90,
@@ -161,7 +164,7 @@ describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
 
     pressureKpa = 60;
     signalRuntime.tick({ dtSeconds: 1, elapsedSeconds: 4 });
-    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf)).toEqual({
+    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf, LCD_REGISTRIES)).toEqual({
       kind: "pressure",
       sectionId: INVERNADERO,
       pressureKpa: 60,
@@ -173,7 +176,7 @@ describe("case 19 — El Panel de Diagnóstico Improvisado", () => {
     pressureKpa = 101;
     signalRuntime.tick({ dtSeconds: 1, elapsedSeconds: 5 });
     signalRuntime.tick({ dtSeconds: 1, elapsedSeconds: 6 });
-    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf)).toEqual({
+    expect(resolveLcdDisplayValue(shipState.get(), floorplan, LCD_INSTANCE, atmosphereOf, LCD_REGISTRIES)).toEqual({
       kind: "pressure",
       sectionId: INVERNADERO,
       pressureKpa: 101,

@@ -808,27 +808,7 @@ Cuatro correcciones al texto original tras auditar el código:
 
 ##### Subfase 14b-2: Válvula automática (Señales → Química) ✅ CERRADA (2026-09-24)
 
-##### Subfase 14b-3: Configuración por instancia — chip, LED y sensor
-
-Cierra la deuda #15 y **desbloquea 14c**. Un solo mecanismo para los tres casos; se implementa en ese orden y,
-si hay que cortar, se corta por el final.
-
-* **Dos almacenes a propósito**: el chip usa `SignalNode.behavior`, que ya existe y ya persiste (sin bump). El
-  LED y el sensor necesitan un mapa disperso por instancia en el `Blueprint`, precedente
-  `PowerState.instancePriorities` → **bump `schemaVersion` 11 → 12** con el patrón tolerante de
-  `blueprint-serializer.ts`. De paso: `save/campaign-save-factory.ts` todavía escribe `schemaVersion: 10`,
-  quedó desactualizado en 14a-4.
-* **Qué es configurable se deriva de las propiedades, no del id**: nodo de señal con entradas ⇒ `behavior`;
-  `EM` de un `triggerType` simulado ⇒ umbral + comparador; `REC` de salida visible ⇒ color + condición. Así el
-  sensor de presión y el térmico ganan configuración gratis, y una creación de la mesa también.
-* **UI**: extender la variante `{kind:"instance"}` de `ActionPanelContent`, que ya tiene sub-secciones
-  (`reservoir`, `door`, `states`). Precedente de edición por instancia: `renderPowerPriorityList`. Configurable
-  en cualquier momento sobre la instancia ya colocada.
-* **Arreglo obligatorio de paso**: `resolveLcdDisplayValue` tiene su copia privada de `"pressure"` y busca en
-  `ATOMIC_COMPONENT_CATALOG`, así que **una LCD cableada al `sensor-presion-gas` compuesto no muestra nada**.
-  Migrarlo a `emitterRangeOf` + `PRESSURE_TRIGGER_TYPES` y extender `LcdDisplayValue` con las variantes
-  `temperature` (existe desde 14a-1 y nadie la expuso) y `chemical`.
-* **Diferido explícito a post-demo**: la configuración por RANGOS del resto de los sensores.
+##### Subfase 14b-3: Configuración por instancia — chip, LED y sensor ✅ CERRADA (2026-09-24)
 
 #### Subfase 14c: Capítulo 2 — "Ecos en el Pasillo"
 
@@ -1237,7 +1217,7 @@ Para asegurar que no quede ningún cabo suelto del feedback técnico y comercial
 | **Deuda #16 (ampliación 12b) — `HazardEvent` sin llamador de producción**<br> | **Fase 13f**<br> | El daño por exposición atmosférica al tripulante es el escritor hermano del daño por corrosión a la sección: mismo tick, misma lectura de atmósfera.
 
  |
-| **Deuda #15 — Componentes configurables por instancia (LED)**<br> | **Fase 14b**<br> | Umbral + color por instancia y lectura de valor numérico real, junto al resto del trabajo de umbrales sobre el mundo y la generalización de `SignalOutputReader`. Conserva su ciclo de preguntas propio.
+| **Deuda #15 — Componentes configurables por instancia (LED)** ✅ RESUELTA en 14b-3 (2026-09-24)<br> | **Fase 14b**<br> | Umbral + color por instancia y lectura de valor numérico real, junto al resto del trabajo de umbrales sobre el mundo y la generalización de `SignalOutputReader`. Conserva su ciclo de preguntas propio.
 
  |
 | **Deuda #34 — Acoplamientos cruzados Energía↔Presión↔Estructura**<br> | **Fase 16**<br> | Primera fase post-demo y primera con cicatriz persistente; dos de los cuatro pares dependen de que 13f exista. Señales↔Estructura queda descartado, no diferido.

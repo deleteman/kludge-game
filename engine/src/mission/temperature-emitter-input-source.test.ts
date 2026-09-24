@@ -58,6 +58,7 @@ function buildFixtureBlueprint(): Blueprint {
     unpoweredSectionIds: [],
     doorStates: [],
     valveApertures: [],
+    instanceConfigs: [],
     overloadedRefs: [],
     powerState: {
       sectionAllocations: [],
@@ -149,6 +150,52 @@ describe("mission: temperatureAwareEmitterInputs (Subfase 14a-1)", () => {
     );
 
     expect(inputs().get(OTHER_NODE)).toBe(true);
+    expect(inputs().get(SENSOR_NODE)).toBe(true);
+  });
+
+  it("14b-3: el umbral y el comparador por instancia reemplazan al de fábrica", () => {
+    const blueprint: Blueprint = {
+      ...buildFixtureBlueprint(),
+      instanceConfigs: [
+        { instanceId: SENSOR_INSTANCE, config: { kind: "sensor-threshold", comparator: "<", value: 10 } },
+      ],
+    };
+    const shipState = new MutableShipState(blueprint);
+    let temperatureCelsius = 21;
+    const inputs = temperatureAwareEmitterInputs(
+      shipState,
+      buildFixtureFloorplan(),
+      () => atmosphereAt(temperatureCelsius),
+      REGISTRY,
+      () => new Map(),
+    );
+
+    // Configurado como alarma de FRÍO ("< 10 °C"): a 21 °C, apagado; a 300 °C
+    // (que con el umbral de fábrica dispararía), también apagado.
+    expect(inputs().get(SENSOR_NODE)).toBe(false);
+    temperatureCelsius = 300;
+    expect(inputs().get(SENSOR_NODE)).toBe(false);
+    temperatureCelsius = 5;
+    expect(inputs().get(SENSOR_NODE)).toBe(true);
+  });
+
+  it("14b-3: reconfigurar en vivo se nota en el siguiente tick, sin reconstruir el resolvedor", () => {
+    const shipState = new MutableShipState(buildFixtureBlueprint());
+    const inputs = temperatureAwareEmitterInputs(
+      shipState,
+      buildFixtureFloorplan(),
+      () => atmosphereAt(40),
+      REGISTRY,
+      () => new Map(),
+    );
+    expect(inputs().get(SENSOR_NODE)).toBe(false); // 40 °C no supera los 60 de fábrica
+
+    shipState.set({
+      ...shipState.get(),
+      instanceConfigs: [
+        { instanceId: SENSOR_INSTANCE, config: { kind: "sensor-threshold", comparator: ">", value: 30 } },
+      ],
+    });
     expect(inputs().get(SENSOR_NODE)).toBe(true);
   });
 });
