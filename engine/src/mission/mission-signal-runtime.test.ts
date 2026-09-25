@@ -3,6 +3,7 @@ import { MissionSignalRuntime, allEmittersActive } from "./mission-signal-runtim
 import { MutableShipState } from "./mutable-ship-state.js";
 import type { Blueprint, PlacedComponentInstanceId } from "../blueprint/blueprint.types.js";
 import { setNodeBehavior } from "../signals/set-node-behavior.js";
+import { summarizeNodeLogic, tallyNodeInputs } from "../signals/node-logic-summary.js";
 import type { SignalGraph } from "../signals/signal-graph.types.js";
 import type { SignalNodeId } from "../signals/signal-node.types.js";
 import type { SignalEdgeId } from "../signals/signal-edge.types.js";
@@ -243,6 +244,42 @@ describe("mission: MissionSignalRuntime", () => {
       runtime.tick(tickOf(3));
 
       expect(runtime.outputOf(id("chip"))).toBe(false);
+    });
+
+    it("Deuda #56: el resumen del contador sube tick a tick y se reinicia al reconfigurar el nodo", () => {
+      const graph: SignalGraph<PlacedComponentInstanceId> = {
+        nodes: [node("a", "emitter"), node("cont", "receptor", { kind: "counter", threshold: 2 })],
+        edges: [edgeOf("e1", "a", "cont")],
+      };
+      const ship = new MutableShipState(blueprintWith(graph));
+      let sensorOn = false;
+      const runtime = new MissionSignalRuntime(ship, () => new Map([[id("a"), sensorOn]]));
+      const summary = () =>
+        summarizeNodeLogic(
+          ship.get().signalGraph.nodes.find((n) => n.id === id("cont"))?.behavior,
+          runtime.signalState.get(id("cont")),
+          tallyNodeInputs(ship.get().signalGraph.edges, id("cont"), (source) => runtime.outputOf(source)),
+        );
+
+      runtime.tick(tickOf(1));
+      expect(summary()).toMatchObject({ kind: "counter", count: 0, threshold: 2 });
+      sensorOn = true;
+      runtime.tick(tickOf(2));
+      runtime.tick(tickOf(3));
+      expect(summary()).toMatchObject({ count: 1, reached: false });
+
+      // Reconfigurar (14b-3): otro umbral es otra lógica, la cuenta arranca de cero.
+      // Con la entrada ya baja: si siguiera en alto, el contador nuevo contaría ese
+      // nivel como su primer flanco, que es lo correcto pero no lo que se prueba acá.
+      sensorOn = false;
+      // Un tick para que la salida del emisor baje (la señal avanza un salto por
+      // tick: el contador nuevo leería la salida ANTERIOR del emisor, todavía alta).
+      runtime.tick(tickOf(3.5));
+      const result = setNodeBehavior(ship.get().signalGraph, id("cont"), { kind: "counter", threshold: 5 });
+      if (!result.ok) throw new Error("setNodeBehavior falló");
+      ship.set({ ...ship.get(), signalGraph: result.graph });
+      runtime.tick(tickOf(4));
+      expect(summary()).toMatchObject({ threshold: 5, count: 0 });
     });
 
     it("cambiar un latch enganchado a otro behavior descarta su memoria; los nodos no tocados la conservan", () => {

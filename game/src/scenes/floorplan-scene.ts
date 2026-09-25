@@ -243,7 +243,7 @@ import { renderCrewStrip, type CrewStripHandle, type CrewPortraitObject } from "
 import { renderMissionBriefingModal } from "../ui/widgets/mission-briefing-modal.js";
 import { renderFloorplanLayerTogglePanel } from "../ui/widgets/floorplan-layer-toggle-panel.js";
 import { formatLcdValue } from "../ui/lcd-format.js";
-import { atmosphereRedrawKey } from "../ui/tooltip-redraw-key.js";
+import { atmosphereRedrawKey, signalNodeRedrawKey, signalRedrawKey } from "../ui/tooltip-redraw-key.js";
 import { renderShipStatusHud } from "../ui/widgets/ship-status-hud.js";
 import type { SceneWithRexUI } from "../ui/scene-with-rex-ui.types.js";
 
@@ -1761,6 +1761,9 @@ export class FloorplanScene extends Phaser.Scene {
     // el jugador panea/hace zoom del mapa (`cameras.main`).
     this.redrawShipStatusHud();
     this.updateActionPanelAnchor();
+    // Deuda #56: el estado interno de un chip (cuenta, memoria) cambia solo, así
+    // que el panel del nodo se refresca cuando cambia su firma visible.
+    this.interaction.refreshLiveActionPanel();
     // El tooltip de una sección muestra estado VIVO (presión, tendencia) desde
     // 13f ronda 4, así que se refresca mientras está a la vista y no solo al
     // mover el ratón — mirar fijo una sala represurizándose tiene que mostrar
@@ -2287,9 +2290,12 @@ export class FloorplanScene extends Phaser.Scene {
     // 14b-2 ronda 1: el nodo bajo el cursor cambia SIN cambiar de celda (los dos
     // nodos de una pieza 1x1 comparten celda), así que sin esto el tooltip se
     // quedaría nombrando el primero que se señaló.
-    const nodeKey =
-      content.kind === "signal-node" ? `${content.roleLabel}:${content.ambiguous}` : "";
-    const redrawKey = `${atmosphereKey}|${breachKey}|${statesKey}|${wireKey}|${nodeKey}`;
+    const nodeKey = content.kind === "signal-node" ? signalNodeRedrawKey(content) : "";
+    // Deuda #56: el papel de la pieza en el montaje de señal (quién la gobierna y
+    // si la señal llega AHORA, qué emite, y el estado interno del chip) cambia sin
+    // mover el mouse y NO estaba en la firma.
+    const signalKey = content.kind === "instance" ? signalRedrawKey(content.signal) : "";
+    const redrawKey = `${atmosphereKey}|${breachKey}|${statesKey}|${wireKey}|${nodeKey}|${signalKey}`;
     if (
       !this.tooltip ||
       this.tooltipCell?.x !== cell.x ||

@@ -1,4 +1,5 @@
-import type { SectionAtmosphereTooltip } from "./widgets/mission-tooltip.js";
+import { formatNodeLogic } from "./node-logic-format.js";
+import type { SectionAtmosphereTooltip, SignalTooltipInfo } from "./widgets/mission-tooltip.js";
 
 /**
  * Firma del contenido VIVO de atmósfera que muestra un tooltip abierto. El
@@ -28,4 +29,32 @@ export function atmosphereRedrawKey(atmosphere: SectionAtmosphereTooltip | undef
     atmosphere.wiringHeatCelsiusPerSecond === undefined ? "" : Math.round(atmosphere.wiringHeatCelsiusPerSecond * 10),
     (atmosphere.substanceStates ?? []).map((entry) => `${entry.name}/${entry.state}/${entry.percent}`).join(","),
   ].join(":");
+}
+
+/**
+ * Firma de lo VIVO del papel de una pieza en el montaje de señal (`SignalTooltipInfo`).
+ * Faltaba en la clave de la ficha de la pieza: `governedBy.active`, `emitting` y
+ * `drives` cambian sin mover el mouse y el tooltip abierto mostraba el valor del
+ * primer frame — la misma clase de defecto de `atmosphereRedrawKey`, en otro
+ * campo (Deuda #56 lo destapó al agregar `logic`). El estado interno entra por
+ * su TEXTO (`formatNodeLogic`): la firma cambia si y sólo si lo visible cambia.
+ */
+export function signalRedrawKey(signal: SignalTooltipInfo | undefined): string {
+  if (!signal) return "";
+  return [
+    signal.drives ? `${signal.drives.count}/${signal.drives.load}/${Math.round(signal.drives.capacity * 10)}` : "",
+    signal.governedBy ? `${signal.governedBy.name}/${signal.governedBy.active}` : "",
+    signal.emitting === undefined ? "" : signal.emitting,
+    signal.burnedWires ?? 0,
+    signal.logic ? formatNodeLogic(signal.logic) : "",
+  ].join(":");
+}
+
+/** Firma del tooltip de un NODO (modo cableado): qué nodo es, si es ambiguo y su estado interno. */
+export function signalNodeRedrawKey(node: {
+  readonly roleLabel: string;
+  readonly ambiguous: boolean;
+  readonly logic?: SignalTooltipInfo["logic"];
+}): string {
+  return `${node.roleLabel}:${node.ambiguous}:${node.logic ? formatNodeLogic(node.logic) : ""}`;
 }

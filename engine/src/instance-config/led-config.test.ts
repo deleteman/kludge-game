@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defaultLedTrigger, ledTriggerKindsFor } from "./led-trigger.js";
 import { isOutputIndicatorShape, isValidOutputIndicator } from "./instance-config-validation.js";
-import { LED_INDICATOR_COMPONENT_ID, isConfigurableIndicator } from "./configurable-of.js";
+import { LED_INDICATOR_COMPONENT_ID, hasConfigurableLogic, isConfigurableIndicator } from "./configurable-of.js";
+import { buildComponentCatalog } from "../components/catalog/build-component-catalog.js";
 import type { OutputIndicatorConfig } from "./instance-config.types.js";
 import type { ComponentId } from "../components/physical-component.types.js";
 
@@ -48,5 +49,23 @@ describe("instance-config: validación del indicador", () => {
   it("sólo el indicador LED es configurable como salida (la LCD tiene las mismas propiedades y no)", () => {
     expect(isConfigurableIndicator(LED_INDICATOR_COMPONENT_ID)).toBe(true);
     expect(isConfigurableIndicator("pantalla-lcd" as ComponentId)).toBe(false);
+  });
+});
+
+describe("instance-config: qué piezas tienen lógica configurable desde su panel", () => {
+  const registry = buildComponentCatalog().registry;
+  const has = (id: string) => hasConfigurableLogic(id as ComponentId, registry);
+
+  it("el chip sí: un REC sin ACT ni EM sólo procesa señal", () => {
+    expect(has("chip-circuito-generico")).toBe(true);
+  });
+
+  it("el LED y la LCD no (tienen las mismas propiedades pero su propio panel), ni lo que actúa o mide", () => {
+    expect(has("indicador-led")).toBe(false);
+    expect(has("pantalla-lcd")).toBe(false);
+    expect(has("compuerta-blindada")).toBe(false); // ACT
+    expect(has("fotorreceptor")).toBe(false); // EM
+    expect(has("sensor-presion")).toBe(false); // EM
+    expect(has("no-existe")).toBe(false);
   });
 });

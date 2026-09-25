@@ -1,3 +1,5 @@
+import type { NodeLogicSummary } from "engine";
+import { formatNodeLogic } from "../node-logic-format.js";
 import type Phaser from "phaser";
 import type {
   ComponentCondition,
@@ -128,6 +130,8 @@ export type TooltipContent =
       readonly ownerName?: string;
       /** Hay más de un nodo a tiro: este click va a abrir el menú de elección. */
       readonly ambiguous: boolean;
+      /** Estado interno de la lógica del nodo (Deuda #56); en modo cableado este tooltip tapa al de la pieza. */
+      readonly logic?: NodeLogicSummary;
     }
   | {
       readonly kind: "section";
@@ -173,6 +177,12 @@ export interface SignalTooltipInfo {
    * lo dejaba sin camino hacia la causa.
    */
   readonly burnedWires?: number;
+  /**
+   * Estado INTERNO de la lógica de la pieza si es un chip con comportamiento
+   * (Deuda #56): cuenta del contador, memoria del latch, entradas activas de una
+   * compuerta, fase del reloj. `undefined` en una pieza sin lógica propia.
+   */
+  readonly logic?: NodeLogicSummary;
 }
 
 export interface SectionAtmosphereTooltip {
@@ -367,6 +377,7 @@ export function renderMissionTooltip(
     y += detail.height + 4;
     for (const { text, color } of [
       ...(content.ownerName ? [{ text: `• ${content.ownerName}`, color: LABEL_COLOR }] : []),
+      ...(content.logic ? [{ text: `⌁ ${formatNodeLogic(content.logic)}`, color: HEADER_COLOR }] : []),
       // El aviso de ambigüedad es el ANUNCIO del menú, no una queja: sin él, el
       // menú circular aparecía por sorpresa y el jugador no sabía qué lo abría.
       ...(content.ambiguous
@@ -520,6 +531,11 @@ export function renderMissionTooltip(
         if (ratio > 1) {
           lines.push({ text: `• ${labels.signalOverloadedEmitter}`, color: CRISIS_FATAL_CSS });
         }
+      }
+      // Estado interno del chip (Deuda #56): junto a "quién la gobierna" porque
+      // responde la pregunta siguiente — ¿y qué hace con lo que le llega?
+      if (signal?.logic) {
+        lines.push({ text: `⌁ ${formatNodeLogic(signal.logic)}`, color: HEADER_COLOR });
       }
       if (signal?.governedBy) {
         lines.push({

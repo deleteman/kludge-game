@@ -152,6 +152,8 @@ export { effectiveInputPort, inputPortsOf, setEdgePort } from "./signals/edge-po
 export type { SetEdgePortIssue, SetEdgePortResult } from "./signals/edge-port.js";
 export { isValidSignalBehavior, setNodeBehavior, signalBehaviorsEqual } from "./signals/set-node-behavior.js";
 export type { SetNodeBehaviorIssue, SetNodeBehaviorResult } from "./signals/set-node-behavior.js";
+export { summarizeNodeLogic, tallyNodeInputs } from "./signals/node-logic-summary.js";
+export type { NodeInputTally, NodeLogicSummary } from "./signals/node-logic-summary.js";
 export { anyInputActive } from "./signals/signal-rule.js";
 export type { SignalInput, SignalRule, SignalRuleContext } from "./signals/signal-rule.js";
 export { createDefaultSignalRuleRegistry } from "./signals/rules/signal-rule-registry.js";
@@ -1155,8 +1157,10 @@ export {
   withoutInstanceConfig,
 } from "./instance-config/instance-config-store.js";
 export {
+  LCD_DISPLAY_COMPONENT_ID,
   LED_INDICATOR_COMPONENT_ID,
   configurableSensorKindOf,
+  hasConfigurableLogic,
   isConfigurableIndicator,
 } from "./instance-config/configurable-of.js";
 export {

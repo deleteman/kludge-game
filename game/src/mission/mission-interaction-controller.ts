@@ -31,7 +31,6 @@ import type {
   SignalEdge,
   SignalEdgeId,
   SignalNodeId,
-  SignalBehavior,
 } from "engine";
 
 import {
@@ -46,6 +45,7 @@ import {
 } from "engine";
 import type { ConduitConnection, ConduitId, DoorRuntime, SectionId } from "engine";
 import { t } from "../i18n/i18n.js";
+import { formatNodeLogic } from "../ui/node-logic-format.js";
 import { CHEMICAL_TAG_COLORS, LABEL_COLOR, WIRE_HIGHLIGHT_COLOR } from "../render/palette.js";
 import { RENDER_DEPTH } from "../render/render-depths.js";
 import {
@@ -172,6 +172,8 @@ export interface MissionInteractionCallbacks {
 export class MissionInteractionController {
   private selectedActorIdValue?: CrewActorId;
   private wireModeValue = false;
+  /** Firma del estado interno ya pintado en el panel del nodo (Deuda #56), ver `refreshLiveActionPanel`. */
+  private liveActionPanelKey?: string;
   private wireFirstNodeId?: SignalNodeId;
   /**
    * Modo de selección espacial de destino de trasvase (ronda 7 de fixes de
@@ -564,9 +566,6 @@ export class MissionInteractionController {
   /** Cambia el nodo origen y notifica a la escena para reposicionar su highlight. */
   private setWireFirstNode(nodeId: SignalNodeId | undefined): void {
     this.wireFirstNodeId = nodeId;
-    // Sin nodo origen no hay nada que configurar: cualquier salida del cableado
-    // (deselección, cable tendido o retirado, salir del modo) cierra el panel de 14b-3.
-    if (nodeId === undefined) this.closeNodePanel();
     this.callbacks.onWireSelectionChanged();
   }
 
@@ -1094,6 +1093,9 @@ export class MissionInteractionController {
         (instance && this.nameByComponentId.get(instance.componentDefinitionId)) ??
         instance?.componentDefinitionId,
       ambiguous: candidates.length > 1,
+      // Deuda #56: en modo cableado este tooltip tapa al de la pieza, así que
+      // también lleva el estado interno de la lógica del nodo.
+      logic: this.mission.nodeLogicOf(node.id),
     };
   }
 
@@ -1151,10 +1153,6 @@ export class MissionInteractionController {
     if (!this.wireFirstNodeId) {
       this.setWireFirstNode(node.id);
       this.callbacks.setStatus(t("ui.floorplan.mission.wire-mode-hint-second"));
-      // 14b-3: elegir el nodo origen también abre su configuración. Es el mismo
-      // gesto que ya existía (no suma un paso al cableado) y un emisor no la
-      // tiene — su salida la fija el mundo, no una lógica elegible.
-      this.showNodePanel(node.id);
       return;
     }
     // Click sobre el mismo nodo: lo deselecciona (volvé a empezar).
@@ -1258,25 +1256,6 @@ export class MissionInteractionController {
     this.callbacks.onTaskQueued();
   }
 
-  /** Abre el panel de lógica del nodo, salvo emisores (14b-3). */
-  private showNodePanel(nodeId: SignalNodeId): void {
-    const node = this.mission.blueprint.signalGraph.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node || node.role === "emitter") return;
-    const owner = this.mission.blueprint.placedComponents.find((instance) => instance.instanceId === node.ownerRef);
-    const ownerName = owner
-      ? (this.mission.definitionOf(owner.componentDefinitionId)?.name ?? owner.componentDefinitionId)
-      : node.ownerRef;
-    this.setActionPanelContent({
-      kind: "node",
-      nodeId,
-      name: t("ui.floorplan.mission.node.title").replace("{name}", ownerName),
-    });
-  }
-
-  private liveNodeBehavior(nodeId: SignalNodeId): SignalBehavior | undefined {
-    return this.mission.blueprint.signalGraph.nodes.find((node) => node.id === nodeId)?.behavior;
-  }
-
   /** Puertos que ofrece el destino de un cable, con el vigente; `undefined` si no distingue ninguno. */
   private livePortInfo(edgeId: SignalEdgeId): { options: ReadonlyArray<string>; current: string } | undefined {
     const { edges, nodes } = this.mission.blueprint.signalGraph;
@@ -1292,12 +1271,33 @@ export class MissionInteractionController {
     return led && { ...led, lit: this.mission.ledIndicatorState(instanceId).lit };
   }
 
-  private closeNodePanel(): void {
-    if (this.actionPanelContent.kind === "node") this.setActionPanelContent({ kind: "idle" });
+  /**
+   * Refresca el panel del nodo cuando cambia su estado interno (Deuda #56). El
+   * panel sólo se redibujaba por eventos, y la cuenta de un contador cambia sin
+   * que el jugador toque nada. La firma es el TEXTO que se mostraría
+   * (`formatNodeLogic`): redibuja si y sólo si lo visible cambió, porque
+   * `redrawActionPanel` destruye el container. Se llama una vez por frame.
+   */
+  refreshLiveActionPanel(): void {
+    const content = this.actionPanelContent;
+    // Sólo el panel de un chip seleccionado tiene estado interno vivo que seguir;
+    // cualquier otro contenido no.
+    const nodeId = content.kind === "instance" ? this.mission.logicNodeOf(content.instanceId)?.nodeId : undefined;
+    if (!nodeId) {
+      this.liveActionPanelKey = undefined;
+      return;
+    }
+    const logic = this.mission.nodeLogicOf(nodeId);
+    const key = logic ? formatNodeLogic(logic) : "";
+    if (key === this.liveActionPanelKey) return;
+    this.liveActionPanelKey = key;
+    this.redrawActionPanel();
   }
 
   private setActionPanelContent(content: ActionPanelContent): void {
     this.actionPanelContent = content;
+    // Contenido nuevo: la firma viva de `refreshLiveActionPanel` ya no aplica.
+    this.liveActionPanelKey = undefined;
     // Nuevo objetivo de panel: el arrastre de la ronda 5 es un ajuste de ESTA
     // selección, no una posición que persiga al jugador entre piezas distintas.
     this.manualPanelPositionValue = undefined;
@@ -1433,18 +1433,14 @@ export class MissionInteractionController {
             sensor: this.mission.sensorConfigOf(this.actionPanelContent.instanceId),
             // 14b-3: idem para el LED — color, trigger y si está encendido AHORA.
             indicator: this.indicatorInfoFor(this.actionPanelContent.instanceId),
+            // Un chip se configura desde el panel de la pieza (Deuda #56, playtest).
+            logicNode: this.mission.logicNodeOf(this.actionPanelContent.instanceId),
           }
         : this.actionPanelContent.kind === "conduit"
           ? { ...this.actionPanelContent, ...this.conduitLiveState(this.actionPanelContent.conduitId) }
           : this.actionPanelContent.kind === "wire"
             ? { ...this.actionPanelContent, port: this.livePortInfo(this.actionPanelContent.edgeId) }
-            : this.actionPanelContent.kind === "node"
-              ? {
-                ...this.actionPanelContent,
-                // Vivo, como el resto: el panel no debe mostrar una lógica que ya cambió.
-                behavior: this.liveNodeBehavior(this.actionPanelContent.nodeId),
-              }
-              : this.actionPanelContent;
+            : this.actionPanelContent;
     this.actionPanelContainer = renderMissionActionPanel(
       this.scene,
       this.geometry.actionPanelWidth,

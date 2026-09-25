@@ -747,3 +747,40 @@ El operador pidió, para un LED cableado a algo químico, triggers del tipo "=ox
 fracción de O2 de una sala. Hace falta una fuente nueva (¿un `triggerType` de composición de aire?), que es una
 pieza de diseño, no un ajuste del LED. El trigger `compare` sobre un sensor de esa clase ya funcionaría sin
 tocar el LED.
+
+## Pregunta abierta #57 — No existe un interruptor ni un pulsador: las únicas entradas son sensores (Subfase 14b-3, playtest de circuitos)
+
+**Estado:** ABIERTA. Registrada 2026-09-24.
+
+Las únicas piezas con `EM` en el catálogo atómico son `fotorreceptor` y `sensor-presion`; los compuestos suman los
+sensores de movimiento, térmico, de presión de gas, el escáner y el biométrico. No hay una entrada que el jugador
+accione a voluntad, así que para probar un circuito se usa un parche: alternar entre `<` y `>=` en el umbral de un
+sensor (un sensor con `<` X y con `>=` X da resultados opuestos siempre). Funciona, pero no es una pieza del juego.
+
+Decisión de diseño pendiente: ¿una pieza "interruptor / pulsador" propia (¿un `EM` con `triggerType` manual, accionable
+por un tripulante con una tarea?), o se asume que las entradas son siempre el mundo?
+
+Relacionado, mismo origen:
+- **Un solo fotorreceptor.** Es atómico (no se fabrica) y el sensor de movimiento láser lo consume como ingrediente,
+  así que la presencia de tripulantes sólo se detecta con ese y con la salida de las puertas.
+- **Salidas sin verificar.** Sólo consta que reaccionan a una señal las puertas, la válvula automática, los
+  reguladores térmicos y los electroimanes. `motor-pequeno` y `emisor-laser-baja-potencia` son `ACT` y no se
+  comprobó que hagan algo.
+- **El peso de los cables castiga a los circuitos de puro control** (un chip pesa 1 y la carga cuenta todo lo que
+  cuelga aguas abajo, sin importar los relés): un circuito de 5 piezas trabaja al 83 % de un cable de cobre. Decisión
+  de balance abierta: que las piezas de señal pesen 0, o que sólo cuente el consumo real.
+- **Circuitos candidatos a simular antes de armarlos:** termostato con histéresis (dos sensores térmicos con umbrales
+  distintos → set/reset de una Memoria → regulador), divisor de reloj (contador con su salida en su propio reset),
+  alarma enganchada con acuse, esclusa con enclavamiento, secuencia de luces con retardos.
+
+## Deuda #58 — Una pantalla LCD no puede mostrar la cuenta ni la memoria de un chip (Deuda #56, fuera de alcance)
+
+**Estado:** ABIERTA. Registrada 2026-09-25.
+
+La Deuda #56 dejó visible el estado interno de un chip en el tooltip y en el panel del nodo, pero ambos exigen
+apuntarle con el mouse o tenerlo seleccionado. Lo único que lo dejaría a la vista sin tocar nada es que una
+`pantalla-lcd` cableada a un chip muestre su cuenta (`Cuenta 1/2`) o su memoria. `LcdDisplayValue`
+(`engine/src/mission/lcd-display-value.ts`) sólo tiene `pressure`, `temperature` y `chemical`, y
+`resolveWiredSensorSource` sólo sigue el cableado hasta SENSORES: haría falta una variante `counter`/`latch` y
+seguir el cable hasta un nodo de lógica (`summarizeNodeLogic` ya devuelve el dato). El operador eligió dejarlo fuera
+al planificar la #56 (2026-09-25).

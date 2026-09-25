@@ -19,6 +19,30 @@ import type { ConfigurableSensorKind } from "./sensor-thresholds.js";
  */
 export const LED_INDICATOR_COMPONENT_ID = "indicador-led" as ComponentId;
 
+/** Pantalla LCD: mismas propiedades que el LED (Deuda #54), se reconoce por id. */
+export const LCD_DISPLAY_COMPONENT_ID = "pantalla-lcd" as ComponentId;
+
+/**
+ * ¿La pieza es un CHIP con lógica configurable (`SignalNode.behavior`)? El
+ * jugador la configura desde el panel de la pieza, sin pasar por el modo
+ * cableado. Por propiedades: un `REC` sin `ACT` ni `EM` (ni trabaja sobre el
+ * mundo ni mide nada: sólo procesa señal). Excluye al LED y a la LCD por id
+ * porque tienen exactamente esas mismas propiedades y ya tienen su propio panel
+ * (Deuda #54) — un LED con lógica de compuerta sería confuso al lado de su color
+ * y su trigger.
+ */
+export function hasConfigurableLogic(
+  componentDefinitionId: ComponentId,
+  registry: EntityRegistry<ComponentId, PhysicalComponentDefinition>,
+): boolean {
+  if (componentDefinitionId === LED_INDICATOR_COMPONENT_ID || componentDefinitionId === LCD_DISPLAY_COMPONENT_ID) {
+    return false;
+  }
+  const functional = registry.get(componentDefinitionId)?.data.functional ?? [];
+  const has = (tag: "REC" | "ACT" | "EM"): boolean => functional.some((property) => property.tag === tag);
+  return has("REC") && !has("ACT") && !has("EM");
+}
+
 /** ¿La pieza es un indicador con color y condición de encendido configurables? */
 export function isConfigurableIndicator(componentDefinitionId: ComponentId): boolean {
   return componentDefinitionId === LED_INDICATOR_COMPONENT_ID;

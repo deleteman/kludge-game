@@ -578,3 +578,25 @@ guarda receptor→receptor de `orientSignalWiring`. Levantarla, más la capacida
 da el tronco explícito que se buscaba **reusando el catálogo existente**, que es lo que el principio 1
 pedía. El caso de uso que faltaba llegó del playtest, no de un diseño anticipado.
 
+
+
+## ✅ RESUELTO — Deuda #56 — El estado interno de un chip no se ve: cuenta del contador, memoria del latch, fase del reloj (Subfase 14b-3, playtest de circuitos)
+
+**Estado:** ✅ RESUELTO 2026-09-25. Registrada 2026-09-24. Prioridad alta antes de 14c: el Cap.2 pide al jugador construir filtros
+AND/OR/NOT y sin esto depura a ciegas.
+
+Al armar un circuito real (Y + contador + reloj + LEDs) el operador pudo configurarlo todo pero no ver qué pasaba
+adentro. `SignalNodeState` guarda `counterValue`, `latchMemory` y `oscillatorPhaseSeconds`, y `/game` no lee ninguno
+(verificado con grep). El panel del nodo (`kind:"node"`) sólo muestra la lógica ELEGIDA ("Actual: Contador"), no su
+estado en vivo: "Cuenta: 1/2", "Memoria: enganchada", "Reloj: encendido". Es el eje 1 del checklist de playtest (la UI
+no puede ocultar el estado del motor) aplicado a una pieza nueva.
+
+Alcance sugerido, de menor a mayor:
+- Una línea de estado vivo en el panel del nodo, derivada en cada dibujo como el resto (`redrawActionPanel`).
+- Que el tooltip del nodo y del cable indique si están activos.
+- Que la LCD pueda mostrar la cuenta o el estado de un latch: `LcdDisplayValue` sólo tiene `pressure`, `temperature` y
+  `chemical`, y su docblock ya anticipaba "estado de un latch" como variante futura.
+
+**Resolución (2026-09-25):** el estado interno (cuenta, memoria, entradas activas, reloj, retardo) se ve en el tooltip de la
+pieza, en el tooltip del nodo en modo cableado y en el panel de la pieza, donde además se configura la lógica del chip (sin
+pasar por el modo cableado, que ya no abre ningún panel). La LCD quedó fuera: Deuda #58. Detalle en `docs/changelog/fase-14.log`.

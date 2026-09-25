@@ -16,6 +16,7 @@ import type {
   ConfigurableSensorKind,
   SensorThresholdConfig,
   LedColor,
+  NodeLogicSummary,
   LedSubstanceTag,
   LedTrigger,
   OutputIndicatorConfig,
@@ -38,6 +39,7 @@ import {
   type NodeBehaviorOption,
 } from "./node-behavior-options.js";
 import { LED_COLORS, LED_SUBSTANCE_TAGS, defaultLedTrigger, defaultSensorThreshold } from "engine";
+import { formatNodeLogic } from "../node-logic-format.js";
 import { layoutButtonGrid, layoutButtonRow } from "./button-row.js";
 import {
   SENSOR_COMPARATOR_OPTIONS,
@@ -170,6 +172,12 @@ export type ActionPanelContent =
        * pieza es uno. `triggerKinds` ya viene filtrado por lo que tiene cableado:
        * el panel no decide qué opciones existen.
        */
+      /** Nodo de lógica de la pieza si es un chip (`hasConfigurableLogic`): su lógica elegida y estado interno vivo. */
+      readonly logicNode?: {
+        readonly nodeId: SignalNodeId;
+        readonly behavior?: SignalBehavior;
+        readonly logic?: NodeLogicSummary;
+      };
       readonly indicator?: {
         readonly config: OutputIndicatorConfig;
         readonly sensorKind: ConfigurableSensorKind | undefined;
@@ -216,17 +224,6 @@ export type ActionPanelContent =
        * puertos (Memoria, Contador). Lo deriva el llamador contra el grafo vivo.
        */
       readonly port?: { readonly options: ReadonlyArray<string>; readonly current: string };
-    }
-  | {
-      /**
-       * Un NODO de señal seleccionado (14b-3): configurar qué lógica aplica a
-       * sus entradas. `behavior` es el VIVO (lo deriva el llamador en cada
-       * dibujo), no una foto de cuando se abrió el panel.
-       */
-      readonly kind: "node";
-      readonly nodeId: SignalNodeId;
-      readonly name: string;
-      readonly behavior?: SignalBehavior;
     }
   | {
       readonly kind: "substance";
@@ -489,6 +486,122 @@ export interface ActionPanelCallbacks {
  * apilado del panel (13d ronda 2: se mide la altura REAL, no se suman
  * constantes, porque el alto de un texto envuelto depende del idioma).
  */
+/**
+ * Bloque de configuración de la LÓGICA de un chip (14b-3) y su estado interno
+ * vivo (Deuda #56): opciones, parámetro numérico y línea de estado. Lo usan el
+ * panel del NODO (modo cableado) y el de la PIEZA (selección normal), para que
+ * el chip se configure sin pasar por el modo cableado. Devuelve el nuevo cursor.
+ */
+function renderLogicBlock(
+  scene: SceneWithRexUI,
+  container: Phaser.GameObjects.Container,
+  node: {
+    readonly nodeId: SignalNodeId;
+    readonly behavior?: SignalBehavior;
+    readonly logic?: NodeLogicSummary;
+  },
+  layout: { readonly width: number; readonly cursorY: number },
+  labels: ActionPanelLabels,
+  callbacks: ActionPanelCallbacks,
+): number {
+  const { width } = layout;
+  let flowY = layout.cursorY;
+  const current = optionOf(node.behavior);
+  const hintText = scene.add
+    .text(width / 2, flowY, labels.nodeBehaviorHint, {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "10px",
+      color: LABEL_COLOR,
+      align: "center",
+      wordWrap: { width: width - 20, useAdvancedWrap: true },
+    })
+    .setOrigin(0.5, 0);
+  container.add(hintText);
+  flowY += hintText.height + 6;
+
+  const currentText = scene.add
+    .text(width / 2, flowY, labels.nodeBehaviorCurrent(labels.nodeBehaviorOption(current)), {
+      fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+      fontSize: "12px",
+      color: HEADER_COLOR,
+      align: "center",
+    })
+    .setOrigin(0.5, 0);
+  container.add(currentText);
+  flowY += currentText.height + 4;
+
+  // Estado interno en vivo (Deuda #56): lo que el jugador necesita para
+  // depurar — cuántas entradas llegan, cuánto lleva contado, si la memoria
+  // está enganchada. Se muestra APARTE de la lógica elegida porque una es
+  // configuración y la otra cambia sola.
+  if (node.logic) {
+    const stateText = scene.add
+      .text(width / 2, flowY, formatNodeLogic(node.logic), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "11px",
+        color: LABEL_COLOR,
+        align: "center",
+        wordWrap: { width: width - 20, useAdvancedWrap: true },
+      })
+      .setOrigin(0.5, 0);
+    container.add(stateText);
+    flowY += stateText.height + 4;
+  }
+  flowY += 4;
+
+  // Rejilla de dos columnas: siete opciones en una sola columna de botones
+  // empujaban el panel fuera de pantalla. La opción activa va deshabilitada —
+  // es lo más corto que dice "esto es lo que está puesto" sin otro widget.
+  flowY += layoutButtonGrid(
+    scene,
+    container,
+    NODE_BEHAVIOR_OPTIONS.map((option) => ({
+      label: labels.nodeBehaviorOption(option),
+      enabled: option !== current,
+      onClick: () => callbacks.onSetNodeBehavior(node.nodeId, behaviorForOption(option)),
+    })),
+    { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
+  );
+  flowY += 4;
+
+  // Parámetro numérico (retardo, periodo, umbral del contador): pasos ± en
+  // vez de un campo de texto, porque el panel se redibuja en cada cambio y un
+  // input a medio editar se destruiría (mismo motivo que 13b en los sliders).
+  const parameter = node.behavior ? parameterOf(node.behavior) : undefined;
+  if (node.behavior && parameter) {
+    const behavior = node.behavior;
+    const parameterText = scene.add
+      .text(width / 2, flowY, labels.nodeBehaviorParameter(current, parameter), {
+        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
+        fontSize: "12px",
+        color: LABEL_COLOR,
+        align: "center",
+      })
+      .setOrigin(0.5, 0);
+    container.add(parameterText);
+    flowY += parameterText.height + 6;
+    flowY += layoutButtonRow(
+      scene,
+      container,
+      [
+        {
+          label: "−",
+          enabled: parameter.value > parameter.min,
+          fontSize: "13px",
+          onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, -1)),
+        },
+        {
+          label: "+",
+          fontSize: "13px",
+          onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, 1)),
+        },
+      ],
+      { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
+    );
+  }
+  return flowY;
+}
+
 function renderSensorBlock(
   scene: SceneWithRexUI,
   container: Phaser.GameObjects.Container,
@@ -807,7 +920,7 @@ export function renderMissionActionPanel(
     content.kind === "instance"
       ? labels.instanceTitle(content.name, content.condition)
       : // Subfase 13h: conducto y puerta autorada ya traen su nombre resuelto.
-        content.kind === "conduit" || content.kind === "substance" || content.kind === "node"
+        content.kind === "conduit" || content.kind === "substance"
         ? content.name
         : content.kind === "substances-list"
           ? labels.substancesTitle
@@ -1185,6 +1298,15 @@ export function renderMissionActionPanel(
       claim(cursorY);
     }
 
+    // La pieza es un CHIP: su lógica (AND/OR/NOT, memoria, contador…) y su estado
+    // interno se configuran acá, sin pasar por el modo cableado (playtest de
+    // Deuda #56: había que entrar al modo cableado y quedaba una flecha pegada al
+    // mouse sólo para abrir esta configuración).
+    if (content.logicNode) {
+      cursorY = renderLogicBlock(scene, container, content.logicNode, { width, cursorY }, labels, callbacks);
+      claim(cursorY);
+    }
+
     // Subfase 14b-3 — la pieza es un indicador LED: color y condición de encendido.
     if (content.indicator) {
       cursorY = renderIndicatorBlock(
@@ -1294,83 +1416,6 @@ export function renderMissionActionPanel(
       }),
     );
     flowY += 36;
-    claim(flowY);
-  } else if (content.kind === "node") {
-    const node = content;
-    const current = optionOf(node.behavior);
-    const hintText = scene.add
-      .text(width / 2, flowY, labels.nodeBehaviorHint, {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "10px",
-        color: LABEL_COLOR,
-        align: "center",
-        wordWrap: { width: width - 20, useAdvancedWrap: true },
-      })
-      .setOrigin(0.5, 0);
-    container.add(hintText);
-    flowY += hintText.height + 6;
-
-    const currentText = scene.add
-      .text(width / 2, flowY, labels.nodeBehaviorCurrent(labels.nodeBehaviorOption(current)), {
-        fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-        fontSize: "12px",
-        color: HEADER_COLOR,
-        align: "center",
-      })
-      .setOrigin(0.5, 0);
-    container.add(currentText);
-    flowY += currentText.height + 8;
-
-    // Rejilla de dos columnas: siete opciones en una sola columna de botones
-    // empujaban el panel fuera de pantalla. La opción activa va deshabilitada —
-    // es lo más corto que dice "esto es lo que está puesto" sin otro widget.
-    flowY += layoutButtonGrid(
-      scene,
-      container,
-      NODE_BEHAVIOR_OPTIONS.map((option) => ({
-        label: labels.nodeBehaviorOption(option),
-        enabled: option !== current,
-        onClick: () => callbacks.onSetNodeBehavior(node.nodeId, behaviorForOption(option)),
-      })),
-      { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
-    );
-    flowY += 4;
-
-    // Parámetro numérico (retardo, periodo, umbral del contador): pasos ± en
-    // vez de un campo de texto, porque el panel se redibuja en cada cambio y un
-    // input a medio editar se destruiría (mismo motivo que 13b en los sliders).
-    const parameter = node.behavior ? parameterOf(node.behavior) : undefined;
-    if (node.behavior && parameter) {
-      const behavior = node.behavior;
-      const parameterText = scene.add
-        .text(width / 2, flowY, labels.nodeBehaviorParameter(current, parameter), {
-          fontFamily: `${UI_FONT_FAMILY}, sans-serif`,
-          fontSize: "12px",
-          color: LABEL_COLOR,
-          align: "center",
-        })
-        .setOrigin(0.5, 0);
-      container.add(parameterText);
-      flowY += parameterText.height + 6;
-      flowY += layoutButtonRow(
-        scene,
-        container,
-        [
-          {
-            label: "−",
-            enabled: parameter.value > parameter.min,
-            fontSize: "13px",
-            onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, -1)),
-          },
-          {
-            label: "+",
-            fontSize: "13px",
-            onClick: () => callbacks.onSetNodeBehavior(node.nodeId, stepBehaviorParameter(behavior, 1)),
-          },
-        ],
-        { left: 25, totalWidth: width - 50, top: flowY, columns: 2 },
-      );
-    }
     claim(flowY);
   } else if (content.kind === "substance") {
     // Tags genéricos siempre; si ya fue analizada, el llamador agrega acá

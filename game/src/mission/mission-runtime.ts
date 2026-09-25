@@ -3,6 +3,7 @@ import {
   setNodeBehavior,
   setEdgePort,
   configurableSensorKindOf,
+  hasConfigurableLogic,
   DEFAULT_OUTPUT_INDICATOR,
   isConfigurableIndicator,
   isValidOutputIndicator,
@@ -10,6 +11,8 @@ import {
   ledTriggerKindsFor,
   resolveLcdDisplayValue,
   resolveLedIndicatorState,
+  summarizeNodeLogic,
+  tallyNodeInputs,
   resolveWiredSensorSource,
   sectionChemicalAlarm,
   sensorThresholdOf,
@@ -224,6 +227,7 @@ import type {
   SensorThresholdConfig,
   LcdDisplayValue,
   LedIndicatorState,
+  NodeLogicSummary,
   LedTrigger,
   OutputIndicatorConfig,
   StockCostLine,
@@ -2977,6 +2981,37 @@ export class MissionRuntime {
   }
 
   /**
+   * El nodo de lógica de un CHIP colocado, para configurarlo desde el panel de la
+   * pieza sin pasar por el modo cableado. `undefined` si la pieza no es un chip
+   * (`hasConfigurableLogic`) o todavía no tiene su nodo. Trae la lógica elegida
+   * y el estado interno vivo, derivados del grafo en el momento de la consulta.
+   */
+  logicNodeOf(
+    instanceId: PlacedComponentInstanceId,
+  ): { readonly nodeId: SignalNodeId; readonly behavior?: SignalBehavior; readonly logic?: NodeLogicSummary } | undefined {
+    const blueprint = this.blueprint;
+    const instance = blueprint.placedComponents.find((candidate) => candidate.instanceId === instanceId);
+    if (!instance || !hasConfigurableLogic(instance.componentDefinitionId, this.componentRegistry)) return undefined;
+    const node = blueprint.signalGraph.nodes.find((candidate) => candidate.role === "receptor" && candidate.ownerRef === instanceId);
+    if (!node) return undefined;
+    return { nodeId: node.id, behavior: node.behavior, logic: this.nodeLogicOf(node.id) };
+  }
+
+  /**
+   * Estado interno de la lógica de un nodo (Deuda #56): cuenta, memoria, entradas
+   * activas, fase del reloj. Todo lo decide el motor (`summarizeNodeLogic`); acá
+   * sólo se le pasan el estado vivo y las entradas del grafo ACTIVO. `undefined`
+   * para emisores y para nodos sin lógica propia (LED, conductor).
+   */
+  nodeLogicOf(nodeId: SignalNodeId): NodeLogicSummary | undefined {
+    const blueprint = this.blueprint;
+    const node = blueprint.signalGraph.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node || node.role === "emitter") return undefined;
+    const inputs = tallyNodeInputs(activeSignalEdges(blueprint), nodeId, (sourceId) => this.signalRuntime.outputOf(sourceId));
+    return summarizeNodeLogic(node.behavior, this.signalRuntime.signalState.get(nodeId), inputs);
+  }
+
+  /**
    * Papel de una pieza en el montaje de señal (14a-4 ronda 1): qué gobierna,
    * quién la gobierna, y si emite su estado hacia la cadena.
    *
@@ -3028,7 +3063,9 @@ export class MissionRuntime {
     const burnedWires = burnedWiresTouching(blueprint, instanceId);
 
     const actuatorOutput = own.find((node) => node.role === "emitter" && isActuatorOutputNode(node.id));
+    const logic = own.map((node) => this.nodeLogicOf(node.id)).find((summary) => summary !== undefined);
     return {
+      ...(logic ? { logic } : {}),
       ...(hasOutgoing
         ? { drives: { count: drivenCount, load: drivenLoad, capacity: drivenCapacity } }
         : {}),

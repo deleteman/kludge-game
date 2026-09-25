@@ -20,8 +20,8 @@ el patrón abre un **eje nuevo** que ninguno de los 13 cubre.
 | 2 | Si no se ve, no existe: acción, confirmación, tope y estado terminal necesitan señal propia | 2, 8, 35, 51, 65, 73, 75, 79 |
 | 3 | Legibilidad medida con números, no a ojo (contraste contra el asset real, layout sumado) | 3, 9, 11, 14, 48, 62, 99 |
 | 4 | Coherencia entre hermanos: arreglar uno deja rotos a los demás | 4, 16, 31, 46, 72, 78, 84, 91, 95, 102 |
-| 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39, 94 |
-| 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82, 93 |
+| 5 | Interacción real: click, arrastre, capas, orden de dibujo | 5, 38, 39, 94, 104 |
+| 6 | Infraestructura sin llamador —o evento sin consumidor— es infraestructura ausente | 12, 21, 23, 26, 32, 37, 49, 74, 82, 93, 104 |
 | 7 | Un indicador que nunca se mueve está roto | 7, 25, 29 |
 | 8 | Un dato derivado mal modelado contamina todo lo que lo agrega | 10, 17, 19, 54, 68 |
 | 9 | Un test que inyecta su propia versión de la dependencia no puede ver el bug | 13, 20, 24, 44, 45, 50, 71, 87, 92, 101 |
@@ -1182,3 +1182,11 @@ Los tests de `game` pasaban desde `game/` y 8 fallaban desde la RAÍZ: `engine` 
 un artefacto ignorado por git y desactualizado, en vez de contra el código fuente. "Verde" sólo significa algo
 si es el verificador que vale (el del skill de cierre corre desde la raíz). Reconstruir `dist` antes de correr
 el conjunto completo, y no dar por buenos números obtenidos desde un solo directorio.
+
+**Patrón 104 — La configuración de una pieza vive en el panel de la pieza, no detrás de un modo que hace otra cosa** (Deuda #56,
+ronda 1). Para configurar un chip había que entrar al modo cableado y hacer clic en su nodo: el panel aparecía, pero a la vez
+quedaba una flecha de cableado dibujándose hasta el mouse. La primera solución (abrir el panel al elegir el nodo origen) parecía
+gratuita —"no suma un paso al cableado"— y era la equivocada: reutilizaba un gesto cuya intención es OTRA. Si el jugador quiere
+configurar una pieza, el gesto natural es seleccionarla. Preguntarse, ante un panel colgado de un modo, "¿qué gesto haría el
+jugador que sólo quiere ver o cambiar esto?". Corolario (eje 6): al mover un flujo, borrar todo lo que sostenía al anterior —la
+variante de panel, su rama de dibujo, sus claves de traducción y sus funciones de apertura— en el mismo cambio, no dejarlo muerto.
